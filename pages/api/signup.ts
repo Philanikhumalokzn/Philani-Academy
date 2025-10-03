@@ -38,20 +38,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'OPTIONS') {
     return res.status(204).end()
   }
-  // Determine DEBUG truthiness for later error responses.
-  const DEBUG = ['1', 'true', 'yes', 'on'].includes(String(process.env.DEBUG || '').toLowerCase())
-  // Always allow a safe, non-sensitive GET that reports whether DEBUG and DATABASE_URL are present
-  // and the database scheme (but never print the full DATABASE_URL).
-  if (req.method === 'GET') {
-    try {
-      const rawDebug = process.env.DEBUG ?? null
-      const debugNormalized = rawDebug ? String(rawDebug).toLowerCase() : null
-      const dbUrl = process.env.DATABASE_URL ?? null
-      return res.status(200).json({ debugPresent: !!rawDebug, debugNormalized, databaseUrlPresent: !!dbUrl, dbScheme: dbUrl ? dbUrl.split(':')[0] : null })
-    } catch (e) {
-      return res.status(200).json({ debugPresent: false, error: String(e) })
-    }
-  }
+  // Only accept POST (OPTIONS handled above). No public debug GET in production code.
+  // DEBUG-aware behavior was used temporarily for troubleshooting and has been removed.
   if (req.method !== 'POST') return res.status(405).end()
   // Support cases where Next's body parser fails on the platform (returning "Invalid JSON").
   let body: any = req.body
@@ -167,11 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (err) {
     // Log full error server-side always (masked in production logs if necessary)
     console.error('/api/signup server error', err)
-    // If DEBUG is enabled (1/true/yes/on), return the error message and stack to aid debugging.
-    if (DEBUG) {
-      const e: any = err
-      return res.status(500).json({ message: e?.message || 'Server error', stack: e?.stack })
-    }
+    // Generic server error response (debugging info removed)
     return res.status(500).json({ message: 'Server error' })
   }
 }

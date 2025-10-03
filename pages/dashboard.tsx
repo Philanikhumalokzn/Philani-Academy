@@ -8,6 +8,9 @@ export default function Dashboard() {
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
+  const [users, setUsers] = useState<any[] | null>(null)
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [usersError, setUsersError] = useState<string | null>(null)
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -37,7 +40,34 @@ export default function Dashboard() {
     }
   }
 
+  async function fetchUsers() {
+    setUsersError(null)
+    setUsersLoading(true)
+    try {
+      const res = await fetch('/api/users', { credentials: 'same-origin' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setUsersError(data?.message || `Error: ${res.status}`)
+        setUsers(null)
+      } else {
+        const data = await res.json()
+        setUsers(data)
+      }
+    } catch (err: any) {
+      setUsersError(err?.message || 'Network error')
+      setUsers(null)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
   useEffect(() => { fetchSessions() }, [])
+  useEffect(() => {
+    // fetch users only for admins
+    if ((session as any)?.user?.role === 'admin') {
+      fetchUsers()
+    }
+  }, [session])
 
   return (
     <main className="min-h-screen p-8">
@@ -80,6 +110,62 @@ export default function Dashboard() {
               ))}
             </ul>
           </div>
+
+          {session && (session as any).user?.role === 'admin' && (
+            <div className="card mt-4">
+              <h2 className="font-semibold mb-3">Manage users</h2>
+              {usersLoading ? (
+                <div className="text-sm muted">Loading users…</div>
+              ) : usersError ? (
+                <div className="text-sm text-red-600">{usersError}</div>
+              ) : users && users.length === 0 ? (
+                <div className="text-sm muted">No users found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr>
+                        <th className="px-2 py-1">Email</th>
+                        <th className="px-2 py-1">Name</th>
+                        <th className="px-2 py-1">Role</th>
+                        <th className="px-2 py-1">Created</th>
+                        <th className="px-2 py-1">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users && users.map(u => (
+                        <tr key={u.id} className="border-t">
+                          <td className="px-2 py-2">{u.email}</td>
+                          <td className="px-2 py-2">{u.name || '-'}</td>
+                          <td className="px-2 py-2">{u.role}</td>
+                          <td className="px-2 py-2">{new Date(u.createdAt).toLocaleString()}</td>
+                          <td className="px-2 py-2">
+                            <button
+                              className="btn btn-danger"
+                              onClick={async () => {
+                                if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
+                                try {
+                                  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'same-origin' })
+                                  if (res.ok) {
+                                    setUsers(prev => prev ? prev.filter(x => x.id !== u.id) : prev)
+                                  } else {
+                                    const data = await res.json().catch(() => ({}))
+                                    alert(data?.message || `Failed to delete (${res.status})`)
+                                  }
+                                } catch (err: any) {
+                                  alert(err?.message || 'Network error')
+                                }
+                              }}
+                            >Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <aside className="card">

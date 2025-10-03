@@ -19,9 +19,9 @@ export default function NavBar() {
           <Link href="/subscribe">Subscribe</Link>
           {role && <span className="text-sm text-gray-600">{role}</span>}
           {session ? (
-            <button onClick={() => signOut()} className="px-3 py-1 border rounded">Sign out</button>
+            <button onClick={() => signOut({ callbackUrl: '/' })} className="px-3 py-1 border rounded">Sign out</button>
           ) : (
-            <Link href="/api/auth/signin"><a className="px-3 py-1 border rounded">Sign in</a></Link>
+            <Link href="/api/auth/signin"><span className="px-3 py-1 border rounded">Sign in</span></Link>
           )}
         </div>
 
@@ -42,9 +42,9 @@ export default function NavBar() {
           <Link href="/subscribe"><a className="block">Subscribe</a></Link>
           {role && <div className="text-sm text-gray-600">{role}</div>}
           {session ? (
-            <button onClick={() => signOut()} className="w-full text-left px-3 py-1 border rounded">Sign out</button>
+            <button onClick={() => signOut({ callbackUrl: '/' })} className="w-full text-left px-3 py-1 border rounded">Sign out</button>
           ) : (
-            <Link href="/api/auth/signin"><a className="block px-3 py-1 border rounded">Sign in</a></Link>
+            <Link href="/api/auth/signin"><span className="block px-3 py-1 border rounded">Sign in</span></Link>
           )}
         </div>
       )}

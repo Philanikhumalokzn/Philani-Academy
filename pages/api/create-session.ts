@@ -5,11 +5,6 @@ import { getSession } from 'next-auth/react'
 import { getToken } from 'next-auth/jwt'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Respond to OPTIONS preflight requests (some browsers may send OPTIONS even for same-origin when headers look non-simple)
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Allow', 'POST,OPTIONS')
-    return res.status(200).end()
-  }
   if (req.method !== 'POST') return res.status(405).end()
   // Prefer token-based auth in API routes for reliability
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })

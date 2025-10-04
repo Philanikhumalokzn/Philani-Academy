@@ -83,6 +83,15 @@ export default function Dashboard() {
   }
 
   useEffect(() => { fetchSessions() }, [])
+  // Prefill startsAt with next rounded minute (local) so datetime-local shows a value
+  useEffect(() => {
+    const dt = new Date()
+    dt.setSeconds(0, 0)
+    dt.setMinutes(dt.getMinutes() + 1)
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+    setStartsAt(local)
+  }, [])
   useEffect(() => {
     // fetch users only for admins
     if ((session as any)?.user?.role === 'admin') {
@@ -105,7 +114,7 @@ export default function Dashboard() {
               <form onSubmit={createSession} className="space-y-3">
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                <input className="input" type="datetime-local" placeholder="Starts at" value={startsAt} onChange={e => setStartsAt(e.target.value)} />
+                <input className="input" type="datetime-local" placeholder="Starts at" value={startsAt} onChange={e => setStartsAt(e.target.value)} min={new Date().toISOString().slice(0,16)} step={60} />
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>

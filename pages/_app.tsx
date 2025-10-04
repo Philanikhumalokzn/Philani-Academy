@@ -2,6 +2,7 @@ import '../styles/globals.css'
 import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'
+import NavBar from '../components/NavBar'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   return (
@@ -22,6 +23,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <meta name="twitter:title" content="Philani Academy" />
         <meta name="twitter:description" content="Philani Academy — online sessions and learning for your community." />
       </Head>
+      <NavBar />
       <Component {...pageProps} />
     </SessionProvider>
   )

@@ -62,7 +62,7 @@ export default function Signup() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
+    <main className="min-h-screen flex items-center justify-center p-6 md:p-8">
       {/* Hydration-only banner (shows when client JS ran) */}
       <div className="fixed top-4 right-4">
         {hydrated ? (
@@ -71,8 +71,8 @@ export default function Signup() {
           <div className="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded">Client JS not loaded</div>
         )}
       </div>
-      <div className="max-w-md w-full container-card fade-up">
-        <h2 className="text-2xl font-bold mb-4">Create an account</h2>
+  <div className="max-w-md w-full container-card fade-up">
+    <h2 className="text-2xl font-bold mb-4">Create an account</h2>
   <form action="/api/signup" method="post" onSubmit={handleSubmit} className="space-y-4">
           <input className="input" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} required name="name" autoComplete="name" />
           <input className="input" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required name="email" autoComplete="email" />

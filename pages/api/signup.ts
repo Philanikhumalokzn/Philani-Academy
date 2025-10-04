@@ -155,7 +155,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (err) {
     // Log full error server-side always (masked in production logs if necessary)
     console.error('/api/signup server error', err)
-    // Generic server error response (debugging info removed)
-    return res.status(500).json({ message: 'Server error' })
+    // When DEBUG=1 expose a helpful message in the JSON body to aid diagnosis.
+    const debug = process.env.DEBUG === '1'
+    const msg = debug && err && typeof err === 'object' && 'message' in err ? (err as any).message : 'Server error'
+    return res.status(500).json({ message: msg })
   }
 }

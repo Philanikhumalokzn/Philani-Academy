@@ -16,7 +16,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed', method: req.method })
 
     // Prefer token-based auth in API routes for reliability
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (process.env.DEBUG === '1') {
       try {
         const cookieHeader = req.headers.cookie || ''

@@ -15,11 +15,17 @@ export default function Dashboard() {
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
     try {
+      // validate and convert startsAt (datetime-local) to ISO
+      if (!startsAt) return alert('Please provide a start date/time')
+      const parsed = new Date(startsAt)
+      if (Number.isNaN(parsed.getTime())) return alert('Invalid start date/time')
+      const iso = parsed.toISOString()
+
       const res = await fetch('/api/create-session', {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt })
+        body: JSON.stringify({ title, joinUrl, startsAt: iso })
       })
 
       if (res.ok) {
@@ -48,7 +54,7 @@ export default function Dashboard() {
   }
 
   async function fetchSessions() {
-  const res = await fetch('/api/sessions', { credentials: 'same-origin' })
+  const res = await fetch('/api/sessions', { credentials: 'include' })
     if (res.ok) {
       const data = await res.json()
       setSessions(data)
@@ -59,7 +65,7 @@ export default function Dashboard() {
     setUsersError(null)
     setUsersLoading(true)
     try {
-      const res = await fetch('/api/users', { credentials: 'same-origin' })
+  const res = await fetch('/api/users', { credentials: 'include' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setUsersError(data?.message || `Error: ${res.status}`)
@@ -77,6 +83,15 @@ export default function Dashboard() {
   }
 
   useEffect(() => { fetchSessions() }, [])
+  // Prefill startsAt with next rounded minute (local) so datetime-local shows a value
+  useEffect(() => {
+    const dt = new Date()
+    dt.setSeconds(0, 0)
+    dt.setMinutes(dt.getMinutes() + 1)
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+    setStartsAt(local)
+  }, [])
   useEffect(() => {
     // fetch users only for admins
     if ((session as any)?.user?.role === 'admin') {
@@ -99,7 +114,7 @@ export default function Dashboard() {
               <form onSubmit={createSession} className="space-y-3">
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                <input className="input" placeholder="Starts at (ISO)" value={startsAt} onChange={e => setStartsAt(e.target.value)} />
+                <input className="input" type="datetime-local" placeholder="Starts at" value={startsAt} onChange={e => setStartsAt(e.target.value)} min={new Date().toISOString().slice(0,16)} step={60} />
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>
@@ -160,7 +175,7 @@ export default function Dashboard() {
                               onClick={async () => {
                                 if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
                                 try {
-                                  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'same-origin' })
+                                  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'include' })
                                   if (res.ok) {
                                     setUsers(prev => prev ? prev.filter(x => x.id !== u.id) : prev)
                                   } else {

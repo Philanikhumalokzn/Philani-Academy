@@ -17,7 +17,7 @@ export default function Dashboard() {
     try {
       const res = await fetch('/api/create-session', {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, joinUrl, startsAt })
       })
@@ -48,7 +48,7 @@ export default function Dashboard() {
   }
 
   async function fetchSessions() {
-  const res = await fetch('/api/sessions', { credentials: 'same-origin' })
+  const res = await fetch('/api/sessions', { credentials: 'include' })
     if (res.ok) {
       const data = await res.json()
       setSessions(data)
@@ -59,7 +59,7 @@ export default function Dashboard() {
     setUsersError(null)
     setUsersLoading(true)
     try {
-      const res = await fetch('/api/users', { credentials: 'same-origin' })
+  const res = await fetch('/api/users', { credentials: 'include' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setUsersError(data?.message || `Error: ${res.status}`)

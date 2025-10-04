@@ -15,11 +15,17 @@ export default function Dashboard() {
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
     try {
+      // validate and convert startsAt (datetime-local) to ISO
+      if (!startsAt) return alert('Please provide a start date/time')
+      const parsed = new Date(startsAt)
+      if (Number.isNaN(parsed.getTime())) return alert('Invalid start date/time')
+      const iso = parsed.toISOString()
+
       const res = await fetch('/api/create-session', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt })
+        body: JSON.stringify({ title, joinUrl, startsAt: iso })
       })
 
       if (res.ok) {
@@ -99,7 +105,7 @@ export default function Dashboard() {
               <form onSubmit={createSession} className="space-y-3">
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                <input className="input" placeholder="Starts at (ISO)" value={startsAt} onChange={e => setStartsAt(e.target.value)} />
+                <input className="input" type="datetime-local" placeholder="Starts at" value={startsAt} onChange={e => setStartsAt(e.target.value)} />
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>
@@ -160,7 +166,7 @@ export default function Dashboard() {
                               onClick={async () => {
                                 if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
                                 try {
-                                  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'same-origin' })
+                                  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'include' })
                                   if (res.ok) {
                                     setUsers(prev => prev ? prev.filter(x => x.id !== u.id) : prev)
                                   } else {

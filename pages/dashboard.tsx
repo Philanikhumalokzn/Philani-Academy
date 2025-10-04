@@ -7,19 +7,31 @@ export default function Dashboard() {
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
+  const [minStartsAt, setMinStartsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
+  const [newEmail, setNewEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState('student')
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
     try {
+      // convert local datetime-local value to an ISO UTC string before sending
+      let startsAtIso = startsAt
+      if (startsAt) {
+        const dt = new Date(startsAt)
+        startsAtIso = dt.toISOString()
+      }
+
       const res = await fetch('/api/create-session', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt })
+        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso })
       })
 
       if (res.ok) {
@@ -77,6 +89,21 @@ export default function Dashboard() {
   }
 
   useEffect(() => { fetchSessions() }, [])
+  // Prefill startsAt with the next minute and set a sensible min value
+  useEffect(() => {
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    const now = new Date()
+    now.setSeconds(0, 0)
+    now.setMinutes(now.getMinutes() + 1)
+    const yyyy = now.getFullYear()
+    const mm = pad(now.getMonth() + 1)
+    const dd = pad(now.getDate())
+    const hh = pad(now.getHours())
+    const min = pad(now.getMinutes())
+    const local = `${yyyy}-${mm}-${dd}T${hh}:${min}`
+    setStartsAt(local)
+    setMinStartsAt(local)
+  }, [])
   useEffect(() => {
     // fetch users only for admins
     if ((session as any)?.user?.role === 'admin') {
@@ -99,7 +126,7 @@ export default function Dashboard() {
               <form onSubmit={createSession} className="space-y-3">
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                <input className="input" placeholder="Starts at (ISO)" value={startsAt} onChange={e => setStartsAt(e.target.value)} />
+                <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>
@@ -129,6 +156,39 @@ export default function Dashboard() {
           {session && (session as any).user?.role === 'admin' && (
             <div className="card mt-4">
               <h2 className="font-semibold mb-3">Manage users</h2>
+              <div className="mb-4">
+                <h3 className="font-medium mb-2">Create user</h3>
+                <div className="space-y-2">
+                  <input className="input" placeholder="Name" value={newName} onChange={e => setNewName(e.target.value)} />
+                  <input className="input" placeholder="Email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+                  <input className="input" placeholder="Password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                  <select className="input" value={newRole} onChange={e => setNewRole(e.target.value)}>
+                    <option value="student">student</option>
+                    <option value="teacher">teacher</option>
+                    <option value="admin">admin</option>
+                  </select>
+                  <div>
+                    <button className="btn btn-primary" onClick={async () => {
+                      try {
+                        const res = await fetch('/api/users', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, email: newEmail, password: newPassword, role: newRole }) })
+                        if (res.ok) {
+                          setNewName('')
+                          setNewEmail('')
+                          setNewPassword('')
+                          setNewRole('student')
+                          fetchUsers()
+                          alert('User created')
+                        } else {
+                          const data = await res.json().catch(() => ({}))
+                          alert(data?.message || `Failed to create user (${res.status})`)
+                        }
+                      } catch (err: any) {
+                        alert(err?.message || 'Network error')
+                      }
+                    }}>Create user</button>
+                  </div>
+                </div>
+              </div>
               {usersLoading ? (
                 <div className="text-sm muted">Loading users…</div>
               ) : usersError ? (

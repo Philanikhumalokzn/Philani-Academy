@@ -2,13 +2,16 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../lib/prisma'
 import { getUserRole } from '../../lib/auth'
 import { getSession } from 'next-auth/react'
+import { getToken } from 'next-auth/jwt'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()
-  const session = await getSession({ req })
-  if (!session) return res.status(401).json({ message: 'Unauthorized' })
+  // Prefer token-based auth in API routes for reliability
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+  if (process.env.DEBUG === '1') console.log('/api/create-session token:', token)
+  if (!token) return res.status(401).json({ message: 'Unauthorized: no session token' })
 
-  const role = await getUserRole(req)
+  const role = token.role as string | undefined
   if (!role || (role !== 'admin' && role !== 'teacher')) return res.status(403).json({ message: 'Forbidden' })
 
   const { title, joinUrl, startsAt } = req.body
@@ -19,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     description: '',
     joinUrl,
     startsAt: new Date(startsAt),
-    createdBy: session.user?.email || 'unknown'
+    createdBy: (token?.email as string) || 'unknown'
   }})
 
   res.status(201).json(rec)

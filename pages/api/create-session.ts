@@ -17,7 +17,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Prefer token-based auth in API routes for reliability
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (process.env.DEBUG === '1') console.log('/api/create-session token:', token)
+    if (process.env.DEBUG === '1') {
+      try {
+        const cookieHeader = req.headers.cookie || ''
+        const cookieNames = cookieHeader.split(';').map(s => s.trim().split('=')[0]).filter(Boolean)
+        console.log('/api/create-session cookies:', cookieNames)
+      } catch (e) {
+        console.log('/api/create-session cookie parse error')
+      }
+    }
+
+    let token: any = null
+    try {
+      token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+      if (process.env.DEBUG === '1') console.log('/api/create-session token:', token ? { email: token.email, role: token.role } : null)
+    } catch (err: any) {
+      if (process.env.DEBUG === '1') {
+        console.error('/api/create-session getToken error:', err && (err.stack || err.message || err))
+      }
+      // Return a JSON error so Vercel doesn't render the default 500 HTML overlay
+      return res.status(500).json({ message: 'Token error', detail: process.env.DEBUG === '1' ? String(err?.message || err) : undefined })
+    }
     if (!token) return res.status(401).json({ message: 'Unauthorized: no session token' })
 
     const role = token.role as string | undefined

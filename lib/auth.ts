@@ -9,3 +9,8 @@ export async function getUserRole(req: NextApiRequest) {
 export function requireRole(role: string, userRole?: string) {
   return userRole === role
 }
+
+export async function getUserIdFromReq(req: NextApiRequest) {
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+  return token?.sub as string | undefined
+}

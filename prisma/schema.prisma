@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  // Switched to Postgres for production (serverless-friendly hosted DB)
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Use SQLite for local development (dev.db exists in repo). In production switch to Postgres by updating this file.
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {

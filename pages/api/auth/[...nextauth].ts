@@ -32,14 +32,20 @@ export default NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
     async jwt({ token, user }) {
-      // Attach role from database user on sign in
+      // Attach role from database user on sign in. When `user` is present this is a sign-in
+      // and `token.email` may not yet be populated, so prefer `user.email` first.
       if (user) {
         try {
-          const dbUser = await prisma.user.findUnique({ where: { email: token.email as string } })
-          if (dbUser) token.role = dbUser.role
+          const email = (user as any).email || (token as any).email
+          if (email) {
+            const dbUser = await prisma.user.findUnique({ where: { email } })
+            if (dbUser) token.role = dbUser.role
+          }
         } catch (err: any) {
           if (process.env.DEBUG === '1') console.error('NextAuth jwt callback error:', err)
         }
+      } else {
+        // For subsequent requests the role should already be present on the token. No-op.
       }
       return token
     },

@@ -29,7 +29,10 @@ export default function NavBar() {
           <div className="hidden md:flex items-center space-x-4">
             {role && <span className="text-sm text-gray-600">{role}</span>}
             {session ? (
-              <button onClick={() => signOut({ callbackUrl: '/' })} className="px-3 py-1 border rounded">Sign out</button>
+              <>
+                <Link href="/profile"><a className="flex items-center space-x-2"><img src={(session as any)?.user?.image || '/favicon.ico'} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} /></a></Link>
+                <button onClick={() => signOut({ callbackUrl: '/' })} className="px-3 py-1 border rounded">Sign out</button>
+              </>
             ) : (
               <Link href="/api/auth/signin"><a className="px-3 py-1 border rounded">Sign in</a></Link>
             )}

@@ -45,11 +45,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { title, joinUrl, startsAt } = req.body
     if (!title || !joinUrl || !startsAt) return res.status(400).json({ message: 'Missing fields' })
 
+    // Validate startsAt is a valid date string
+    const parsed = new Date(startsAt)
+    if (Number.isNaN(parsed.getTime())) return res.status(400).json({ message: 'Invalid startsAt date' })
+
     const rec = await prisma.sessionRecord.create({ data: {
       title,
       description: '',
       joinUrl,
-      startsAt: new Date(startsAt),
+      startsAt: parsed,
       createdBy: (token?.email as string) || 'unknown'
     }})
 

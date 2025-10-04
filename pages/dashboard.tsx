@@ -14,21 +14,36 @@ export default function Dashboard() {
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/create-session', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, joinUrl, startsAt })
-    })
-    if (res.ok) {
-      alert('Session created')
-      setTitle('')
-      setJoinUrl('')
-      setStartsAt('')
-      fetchSessions()
-    } else {
-      const data = await res.json()
-      alert(data.message || 'Error')
+    try {
+      const res = await fetch('/api/create-session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, joinUrl, startsAt })
+      })
+
+      if (res.ok) {
+        alert('Session created')
+        setTitle('')
+        setJoinUrl('')
+        setStartsAt('')
+        fetchSessions()
+        return
+      }
+
+      // Try to parse JSON response; fall back to plain text so we always show an error
+      let data: any = null
+      try {
+        data = await res.json()
+      } catch (err) {
+        const txt = await res.text().catch(() => '')
+        data = { message: txt || `HTTP ${res.status}` }
+      }
+      alert(data?.message || `Error: ${res.status}`)
+    } catch (err: any) {
+      // Network or unexpected error
+      console.error('createSession error', err)
+      alert(err?.message || 'Network error')
     }
   }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
 
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [plansLoading, setPlansLoading] = useState(false)
   const [payfastAvailable, setPayfastAvailable] = useState(false)
   const payfastFormRef = React.createRef<HTMLFormElement>()
+  const [secureRoomName, setSecureRoomName] = useState<string | null>(null)
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -125,6 +127,12 @@ export default function Dashboard() {
       // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
       setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
     }
+    // fetch secure room name for the first upcoming session if present
+    if (sessions && sessions.length > 0) {
+      fetch(`/api/sessions/${sessions[0].id}/room`).then(r => r.ok ? r.json() : null).then((data: any) => {
+        if (data?.roomName) setSecureRoomName(data.roomName)
+      }).catch(() => {})
+    }
   }, [session])
 
   async function fetchPlans() {
@@ -146,6 +154,17 @@ export default function Dashboard() {
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
         <div className="col-span-2">
+          {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
+          <div className="card mb-4">
+            <h2 className="font-semibold mb-3">Live class</h2>
+            {secureRoomName ? (
+              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} />
+            ) : sessions && sessions.length > 0 ? (
+              <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} />
+            ) : (
+              <JitsiRoom roomName={`philani-public-room`} displayName={session?.user?.name || session?.user?.email} />
+            )}
+          </div>
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-2xl font-bold">Dashboard</h1>
             <div>{session ? <span className="mr-4 muted">Signed in as {session.user?.email}</span> : <Link href="/api/auth/signin">Sign in</Link>}</div>

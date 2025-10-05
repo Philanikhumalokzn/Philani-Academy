@@ -127,6 +127,11 @@ export default function Dashboard() {
       // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
       setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
     }
+    // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
+    try {
+      const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'
+      ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
+    } catch (e) {}
     // fetch secure room name for the first upcoming session if present
     if (sessions && sessions.length > 0) {
       fetch(`/api/sessions/${sessions[0].id}/room`).then(r => r.ok ? r.json() : null).then((data: any) => {
@@ -160,11 +165,11 @@ export default function Dashboard() {
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
             ) : secureRoomName ? (
-              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} />
+              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : sessions && sessions.length > 0 ? (
-              <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} />
+              <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : (
-              <JitsiRoom roomName={`philani-public-room`} displayName={session?.user?.name || session?.user?.email} />
+              <JitsiRoom roomName={`philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             )}
           </div>
           <div className="flex items-center justify-between mb-4">

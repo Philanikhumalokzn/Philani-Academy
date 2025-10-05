@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [plansLoading, setPlansLoading] = useState(false)
   const [payfastAvailable, setPayfastAvailable] = useState(false)
   const payfastFormRef = React.createRef<HTMLFormElement>()
+  const [secureRoomName, setSecureRoomName] = useState<string | null>(null)
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -126,6 +127,12 @@ export default function Dashboard() {
       // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
       setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
     }
+    // fetch secure room name for the first upcoming session if present
+    if (sessions && sessions.length > 0) {
+      fetch(`/api/sessions/${sessions[0].id}/room`).then(r => r.ok ? r.json() : null).then((data: any) => {
+        if (data?.roomName) setSecureRoomName(data.roomName)
+      }).catch(() => {})
+    }
   }, [session])
 
   async function fetchPlans() {
@@ -150,7 +157,9 @@ export default function Dashboard() {
           {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
-            {sessions && sessions.length > 0 ? (
+            {secureRoomName ? (
+              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} />
+            ) : sessions && sessions.length > 0 ? (
               <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} />
             ) : (
               <JitsiRoom roomName={`philani-public-room`} displayName={session?.user?.name || session?.user?.email} />

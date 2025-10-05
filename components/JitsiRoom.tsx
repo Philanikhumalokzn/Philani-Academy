@@ -3,9 +3,10 @@ import React, { useEffect, useRef, useState } from 'react'
 type Props = {
   roomName: string
   displayName?: string
+  sessionId?: string | number | null
 }
 
-export default function JitsiRoom({ roomName, displayName }: Props) {
+export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [loaded, setLoaded] = useState(false)
@@ -33,18 +34,8 @@ export default function JitsiRoom({ roomName, displayName }: Props) {
       const options = {
         roomName,
         parentNode: containerRef.current,
-        // Hide extra toolbar buttons and provide a minimal set
-        interfaceConfigOverwrite: {
-          TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview', 'fullscreen']
-        },
-        // Disable prejoin page / welcome page so users are not prompted to sign in
-        configOverwrite: {
-          disableDeepLinking: true,
-          prejoinPageEnabled: false,
-          enableWelcomePage: false,
-          requireDisplayName: false
-        },
-        // Provide a displayName so Jitsi won't prompt for one
+        interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
+        configOverwrite: { disableDeepLinking: true },
         userInfo: { displayName: displayName || 'Learner' }
       }
       try {
@@ -53,6 +44,32 @@ export default function JitsiRoom({ roomName, displayName }: Props) {
         // Listen for audio/video mute changes
         apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => setAudioMuted(e.muted))
         apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => setVideoMuted(e.muted))
+
+        // If a sessionId is provided, attempt to fetch the server-generated jitsiPassword
+        // and apply it so admins become moderators and learners can join locked rooms.
+        const applyPassword = async () => {
+          try {
+            if (!sessionId) return
+            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin' })
+            if (!res.ok) return
+            const data = await res.json().catch(() => null)
+            const pw = data?.jitsiPassword
+            if (pw && apiRef.current && typeof apiRef.current.executeCommand === 'function') {
+              try {
+                // `password` command sets the room password when run by a moderator.
+                apiRef.current.executeCommand('password', pw)
+              } catch (err) {
+                // Some Jitsi instances may use setPassword or other commands; try both
+                try { apiRef.current.executeCommand('setPassword', pw) } catch (e) {}
+              }
+            }
+          } catch (err) {
+            // ignore network errors
+          }
+        }
+        // Apply password after a short delay to give Jitsi time to be fully ready
+        setTimeout(() => { applyPassword() }, 800)
+        
       } catch (err) {
         console.error('Failed to create Jitsi API', err)
       }

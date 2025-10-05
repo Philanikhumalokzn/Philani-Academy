@@ -7,7 +7,7 @@ type Props = {
   isOwner?: boolean
 }
 
-export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
+export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [loaded, setLoaded] = useState(false)
@@ -33,13 +33,18 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
     loadScript().then(() => {
       if (!mounted) return
       const domain = 'meet.jit.si'
+      const isOwnerFlag = Boolean(isOwner) || Boolean((window as any).__JITSI_IS_OWNER__)
+      // Toolbar choices depend on whether this client is the owner. Non-owners are not given camera/screen controls.
+      const toolbarButtons = isOwnerFlag
+        ? ['microphone', 'camera', 'desktop', 'chat', 'raisehand', 'hangup', 'tileview']
+        : ['microphone', 'chat', 'raisehand', 'hangup', 'tileview']
+
       const options: any = {
         roomName,
         parentNode: containerRef.current,
-        // Expose common controls: microphone, camera, screen share (desktop), chat and raise hand
-        interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'desktop', 'chat', 'raisehand', 'hangup', 'tileview'] },
+        interfaceConfigOverwrite: { TOOLBAR_BUTTONS: toolbarButtons },
         // If this client is the owner, disable the prejoin page so they auto-join immediately
-        configOverwrite: { disableDeepLinking: true, prejoinPageEnabled: !(Boolean((window as any).__JITSI_IS_OWNER__)), },
+        configOverwrite: { disableDeepLinking: true, prejoinPageEnabled: !isOwnerFlag },
         userInfo: { displayName: displayName || 'Learner' }
       }
       try {
@@ -89,6 +94,9 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
   }
 
   const toggleVideo = () => {
+    // Only owners may start/broadcast video
+    const isOwnerFlag = Boolean((window as any).__JITSI_IS_OWNER__) || false
+    if (!isOwnerFlag) return
     if (!apiRef.current) return
     apiRef.current.executeCommand('toggleVideo')
   }
@@ -110,7 +118,10 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
     <div className="jitsi-room">
       <div className="mb-2 flex gap-2">
         <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
-        <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
+        {/* Only show video control to owners */}
+        { (Boolean(isOwner) || Boolean((window as any).__JITSI_IS_OWNER__)) && (
+          <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
+        )}
         <button className="btn" onClick={openWhiteboard}>Open whiteboard</button>
         <button className="btn btn-danger" onClick={hangup}>Leave</button>
       </div>

@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [payfastAvailable, setPayfastAvailable] = useState(false)
   const payfastFormRef = React.createRef<HTMLFormElement>()
   const [secureRoomName, setSecureRoomName] = useState<string | null>(null)
+  const [runningSession, setRunningSession] = useState<any | null>(null)
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -132,13 +133,25 @@ export default function Dashboard() {
       const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'
       ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
     } catch (e) {}
-    // fetch secure room name for the first upcoming session if present
-    if (sessions && sessions.length > 0) {
-      fetch(`/api/sessions/${sessions[0].id}/room`).then(r => r.ok ? r.json() : null).then((data: any) => {
-        if (data?.roomName) setSecureRoomName(data.roomName)
-      }).catch(() => {})
-    }
   }, [session])
+
+  // Compute currently running session and fetch secure room name for it when sessions update
+  useEffect(() => {
+    try {
+      const now = new Date()
+      const running = sessions.find(s => new Date(s.startsAt) <= now) || null
+      setRunningSession(running)
+      if (running) {
+        fetch(`/api/sessions/${running.id}/room`).then(r => r.ok ? r.json() : null).then((data: any) => {
+          if (data?.roomName) setSecureRoomName(data.roomName)
+        }).catch(() => {})
+      } else {
+        setSecureRoomName(null)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [sessions])
 
   async function fetchPlans() {
     setPlansLoading(true)

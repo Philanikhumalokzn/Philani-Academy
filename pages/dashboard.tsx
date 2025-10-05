@@ -160,9 +160,9 @@ export default function Dashboard() {
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
             ) : secureRoomName ? (
-              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} />
+              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} />
             ) : sessions && sessions.length > 0 ? (
-              <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} />
+              <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} />
             ) : (
               <JitsiRoom roomName={`philani-public-room`} displayName={session?.user?.name || session?.user?.email} />
             )}

@@ -21,6 +21,8 @@ export default function Dashboard() {
   const [planAmount, setPlanAmount] = useState<number | ''>('')
   const [planCurrency, setPlanCurrency] = useState('usd')
   const [plansLoading, setPlansLoading] = useState(false)
+  const [payfastAvailable, setPayfastAvailable] = useState(false)
+  const payfastFormRef = React.createRef<HTMLFormElement>()
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -120,6 +122,8 @@ export default function Dashboard() {
     // fetch plans for admins
     if ((session as any)?.user?.role === 'admin') {
       fetchPlans()
+      // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
+      setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
     }
   }, [session])
 
@@ -284,16 +288,45 @@ export default function Dashboard() {
                     <button className="btn btn-primary" onClick={async () => {
                       if (!planName || !planAmount) return alert('Name and amount required')
                       try {
-                        const res = await fetch('/api/plans', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: planCurrency }) })
-                        if (res.ok) {
-                          setPlanName('')
-                          setPlanAmount('')
-                          setPlanCurrency('usd')
-                          fetchPlans()
-                          alert('Plan created')
+                        if (payfastAvailable) {
+                          // Use PayFast flow
+                          const res = await fetch('/api/payfast/create-plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: planCurrency }) })
+                          if (!res.ok) {
+                            const data = await res.json().catch(() => ({}))
+                            return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
+                          }
+                          const data = await res.json()
+                          // Build and submit a form to PayFast
+                          const form = document.createElement('form')
+                          form.method = 'POST'
+                          form.action = data.action
+                          Object.entries(data.payload || {}).forEach(([k, v]) => {
+                            const input = document.createElement('input')
+                            input.type = 'hidden'
+                            input.name = k
+                            input.value = v as any
+                            form.appendChild(input)
+                          })
+                          const sigInput = document.createElement('input')
+                          sigInput.type = 'hidden'
+                          sigInput.name = 'signature'
+                          sigInput.value = data.signature || ''
+                          form.appendChild(sigInput)
+                          document.body.appendChild(form)
+                          form.submit()
                         } else {
-                          const data = await res.json().catch(() => ({}))
-                          alert(data?.message || `Failed to create plan (${res.status})`)
+                          // Fallback to Stripe plan creation (existing flow)
+                          const res = await fetch('/api/plans', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: planCurrency }) })
+                          if (res.ok) {
+                            setPlanName('')
+                            setPlanAmount('')
+                            setPlanCurrency('usd')
+                            fetchPlans()
+                            alert('Plan created')
+                          } else {
+                            const data = await res.json().catch(() => ({}))
+                            alert(data?.message || `Failed to create plan (${res.status})`)
+                          }
                         }
                       } catch (err: any) {
                         alert(err?.message || 'Network error')

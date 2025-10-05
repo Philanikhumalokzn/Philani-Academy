@@ -21,18 +21,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
     const { name, amount, currency } = req.body || {}
     if (!name || !amount) return res.status(400).json({ message: 'Missing fields' })
-    // If Stripe is not configured, create a DB-only plan so admins can still
-    // manage plans without a Stripe account. The plan will have no
-    // stripePriceId and checkout won't work until Stripe is configured.
-    if (!stripeSecret) {
-      try {
-        const plan = await (prisma as any).subscriptionPlan.create({ data: { name, amount, currency: currency || 'usd', stripePriceId: null, active: true } })
-        return res.status(201).json({ plan, warning: 'Stripe not configured. Created DB-only plan; checkout will be unavailable until STRIPE_SECRET_KEY is set.' })
-      } catch (err: any) {
-        console.error('POST /api/plans DB-only create error', err)
-        return res.status(500).json({ message: err.message || 'Server error' })
-      }
-    }
     try {
       // create Stripe product + price
       const product = await stripe.products.create({ name })

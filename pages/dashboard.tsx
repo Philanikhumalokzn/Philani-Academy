@@ -16,6 +16,11 @@ export default function Dashboard() {
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newRole, setNewRole] = useState('student')
+  const [plans, setPlans] = useState<any[]>([])
+  const [planName, setPlanName] = useState('')
+  const [planAmount, setPlanAmount] = useState<number | ''>('')
+  const [planCurrency, setPlanCurrency] = useState('usd')
+  const [plansLoading, setPlansLoading] = useState(false)
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -110,6 +115,28 @@ export default function Dashboard() {
       fetchUsers()
     }
   }, [session])
+
+  useEffect(() => {
+    // fetch plans for admins
+    if ((session as any)?.user?.role === 'admin') {
+      fetchPlans()
+    }
+  }, [session])
+
+  async function fetchPlans() {
+    setPlansLoading(true)
+    try {
+      const res = await fetch('/api/plans', { credentials: 'same-origin' })
+      if (res.ok) {
+        const data = await res.json()
+        setPlans(data || [])
+      }
+    } catch (err) {
+      // ignore for now
+    } finally {
+      setPlansLoading(false)
+    }
+  }
 
   return (
     <main className="min-h-screen p-8">
@@ -239,6 +266,72 @@ export default function Dashboard() {
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {session && (session as any).user?.role === 'admin' && (
+            <div className="card mt-4">
+              <h2 className="font-semibold mb-3">Subscription plans</h2>
+              <div className="mb-4">
+                <h3 className="font-medium mb-2">Create plan</h3>
+                <div className="space-y-2">
+                  <input className="input" placeholder="Plan name" value={planName} onChange={e => setPlanName(e.target.value)} />
+                  <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value) : '')} />
+                  <select className="input" value={planCurrency} onChange={e => setPlanCurrency(e.target.value)}>
+                    <option value="usd">USD</option>
+                  </select>
+                  <div>
+                    <button className="btn btn-primary" onClick={async () => {
+                      if (!planName || !planAmount) return alert('Name and amount required')
+                      try {
+                        const res = await fetch('/api/plans', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: planCurrency }) })
+                        if (res.ok) {
+                          setPlanName('')
+                          setPlanAmount('')
+                          setPlanCurrency('usd')
+                          fetchPlans()
+                          alert('Plan created')
+                        } else {
+                          const data = await res.json().catch(() => ({}))
+                          alert(data?.message || `Failed to create plan (${res.status})`)
+                        }
+                      } catch (err: any) {
+                        alert(err?.message || 'Network error')
+                      }
+                    }}>Create plan</button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium mb-2">Existing plans</h3>
+                {plansLoading ? <div className="text-sm muted">Loading…</div> : (
+                  plans.length === 0 ? <div className="text-sm muted">No plans found.</div> : (
+                    <ul className="space-y-2">
+                      {plans.map(p => (
+                        <li key={p.id} className="p-2 border rounded flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">{p.name}</div>
+                            <div className="text-sm muted">{(p.amount/100).toFixed(2)} {p.currency?.toUpperCase()} {p.active ? '(active)' : ''}</div>
+                          </div>
+                          <div>
+                            <button className="btn btn-danger" onClick={async () => {
+                              if (!confirm('Delete plan?')) return
+                              try {
+                                const res = await fetch(`/api/plans`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
+                                if (res.ok) fetchPlans()
+                                else alert('Failed to delete')
+                              } catch (err) {
+                                alert('Network error')
+                              }
+                            }}>Delete</button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                )}
+              </div>
             </div>
           )}
         </div>

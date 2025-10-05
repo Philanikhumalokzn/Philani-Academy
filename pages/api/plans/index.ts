@@ -3,7 +3,10 @@ import prisma from '../../../lib/prisma'
 import { getUserRole } from '../../../lib/auth'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2022-11-15' })
+// Prefer STRIPE_SECRET_KEY (used in DEPLOY_TO_VERCEL.md) but fall back to
+// the older STRIPE_SECRET for backward compatibility.
+const stripeSecret = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || ''
+const stripe = new Stripe(stripeSecret, { apiVersion: '2022-11-15' })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const method = req.method

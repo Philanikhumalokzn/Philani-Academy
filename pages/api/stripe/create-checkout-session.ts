@@ -2,7 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import Stripe from 'stripe'
 import prisma from '../../../lib/prisma'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2022-11-15' })
+// Prefer STRIPE_SECRET_KEY (used in DEPLOY_TO_VERCEL.md) but fall back to
+// the older STRIPE_SECRET for backward compatibility.
+const stripeSecret = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || ''
+const stripe = new Stripe(stripeSecret, { apiVersion: '2022-11-15' })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()

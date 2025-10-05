@@ -18,6 +18,11 @@ This guide walks through deploying the app to Vercel with a managed Postgres DB 
   - NEXTAUTH_SECRET = <random 32-byte hex or base64 string>
   - STRIPE_SECRET_KEY = <if using Stripe>
   - STRIPE_PUBLISHABLE_KEY = <if using Stripe>
+  If you use PayFast instead of Stripe (supported in South Africa), set these:
+
+  - PAYFAST_MERCHANT_ID = <your_payfast_merchant_id>
+  - PAYFAST_MERCHANT_KEY = <your_payfast_merchant_key>
+  - PAYFAST_PASSPHRASE = <optional_passphrase_for_signature>
 
 4) Migrate DB and seed admin
 - On your machine, set DATABASE_URL to the hosted database then run migrations and seed:

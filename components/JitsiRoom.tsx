@@ -13,6 +13,7 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
   const [loaded, setLoaded] = useState(false)
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false)
 
   useEffect(() => {
     // Load Jitsi script if not present
@@ -35,7 +36,8 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
       const options: any = {
         roomName,
         parentNode: containerRef.current,
-        interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
+        // Expose common controls: microphone, camera, screen share (desktop), chat and raise hand
+        interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'desktop', 'chat', 'raisehand', 'hangup', 'tileview'] },
         // If this client is the owner, disable the prejoin page so they auto-join immediately
         configOverwrite: { disableDeepLinking: true, prejoinPageEnabled: !(Boolean((window as any).__JITSI_IS_OWNER__)), },
         userInfo: { displayName: displayName || 'Learner' }
@@ -96,14 +98,35 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
     apiRef.current.executeCommand('hangup')
   }
 
+  const openWhiteboard = () => {
+    setWhiteboardOpen(true)
+  }
+
+  const closeWhiteboard = () => {
+    setWhiteboardOpen(false)
+  }
+
   return (
     <div className="jitsi-room">
       <div className="mb-2 flex gap-2">
         <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
         <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
+        <button className="btn" onClick={openWhiteboard}>Open whiteboard</button>
         <button className="btn btn-danger" onClick={hangup}>Leave</button>
       </div>
       <div ref={containerRef} style={{ width: '100%', height: '600px' }} />
+
+      {whiteboardOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="bg-white rounded shadow-lg w-[90%] h-[80%] relative">
+            <div className="p-2 flex justify-between items-center border-b">
+              <div className="font-medium">Whiteboard</div>
+              <button className="btn btn-sm" onClick={closeWhiteboard}>Close</button>
+            </div>
+            <iframe src="https://excalidraw.com/" title="Whiteboard" style={{ width: '100%', height: 'calc(100% - 48px)', border: 'none' }} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

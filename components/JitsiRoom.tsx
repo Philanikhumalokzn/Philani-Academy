@@ -4,6 +4,7 @@ type Props = {
   roomName: string
   displayName?: string
   sessionId?: string | number | null
+  isOwner?: boolean
 }
 
 export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
@@ -31,11 +32,12 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
     loadScript().then(() => {
       if (!mounted) return
       const domain = 'meet.jit.si'
-      const options = {
+      const options: any = {
         roomName,
         parentNode: containerRef.current,
         interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
-        configOverwrite: { disableDeepLinking: true },
+        // If this client is the owner, disable the prejoin page so they auto-join immediately
+        configOverwrite: { disableDeepLinking: true, prejoinPageEnabled: !(Boolean((window as any).__JITSI_IS_OWNER__)), },
         userInfo: { displayName: displayName || 'Learner' }
       }
       try {
@@ -45,10 +47,12 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
         apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => setAudioMuted(e.muted))
         apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => setVideoMuted(e.muted))
 
-        // If a sessionId is provided, attempt to fetch the server-generated jitsiPassword
-        // and apply it so admins become moderators and learners can join locked rooms.
-        const applyPassword = async () => {
+        // Apply password only after the owner has fully joined (videoConferenceJoined)
+        apiRef.current.addEventListener('videoConferenceJoined', async () => {
           try {
+            // Only attempt to set password when this client is the owner (set below from dashboard)
+            const isOwner = Boolean((window as any).__JITSI_IS_OWNER__)
+            if (!isOwner) return
             if (!sessionId) return
             const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin' })
             if (!res.ok) return
@@ -56,19 +60,15 @@ export default function JitsiRoom({ roomName, displayName, sessionId }: Props) {
             const pw = data?.jitsiPassword
             if (pw && apiRef.current && typeof apiRef.current.executeCommand === 'function') {
               try {
-                // `password` command sets the room password when run by a moderator.
                 apiRef.current.executeCommand('password', pw)
               } catch (err) {
-                // Some Jitsi instances may use setPassword or other commands; try both
                 try { apiRef.current.executeCommand('setPassword', pw) } catch (e) {}
               }
             }
           } catch (err) {
-            // ignore network errors
+            // ignore
           }
-        }
-        // Apply password after a short delay to give Jitsi time to be fully ready
-        setTimeout(() => { applyPassword() }, 800)
+        })
         
       } catch (err) {
         console.error('Failed to create Jitsi API', err)

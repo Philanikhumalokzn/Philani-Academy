@@ -4,7 +4,7 @@ import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
 
 export default function Dashboard() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
@@ -157,7 +157,9 @@ export default function Dashboard() {
           {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
-            {secureRoomName ? (
+            {status !== 'authenticated' ? (
+              <div className="text-sm muted">Please sign in to join the live class.</div>
+            ) : secureRoomName ? (
               <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} />
             ) : sessions && sessions.length > 0 ? (
               <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} />

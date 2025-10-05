@@ -72,6 +72,12 @@ export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }:
                 try { apiRef.current.executeCommand('setPassword', pw) } catch (e) {}
               }
             }
+            // Notify server that owner is present so learners may join
+            try {
+              await fetch(`/api/sessions/${sessionId}/present`, { method: 'POST', credentials: 'same-origin' })
+            } catch (e) {
+              // ignore
+            }
           } catch (err) {
             // ignore
           }

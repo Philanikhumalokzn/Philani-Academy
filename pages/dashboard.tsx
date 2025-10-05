@@ -142,9 +142,33 @@ export default function Dashboard() {
       const running = sessions.find(s => new Date(s.startsAt) <= now) || null
       setRunningSession(running)
       if (running) {
-        fetch(`/api/sessions/${running.id}/room`).then(r => r.ok ? r.json() : null).then((data: any) => {
-          if (data?.roomName) setSecureRoomName(data.roomName)
-        }).catch(() => {})
+        // For learners: poll until jitsiActive is true, then fetch secure room name
+        const check = async () => {
+          try {
+            const statusRes = await fetch(`/api/sessions/${running.id}/status`)
+            if (statusRes.ok) {
+              const st = await statusRes.json()
+              if (st?.jitsiActive) {
+                const roomRes = await fetch(`/api/sessions/${running.id}/room`)
+                if (roomRes.ok) {
+                  const data = await roomRes.json()
+                  if (data?.roomName) setSecureRoomName(data.roomName)
+                }
+                return true
+              }
+            }
+          } catch (e) {}
+          return false
+        }
+        // Run immediately, then poll every 5s until active
+        let mounted = true
+        const runCheck = async () => {
+          if (!mounted) return
+          const ok = await check()
+          if (!ok && mounted) setTimeout(runCheck, 5000)
+        }
+        runCheck()
+        return () => { mounted = false }
       } else {
         setSecureRoomName(null)
       }

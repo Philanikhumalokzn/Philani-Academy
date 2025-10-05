@@ -1,10 +1,27 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import crypto from 'crypto'
+import { getToken } from 'next-auth/jwt'
+import prisma from '../../../../lib/prisma'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
   const { id } = req.query
   if (!id || Array.isArray(id)) return res.status(400).json({ message: 'Missing session id' })
+
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+  // allow unauthenticated for owner check? require auth for clarity
+  if (!token) return res.status(401).json({ message: 'Unauthorized' })
+
+  const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) } })
+  if (!rec) return res.status(404).json({ message: 'Not found' })
+
+  const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
+  const isOwner = ownerEmail && (token as any).email === ownerEmail
+
+  // If session isn't active and requester is not owner, deny
+  if (!rec.jitsiActive && !isOwner) {
+    return res.status(403).json({ message: 'Meeting not started yet' })
+  }
 
   const secret = process.env.ROOM_SECRET || ''
   if (!secret) return res.status(500).json({ message: 'Room secret not configured' })

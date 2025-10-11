@@ -5,9 +5,11 @@ type Props = {
   displayName?: string
   sessionId?: string | number | null
   isOwner?: boolean
+  // Optional JaaS JWT token (if using Jitsi as a Service)
+  jaasJwt?: string | null
 }
 
-export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }: Props) {
+export default function JitsiRoom({ roomName, displayName, sessionId, isOwner, jaasJwt }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [loaded, setLoaded] = useState(false)
@@ -16,12 +18,14 @@ export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }:
   const [whiteboardOpen, setWhiteboardOpen] = useState(false)
 
   useEffect(() => {
-    // Load Jitsi script if not present
+    // Load Jitsi script if not present. The script URL may come from NEXT_PUBLIC_JITSI_API_URL
     const loadScript = () => {
       return new Promise<void>((resolve, reject) => {
         if ((window as any).JitsiMeetExternalAPI) return resolve()
         const script = document.createElement('script')
-        script.src = 'https://meet.jit.si/external_api.js'
+        // Allow overriding the domain and script URL via env vars so we can switch to JaaS or self-hosted
+        const publicApiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || ''
+        script.src = publicApiUrl || 'https://meet.jit.si/external_api.js'
         script.async = true
         script.onload = () => resolve()
         script.onerror = () => reject(new Error('Failed to load Jitsi script'))
@@ -32,7 +36,21 @@ export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }:
     let mounted = true
     loadScript().then(() => {
       if (!mounted) return
-      const domain = 'meet.jit.si'
+  // Domain may be overridden by NEXT_PUBLIC_JITSI_DOMAIN (e.g. your.jitsi.domain or jaas.host)
+  const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || 'meet.jit.si'
+  // Allow supplying a JaaS JWT either via prop or a global set on window
+  const jaasJwtToken = jaasJwt || (window as any).__JITSI_JAAS_JWT__ || null
+      // If using the public meet.jit.si demo server, don't embed it inside an iframe
+      // because the public instance shows a 5-minute demo warning and will disconnect.
+      // Instead, show a notice in the UI and let the user open the room in a new tab.
+      // If using the public meet.jit.si demo server, prefer opening in a new tab instead
+      // because the public server shows a demo warning and may disconnect. For JaaS
+      // or self-hosted domains we proceed to embed.
+      if (domain === 'meet.jit.si') {
+        ;(window as any).__JITSI_EMBED_SKIPPED__ = true
+        setLoaded(false)
+        return
+      }
       const isOwnerFlag = Boolean(isOwner) || Boolean((window as any).__JITSI_IS_OWNER__)
       // Toolbar choices depend on whether this client is the owner. Non-owners are not given camera/screen controls.
       const toolbarButtons = isOwnerFlag
@@ -47,7 +65,13 @@ export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }:
         configOverwrite: { disableDeepLinking: true, prejoinPageEnabled: !isOwnerFlag },
         userInfo: { displayName: displayName || 'Learner' }
       }
+
+      // If we have a JaaS token, pass it via the jwt option so the JaaS service validates the request
+      if (jaasJwtToken) {
+        options.jwt = jaasJwtToken
+      }
       try {
+        ;(window as any).__JITSI_EMBED_SKIPPED__ = false
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
         setLoaded(true)
         // Listen for audio/video mute changes
@@ -90,6 +114,7 @@ export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }:
 
     return () => {
       mounted = false
+      try { (window as any).__JITSI_EMBED_SKIPPED__ = false } catch (e) {}
       try { apiRef.current?.dispose() } catch (e) {}
     }
   }, [roomName])
@@ -122,6 +147,33 @@ export default function JitsiRoom({ roomName, displayName, sessionId, isOwner }:
 
   return (
     <div className="jitsi-room">
+  {/* If we're deliberately not embedding the public meet.jit.si, show a notice */}
+  {(!loaded && (window as any).__JITSI_EMBED_SKIPPED__ === true) && (
+        <div className="mb-4 border rounded p-3 bg-yellow-50">
+          <div className="font-medium">Live class (external)</div>
+          <div className="mt-2 text-sm">
+            The application is configured to use the public meet.jit.si demo server. Embedding
+            the public server shows a demo warning and will disconnect after a few minutes.
+            To join the class without that limitation, open the meeting in a new tab.
+          </div>
+          <div className="mt-3 flex gap-2">
+            <a
+              className="btn btn-primary"
+              href={`https://meet.jit.si/${encodeURIComponent(roomName)}`}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Open in new tab
+            </a>
+            <button
+              className="btn"
+              onClick={() => setLoaded(true)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mb-2 flex gap-2">
         <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
         {/* Only show video control to owners */}

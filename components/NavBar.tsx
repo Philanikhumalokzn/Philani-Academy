@@ -30,11 +30,13 @@ export default function NavBar() {
             {role && <span className="text-sm text-gray-600">{role}</span>}
             {session ? (
               <>
-                <Link href="/profile"><a className="flex items-center space-x-2"><img src={(session as any)?.user?.image || '/favicon.ico'} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} /></a></Link>
+                <Link href="/profile" className="flex items-center space-x-2">
+                  <img src={(session as any)?.user?.image || '/favicon.ico'} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
+                </Link>
                 <button onClick={() => signOut({ callbackUrl: '/' })} className="px-3 py-1 border rounded">Sign out</button>
               </>
             ) : (
-              <Link href="/api/auth/signin"><a className="px-3 py-1 border rounded">Sign in</a></Link>
+              <Link href="/api/auth/signin" className="px-3 py-1 border rounded">Sign in</Link>
             )}
           </div>
 
@@ -53,13 +55,13 @@ export default function NavBar() {
       {open && (
         <div className="md:hidden px-4 pb-4">
           <div className="flex flex-col items-center space-y-3">
-            <Link href="/dashboard"><a className="block w-full text-center px-3 py-2 border rounded">Dashboard</a></Link>
-            <Link href="/subscribe"><a className="block w-full text-center px-3 py-2 border rounded">Subscribe</a></Link>
+            <Link href="/dashboard" className="block w-full text-center px-3 py-2 border rounded">Dashboard</Link>
+            <Link href="/subscribe" className="block w-full text-center px-3 py-2 border rounded">Subscribe</Link>
             {role && <div className="text-sm text-gray-600">{role}</div>}
             {session ? (
               <button onClick={() => signOut({ callbackUrl: '/' })} className="w-full text-center px-3 py-2 border rounded">Sign out</button>
             ) : (
-              <Link href="/api/auth/signin"><a className="block w-full text-center px-3 py-2 border rounded">Sign in</a></Link>
+              <Link href="/api/auth/signin" className="block w-full text-center px-3 py-2 border rounded">Sign in</Link>
             )}
           </div>
         </div>

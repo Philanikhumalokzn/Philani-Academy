@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
+import SimpleJitsiEmbed from '../components/SimpleJitsiEmbed';
 
 export default function Dashboard() {
   const { data: session, status } = useSession()
@@ -191,6 +192,12 @@ export default function Dashboard() {
       setPlansLoading(false)
     }
   }
+
+  // sample roomName from the dashboard
+  const roomName = 'vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4/SampleAppAliveIntensitiesSurveyFerociously';
+
+  // sessionId is optional — if provided, the embed will call /api/sessions/<sessionId>/token to get a JWT
+  const sessionId = '<your-session-id-if-you-have-one>';
 
   return (
     <main className="min-h-screen p-8">
@@ -439,6 +446,11 @@ export default function Dashboard() {
             <Link href="/subscribe" className="btn btn-primary">Subscribe</Link>
           </div>
         </aside>
+      </div>
+
+      <div>
+        <h1>Jitsi demo</h1>
+        <SimpleJitsiEmbed roomName={roomName} sessionId={sessionId} height="700px" />
       </div>
     </main>
   )

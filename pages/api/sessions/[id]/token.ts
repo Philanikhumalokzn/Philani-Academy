@@ -49,6 +49,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         iat: now,
         exp,
         sub: jaasApp,
+        // JaaS expects a `features` object in the payload. Provide an empty
+        // placeholder so tokens validate even if no special features are requested.
+        features: {},
         room: roomName,
         context: { user: { name: (authToken as any)?.name || (authToken as any)?.email || 'User' } }
       }

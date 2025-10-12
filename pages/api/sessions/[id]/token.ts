@@ -43,15 +43,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // RS256 path
     try {
       const privateKey = jaasPriv.replace(/\\n/g, '\n')
+
+      // Default features object — populate common JaaS feature flags with
+      // conservative defaults (disabled). Consumers can override by setting
+      // the JAAS_FEATURES environment variable to a JSON string, e.g.
+      // { "recording": true, "livestreaming": true }
+      const defaultFeatures: any = {
+        recording: false,
+        livestreaming: false,
+        transcription: false,
+        sip: false,
+        breakoutRooms: false
+      }
+
+      let parsedFeatures: any = defaultFeatures
+      const jaasFeaturesEnv = process.env.JAAS_FEATURES || process.env.JAAS_FEATURES_JSON || ''
+      if (jaasFeaturesEnv) {
+        try {
+          const envObj = JSON.parse(jaasFeaturesEnv)
+          // shallow merge so unspecified flags remain at their defaults
+          parsedFeatures = { ...defaultFeatures, ...envObj }
+        } catch (err) {
+          console.warn('Failed to parse JAAS_FEATURES env JSON, using defaults', err)
+          parsedFeatures = defaultFeatures
+        }
+      }
+
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat', // adjust if your JaaS docs require a different issuer
         iat: now,
         exp,
         sub: jaasApp,
-        // JaaS expects a `features` object in the payload. Provide an empty
-        // placeholder so tokens validate even if no special features are requested.
-        features: {},
+        // Populate features (defaults can be overridden via JAAS_FEATURES env)
+        features: parsedFeatures,
         room: roomName,
         context: { user: { name: (authToken as any)?.name || (authToken as any)?.email || 'User' } }
       }
@@ -70,7 +95,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!appId || !apiKey || !apiSecret) return res.status(500).json({ message: 'JaaS credentials not configured' })
 
   const header = { alg: 'HS256', typ: 'JWT' }
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp }
+  // Provide a minimal/default features object for HS256 tokens as well so
+  // JaaS does not reject tokens that expect a `features` object in the
+  // payload. Defaults are conservative (disabled). Also allow overriding
+  // these defaults via the same JAAS_FEATURES / JAAS_FEATURES_JSON env var
+  // used by the RS256 branch so both branches behave consistently.
+  const defaultFeatures: any = {
+    recording: false,
+    livestreaming: false,
+    transcription: false,
+    sip: false,
+    breakoutRooms: false
+  }
+
+  let parsedFeatures: any = defaultFeatures
+  const jaasFeaturesEnv = process.env.JAAS_FEATURES || process.env.JAAS_FEATURES_JSON || ''
+  if (jaasFeaturesEnv) {
+    try {
+      const envObj = JSON.parse(jaasFeaturesEnv)
+      parsedFeatures = { ...defaultFeatures, ...envObj }
+    } catch (err) {
+      console.warn('Failed to parse JAAS_FEATURES env JSON for HS256 fallback, using defaults', err)
+      parsedFeatures = defaultFeatures
+    }
+  }
+
+  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp, features: parsedFeatures }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')

@@ -37,8 +37,8 @@ Paste the entire block below into the console. It will attempt to fetch `/api/se
       const body = await res.json();
       console.log('Token response', body);
 
-      const { jwt, roomName } = body;
-      if (!jwt || !roomName) throw new Error('Response missing jwt or roomName');
+  const { token, roomName } = body;
+  if (!token || !roomName) throw new Error('Response missing token or roomName');
 
       // Remove any existing demo element
       const existing = document.getElementById('in-page-jitsi-demo');
@@ -88,7 +88,7 @@ Paste the entire block below into the console. It will attempt to fetch `/api/se
       // The JWT is usually passed to the external API; here we use a simple direct URL for testing
       // If your deployment expects the JWT as query param for a static demo page, set it accordingly.
       // We'll attempt to load the public demo page from this repo if present.
-      const demoUrl = `${location.origin}/jaas-demo.html#room=${encodeURIComponent(roomName)}&jwt=${encodeURIComponent(jwt)}`;
+  const demoUrl = `${location.origin}/jaas-demo.html#room=${encodeURIComponent(roomName)}&jwt=${encodeURIComponent(token)}`;
 
       iframe.src = demoUrl;
 

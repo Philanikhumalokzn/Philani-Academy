@@ -83,6 +83,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
   // Prevent caching of short-lived JWTs
   res.setHeader('Cache-Control', 'no-store, must-revalidate')
+  // Expose token timestamps for debugging (won't reveal secrets)
+  res.setHeader('X-Token-Issued', String(payload.iat))
+  res.setHeader('X-Token-Exp', String(payload.exp))
   return res.status(200).json({ token, roomName })
     } catch (err: any) {
       console.error('RS256 signing failed', err)
@@ -122,12 +125,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp, features: parsedFeatures }
+  // Include iat in HS256 payload for parity with RS256 tokens
+  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, iat: now, room: roomName, exp, features: parsedFeatures }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
   const signedToken = `${unsigned}.${signature}`
   // Prevent caching of short-lived JWTs
   res.setHeader('Cache-Control', 'no-store, must-revalidate')
+  // Expose token timestamps for debugging
+  res.setHeader('X-Token-Issued', String(payload.iat))
+  res.setHeader('X-Token-Exp', String(payload.exp))
   return res.status(200).json({ token: signedToken, roomName })
 }

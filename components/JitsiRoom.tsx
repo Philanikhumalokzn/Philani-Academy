@@ -41,7 +41,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
         if (sessionId) {
           try {
-            const tkRes = await fetch(`/api/sessions/${sessionId}/token`, { credentials: 'same-origin' })
+            const tkRes = await fetch(`/api/sessions/${sessionId}/token`, { credentials: 'same-origin', cache: 'no-store' })
             if (tkRes.ok) {
               const tkJson = await tkRes.json().catch(() => null)
               jwtToken = tkJson?.token
@@ -77,7 +77,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         const applyPassword = async () => {
           try {
             if (!sessionId) return
-            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin' })
+            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin', cache: 'no-store' })
             if (!res.ok) return
             const data = await res.json().catch(() => null)
             const pw = data?.jitsiPassword

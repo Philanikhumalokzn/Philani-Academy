@@ -80,8 +80,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         room: roomName,
         context: { user: { name: (authToken as any)?.name || (authToken as any)?.email || 'User' } }
       }
-      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
-      return res.status(200).json({ token, roomName })
+  const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
+  // Prevent caching of short-lived JWTs
+  res.setHeader('Cache-Control', 'no-store, must-revalidate')
+  return res.status(200).json({ token, roomName })
     } catch (err: any) {
       console.error('RS256 signing failed', err)
       return res.status(500).json({ message: 'Failed to sign token (RS256)', error: String(err) })
@@ -125,5 +127,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
   const signedToken = `${unsigned}.${signature}`
+  // Prevent caching of short-lived JWTs
+  res.setHeader('Cache-Control', 'no-store, must-revalidate')
   return res.status(200).json({ token: signedToken, roomName })
 }

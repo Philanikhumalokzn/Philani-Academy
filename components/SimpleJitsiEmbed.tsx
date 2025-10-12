@@ -31,7 +31,7 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
 
         if (sessionId) {
           // try to fetch a short lived JWT from our server endpoint
-          const res = await fetch(`/api/sessions/${sessionId}/token`);
+          const res = await fetch(`/api/sessions/${sessionId}/token`, { cache: 'no-store' });
           if (res.ok) {
             const body = await res.json();
             token = body?.token;

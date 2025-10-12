@@ -40,6 +40,15 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
           }
         }
 
+        // DEV: log token/room used to initialize Jitsi
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            const short = token ? token.split('.').slice(0,2).join('.') + '...' : 'no-token'
+            // eslint-disable-next-line no-console
+            console.log('[DEV] SimpleJitsiEmbed initializing with token:', short, 'room:', roomName)
+          } catch (e) {}
+        }
+
         // @ts-ignore this global is added by the external_api.js script
         const Jitsi = (window as any).JitsiMeetExternalAPI;
         if (!Jitsi) {

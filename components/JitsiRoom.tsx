@@ -63,6 +63,15 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
         if (jwtToken) options.jwt = jwtToken
 
+        // DEV: log token/room used to initialize Jitsi so we can verify usage
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            // don't print full token in logs if concerned; printing short fingerprint
+            const short = jwtToken ? jwtToken.split('.').slice(0,2).join('.') + '...' : 'no-token'
+            console.log('[DEV] initializing Jitsi with token:', short, 'room:', roomName)
+          } catch (e) { /* ignore */ }
+        }
+
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
 
         // attach listeners safely

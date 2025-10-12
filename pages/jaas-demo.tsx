@@ -1,21 +1,3 @@
-import React from 'react';
-
-export default function JaaSDemoPlaceholder() {
-  return (
-    <div style={{ padding: 24 }}>
-      <h1>JaaS demo (protected)</h1>
-      <p>
-        The public static demo page has been removed to avoid exposing demo JWTs. If you need to access
-        a test demo, please use the integrated demo at <code>/jaas-demo</code> while signed in as an admin,
-        or generate a short-lived token via the server token endpoint.
-      </p>
-      <p>
-        See <code>/docs/JAAS_SETUP.md</code> for instructions on how to configure JaaS credentials and run
-        the integrated demo safely.
-      </p>
-    </div>
-  );
-}
 import dynamic from 'next/dynamic';
 import React from 'react';
 

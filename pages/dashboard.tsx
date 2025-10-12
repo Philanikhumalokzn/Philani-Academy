@@ -448,10 +448,7 @@ export default function Dashboard() {
         </aside>
       </div>
 
-      <div>
-        <h1>Jitsi demo</h1>
-        <SimpleJitsiEmbed roomName={roomName} sessionId={sessionId} height="700px" />
-      </div>
+      {/* demo embed removed from dashboard to avoid showing public demo heading */}
     </main>
   )
 }

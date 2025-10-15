@@ -14,6 +14,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  // If debug token supplied, also expose JAAS credential presence (no secrets)
+  if (token) {
+    info.jaas = {
+      hasRS256: !!(process.env.JAAS_PRIVATE_KEY && process.env.JAAS_KEY_ID && process.env.JAAS_APP_ID),
+      hasHS256: !!(process.env.JITSI_JAAS_APP_ID && process.env.JITSI_JAAS_API_KEY && process.env.JITSI_JAAS_API_SECRET)
+    }
+  }
+
   try {
     const count = await prisma.user.count()
     info.db = { reachable: true, userCount: count }

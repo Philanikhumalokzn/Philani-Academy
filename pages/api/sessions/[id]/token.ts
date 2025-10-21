@@ -103,9 +103,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         room: roomName,
         context: { user: userCtx }
       }
-  const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
+      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
   // Prevent caching of short-lived JWTs
       res.setHeader('Cache-Control', 'no-store, must-revalidate')
+      // Opt-in debug headers: only expose when DEBUG=1 or a debug token header/query is provided
+      const debugMode = process.env.DEBUG === '1' || req.headers['x-debug-token'] === 'temp-debug-token' || req.query?.debug_token === 'temp-debug-token'
+      if (debugMode) {
+        try {
+          res.setHeader('X-Features', JSON.stringify(parsedFeatures))
+        } catch (e) { /* ignore */ }
+        try { res.setHeader('X-Key-Kid', jaasKid) } catch (e) {}
+        try { res.setHeader('X-Token-Alg', 'RS256') } catch (e) {}
+        try { res.setHeader('X-Room-Name', String(roomName)) } catch (e) {}
+      }
       // Compute a safe fingerprint of the public key derived from the private key
       try {
         const pubDer = crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'der' }) as Buffer
@@ -165,6 +175,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const signedToken = `${unsigned}.${signature}`
   // Prevent caching of short-lived JWTs
   res.setHeader('Cache-Control', 'no-store, must-revalidate')
+  // Opt-in debug headers for HS256 branch too
+  const debugModeHS = process.env.DEBUG === '1' || req.headers['x-debug-token'] === 'temp-debug-token' || req.query?.debug_token === 'temp-debug-token'
+  if (debugModeHS) {
+    try { res.setHeader('X-Features', JSON.stringify(parsedFeatures)) } catch (e) {}
+    try { res.setHeader('X-Key-Kid', appId) } catch (e) {}
+    try { res.setHeader('X-Token-Alg', 'HS256') } catch (e) {}
+    try { res.setHeader('X-Room-Name', String(roomName)) } catch (e) {}
+  }
   // Expose token timestamps for debugging
   res.setHeader('X-Token-Issued', String(payload.iat))
   res.setHeader('X-Token-Exp', String(payload.exp))

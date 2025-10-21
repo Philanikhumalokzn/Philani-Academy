@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Simple JaaS Test</title>
+  <!-- external API will be loaded dynamically from the script URL input below -->
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0; }
+    #controls { padding: 12px; background: #111827; color: #fff; display:flex; gap:8px; align-items:center }
+    input, textarea { font-size: 14px; }
+    #frame { width:100%; height: calc(100vh - 64px); border: 0; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label style="display:flex;align-items:center;gap:8px">
+      Script URL:
+      <input id="scriptUrl" value="https://8x8.vc/vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4/external_api.js" style="width:520px;padding:6px" />
+    </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      Room name:
+      <input id="room" value="testroom" style="width:260px;padding:6px" />
+    </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      JWT:
+      <textarea id="jwt" rows="1" style="width:520px;padding:6px" placeholder="Paste your JaaS console-generated JWT here"></textarea>
+    </label>
+    <button id="join">Join</button>
+    <button id="leave">Leave</button>
+  </div>
+
+  <div id="frame"></div>
+
+  <script>
+  let api = null
+    // When a JWT is pasted, try to decode its payload and pre-fill the room input
+    const jwtEl = document.getElementById('jwt')
+    const roomEl = document.getElementById('room')
+    const decodeBase64Url = (str) => {
+      // base64url -> base64
+      str = str.replace(/-/g, '+').replace(/_/g, '/')
+      // pad
+      while (str.length % 4) str += '='
+      try { return decodeURIComponent(escape(window.atob(str))) } catch (e) { return null }
+    }
+    jwtEl.addEventListener('input', () => {
+      const token = jwtEl.value.trim()
+      if (!token) return
+      const parts = token.split('.')
+      if (parts.length !== 3) return
+      const payload = decodeBase64Url(parts[1])
+      if (!payload) return
+      try {
+        const obj = JSON.parse(payload)
+        if (obj && obj.room) roomEl.value = obj.room
+      } catch (e) { /* ignore */ }
+    })
+
+    // Helper to load a script dynamically and return a promise that resolves when loaded
+    function loadScriptOnce(src) {
+      return new Promise((resolve, reject) => {
+        // Already loaded?
+        if (window.JitsiMeetExternalAPI) return resolve()
+        // If a script tag with same src exists, wait for it
+        const existing = Array.from(document.getElementsByTagName('script')).find(s => s.src === src)
+        if (existing) {
+          existing.addEventListener('load', () => resolve())
+          existing.addEventListener('error', (e) => reject(e))
+          return
+        }
+        const s = document.createElement('script')
+        s.src = src
+        s.async = true
+        s.onload = () => resolve()
+        s.onerror = (e) => reject(e)
+        document.head.appendChild(s)
+      })
+    }
+
+    document.getElementById('join').addEventListener('click', async () => {
+      const scriptUrl = document.getElementById('scriptUrl').value.trim() || 'https://8x8.vc/libs/external_api.min.js'
+      const domain = '8x8.vc'
+      const room = document.getElementById('room').value
+      const jwt = document.getElementById('jwt').value.trim()
+      if (!jwt) return alert('Paste a token first')
+
+      try {
+        await loadScriptOnce(scriptUrl)
+      } catch (e) {
+        return alert('Failed to load external API script: ' + e)
+      }
+
+      const options = {
+        roomName: room,
+        width: '100%',
+        height: 700,
+        parentNode: document.getElementById('frame'),
+        jwt
+      }
+      // Remove existing
+      if (api) { try { api.dispose(); } catch(e){} api = null }
+      try {
+        api = new JitsiMeetExternalAPI(domain, options)
+        api.addEventListener('videoConferenceJoined', () => console.log('joined'))
+        api.addEventListener('videoConferenceLeft', () => console.log('left'))
+      } catch (err) {
+        console.error('Failed to create JitsiMeetExternalAPI', err)
+        alert('Failed to initialize meeting: ' + String(err))
+      }
+    })
+    document.getElementById('leave').addEventListener('click', () => {
+      if (!api) return
+      try { api.executeCommand('hangup') } catch (e) { console.warn(e) }
+    })
+  </script>
+</body>
+</html>

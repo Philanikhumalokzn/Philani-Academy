@@ -84,6 +84,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
+      // Whitelist supported JaaS features to avoid JaaS rejecting tokens
+      // for unsupported flags. Allow extra features only when explicitly enabled.
+      const allowedFeatures = new Set(["recording","livestreaming","transcription","file-upload","outbound-call","sip-outbound-call","list-visitors","flip"])
+      const allowExtra = process.env.JAAS_FEATURES_ALLOW_EXTRA === '1' || process.env.JAAS_FEATURES_ALLOW_EXTRA === 'true'
+      const sanitizedFeatures: any = {}
+      for (const k of Object.keys(parsedFeatures)) {
+        if (allowedFeatures.has(k) || allowExtra) sanitizedFeatures[k] = parsedFeatures[k]
+      }
+      parsedFeatures = sanitizedFeatures
+
       // Build a richer user context that mirrors the Jitsi-provided sample
       const userCtx: any = {
         name: (authToken as any)?.name || (authToken as any)?.email || 'User',
@@ -165,6 +175,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       parsedFeatures = defaultFeatures
     }
   }
+
+  // Sanitize HS256 features as well
+  const allowedFeaturesHS = new Set(["recording","livestreaming","transcription","file-upload","outbound-call","sip-outbound-call","list-visitors","flip"])
+  const allowExtraHS = process.env.JAAS_FEATURES_ALLOW_EXTRA === '1' || process.env.JAAS_FEATURES_ALLOW_EXTRA === 'true'
+  const sanitizedHS: any = {}
+  for (const k of Object.keys(parsedFeatures)) {
+    if (allowedFeaturesHS.has(k) || allowExtraHS) sanitizedHS[k] = (parsedFeatures as any)[k]
+  }
+  parsedFeatures = sanitizedHS
 
   // Include iat in HS256 payload for parity with RS256 tokens
   const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, iat: now, room: roomName, exp, context: { features: parsedFeatures } }

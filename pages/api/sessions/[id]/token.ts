@@ -103,6 +103,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         moderator: !!((authToken as any)?.role === 'admin')
       }
 
+      // If this requester is the site owner or an admin, allow overriding the
+      // emitted JaaS identity via environment variables so we can match the
+      // identity configured in the JaaS console (useful for testing).
+      // Set JAAS_ADMIN_EMAIL and/or JAAS_ADMIN_ID in Vercel to force the
+      // token to present that identity for owner/admin users.
+      try {
+        const jaasAdminEmail = process.env.JAAS_ADMIN_EMAIL || ''
+        const jaasAdminId = process.env.JAAS_ADMIN_ID || ''
+        if ((isOwner || (authToken as any)?.role === 'admin')) {
+          if (jaasAdminEmail) userCtx.email = jaasAdminEmail
+          if (jaasAdminId) userCtx.id = jaasAdminId
+        }
+      } catch (e) {
+        /* ignore */
+      }
+
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat', // adjust if your JaaS docs require a different issuer

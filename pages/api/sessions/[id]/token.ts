@@ -33,6 +33,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const now = Math.floor(Date.now() / 1000)
   const exp = now + (parseInt(process.env.JITSI_JAAS_EXP_SECS || '300', 10))
 
+  // Opt-in test JWT override: if a test token is provided in env (JAAS_TEST_JWT
+  // or JAAS_TEST_TOKEN) and the request explicitly opts into it (use_test_jwt=1
+  // or debug token / DEBUG=1), return that token immediately. This is useful
+  // for quickly testing the JaaS console-generated JWT without rotating keys.
+  const testJwtEnv = process.env.JAAS_TEST_JWT || process.env.JAAS_TEST_TOKEN || ''
+  const wantTestJwt = Boolean(testJwtEnv) && (
+    process.env.DEBUG === '1' ||
+    req.headers['x-debug-token'] === 'temp-debug-token' ||
+    String(req.query?.debug_token) === 'temp-debug-token' ||
+    String(req.query?.use_test_jwt) === '1'
+  )
+  if (wantTestJwt) {
+    // Don't expose secrets — just return the provided token and room name and
+    // a small debug header to indicate the test-path was used.
+    res.setHeader('Cache-Control', 'no-store, must-revalidate')
+    res.setHeader('X-Using-Test-JWT', '1')
+    res.setHeader('X-Token-Alg', 'TEST')
+    return res.status(200).json({ token: testJwtEnv, roomName })
+  }
+
   // If JAAS private key + key id + app id are present, sign RS256 using the
   // provided key. Otherwise fall back to HS256 using the existing api secret.
   const jaasPriv = process.env.JAAS_PRIVATE_KEY || ''

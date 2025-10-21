@@ -99,9 +99,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         iat: now,
         exp,
         sub: jaasApp,
-        features: parsedFeatures,
         room: roomName,
-        context: { user: userCtx }
+        context: { features: parsedFeatures, user: userCtx }
       }
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
   // Prevent caching of short-lived JWTs
@@ -168,7 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Include iat in HS256 payload for parity with RS256 tokens
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, iat: now, room: roomName, exp, features: parsedFeatures }
+  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, iat: now, room: roomName, exp, context: { features: parsedFeatures } }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')

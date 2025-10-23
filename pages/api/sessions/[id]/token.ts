@@ -21,9 +21,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (authToken as any).email === ownerEmail
+  const isAdmin = (authToken as any)?.role === 'admin'
 
   const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !isOwner) return res.status(403).json({ message: 'Meeting not started yet' })
+  // Allow admins/owner to join before the session is marked active
+  if (!jitsiActive && !(isOwner || isAdmin)) return res.status(403).json({ message: 'Meeting not started yet' })
 
   // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''
@@ -45,12 +47,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const privateKey = jaasPriv.replace(/\\n/g, '\n')
       const payload: any = {
         aud: 'jitsi',
-        iss: 'chat', // adjust if your JaaS docs require a different issuer
+        iss: 'chat',
         iat: now,
+        nbf: now - 5,
         exp,
         sub: jaasApp,
         room: roomName,
-        context: { user: { name: (authToken as any)?.name || (authToken as any)?.email || 'User' } }
+        context: {
+          features: {
+            livestreaming: true,
+            'file-upload': true,
+            'outbound-call': true,
+            'sip-outbound-call': false,
+            transcription: true,
+            'list-visitors': false,
+            recording: true,
+            flip: false
+          },
+          user: {
+            'hidden-from-recorder': false,
+            moderator: Boolean(isOwner || isAdmin),
+            name: (authToken as any)?.name || (authToken as any)?.email || 'User',
+            id: (authToken as any)?.sub || (authToken as any)?.email || 'user',
+            avatar: '',
+            email: (authToken as any)?.email || ''
+          }
+        }
       }
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
       return res.status(200).json({ token, roomName })

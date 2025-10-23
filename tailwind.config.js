@@ -4,7 +4,8 @@ module.exports = {
     extend: {
       colors: {
         primary: '#1D4ED8',
-        accent: '#06B6D4',
+        // shift accent to a complementary blue shade
+        accent: '#3B82F6',
         warm: '#F59E0B'
       },
       fontFamily: {

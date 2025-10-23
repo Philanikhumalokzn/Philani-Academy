@@ -9,17 +9,18 @@
   --card: #ffffff;
   --muted: #6b7280;
   --primary: #1D4ED8;
-  --accent: #06B6D4;
+  /* switch accent to a blue hue */
+  --accent: #3B82F6;
 }
 
-html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: #ffffff;}
+html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(180deg, rgba(29,78,216,0.05), rgba(59,130,246,0.02));}
 
 /* Common containers */
 .container-card{background:var(--card);box-shadow:var(--tw-shadow, 0 10px 30px rgba(17,24,39,0.06));border-radius:12px;padding:1.25rem}
 
 /* Hero */
 .hero{
-  background: linear-gradient(90deg, rgba(29,78,216,0.12), rgba(29,78,216,0.06));
+  background: linear-gradient(90deg, rgba(29,78,216,0.12), rgba(59,130,246,0.06));
   border-radius:14px; padding:2rem; display:flex; gap:1rem; align-items:center;
 }
 
@@ -36,7 +37,7 @@ html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Sego
 
 /* Inputs */
 .input{width:100%;padding:0.6rem;border-radius:8px;border:1px solid rgba(15,23,42,0.06);background:linear-gradient(180deg, #fff, #fbfdff)}
-.input:focus{outline:none;box-shadow:0 6px 18px rgba(6,182,212,0.12);border-color:var(--accent)}
+.input:focus{outline:none;box-shadow:0 6px 18px rgba(59,130,246,0.14);border-color:var(--accent)}
 
 /* Cards */
 .card{background:var(--card);border-radius:12px;padding:1rem;box-shadow:0 8px 24px rgba(15,23,42,0.06)}

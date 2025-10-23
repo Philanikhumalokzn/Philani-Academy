@@ -41,7 +41,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
         if (sessionId) {
           try {
-            const tkRes = await fetch(`/api/sessions/${sessionId}/token`, { credentials: 'same-origin' })
+            const tkRes = await fetch(`/api/sessions/${sessionId}/token`, { credentials: 'same-origin', cache: 'no-store' })
             if (tkRes.ok) {
               const tkJson = await tkRes.json().catch(() => null)
               jwtToken = tkJson?.token
@@ -63,6 +63,15 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
         if (jwtToken) options.jwt = jwtToken
 
+        // DEV: log token/room used to initialize Jitsi so we can verify usage
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            // don't print full token in logs if concerned; printing short fingerprint
+            const short = jwtToken ? jwtToken.split('.').slice(0,2).join('.') + '...' : 'no-token'
+            console.log('[DEV] initializing Jitsi with token:', short, 'room:', roomName)
+          } catch (e) { /* ignore */ }
+        }
+
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
 
         // attach listeners safely
@@ -77,7 +86,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         const applyPassword = async () => {
           try {
             if (!sessionId) return
-            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin' })
+            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin', cache: 'no-store' })
             if (!res.ok) return
             const data = await res.json().catch(() => null)
             const pw = data?.jitsiPassword

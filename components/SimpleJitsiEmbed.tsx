@@ -29,15 +29,43 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
       try {
         let token: string | undefined;
 
-        if (sessionId) {
+        // DEV override: allow quick testing with a token from the URL
+        // Usage: append ?jaas_token=<your_token> to the page or set window.JAAS_TEST_TOKEN
+        // This is intentionally only enabled in non-production to avoid accidental leaks.
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const qp = urlParams.get('jaas_token');
+            if (qp) {
+              token = qp;
+              // eslint-disable-next-line no-console
+              console.log('[DEV] Using jaas_token from URL override (short):', token.slice(0, 48) + '...')
+            } else if ((window as any).JAAS_TEST_TOKEN) {
+              token = (window as any).JAAS_TEST_TOKEN
+              // eslint-disable-next-line no-console
+              console.log('[DEV] Using jaas_token from window.JAAS_TEST_TOKEN (short):', String(token).slice(0,48) + '...')
+            }
+          } catch (e) { /* ignore */ }
+        }
+
+        if (!token && sessionId) {
           // try to fetch a short lived JWT from our server endpoint
-          const res = await fetch(`/api/sessions/${sessionId}/token`);
+          const res = await fetch(`/api/sessions/${sessionId}/token`, { cache: 'no-store' });
           if (res.ok) {
             const body = await res.json();
             token = body?.token;
           } else {
             console.warn('/api/sessions/[id]/token returned', res.status);
           }
+        }
+
+        // DEV: log token/room used to initialize Jitsi
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            const short = token ? token.split('.').slice(0,2).join('.') + '...' : 'no-token'
+            // eslint-disable-next-line no-console
+            console.log('[DEV] SimpleJitsiEmbed initializing with token:', short, 'room:', roomName)
+          } catch (e) {}
         }
 
         // @ts-ignore this global is added by the external_api.js script

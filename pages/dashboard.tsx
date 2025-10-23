@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import JitsiRoom from '../components/JitsiRoom'
+// Jitsi/JaaS removed — replaced by a simple placeholder
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
-import SimpleJitsiEmbed from '../components/SimpleJitsiEmbed';
+// SimpleJitsiEmbed removed
 
 export default function Dashboard() {
   const { data: session, status } = useSession()
@@ -203,18 +203,10 @@ export default function Dashboard() {
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
         <div className="col-span-2">
-          {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
-            {status !== 'authenticated' ? (
-              <div className="text-sm muted">Please sign in to join the live class.</div>
-            ) : secureRoomName ? (
-              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : sessions && sessions.length > 0 ? (
-              <JitsiRoom roomName={`philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : (
-              <JitsiRoom roomName={`philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            )}
+            <div className="text-sm muted">Live classroom functionality has been removed.</div>
+            <div className="text-sm muted">To re-enable a video provider, add a new integration and update this dashboard.</div>
           </div>
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-2xl font-bold">Dashboard</h1>
@@ -448,10 +440,7 @@ export default function Dashboard() {
         </aside>
       </div>
 
-      <div>
-        <h1>Jitsi demo</h1>
-        <SimpleJitsiEmbed roomName={roomName} sessionId={sessionId} height="700px" />
-      </div>
+      {/* demo embed removed from dashboard to avoid showing public demo heading */}
     </main>
   )
 }

@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''
   const h = crypto.createHmac('sha256', secret).update(String(id)).digest('hex').slice(0, 12)
-  const roomName = `philani-${String(id)}-${h}`
+  const roomSegment = `philani-${String(id)}-${h}`
 
   const now = Math.floor(Date.now() / 1000)
   // Match the HTML tool defaults closely: TTL defaults to 7200s (2h)
@@ -84,8 +84,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         room: '*'
       }
 
-      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
-      return res.status(200).json({ token, roomName })
+  const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
+  const fullRoomName = `${jaasApp}/${roomSegment}`
+  return res.status(200).json({ token, roomName: fullRoomName })
     } catch (err: any) {
       console.error('RS256 signing failed', err)
       return res.status(500).json({ message: 'Failed to sign token (RS256)', error: String(err) })
@@ -99,10 +100,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!appId || !apiKey || !apiSecret) return res.status(500).json({ message: 'JaaS credentials not configured' })
 
   const header = { alg: 'HS256', typ: 'JWT' }
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp }
+  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomSegment, exp }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
   const signedToken = `${unsigned}.${signature}`
-  return res.status(200).json({ token: signedToken, roomName })
+  const fullRoomName = `${appId}/${roomSegment}`
+  return res.status(200).json({ token: signedToken, roomName: fullRoomName })
 }

@@ -40,6 +40,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const jaasPriv = process.env.JAAS_PRIVATE_KEY || ''
   const jaasKid = process.env.JAAS_KEY_ID || ''
   const jaasApp = process.env.JAAS_APP_ID || ''
+  // For RS256 'room' claim when not moderator, use the segment (no app id)
+  const roomSegment = roomName
+  const fullRoomPath = jaasApp ? `${jaasApp}/${roomSegment}` : roomSegment
 
   // Prefer RS256 path (mirrors the HTML signer shape) and return header/payload preview
   if (jaasPriv && jaasKid && jaasApp) {
@@ -75,9 +78,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         context: { features, user },
         room: roomClaim
       }
-      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
-      const header = { alg: 'RS256', typ: 'JWT', kid: jaasKid }
-      return res.status(200).json({ alg: 'RS256', header, payload, token, roomName })
+  const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
+  const header = { alg: 'RS256', typ: 'JWT', kid: jaasKid }
+  return res.status(200).json({ alg: 'RS256', header, payload, token, roomName: fullRoomPath })
     } catch (err: any) {
       return res.status(500).json({ message: 'Failed RS256 sign', error: String(err) })
     }
@@ -90,10 +93,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!appId || !apiKey || !apiSecret) return res.status(500).json({ message: 'No JaaS credentials configured' })
 
   const header = { alg: 'HS256', typ: 'JWT' }
-  const pld = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp }
+  const pld = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomSegment, exp }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(pld)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
   const token = `${unsigned}.${signature}`
-  return res.status(200).json({ alg: 'HS256', header, payload: pld, token, roomName })
+  return res.status(200).json({ alg: 'HS256', header, payload: pld, token, roomName: fullRoomPath })
 }

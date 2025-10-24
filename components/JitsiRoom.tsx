@@ -20,7 +20,9 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       return new Promise<void>((resolve, reject) => {
         if ((window as any).JitsiMeetExternalAPI) return resolve()
         const script = document.createElement('script')
-        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://meet.jit.si/external_api.js'
+        // For JaaS, prefer the 8x8 hosted library to ensure correct domain
+        const defaultApi = 'https://8x8.vc/libs/external_api.min.js'
+        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || defaultApi
         script.async = true
         script.onload = () => resolve()
         script.onerror = () => reject(new Error('Failed to load Jitsi script'))
@@ -30,13 +32,13 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     const init = async () => {
       try {
-        const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || 'meet.jit.si'
-        const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://meet.jit.si/external_api.js'
+  const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
+  const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
 
         await loadScript(apiUrl)
         if (!mounted) return
 
-        let roomName = initialRoomName
+  let roomName = initialRoomName
         let jwtToken: string | undefined
 
         if (sessionId) {

@@ -72,7 +72,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        room: roomName
+        // Mirror production token shape: wildcard to allow any room
+        room: '*'
       }
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
       const header = { alg: 'RS256', typ: 'JWT', kid: jaasKid }

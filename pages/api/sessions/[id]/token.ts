@@ -80,7 +80,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        room: roomName
+        // Use wildcard room so admins/owner can join any room without precomputing the name
+        room: '*'
       }
 
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })

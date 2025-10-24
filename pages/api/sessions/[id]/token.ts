@@ -72,6 +72,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: (authToken as any)?.email || ''
       }
 
+      // For learners (non-owner/non-admin), lock token to a single room; for admins/owner, allow all rooms
+      const roomClaim = moderator ? '*' : roomSegment
+
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat',
@@ -80,8 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        // Use wildcard room so admins/owner can join any room without precomputing the name
-        room: '*'
+        room: roomClaim
       }
 
   const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })

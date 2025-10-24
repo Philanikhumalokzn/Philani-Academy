@@ -64,6 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         avatar: '',
         email: (auth as any)?.email || ''
       }
+      const roomClaim = moderator ? '*' : roomSegment
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat',
@@ -72,8 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        // Mirror production token shape: wildcard to allow any room
-        room: '*'
+        room: roomClaim
       }
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
       const header = { alg: 'RS256', typ: 'JWT', kid: jaasKid }

@@ -129,6 +129,11 @@ export default function Dashboard() {
       // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
       setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
     }
+    // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
+    try {
+      const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'
+      ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
+    } catch (e) {}
   }, [session])
 
   // Compute currently running session and fetch secure room name for it when sessions update
@@ -188,9 +193,13 @@ export default function Dashboard() {
     }
   }
 
-  // Helper flags
-  const appPrefix = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
-  const runningId = runningSession?.id || (sessions && sessions[0]?.id)
+  // Ensure room names sent to the embed include the full JaaS app prefix (like the working HTML sample)
+  const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || 'vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4'
+  // sample roomName from the dashboard (full path)
+  const roomName = `${appId}/SampleAppAliveIntensitiesSurveyFerociously`;
+
+  // sessionId is optional — if provided, the embed will call /api/sessions/<sessionId>/token to get a JWT
+  const sessionId = '<your-session-id-if-you-have-one>';
 
   return (
     <main className="min-h-screen p-8">
@@ -199,19 +208,16 @@ export default function Dashboard() {
           {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
+            {/** Ensure room names passed to JitsiRoom include the full app prefix */}
+            {(() => { const full = (n: string) => (n && n.includes('/') ? n : `${appId}/${n}`); return null })()}
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
-            ) : secureRoomName && runningId ? (
-              // Unified behavior: everyone joins the same room via the same tokenized path
-              <JitsiRoom
-                roomName={secureRoomName}
-                displayName={session?.user?.name || session?.user?.email}
-                sessionId={runningId}
-              />
+            ) : secureRoomName ? (
+              <JitsiRoom roomName={(secureRoomName && secureRoomName.includes('/')) ? secureRoomName : `${appId}/${secureRoomName}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
+            ) : sessions && sessions.length > 0 ? (
+              <JitsiRoom roomName={`${appId}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : (
-              <div className="p-4 rounded border bg-gray-50 text-sm">
-                Waiting for class to start. Your page will refresh automatically when the session is live.
-              </div>
+              <JitsiRoom roomName={`${appId}/philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             )}
           </div>
           <div className="flex items-center justify-between mb-4">

@@ -20,7 +20,8 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       return new Promise<void>((resolve, reject) => {
         if ((window as any).JitsiMeetExternalAPI) return resolve()
         const script = document.createElement('script')
-        // For JaaS, prefer the 8x8 hosted library to ensure correct domain
+        // Use the JaaS (8x8.vc) external API like the working HTML sample
+        // Prefer explicit NEXT_PUBLIC_JITSI_API_URL, otherwise default to 8x8 library URL
         const defaultApi = 'https://8x8.vc/libs/external_api.min.js'
         script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || defaultApi
         script.async = true
@@ -32,8 +33,9 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     const init = async () => {
       try {
-  const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
-  const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
+        // Match HTML sample: domain 8x8.vc and api from libs
+        const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
+        const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
 
         await loadScript(apiUrl)
         if (!mounted) return

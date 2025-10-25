@@ -18,11 +18,9 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     const loadScript = (url?: string) => {
       return new Promise<void>((resolve, reject) => {
-        if ((window as any).JitsiMeetExternalAPI) return resolve()
+        // Always ensure we load the JaaS script from 8x8.vc
         const script = document.createElement('script')
-        // For JaaS, prefer the 8x8 hosted library to ensure correct domain
-        const defaultApi = 'https://8x8.vc/libs/external_api.min.js'
-        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || defaultApi
+        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
         script.async = true
         script.onload = () => resolve()
         script.onerror = () => reject(new Error('Failed to load Jitsi script'))
@@ -32,13 +30,14 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     const init = async () => {
       try {
-  const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
-  const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
+        // Match the working HTML sample: use 8x8.vc domain and JaaS external API
+        const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
+        const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
 
         await loadScript(apiUrl)
         if (!mounted) return
 
-  let roomName = initialRoomName
+        let roomName = initialRoomName
         let jwtToken: string | undefined
 
         if (sessionId) {
@@ -55,15 +54,14 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           }
         }
 
+        // Keep options minimal and aligned with the verified HTML snippet
         const options: any = {
           roomName,
           parentNode: containerRef.current,
-          interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
-          configOverwrite: { disableDeepLinking: true },
-          userInfo: { displayName: displayName || 'Learner' }
+          width: 500,
+          height: 500,
+          ...(jwtToken ? { jwt: jwtToken } : {}),
         }
-
-        if (jwtToken) options.jwt = jwtToken
 
         // DEV: log token/room used to initialize Jitsi so we can verify usage
         if (process.env.NODE_ENV !== 'production') {
@@ -74,7 +72,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           } catch (e) { /* ignore */ }
         }
 
-        apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
+  apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
 
         // attach listeners safely
         try {
@@ -84,25 +82,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           // ignore
         }
 
-        // attempt to apply a room password provided by the server
-        const applyPassword = async () => {
-          try {
-            if (!sessionId) return
-            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin', cache: 'no-store' })
-            if (!res.ok) return
-            const data = await res.json().catch(() => null)
-            const pw = data?.jitsiPassword
-            if (pw && apiRef.current && typeof apiRef.current.executeCommand === 'function') {
-              try { apiRef.current.executeCommand('password', pw) } catch (e) {
-                try { apiRef.current.executeCommand('setPassword', pw) } catch (err) {}
-              }
-            }
-          } catch (err) {
-            // ignore
-          }
-        }
-
-        setTimeout(() => { applyPassword() }, 800)
+        // Note: intentionally omitting password application and extra config to mirror the working HTML sample
       } catch (err) {
         console.error('Failed to initialize Jitsi', err)
       }

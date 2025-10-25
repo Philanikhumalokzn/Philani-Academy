@@ -19,14 +19,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) } })
   if (!rec) return res.status(404).json({ message: 'Not found' })
 
+  const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
+  const isOwner = ownerEmail && (authToken as any).email === ownerEmail
+
   const jitsiActive = (rec as any)?.jitsiActive ?? false
-  // Unified behavior: everyone waits until the meeting is marked active
-  if (!jitsiActive) return res.status(403).json({ message: 'Meeting not started yet' })
+  if (!jitsiActive && !isOwner) return res.status(403).json({ message: 'Meeting not started yet' })
 
   // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''
   const h = crypto.createHmac('sha256', secret).update(String(id)).digest('hex').slice(0, 12)
-  const roomSegment = `philani-${String(id)}-${h}`
+  const roomName = `philani-${String(id)}-${h}`
 
   const now = Math.floor(Date.now() / 1000)
   // Match the HTML tool defaults closely: TTL defaults to 7200s (2h)
@@ -44,9 +46,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const privateKey = jaasPriv.replace(/\\n/g, '\n')
 
-  // Determine moderator based on role only; behavior is otherwise the same
-  const role = (authToken as any)?.role
-  const moderator = role === 'admin'
+      // Determine moderator: admin role or owner email
+      const role = (authToken as any)?.role
+      const isAdmin = role === 'admin'
+      const moderator = Boolean(isOwner || isAdmin)
 
       // Features and user block copied from the provided client tool (with safe defaults)
       const features = {
@@ -69,9 +72,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: (authToken as any)?.email || ''
       }
 
-  // Unify join logic: everyone joins the same concrete room; admins/owner only get moderator=true
-  const roomClaim = roomSegment
-
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat',
@@ -80,12 +80,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        room: roomClaim
+        // Use wildcard room so admins/owner can join any room without precomputing the name
+        room: '*'
       }
 
-  const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
-  const fullRoomName = `${jaasApp}/${roomSegment}`
-  return res.status(200).json({ token, roomName: fullRoomName })
+      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
+      return res.status(200).json({ token, roomName })
     } catch (err: any) {
       console.error('RS256 signing failed', err)
       return res.status(500).json({ message: 'Failed to sign token (RS256)', error: String(err) })
@@ -99,11 +99,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!appId || !apiKey || !apiSecret) return res.status(500).json({ message: 'JaaS credentials not configured' })
 
   const header = { alg: 'HS256', typ: 'JWT' }
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomSegment, exp }
-  const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
-  const unsigned = `${b64(header)}.${b64(payload)}`
-  const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
-  const signedToken = `${unsigned}.${signature}`
-  const fullRoomName = `${appId}/${roomSegment}`
-  return res.status(200).json({ token: signedToken, roomName: fullRoomName })
+  try {
+    // Parity with RS256: mark admin/owner as moderator and include context
+    const role = (authToken as any)?.role
+    const isAdmin = role === 'admin'
+    const moderator = Boolean(isOwner || isAdmin)
+
+    const features = {
+      livestreaming: true,
+      'file-upload': true,
+      'outbound-call': true,
+      'sip-outbound-call': false,
+      transcription: true,
+      'list-visitors': false,
+      recording: true,
+      flip: false
+    }
+
+    const user = {
+      'hidden-from-recorder': false,
+      moderator,
+      name: (authToken as any)?.name || (authToken as any)?.email || 'User',
+      id: (authToken as any)?.sub || (authToken as any)?.email || 'user',
+      avatar: '',
+      email: (authToken as any)?.email || ''
+    }
+
+    const payload: any = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp, context: { features, user } }
+    const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
+    const unsigned = `${b64(header)}.${b64(payload)}`
+    const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
+    const signedToken = `${unsigned}.${signature}`
+    return res.status(200).json({ token: signedToken, roomName })
+  } catch (e) {
+    // Fallback to minimal legacy HS256 payload if anything goes wrong
+    const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomName, exp }
+    const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
+    const unsigned = `${b64(header)}.${b64(payload)}`
+    const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')
+    const signedToken = `${unsigned}.${signature}`
+    return res.status(200).json({ token: signedToken, roomName })
+  }
 }

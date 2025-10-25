@@ -72,8 +72,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: (authToken as any)?.email || ''
       }
 
-      // For learners (non-owner/non-admin), lock token to a single room; for admins/owner, allow all rooms
-      const roomClaim = moderator ? '*' : roomSegment
+  // Unify join logic: everyone joins the same concrete room; admins/owner only get moderator=true
+  const roomClaim = roomSegment
 
       const payload: any = {
         aud: 'jitsi',

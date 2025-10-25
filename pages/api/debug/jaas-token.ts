@@ -67,7 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         avatar: '',
         email: (auth as any)?.email || ''
       }
-      const roomClaim = moderator ? '*' : roomSegment
+  // Unify logic: everyone uses the concrete room segment; admins are moderators
+  const roomClaim = roomSegment
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat',

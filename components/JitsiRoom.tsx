@@ -36,7 +36,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         await loadScript(apiUrl)
         if (!mounted) return
 
-        let roomName = initialRoomName
+  let roomName = initialRoomName
         let jwtToken: string | undefined
 
         if (sessionId) {

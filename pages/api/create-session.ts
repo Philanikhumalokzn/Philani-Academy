@@ -17,16 +17,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { title, joinUrl, startsAt } = req.body
   if (!title || !joinUrl || !startsAt) return res.status(400).json({ message: 'Missing fields' })
 
-  // generate a random per-session password (8 hex chars) for Jitsi moderated rooms
-  const crypto = require('crypto')
-  const jitsiPassword = crypto.randomBytes(6).toString('hex')
-
   const rec = await prisma.sessionRecord.create({ data: {
     title,
     description: '',
     joinUrl,
     startsAt: new Date(startsAt),
-    jitsiPassword,
     createdBy: (token?.email as string) || 'unknown'
   } as any })
 

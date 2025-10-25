@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import JitsiRoom from '../components/JitsiRoom'
+// Jitsi/JaaS removed — replaced by a simple placeholder
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
-import SimpleJitsiEmbed from '../components/SimpleJitsiEmbed';
+// SimpleJitsiEmbed removed
 
 export default function Dashboard() {
   const { data: session, status } = useSession()
@@ -196,7 +196,6 @@ export default function Dashboard() {
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
         <div className="col-span-2">
-          {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
             {status !== 'authenticated' ? (

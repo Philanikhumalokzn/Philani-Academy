@@ -13,6 +13,8 @@ model User {
   name      String?
   email     String  @unique
   password  String
+  phone     String?
+  avatar    String?
   role      String  @default("student")
   createdAt DateTime @default(now())
 }
@@ -23,6 +25,19 @@ model SessionRecord {
   description String?
   joinUrl   String
   startsAt  DateTime
+  // jitsiPassword and jitsiActive removed
   createdBy String
   createdAt DateTime @default(now())
+}
+
+model SubscriptionPlan {
+  id           String  @id @default(cuid())
+  name         String
+  amount       Int     // amount in cents
+  currency     String  @default("usd")
+  stripePriceId String? // Stripe Price ID
+  payfastPlanId String? // PayFast Recurring Plan ID
+  payfastProductId String? // PayFast product ID (if applicable)
+  active       Boolean @default(false)
+  createdAt    DateTime @default(now())
 }

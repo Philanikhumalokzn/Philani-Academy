@@ -27,6 +27,7 @@ export default function Dashboard() {
   const payfastFormRef = React.createRef<HTMLFormElement>()
   const [secureRoomName, setSecureRoomName] = useState<string | null>(null)
   const [runningSession, setRunningSession] = useState<any | null>(null)
+  const [starting, setStarting] = useState(false)
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
@@ -199,23 +200,57 @@ export default function Dashboard() {
   // sessionId is optional — if provided, the embed will call /api/sessions/<sessionId>/token to get a JWT
   const sessionId = '<your-session-id-if-you-have-one>';
 
+  const isOwnerOrAdmin = Boolean(((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin')
+
+  async function startClass() {
+    if (!runningSession) return
+    try {
+      setStarting(true)
+      const res = await fetch(`/api/sessions/${runningSession.id}/present`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to start (${res.status})`)
+        return
+      }
+      // fetch the canonical secure room name immediately
+      const roomRes = await fetch(`/api/sessions/${runningSession.id}/room`)
+      if (roomRes.ok) {
+        const data = await roomRes.json()
+        if (data?.roomName) setSecureRoomName(data.roomName)
+      }
+      // refresh sessions to update status indicators
+      fetchSessions()
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    } finally {
+      setStarting(false)
+    }
+  }
+
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
         <div className="col-span-2">
-          {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
+          {/* Jitsi meeting area with gating: students wait until the class is started by owner/admin */}
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
             ) : secureRoomName ? (
-              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : sessions && sessions.length > 0 ? (
-              // The room endpoint now returns a full JaaS path when active; until then,
-              // embed a provisional full path using the workspace prefix + deterministic segment
-              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
+              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={runningSession ? runningSession.id : null} isOwner={isOwnerOrAdmin} />
+            ) : runningSession ? (
+              <div className="space-y-3">
+                {isOwnerOrAdmin ? (
+                  <>
+                    <div className="text-sm muted">Students can join once you start the class.</div>
+                    <button className="btn btn-primary" disabled={starting} onClick={startClass}>{starting ? 'Starting…' : 'Start class'}</button>
+                  </>
+                ) : (
+                  <div className="text-sm muted">Waiting for the instructor to start the class…</div>
+                )}
+              </div>
             ) : (
-              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
+              <div className="text-sm muted">No class is currently running.</div>
             )}
           </div>
           <div className="flex items-center justify-between mb-4">

@@ -16,15 +16,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!rec) return res.status(404).json({ message: 'Not found' })
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
-  const role = (token as any)?.role
-  const isAdmin = role === 'admin'
   const isOwner = ownerEmail && (token as any).email === ownerEmail
 
   // If session isn't active and requester is not owner, deny
   // The Prisma client types may not yet include `jitsiActive` until the migration is applied
   // so read it dynamically to avoid a TypeScript compile failure during deploy.
   const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !(isOwner || isAdmin)) {
+  if (!jitsiActive && !isOwner) {
     return res.status(403).json({ message: 'Meeting not started yet' })
   }
 

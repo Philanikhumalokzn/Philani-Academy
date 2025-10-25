@@ -20,12 +20,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!rec) return res.status(404).json({ message: 'Not found' })
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
-  const role = (authToken as any)?.role
-  const isAdmin = role === 'admin'
   const isOwner = ownerEmail && (authToken as any).email === ownerEmail
 
   const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !(isOwner || isAdmin)) return res.status(403).json({ message: 'Meeting not started yet' })
+  if (!jitsiActive && !isOwner) return res.status(403).json({ message: 'Meeting not started yet' })
 
   // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''

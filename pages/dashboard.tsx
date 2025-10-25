@@ -212,13 +212,53 @@ export default function Dashboard() {
             {(() => { const full = (n: string) => (n && n.includes('/') ? n : `${appId}/${n}`); return null })()}
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
-            ) : secureRoomName ? (
-              <JitsiRoom roomName={(secureRoomName && secureRoomName.includes('/')) ? secureRoomName : `${appId}/${secureRoomName}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : sessions && sessions.length > 0 ? (
-              <JitsiRoom roomName={`${appId}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : (
-              <JitsiRoom roomName={`${appId}/philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            )}
+            ) : (() => {
+              const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL
+              const role = (session as any)?.user?.role
+              const isOwner = ((session as any)?.user?.email === ownerEmail) || role === 'admin'
+              // Students: only render after secureRoomName is known (which implies jitsiActive true)
+              if (!isOwner) {
+                if (secureRoomName) {
+                  return (
+                    <JitsiRoom
+                      roomName={(secureRoomName && secureRoomName.includes('/')) ? secureRoomName : `${appId}/${secureRoomName}`}
+                      displayName={session?.user?.name || session?.user?.email}
+                      sessionId={sessions && sessions.length > 0 ? sessions[0].id : null}
+                      isOwner={false}
+                    />
+                  )
+                }
+                return <div className="text-sm muted">Waiting for the instructor to start the class…</div>
+              }
+              // Owner/Admin: allow early initialization using fallback naming
+              if (secureRoomName) {
+                return (
+                  <JitsiRoom
+                    roomName={(secureRoomName && secureRoomName.includes('/')) ? secureRoomName : `${appId}/${secureRoomName}`}
+                    displayName={session?.user?.name || session?.user?.email}
+                    sessionId={sessions && sessions.length > 0 ? sessions[0].id : null}
+                    isOwner={true}
+                  />
+                )
+              }
+              if (sessions && sessions.length > 0) {
+                return (
+                  <JitsiRoom
+                    roomName={`${appId}/philani-${sessions[0].id}`}
+                    displayName={session?.user?.name || session?.user?.email}
+                    sessionId={sessions[0].id}
+                    isOwner={true}
+                  />
+                )
+              }
+              return (
+                <JitsiRoom
+                  roomName={`${appId}/philani-public-room`}
+                  displayName={session?.user?.name || session?.user?.email}
+                  isOwner={true}
+                />
+              )
+            })()}
           </div>
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-2xl font-bold">Dashboard</h1>

@@ -7,11 +7,12 @@ type Props = {
   isOwner?: boolean
 }
 
-export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId }: Props) {
+export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId, isOwner }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
+  const [blockedReason, setBlockedReason] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -50,10 +51,26 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
               const tkJson = await tkRes.json().catch(() => null)
               jwtToken = tkJson?.token
               if (tkJson?.roomName) roomName = tkJson.roomName
+            } else {
+              // If token is required and we are not owner, block early join
+              if (!isOwner) {
+                setBlockedReason('Waiting for the instructor to start the class…')
+                return
+              }
             }
           } catch (err) {
             // token fetch failed; continue without JWT
             console.warn('Jitsi token fetch failed:', err)
+            if (!isOwner) {
+              setBlockedReason('Waiting for the instructor to start the class…')
+              return
+            }
+          }
+        } else {
+          // No sessionId: only allow owners/admins to initialize ad-hoc/public rooms
+          if (!isOwner) {
+            setBlockedReason('No active class. Please wait for the instructor to start.')
+            return
           }
         }
 
@@ -76,7 +93,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           } catch (e) { /* ignore */ }
         }
 
-        apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
+  apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
 
         // attach listeners safely
         try {
@@ -124,12 +141,18 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
   return (
     <div className="jitsi-room">
-      <div className="mb-2 flex gap-2">
-        <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
-        <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
-        <button className="btn btn-danger" onClick={hangup}>Leave</button>
-      </div>
-      <div ref={containerRef} style={{ width: '100%', height: 600 }} />
+      {blockedReason ? (
+        <div className="p-4 border rounded bg-gray-50 text-sm text-gray-700">{blockedReason}</div>
+      ) : (
+        <>
+          <div className="mb-2 flex gap-2">
+            <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
+            <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
+            <button className="btn btn-danger" onClick={hangup}>Leave</button>
+          </div>
+          <div ref={containerRef} style={{ width: '100%', height: 600 }} />
+        </>
+      )}
     </div>
   )
 }

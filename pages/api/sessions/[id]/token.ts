@@ -28,6 +28,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const h = crypto.createHmac('sha256', secret).update(String(id)).digest('hex').slice(0, 12)
   const roomSegment = `philani-${String(id)}-${h}`
 
+  // Optional: allow returning a provided TEST token while still computing roomName
+  // This mirrors the behavior from earlier revisions which Vercel logs referenced.
+  const testJwtEnv = process.env.TEST_JWT || process.env.JAAS_TEST_JWT || ''
+  if (testJwtEnv) {
+    const appIdForRoomName = process.env.JAAS_APP_ID || process.env.NEXT_PUBLIC_JAAS_APP_ID || process.env.JITSI_JAAS_APP_ID || ''
+    const roomName = appIdForRoomName ? `${appIdForRoomName}/${roomSegment}` : roomSegment
+    res.setHeader('X-Using-Test-JWT', '1')
+    res.setHeader('X-Token-Alg', 'TEST')
+    return res.status(200).json({ token: testJwtEnv, roomName })
+  }
+
   const now = Math.floor(Date.now() / 1000)
   // Match the HTML tool defaults closely: TTL defaults to 7200s (2h)
   const ttl = parseInt(process.env.JITSI_JAAS_EXP_SECS || '7200', 10)
@@ -69,9 +80,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: (authToken as any)?.email || ''
       }
 
-  // Unify join logic: everyone joins the same concrete room; admins/owner only get moderator=true
-  const roomClaim = roomSegment
-
       const payload: any = {
         aud: 'jitsi',
         iss: 'chat',
@@ -80,7 +88,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        room: roomClaim
+        // Use wildcard room so admins/owner can join any room without precomputing the name
+        room: '*'
       }
 
   const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })

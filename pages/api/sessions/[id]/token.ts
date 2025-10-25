@@ -19,11 +19,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) } })
   if (!rec) return res.status(404).json({ message: 'Not found' })
 
-  const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
-  const isOwner = ownerEmail && (authToken as any).email === ownerEmail
-
   const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !isOwner) return res.status(403).json({ message: 'Meeting not started yet' })
+  // Unified behavior: everyone waits until the meeting is marked active
+  if (!jitsiActive) return res.status(403).json({ message: 'Meeting not started yet' })
 
   // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''
@@ -46,10 +44,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const privateKey = jaasPriv.replace(/\\n/g, '\n')
 
-      // Determine moderator: admin role or owner email
-      const role = (authToken as any)?.role
-      const isAdmin = role === 'admin'
-      const moderator = Boolean(isOwner || isAdmin)
+  // Determine moderator based on role only; behavior is otherwise the same
+  const role = (authToken as any)?.role
+  const moderator = role === 'admin'
 
       // Features and user block copied from the provided client tool (with safe defaults)
       const features = {

@@ -7,7 +7,7 @@ export default function NavBar() {
   const role = (session as any)?.user?.role
   const [open, setOpen] = useState(false)
   return (
-    <nav className="bg-white border-b">
+    <nav className="bg-primary text-white">
       <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-3 items-center gap-4">
         {/* Left: logo */}
         <div className="flex items-center col-start-1">
@@ -19,24 +19,24 @@ export default function NavBar() {
         {/* Center: main nav (centered on desktop) */}
         <div className="hidden md:flex items-center justify-center col-start-2">
           <div className="flex items-center space-x-6">
-            <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
-            <Link href="/subscribe" className="hover:text-gray-700">Subscribe</Link>
+            <Link href="/dashboard" className="hover:opacity-90">Dashboard</Link>
+            <Link href="/subscribe" className="hover:opacity-90">Subscribe</Link>
           </div>
         </div>
 
         {/* Right: auth actions (right-aligned) */}
         <div className="flex items-center justify-end col-start-3">
           <div className="hidden md:flex items-center space-x-4">
-            {role && <span className="text-sm text-gray-600">{role}</span>}
+            {role && <span className="text-sm opacity-90">{role}</span>}
             {session ? (
               <>
                 <Link href="/profile" className="flex items-center space-x-2">
                   <img src={(session as any)?.user?.image || '/favicon.ico'} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
                 </Link>
-                <button onClick={() => signOut({ callbackUrl: '/' })} className="px-3 py-1 border rounded">Sign out</button>
+                <button onClick={() => signOut({ callbackUrl: '/' })} className="px-3 py-1 border rounded border-white/40 hover:bg-white/10">Sign out</button>
               </>
             ) : (
-              <Link href="/api/auth/signin" className="px-3 py-1 border rounded">Sign in</Link>
+              <Link href="/api/auth/signin" className="px-3 py-1 border rounded border-white/40 hover:bg-white/10">Sign in</Link>
             )}
           </div>
 
@@ -53,15 +53,15 @@ export default function NavBar() {
 
       {/* Mobile menu panel: centered, symmetric layout */}
       {open && (
-        <div className="md:hidden px-4 pb-4">
+        <div className="md:hidden px-4 pb-4 bg-primary/95 text-white">
           <div className="flex flex-col items-center space-y-3">
-            <Link href="/dashboard" className="block w-full text-center px-3 py-2 border rounded">Dashboard</Link>
-            <Link href="/subscribe" className="block w-full text-center px-3 py-2 border rounded">Subscribe</Link>
-            {role && <div className="text-sm text-gray-600">{role}</div>}
+            <Link href="/dashboard" className="block w-full text-center px-3 py-2 border rounded border-white/30">Dashboard</Link>
+            <Link href="/subscribe" className="block w-full text-center px-3 py-2 border rounded border-white/30">Subscribe</Link>
+            {role && <div className="text-sm opacity-90">{role}</div>}
             {session ? (
-              <button onClick={() => signOut({ callbackUrl: '/' })} className="w-full text-center px-3 py-2 border rounded">Sign out</button>
+              <button onClick={() => signOut({ callbackUrl: '/' })} className="w-full text-center px-3 py-2 border rounded border-white/30">Sign out</button>
             ) : (
-              <Link href="/api/auth/signin" className="block w-full text-center px-3 py-2 border rounded">Sign in</Link>
+              <Link href="/api/auth/signin" className="block w-full text-center px-3 py-2 border rounded border-white/30">Sign in</Link>
             )}
           </div>
         </div>

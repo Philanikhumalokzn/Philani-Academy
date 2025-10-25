@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Switched to Postgres for production (serverless-friendly hosted DB)
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String  @id @default(cuid())
+  name      String?
+  email     String  @unique
+  password  String
+  role      String  @default("student")
+  createdAt DateTime @default(now())
+}
+
+model SessionRecord {
+  id        String   @id @default(cuid())
+  title     String
+  description String?
+  joinUrl   String
+  startsAt  DateTime
+  createdBy String
+  createdAt DateTime @default(now())
+}

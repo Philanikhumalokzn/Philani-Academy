@@ -21,14 +21,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (authToken as any).email === ownerEmail
+  const role = (authToken as any)?.role
+  const isAdmin = role === 'admin'
 
-  const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !isOwner) return res.status(403).json({ message: 'Meeting not started yet' })
-
-  // Compute room name same as /room endpoint
+  // Compute room name (identical logic for everyone) up-front so we can
+  // always return the correct full room path, even while waiting.
   const secret = process.env.ROOM_SECRET || ''
   const h = crypto.createHmac('sha256', secret).update(String(id)).digest('hex').slice(0, 12)
   const roomSegment = `philani-${String(id)}-${h}`
+
+  const jitsiActive = (rec as any)?.jitsiActive ?? false
+  // IMPORTANT: Do not change admin/owner behavior. For learners and everyone else,
+  // return the correct room path early (without a token) so they land in the
+  // same room/lobby and can wait for the moderator. This avoids drifting into a
+  // different provisional room and ensures join requests are visible to admin.
+  if (!jitsiActive && !(isOwner || isAdmin)) {
+    const jaasAppForRoom = process.env.JAAS_APP_ID || process.env.JITSI_JAAS_APP_ID || ''
+    const fullRoomNamePending = jaasAppForRoom ? `${jaasAppForRoom}/${roomSegment}` : roomSegment
+    return res.status(200).json({ token: null, roomName: fullRoomNamePending, waitForModerator: true })
+  }
+
+  // Compute room name same as /room endpoint
 
   const now = Math.floor(Date.now() / 1000)
   // Match the HTML tool defaults closely: TTL defaults to 7200s (2h)
@@ -47,8 +60,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const privateKey = jaasPriv.replace(/\\n/g, '\n')
 
       // Determine moderator: admin role or owner email
-      const role = (authToken as any)?.role
-      const isAdmin = role === 'admin'
       const moderator = Boolean(isOwner || isAdmin)
 
       // Features and user block copied from the provided client tool (with safe defaults)
@@ -72,8 +83,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: (authToken as any)?.email || ''
       }
 
-      // For learners (non-owner/non-admin), lock token to a single room; for admins/owner, allow all rooms
-      const roomClaim = moderator ? '*' : roomSegment
+  // For learners (non-owner/non-admin), lock token to a single room; for admins/owner, allow all rooms
+  const roomClaim = moderator ? '*' : roomSegment
 
       const payload: any = {
         aud: 'jitsi',

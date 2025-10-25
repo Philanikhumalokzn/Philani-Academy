@@ -129,11 +129,6 @@ export default function Dashboard() {
       // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
       setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
     }
-    // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
-    try {
-      const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'
-      ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
-    } catch (e) {}
   }, [session])
 
   // Compute currently running session and fetch secure room name for it when sessions update
@@ -193,11 +188,9 @@ export default function Dashboard() {
     }
   }
 
-  // sample roomName from the dashboard
-  const roomName = 'vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4/SampleAppAliveIntensitiesSurveyFerociously';
-
-  // sessionId is optional — if provided, the embed will call /api/sessions/<sessionId>/token to get a JWT
-  const sessionId = '<your-session-id-if-you-have-one>';
+  // Helper flags
+  const appPrefix = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
+  const runningId = runningSession?.id || (sessions && sessions[0]?.id)
 
   return (
     <main className="min-h-screen p-8">
@@ -205,8 +198,20 @@ export default function Dashboard() {
         <div className="col-span-2">
           <div className="card mb-4">
             <h2 className="font-semibold mb-3">Live class</h2>
-            <div className="text-sm muted">Live classroom functionality has been removed.</div>
-            <div className="text-sm muted">To re-enable a video provider, add a new integration and update this dashboard.</div>
+            {status !== 'authenticated' ? (
+              <div className="text-sm muted">Please sign in to join the live class.</div>
+            ) : secureRoomName && runningId ? (
+              // Unified behavior: everyone joins the same room via the same tokenized path
+              <JitsiRoom
+                roomName={secureRoomName}
+                displayName={session?.user?.name || session?.user?.email}
+                sessionId={runningId}
+              />
+            ) : (
+              <div className="p-4 rounded border bg-gray-50 text-sm">
+                Waiting for class to start. Your page will refresh automatically when the session is live.
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-2xl font-bold">Dashboard</h1>

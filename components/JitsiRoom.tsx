@@ -7,24 +7,20 @@ type Props = {
   isOwner?: boolean
 }
 
-export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId, isOwner }: Props) {
+export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
-  const [blockedReason, setBlockedReason] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
 
     const loadScript = (url?: string) => {
       return new Promise<void>((resolve, reject) => {
-        if ((window as any).JitsiMeetExternalAPI) return resolve()
+        // Always ensure we load the JaaS script from 8x8.vc
         const script = document.createElement('script')
-        // Use the JaaS (8x8.vc) external API like the working HTML sample
-        // Prefer explicit NEXT_PUBLIC_JITSI_API_URL, otherwise default to 8x8 library URL
-        const defaultApi = 'https://8x8.vc/libs/external_api.min.js'
-        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || defaultApi
+        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
         script.async = true
         script.onload = () => resolve()
         script.onerror = () => reject(new Error('Failed to load Jitsi script'))
@@ -34,14 +30,14 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     const init = async () => {
       try {
-        // Match HTML sample: domain 8x8.vc and api from libs
+        // Match the working HTML sample: use 8x8.vc domain and JaaS external API
         const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
         const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
 
         await loadScript(apiUrl)
         if (!mounted) return
 
-  let roomName = initialRoomName
+        let roomName = initialRoomName
         let jwtToken: string | undefined
 
         if (sessionId) {
@@ -51,38 +47,21 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
               const tkJson = await tkRes.json().catch(() => null)
               jwtToken = tkJson?.token
               if (tkJson?.roomName) roomName = tkJson.roomName
-            } else {
-              // If token is required and we are not owner, block early join
-              if (!isOwner) {
-                setBlockedReason('Waiting for the instructor to start the class…')
-                return
-              }
             }
           } catch (err) {
             // token fetch failed; continue without JWT
             console.warn('Jitsi token fetch failed:', err)
-            if (!isOwner) {
-              setBlockedReason('Waiting for the instructor to start the class…')
-              return
-            }
-          }
-        } else {
-          // No sessionId: only allow owners/admins to initialize ad-hoc/public rooms
-          if (!isOwner) {
-            setBlockedReason('No active class. Please wait for the instructor to start.')
-            return
           }
         }
 
+        // Keep options minimal and aligned with the verified HTML snippet
         const options: any = {
           roomName,
           parentNode: containerRef.current,
-          interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
-          configOverwrite: { disableDeepLinking: true },
-          userInfo: { displayName: displayName || 'Learner' }
+          width: 500,
+          height: 500,
+          ...(jwtToken ? { jwt: jwtToken } : {}),
         }
-
-        if (jwtToken) options.jwt = jwtToken
 
         // DEV: log token/room used to initialize Jitsi so we can verify usage
         if (process.env.NODE_ENV !== 'production') {
@@ -103,25 +82,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           // ignore
         }
 
-        // attempt to apply a room password provided by the server
-        const applyPassword = async () => {
-          try {
-            if (!sessionId) return
-            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin', cache: 'no-store' })
-            if (!res.ok) return
-            const data = await res.json().catch(() => null)
-            const pw = data?.jitsiPassword
-            if (pw && apiRef.current && typeof apiRef.current.executeCommand === 'function') {
-              try { apiRef.current.executeCommand('password', pw) } catch (e) {
-                try { apiRef.current.executeCommand('setPassword', pw) } catch (err) {}
-              }
-            }
-          } catch (err) {
-            // ignore
-          }
-        }
-
-        setTimeout(() => { applyPassword() }, 800)
+        // Note: intentionally omitting password application and extra config to mirror the working HTML sample
       } catch (err) {
         console.error('Failed to initialize Jitsi', err)
       }
@@ -141,18 +102,12 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
   return (
     <div className="jitsi-room">
-      {blockedReason ? (
-        <div className="p-4 border rounded bg-gray-50 text-sm text-gray-700">{blockedReason}</div>
-      ) : (
-        <>
-          <div className="mb-2 flex gap-2">
-            <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
-            <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
-            <button className="btn btn-danger" onClick={hangup}>Leave</button>
-          </div>
-          <div ref={containerRef} style={{ width: '100%', height: 600 }} />
-        </>
-      )}
+      <div className="mb-2 flex gap-2">
+        <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
+        <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
+        <button className="btn btn-danger" onClick={hangup}>Leave</button>
+      </div>
+      <div ref={containerRef} style={{ width: '100%', height: 600 }} />
     </div>
   )
 }

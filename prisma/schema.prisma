@@ -15,6 +15,17 @@ model User {
   password  String
   role      String  @default("student")
   createdAt DateTime @default(now())
+  
+  // Profile enrichment fields
+  avatarUrl String?
+  bio       String?
+  race      String? // Consider constraining via enum in a future migration
+  idNumber  String? @unique
+  birthDate DateTime?
+
+  // Relations
+  phoneNumbers  PhoneNumber[]
+  teacherProfile TeacherProfile?
 }
 
 model SessionRecord {
@@ -25,4 +36,40 @@ model SessionRecord {
   startsAt  DateTime
   createdBy String
   createdAt DateTime @default(now())
+}
+
+model PhoneNumber {
+  id         String   @id @default(cuid())
+  userId     String
+  number     String
+  label      String?
+  isPrimary  Boolean  @default(false)
+  verified   Boolean  @default(false)
+  // ephemeral verification state
+  codeHash    String?
+  codeExpiresAt DateTime?
+  lastSentAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, number])
+  @@index([userId])
+}
+
+model TeacherProfile {
+  userId          String  @id
+  title           String?
+  subjects        String? // comma-separated list
+  experienceYears Int?    @default(0)
+  qualifications  String?
+  website         String?
+  twitter         String?
+  linkedin        String?
+  officeHours     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

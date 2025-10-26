@@ -45,3 +45,27 @@ Branding suggestions
 - Colors: Primary blue (#1D4ED8) and white accent for a clean educational look
 - Logo: simple wordmark SVG is included at `public/logo.svg`. Replace with a designer artwork for production.
 - Fonts: Use Inter or system-sans for modern legibility.
+
+## Profile enrichment (new)
+
+The Profile page supports:
+
+- Avatar: upload an image or capture via camera (stored in `public/avatars` in development).
+- Bio, Race, and South African ID number (birth date is derived and validated).
+- Multiple phone numbers with verification codes (provider-agnostic; integrate your own SMS provider).
+- Teacher/Admin fields: title, subjects, experience, qualifications, website and socials, office hours.
+
+Database changes add `PhoneNumber` and `TeacherProfile` models and extend the `User` model with `avatarUrl`, `bio`, `race`, `idNumber`, and `birthDate`.
+
+Notes:
+
+- In production on Vercel, writing to the filesystem is ephemeral. For avatars, integrate with an object store (e.g., Cloudinary, S3) and adjust `/api/profile/avatar`.
+- Phone verification endpoints store hashed codes and expiry. When `DEBUG=1`, the start endpoint returns the code for testing. Hook up your SMS provider to actually send messages.
+
+Migrations and Prisma:
+
+```powershell
+npm run prisma:migrate ; npm run prisma:generate
+```
+
+If you already have data, confirm new columns default to NULL and relations are optional.

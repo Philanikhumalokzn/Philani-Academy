@@ -211,17 +211,11 @@ export default function Dashboard() {
             ) : secureRoomName ? (
               <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : sessions && sessions.length > 0 ? (
-              ((session as any)?.user?.role === 'admin' || (session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) ? (
-                // Allow moderators to join early so they can enable the lobby and start the class
-                <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={true} />
-              ) : (
-                // Learners must wait until the moderator starts the class (jitsiActive=true)
-                <div className="p-4 rounded border bg-orange-50 text-orange-800 text-sm">
-                  Waiting for the instructor to start the class. This page will refresh automatically.
-                </div>
-              )
+              // The room endpoint now returns a full JaaS path when active; until then,
+              // embed a provisional full path using the workspace prefix + deterministic segment
+              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : (
-              <div className="text-sm muted">No live session available right now.</div>
+              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             )}
           </div>
           <div className="flex items-center justify-between mb-4">

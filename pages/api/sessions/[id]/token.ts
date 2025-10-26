@@ -31,12 +31,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const roomSegment = `philani-${String(id)}-${h}`
 
   const jitsiActive = (rec as any)?.jitsiActive ?? false
-  // When the session isn't active yet and the requester is not a moderator,
-  // do NOT reveal the room name and do NOT issue a token. This prevents early
-  // learners from entering before the moderator and guarantees lobby gating
-  // once the moderator enables it.
+  // IMPORTANT: Do not change admin/owner behavior. For learners and everyone else,
+  // return the correct room path early (without a token) so they land in the
+  // same room/lobby and can wait for the moderator. This avoids drifting into a
+  // different provisional room and ensures join requests are visible to admin.
   if (!jitsiActive && !(isOwner || isAdmin)) {
-    return res.status(200).json({ token: null, roomName: null, waitForModerator: true })
+    const jaasAppForRoom = process.env.JAAS_APP_ID || process.env.JITSI_JAAS_APP_ID || ''
+    const fullRoomNamePending = jaasAppForRoom ? `${jaasAppForRoom}/${roomSegment}` : roomSegment
+    return res.status(200).json({ token: null, roomName: fullRoomNamePending, waitForModerator: true })
   }
 
   // Compute room name same as /room endpoint

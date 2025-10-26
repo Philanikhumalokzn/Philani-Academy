@@ -213,7 +213,7 @@ export default function Dashboard() {
             ) : sessions && sessions.length > 0 ? (
               // Only allow moderators (owner/admin) to join before the class is marked active.
               // Learners see a waiting notice so they don't enter before a moderator enables the lobby.
-              (((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin')) ? (
+              ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL || (session as any)?.user?.role === 'admin') ? (
                 <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={true} />
               ) : (
                 <div className="p-4 rounded border bg-gray-50 text-sm">

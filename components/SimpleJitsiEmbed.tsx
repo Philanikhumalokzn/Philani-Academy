@@ -83,6 +83,24 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
 
         // attach to window for debugging if needed
         (window as any).__jitsiApi = apiInstance;
+
+        // Best-effort: if this client is a moderator (owner/admin), enable lobby automatically
+        const maybeEnableLobby = () => {
+          try {
+            const isOwner = Boolean((window as any).__JITSI_IS_OWNER__)
+            if (!isOwner || !apiInstance) return
+            try { apiInstance.executeCommand('toggleLobby', true); return } catch (_) {}
+            try { apiInstance.executeCommand('lobby.enable', true); return } catch (_) {}
+            try { apiInstance.executeCommand('toggleLobby'); return } catch (_) {}
+            if (typeof (apiInstance as any).setLobbyEnabled === 'function') {
+              try { (apiInstance as any).setLobbyEnabled(true) } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        try {
+          apiInstance.addEventListener('videoConferenceJoined', maybeEnableLobby)
+          apiInstance.addEventListener('participantRoleChanged', (e: any) => { if (e?.role === 'moderator') maybeEnableLobby() })
+        } catch (_) {}
       } catch (err) {
         console.error('Failed to initialize Jitsi', err);
       }

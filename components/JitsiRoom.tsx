@@ -4,14 +4,16 @@ type Props = {
   roomName: string
   displayName?: string
   sessionId?: string | number | null
+  // Treat owner/admin as moderator for enabling lobby automatically
   isOwner?: boolean
 }
 
-export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId }: Props) {
+export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId, isOwner }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
+  const [lobbyEnabled, setLobbyEnabled] = useState<boolean>(false)
 
   useEffect(() => {
     let mounted = true
@@ -59,7 +61,11 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           roomName,
           parentNode: containerRef.current,
           interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
-          configOverwrite: { disableDeepLinking: true },
+          // Keep config minimal; prejoin can help users set devices before knocking
+          configOverwrite: {
+            disableDeepLinking: true,
+            prejoinConfig: { enabled: true }
+          },
           userInfo: { displayName: displayName || 'Learner' }
         }
 
@@ -74,12 +80,48 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           } catch (e) { /* ignore */ }
         }
 
-        apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
+  apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
 
         // attach listeners safely
+        const enableLobbyIfModerator = () => {
+          // Only attempt if we think this user is a moderator (owner/admin) or when the role flips to moderator
+          const shouldEnable = Boolean(isOwner || (window as any).__JITSI_IS_OWNER__)
+          if (!shouldEnable || !apiRef.current) return
+          // Try known commands to enable the lobby; different deployments expose different APIs
+          try {
+            // Preferred: explicit enable if supported
+            if (typeof apiRef.current.executeCommand === 'function') {
+              try { apiRef.current.executeCommand('toggleLobby', true); setLobbyEnabled(true); return } catch (_) {}
+              try { apiRef.current.executeCommand('lobby.enable', true); setLobbyEnabled(true); return } catch (_) {}
+              // Fallback: plain toggle (best-effort)
+              try { apiRef.current.executeCommand('toggleLobby'); setLobbyEnabled(prev => !prev); return } catch (_) {}
+            }
+            // Some builds expose an API method
+            if (typeof apiRef.current.setLobbyEnabled === 'function') {
+              try { apiRef.current.setLobbyEnabled(true); setLobbyEnabled(true); return } catch (_) {}
+            }
+          } catch (e) {
+            // ignore errors; lobby may not be available or already enabled
+          }
+        }
+
         try {
           apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => setAudioMuted(e.muted))
           apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => setVideoMuted(e.muted))
+          // When the local user joins, attempt to enable lobby if they are moderator
+          apiRef.current.addEventListener('videoConferenceJoined', () => {
+            enableLobbyIfModerator()
+          })
+          // If role changes to moderator after join (e.g., token upgrade), enable lobby then
+          apiRef.current.addEventListener('participantRoleChanged', (e: any) => {
+            if (e?.role === 'moderator') {
+              enableLobbyIfModerator()
+            }
+          })
+          // Surface knocking events for moderator; built-in UI shows a prompt, but logging helps during testing
+          apiRef.current.addEventListener('knockingParticipant', (e: any) => {
+            try { console.log('[JITSI] knockingParticipant:', e) } catch (_) {}
+          })
         } catch (err) {
           // ignore
         }

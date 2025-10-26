@@ -211,15 +211,9 @@ export default function Dashboard() {
             ) : secureRoomName ? (
               <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : sessions && sessions.length > 0 ? (
-              // Only allow moderators (owner/admin) to join before the class is marked active.
-              // Learners see a waiting notice so they don't enter before a moderator enables the lobby.
-              ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL || (session as any)?.user?.role === 'admin') ? (
-                <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={true} />
-              ) : (
-                <div className="p-4 rounded border bg-gray-50 text-sm">
-                  Waiting for moderator to start the class. You'll be able to join once the session is opened.
-                </div>
-              )
+              // The room endpoint now returns a full JaaS path when active; until then,
+              // embed a provisional full path using the workspace prefix + deterministic segment
+              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : (
               <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             )}

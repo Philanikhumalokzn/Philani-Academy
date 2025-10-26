@@ -110,15 +110,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => setVideoMuted(e.muted))
           // When the local user joins, attempt to enable lobby if they are moderator
           apiRef.current.addEventListener('videoConferenceJoined', () => {
-            // Enable lobby promptly when moderator joins
             enableLobbyIfModerator()
-            // If this user is the moderator/owner, mark the session as started so learners can join
-            try {
-              if (isOwner && sessionId) {
-                const id = String(sessionId)
-                fetch(`/api/sessions/${id}/present`, { method: 'POST', credentials: 'same-origin' }).catch(() => {})
-              }
-            } catch (_) { /* ignore */ }
           })
           // If role changes to moderator after join (e.g., token upgrade), enable lobby then
           apiRef.current.addEventListener('participantRoleChanged', (e: any) => {

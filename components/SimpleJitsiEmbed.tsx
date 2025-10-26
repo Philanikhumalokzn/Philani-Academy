@@ -28,6 +28,25 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
 
       try {
         let token: string | undefined;
+        const isOwner = Boolean((window as any).__JITSI_IS_OWNER__)
+        const mustBeModerator = isOwner && !!sessionId
+        const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
+        let effectiveRoomName = roomName
+        const fetchTokenOnce = async () => {
+          if (!sessionId) return undefined
+          try {
+            const res = await fetch(`/api/sessions/${sessionId}/token`, { cache: 'no-store', credentials: 'same-origin' });
+            if (res.ok) {
+              const body = await res.json();
+              if (body?.roomName) {
+                // Replace provided roomName with authoritative one from server
+                effectiveRoomName = body.roomName
+              }
+              return body?.token as string | undefined
+            }
+          } catch {}
+          return undefined
+        }
 
         // DEV override: allow quick testing with a token from the URL
         // Usage: append ?jaas_token=<your_token> to the page or set window.JAAS_TEST_TOKEN
@@ -49,13 +68,12 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
         }
 
         if (!token && sessionId) {
-          // try to fetch a short lived JWT from our server endpoint
-          const res = await fetch(`/api/sessions/${sessionId}/token`, { cache: 'no-store' });
-          if (res.ok) {
-            const body = await res.json();
-            token = body?.token;
-          } else {
-            console.warn('/api/sessions/[id]/token returned', res.status);
+          // Moderators: retry a few times to ensure we get a token before joining
+          let attempts = mustBeModerator ? 3 : 1
+          while (attempts-- > 0 && !token) {
+            token = await fetchTokenOnce()
+            if (token || !mustBeModerator) break
+            await sleep(600)
           }
         }
 
@@ -76,7 +94,7 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
         }
 
         apiInstance = new Jitsi(domain, {
-          roomName,
+          roomName: effectiveRoomName,
           parentNode: containerRef.current,
           jwt: token,
         });

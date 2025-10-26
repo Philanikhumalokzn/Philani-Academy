@@ -43,17 +43,33 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
   let roomName = initialRoomName
         let jwtToken: string | undefined
 
-        if (sessionId) {
+        const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
+
+        const fetchTokenOnce = async (): Promise<{ token?: string; roomName?: string } | null> => {
+          if (!sessionId) return null
           try {
             const tkRes = await fetch(`/api/sessions/${sessionId}/token`, { credentials: 'same-origin', cache: 'no-store' })
-            if (tkRes.ok) {
-              const tkJson = await tkRes.json().catch(() => null)
+            if (!tkRes.ok) return null
+            const tkJson = await tkRes.json().catch(() => null)
+            return tkJson
+          } catch {
+            return null
+          }
+        }
+
+        // Moderators must join with a token to bypass lobby consistently. If this user
+        // is an owner/admin, wait and retry a few times for the token before initializing.
+        const mustBeModerator = Boolean(isOwner || (window as any).__JITSI_IS_OWNER__)
+        if (sessionId) {
+          let attempts = mustBeModerator ? 3 : 1
+          while (attempts-- > 0 && mounted) {
+            const tkJson = await fetchTokenOnce()
+            if (tkJson?.token || !mustBeModerator) {
               jwtToken = tkJson?.token
               if (tkJson?.roomName) roomName = tkJson.roomName
+              break
             }
-          } catch (err) {
-            // token fetch failed; continue without JWT
-            console.warn('Jitsi token fetch failed:', err)
+            await sleep(600)
           }
         }
 

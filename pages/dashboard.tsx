@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [minStartsAt, setMinStartsAt] = useState('')
+  const [sessionGrade, setSessionGrade] = useState<number>(12)
   const [sessions, setSessions] = useState<any[]>([])
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
@@ -42,7 +43,7 @@ export default function Dashboard() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso })
+        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso, grade: sessionGrade })
       })
 
       if (res.ok) {
@@ -231,6 +232,16 @@ export default function Dashboard() {
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
                 <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
                 <div>
+                  <label className="block text-sm mb-1">Grade</label>
+                  <select className="input" value={sessionGrade} onChange={e => setSessionGrade(parseInt(e.target.value))}>
+                    <option value={8}>Grade 8</option>
+                    <option value={9}>Grade 9</option>
+                    <option value={10}>Grade 10</option>
+                    <option value={11}>Grade 11</option>
+                    <option value={12}>Grade 12</option>
+                  </select>
+                </div>
+                <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>
               </form>
@@ -246,7 +257,7 @@ export default function Dashboard() {
                 <li key={s.id} className="p-3 rounded flex items-center justify-between border">
                   <div>
                     <div className="font-medium">{s.title}</div>
-                    <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                    <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()} • Grade {s.grade || '-'}</div>
                   </div>
                   <div>
                     <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>

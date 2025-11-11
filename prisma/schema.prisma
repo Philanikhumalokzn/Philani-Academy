@@ -37,6 +37,7 @@ model SessionRecord {
   startsAt  DateTime
   createdBy String
   createdAt DateTime @default(now())
+  grade     Int      @default(12)
 }
 
 model PhoneNumber {

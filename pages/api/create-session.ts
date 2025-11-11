@@ -14,8 +14,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = token.role as string | undefined
   if (!role || (role !== 'admin' && role !== 'teacher')) return res.status(403).json({ message: 'Forbidden' })
 
-  const { title, joinUrl, startsAt } = req.body
+  const { title, joinUrl, startsAt, grade } = req.body
   if (!title || !joinUrl || !startsAt) return res.status(400).json({ message: 'Missing fields' })
+  const g = Number(grade)
+  if (!Number.isInteger(g) || g < 8 || g > 12) return res.status(400).json({ message: 'Grade must be between 8 and 12' })
 
   // generate a random per-session password (8 hex chars) for Jitsi moderated rooms
   const crypto = require('crypto')
@@ -27,6 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     joinUrl,
     startsAt: new Date(startsAt),
     jitsiPassword,
+    grade: g,
     createdBy: (token?.email as string) || 'unknown'
   } as any })
 

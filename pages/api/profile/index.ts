@@ -15,6 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       include: {
         phoneNumbers: true,
         teacherProfile: true,
+        studentProfile: true,
       },
     } as any)
     if (!user) return res.status(404).json({ message: 'User not found' })
@@ -32,6 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       avatarUrl,
       phoneNumbers,
       teacherProfile,
+      studentProfile,
     } = req.body || {}
     try {
       const data: any = {}
@@ -72,6 +74,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } as any)
       }
 
+      // Upsert student profile. For student role, enforce required fields.
+      if (studentProfile || role === 'student') {
+        const sp = studentProfile || {}
+        const grade = Number(sp.grade)
+        const schoolName = typeof sp.schoolName === 'string' ? sp.schoolName.trim() : ''
+
+        if (role === 'student') {
+          if (!Number.isInteger(grade) || grade < 8 || grade > 12) {
+            return res.status(400).json({ message: 'Grade must be an integer between 8 and 12.' })
+          }
+          if (!schoolName) {
+            return res.status(400).json({ message: 'School name is required.' })
+          }
+        }
+
+        if (Number.isInteger(grade) || schoolName) {
+          const spData: any = {}
+          if (Number.isInteger(grade)) spData.grade = grade
+          if (schoolName) spData.schoolName = schoolName
+          await (prisma as any).studentProfile.upsert({
+            where: { userId },
+            update: spData,
+            create: { userId, grade: grade || 8, schoolName: schoolName || 'Unknown' },
+          } as any)
+        }
+      }
+
       // Phone numbers upsert (create/update basic fields; verification handled in dedicated endpoints)
       if (Array.isArray(phoneNumbers)) {
         // Fetch existing to determine deletes if needed
@@ -108,7 +137,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
-      return res.status(200).json({ id: updated.id })
+  return res.status(200).json({ id: updated.id })
     } catch (err) {
       console.error('PUT /api/profile error', err)
       return res.status(500).json({ message: 'Server error' })

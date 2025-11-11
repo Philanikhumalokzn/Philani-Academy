@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [phones, setPhones] = useState<any[]>([])
   const [tp, setTp] = useState<any>({}) // teacher profile
+  const [sp, setSp] = useState<any>({ grade: '', schoolName: '' }) // student profile
   const [saving, setSaving] = useState(false)
 
   // camera capture state
@@ -40,6 +41,7 @@ export default function ProfilePage() {
         setAvatarUrl(data.avatarUrl || '')
         setPhones(Array.isArray(data.phoneNumbers) ? data.phoneNumbers : [])
         setTp(data.teacherProfile || {})
+        setSp(data.studentProfile ? { grade: data.studentProfile.grade ?? '', schoolName: data.studentProfile.schoolName ?? '' } : { grade: '', schoolName: '' })
       }
     } catch (e) {
     } finally { setLoading(false) }
@@ -48,7 +50,22 @@ export default function ProfilePage() {
   async function save() {
     setSaving(true)
     try {
-      const res = await fetch('/api/profile', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, bio, race, idNumber, avatarUrl, phoneNumbers: phones, teacherProfile: (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'teacher' ? tp : undefined }) })
+      // Basic client-side validation for students
+      const isStudent = (session?.user as any)?.role === 'student'
+      if (isStudent) {
+        const g = Number(sp.grade)
+        if (!Number.isInteger(g) || g < 8 || g > 12) {
+          alert('Please select a grade between 8 and 12.')
+          setSaving(false)
+          return
+        }
+        if (!sp.schoolName || !sp.schoolName.trim()) {
+          alert('Please enter your school name.')
+          setSaving(false)
+          return
+        }
+      }
+      const res = await fetch('/api/profile', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, bio, race, idNumber, avatarUrl, phoneNumbers: phones, teacherProfile: (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'teacher' ? tp : undefined, studentProfile: (session?.user as any)?.role === 'student' ? { grade: Number(sp.grade), schoolName: sp.schoolName } : undefined }) })
       if (res.ok) {
         alert('Profile updated')
         fetchProfile()
@@ -258,6 +275,30 @@ export default function ProfilePage() {
                     <input className="input" placeholder="e.g. Mon–Fri 14:00–16:00" value={tp.officeHours || ''} onChange={e => setTp((s: any) => ({ ...s, officeHours: e.target.value }))} />
                   </div>
                 </div>
+              </div>
+            )}
+            {/* Student fields */}
+            {((session?.user as any)?.role === 'student') && (
+              <div className="pt-4 border-t">
+                <h3 className="font-medium mb-2">Student details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm">Current grade<span className="text-red-600"> *</span></label>
+                    <select className="input" value={sp.grade} onChange={e => setSp((s: any) => ({ ...s, grade: e.target.value }))}>
+                      <option value="">Select…</option>
+                      <option value="8">Grade 8</option>
+                      <option value="9">Grade 9</option>
+                      <option value="10">Grade 10</option>
+                      <option value="11">Grade 11</option>
+                      <option value="12">Grade 12</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm">School name<span className="text-red-600"> *</span></label>
+                    <input className="input" value={sp.schoolName} onChange={e => setSp((s: any) => ({ ...s, schoolName: e.target.value }))} placeholder="Your current school" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Fields marked * are required.</p>
               </div>
             )}
             <div>

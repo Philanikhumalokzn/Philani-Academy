@@ -37,12 +37,6 @@ model SessionRecord {
   startsAt  DateTime
   createdBy String
   createdAt DateTime @default(now())
-  // Grade gating and Jitsi runtime flags
-  grade     Int
-  jitsiActive Boolean @default(false)
-  jitsiPassword String?
-
-  @@index([grade])
 }
 
 model PhoneNumber {

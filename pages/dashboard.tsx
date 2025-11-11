@@ -11,7 +11,6 @@ export default function Dashboard() {
   const [startsAt, setStartsAt] = useState('')
   const [minStartsAt, setMinStartsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
-  const [sessionGrade, setSessionGrade] = useState<number | ''>('')
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
@@ -43,15 +42,14 @@ export default function Dashboard() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso, grade: sessionGrade })
+        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso })
       })
 
       if (res.ok) {
         alert('Session created')
         setTitle('')
         setJoinUrl('')
-  setStartsAt('')
-  setSessionGrade('')
+        setStartsAt('')
         fetchSessions()
         return
       }
@@ -73,9 +71,7 @@ export default function Dashboard() {
   }
 
   async function fetchSessions() {
-    // If student, server will auto-filter; if admin/teacher and a grade is selected, pass ?grade
-    const gradeFilter = (session as any)?.user?.role !== 'student' && sessionGrade ? `?grade=${sessionGrade}` : ''
-    const res = await fetch(`/api/sessions${gradeFilter}`, { credentials: 'same-origin' })
+  const res = await fetch('/api/sessions', { credentials: 'same-origin' })
     if (res.ok) {
       const data = await res.json()
       setSessions(data)
@@ -234,10 +230,6 @@ export default function Dashboard() {
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
                 <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
-                <select className="input" value={sessionGrade} onChange={e => setSessionGrade(e.target.value ? parseInt(e.target.value) : '')}>
-                  <option value="">Select grade…</option>
-                  {[8,9,10,11,12].map(g => <option key={g} value={g}>Grade {g}</option>)}
-                </select>
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>
@@ -254,7 +246,7 @@ export default function Dashboard() {
                 <li key={s.id} className="p-3 rounded flex items-center justify-between border">
                   <div>
                     <div className="font-medium">{s.title}</div>
-                    <div className="text-sm muted">Grade {s.grade} • {new Date(s.startsAt).toLocaleString()}</div>
+                    <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
                   </div>
                   <div>
                     <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>

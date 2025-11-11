@@ -24,22 +24,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = (authToken as any)?.role
   const isAdmin = role === 'admin'
 
-  // Grade gate: students may only access tokens for their own grade
-  if (!isOwner && !isAdmin) {
-    try {
-      const userId = (authToken as any)?.sub || (authToken as any)?.id
-      if (userId) {
-        const sp = await (prisma as any).studentProfile.findUnique({ where: { userId } } as any)
-        const sessionGrade = (rec as any).grade
-        if (sp?.grade && Number.isInteger(sessionGrade) && sp.grade !== sessionGrade) {
-          return res.status(403).json({ message: 'Forbidden: wrong grade for this session' })
-        }
-      }
-    } catch (e) { /* ignore and continue if lookup fails */ }
-  }
-
-  
-
   // Compute room name (identical logic for everyone) up-front so we can
   // always return the correct full room path, even while waiting.
   const secret = process.env.ROOM_SECRET || ''

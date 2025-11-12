@@ -5,9 +5,11 @@ type Props = {
   displayName?: string
   sessionId?: string | number | null
   isOwner?: boolean
+  tokenEndpoint?: string | null
+  passwordEndpoint?: string | null
 }
 
-export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId }: Props) {
+export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId, tokenEndpoint, passwordEndpoint }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(false)
@@ -41,9 +43,11 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
   let roomName = initialRoomName
         let jwtToken: string | undefined
 
-        if (sessionId) {
+        const tokenUrl = tokenEndpoint ?? (sessionId != null ? `/api/sessions/${sessionId}/token` : null)
+
+        if (tokenUrl) {
           try {
-            const tkRes = await fetch(`/api/sessions/${sessionId}/token`, { credentials: 'same-origin', cache: 'no-store' })
+            const tkRes = await fetch(tokenUrl, { credentials: 'same-origin', cache: 'no-store' })
             if (tkRes.ok) {
               const tkJson = await tkRes.json().catch(() => null)
               jwtToken = tkJson?.token
@@ -87,8 +91,9 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         // attempt to apply a room password provided by the server
         const applyPassword = async () => {
           try {
-            if (!sessionId) return
-            const res = await fetch(`/api/sessions/${sessionId}/password`, { credentials: 'same-origin', cache: 'no-store' })
+            const passwordUrl = passwordEndpoint ?? (sessionId != null ? `/api/sessions/${sessionId}/password` : null)
+            if (!passwordUrl) return
+            const res = await fetch(passwordUrl, { credentials: 'same-origin', cache: 'no-store' })
             if (!res.ok) return
             const data = await res.json().catch(() => null)
             const pw = data?.jitsiPassword
@@ -114,7 +119,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       mounted = false
       try { apiRef.current?.dispose() } catch (e) {}
     }
-  }, [initialRoomName, sessionId, displayName])
+  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint])
 
   const toggleAudio = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleAudio') }
   const toggleVideo = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleVideo') }

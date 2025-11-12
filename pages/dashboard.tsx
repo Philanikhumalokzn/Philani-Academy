@@ -340,6 +340,8 @@ export default function Dashboard() {
                 roomName={adminRoomName}
                 displayName={session?.user?.name || session?.user?.email}
                 sessionId={null}
+                tokenEndpoint="/api/sessions/admin/token"
+                passwordEndpoint={null}
                 isOwner
               />
             ) : secureRoomName ? (

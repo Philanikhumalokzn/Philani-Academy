@@ -14,9 +14,11 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
+  const [initError, setInitError] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
+    setInitError(null)
 
     const loadScript = (url?: string) => {
       return new Promise<void>((resolve, reject) => {
@@ -52,10 +54,19 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
               const tkJson = await tkRes.json().catch(() => null)
               jwtToken = tkJson?.token
               if (tkJson?.roomName) roomName = tkJson.roomName
+            } else {
+              if (tkRes.status === 403) {
+                setInitError('You do not have access to this meeting.')
+              } else {
+                setInitError(`Failed to fetch meeting token (${tkRes.status}).`)
+              }
+              return
             }
           } catch (err) {
             // token fetch failed; continue without JWT
             console.warn('Jitsi token fetch failed:', err)
+            setInitError('Unable to fetch meeting token. Please try again.')
+            return
           }
         }
 
@@ -110,6 +121,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         setTimeout(() => { applyPassword() }, 800)
       } catch (err) {
         console.error('Failed to initialize Jitsi', err)
+        setInitError('Failed to initialize the meeting embed.')
       }
     }
 
@@ -127,6 +139,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
   return (
     <div className="jitsi-room">
+      {initError && <div className="mb-2 text-sm text-red-600">{initError}</div>}
       <div className="mb-2 flex gap-2">
         <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
         <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>

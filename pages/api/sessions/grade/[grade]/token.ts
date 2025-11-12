@@ -2,9 +2,25 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
+import { GradeValue, normalizeGradeInput } from '../../../../../lib/grades'
+
+function buildRoomSegment(grade: GradeValue, secret: string) {
+  const baseKey = `grade-${grade}`
+  if (!secret) {
+    return `philani-${grade.toLowerCase().replace(/_/g, '-')}`
+  }
+  const hash = crypto.createHmac('sha256', secret).update(baseKey).digest('hex').slice(0, 12)
+  return `philani-${grade.toLowerCase().replace(/_/g, '-')}-${hash}`
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
+
+  const gradeParam = Array.isArray(req.query.grade) ? req.query.grade[0] : req.query.grade
+  const normalizedGrade = normalizeGradeInput(typeof gradeParam === 'string' ? gradeParam : undefined)
+  if (!normalizedGrade) {
+    return res.status(400).json({ message: 'Invalid grade' })
+  }
 
   const authToken = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!authToken) return res.status(401).json({ message: 'Unauthorized' })
@@ -13,19 +29,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (authToken as any)?.email === ownerEmail
   const isAdmin = role === 'admin'
-  if (!isAdmin && !isOwner) {
+  const isTeacher = role === 'teacher'
+  const isStudent = role === 'student'
+  const userGrade = normalizeGradeInput((authToken as any)?.grade as string | undefined)
+
+  if ((isStudent || isTeacher) && userGrade !== normalizedGrade) {
+    return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+  }
+
+  if (!isAdmin && !isOwner && !isTeacher && !isStudent) {
     return res.status(403).json({ message: 'Forbidden' })
   }
 
-  const isModerator = true
-  const displayName = (authToken as any)?.name || (authToken as any)?.email || 'Admin'
-  const userId = (authToken as any)?.sub || (authToken as any)?.email || 'admin'
-
   const secret = process.env.ROOM_SECRET || ''
-  const baseKey = 'philani-admin-room'
-  const roomSegment = secret
-    ? `philani-admin-${crypto.createHmac('sha256', secret).update(baseKey).digest('hex').slice(0, 12)}`
-    : baseKey
+  const roomSegment = buildRoomSegment(normalizedGrade, secret)
 
   const now = Math.floor(Date.now() / 1000)
   const ttl = parseInt(process.env.JITSI_JAAS_EXP_SECS || '7200', 10)
@@ -34,6 +51,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const jaasPriv = process.env.JAAS_PRIVATE_KEY || ''
   const jaasKid = process.env.JAAS_KEY_ID || ''
   const jaasApp = process.env.JAAS_APP_ID || ''
+
+  const isModerator = Boolean(isAdmin || isOwner || isTeacher)
+  const displayName = (authToken as any)?.name || (authToken as any)?.email || (isModerator ? 'Instructor' : 'Learner')
+  const userId = (authToken as any)?.sub || (authToken as any)?.email || (isModerator ? 'instructor' : 'learner')
 
   if (jaasPriv && jaasKid && jaasApp) {
     try {
@@ -74,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const fullRoomName = `${jaasApp}/${roomSegment}`
       return res.status(200).json({ token, roomName: fullRoomName })
     } catch (err: any) {
-      console.error('Admin RS256 signing failed', err)
+      console.error('Grade token RS256 signing failed', err)
       return res.status(500).json({ message: 'Failed to sign token (RS256)', error: String(err) })
     }
   }

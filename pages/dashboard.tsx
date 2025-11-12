@@ -31,19 +31,24 @@ export default function Dashboard() {
   const [planCurrency, setPlanCurrency] = useState('usd')
   const [plansLoading, setPlansLoading] = useState(false)
   const [payfastAvailable, setPayfastAvailable] = useState(false)
-  const [secureRoomName, setSecureRoomName] = useState<string | null>(null)
-  const [runningSession, setRunningSession] = useState<any | null>(null)
 
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
   const userRole = (session as any)?.user?.role as string | undefined
   const isAdmin = userRole === 'admin'
-  const isOwnerUser = Boolean(((session as any)?.user?.email && (session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || isAdmin)
-  const adminRoomName = useMemo(() => {
+  const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
+  const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
+  const gradeTokenEndpoint = useMemo(() => {
+    if (!gradeReady || !selectedGrade) return null
+    return `/api/sessions/grade/${selectedGrade}/token`
+  }, [gradeReady, selectedGrade])
+  const gradeRoomName = useMemo(() => {
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
-    return appId ? `${appId}/philani-admin-room` : 'philani-admin-room'
-  }, [])
+    const gradeSlug = selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : 'public-room'
+    const base = `philani-${gradeSlug}`
+    return appId ? `${appId}/${base}` : base
+  }, [selectedGrade])
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
@@ -234,54 +239,6 @@ export default function Dashboard() {
       ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
     } catch (e) {}
   }, [session])
-
-  // Compute currently running session and fetch secure room name for it when sessions update
-  useEffect(() => {
-    if (isAdmin) {
-      setRunningSession(null)
-      setSecureRoomName(null)
-      return
-    }
-    try {
-      const now = new Date()
-      const running = sessions.find(s => new Date(s.startsAt) <= now) || null
-      setRunningSession(running)
-      if (running) {
-        // For learners: poll until jitsiActive is true, then fetch secure room name
-        const check = async () => {
-          try {
-            const statusRes = await fetch(`/api/sessions/${running.id}/status`)
-            if (statusRes.ok) {
-              const st = await statusRes.json()
-              if (st?.jitsiActive) {
-                const roomRes = await fetch(`/api/sessions/${running.id}/room`)
-                if (roomRes.ok) {
-                  const data = await roomRes.json()
-                  if (data?.roomName) setSecureRoomName(data.roomName)
-                }
-                return true
-              }
-            }
-          } catch (e) {}
-          return false
-        }
-        // Run immediately, then poll every 5s until active
-        let mounted = true
-        const runCheck = async () => {
-          if (!mounted) return
-          const ok = await check()
-          if (!ok && mounted) setTimeout(runCheck, 5000)
-        }
-        runCheck()
-        return () => { mounted = false }
-      } else {
-        setSecureRoomName(null)
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [sessions, isAdmin])
-
   async function fetchPlans() {
     setPlansLoading(true)
     try {
@@ -335,12 +292,14 @@ export default function Dashboard() {
             <h2 className="font-semibold mb-3">Live class — {activeGradeLabel}</h2>
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
+            ) : !selectedGrade ? (
+              <div className="text-sm muted">Select a grade to join the live class.</div>
             ) : (
               <JitsiRoom
-                roomName={adminRoomName}
+                roomName={gradeRoomName}
                 displayName={session?.user?.name || session?.user?.email}
                 sessionId={null}
-                tokenEndpoint="/api/sessions/admin/token"
+                tokenEndpoint={gradeTokenEndpoint}
                 passwordEndpoint={null}
                 isOwner={isOwnerUser}
               />

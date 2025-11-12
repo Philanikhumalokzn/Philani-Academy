@@ -39,6 +39,20 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       })
     }
 
+    const ensureLobbyState = (enabled: boolean) => {
+      if (!apiRef.current) return
+      try {
+        const result = apiRef.current.executeCommand('toggleLobby', enabled)
+        if (result && typeof result.then === 'function') {
+          result.then(() => setLobbyEnabled(enabled)).catch(() => {})
+        } else {
+          setLobbyEnabled(enabled)
+        }
+      } catch (err) {
+        // ignore inability to toggle automatically
+      }
+    }
+
     const init = async () => {
       try {
   const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
@@ -104,17 +118,15 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           // ignore
         }
 
-        if (apiRef.current) {
-          try {
-            const ensureLobby = apiRef.current.executeCommand('toggleLobby', true)
-            if (ensureLobby && typeof ensureLobby.then === 'function') {
-              ensureLobby.then(() => setLobbyEnabled(true)).catch(() => {})
-            } else {
-              setLobbyEnabled(true)
-            }
-          } catch (err) {
-            // ignore inability to enable automatically (non-moderators)
-          }
+        ensureLobbyState(true)
+
+        let lobbyJoinHandler: (() => void) | null = null
+        try {
+          lobbyJoinHandler = () => ensureLobbyState(true)
+          apiRef.current.addEventListener('videoConferenceJoined', lobbyJoinHandler)
+          ;(apiRef.current as any)._lobbyJoinHandler = lobbyJoinHandler
+        } catch (err) {
+          // ignore listener issues
         }
 
         if (isOwner && apiRef.current) {
@@ -174,6 +186,10 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         try { apiRef.current.removeEventListener('lobby.toggle', (apiRef.current as any)._lobbyToggleListener) } catch (e) {}
         delete (apiRef.current as any)._lobbyToggleListener
       }
+      if (apiRef.current && (apiRef.current as any)._lobbyJoinHandler) {
+        try { apiRef.current.removeEventListener('videoConferenceJoined', (apiRef.current as any)._lobbyJoinHandler) } catch (e) {}
+        delete (apiRef.current as any)._lobbyJoinHandler
+      }
     }
   }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner])
 
@@ -186,7 +202,10 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
     setLobbyBusy(true)
     try {
       const next = !(lobbyEnabled === true)
-      await apiRef.current.executeCommand('toggleLobby', next)
+      const result = apiRef.current.executeCommand('toggleLobby', next)
+      if (result && typeof result.then === 'function') {
+        await result
+      }
       setLobbyEnabled(next)
     } catch (err: any) {
       setLobbyError(err?.message || 'Failed to toggle lobby')

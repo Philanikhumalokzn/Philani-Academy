@@ -38,3 +38,12 @@ model SessionRecord {
   createdBy String
   createdAt DateTime @default(now())
 }
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  grade     Grade
+  createdBy String?
+  createdAt DateTime @default(now())
+}

@@ -5,6 +5,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
+type Announcement = {
+  id: string
+  title: string
+  content: string
+  grade: GradeValue
+  createdAt: string
+  createdBy?: string | null
+}
+
 export default function Dashboard() {
   const router = useRouter()
   const { data: session, status } = useSession()
@@ -31,12 +40,19 @@ export default function Dashboard() {
   const [planCurrency, setPlanCurrency] = useState('usd')
   const [plansLoading, setPlansLoading] = useState(false)
   const [payfastAvailable, setPayfastAvailable] = useState(false)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false)
+  const [announcementsError, setAnnouncementsError] = useState<string | null>(null)
+  const [announcementTitle, setAnnouncementTitle] = useState('')
+  const [announcementContent, setAnnouncementContent] = useState('')
+  const [creatingAnnouncement, setCreatingAnnouncement] = useState(false)
 
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
   const userRole = (session as any)?.user?.role as string | undefined
   const isAdmin = userRole === 'admin'
+  const canManageAnnouncements = userRole === 'admin' || userRole === 'teacher'
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
   const gradeTokenEndpoint = useMemo(() => {
@@ -139,6 +155,38 @@ export default function Dashboard() {
     }
   }
 
+  async function fetchAnnouncementsForGrade(gradeOverride?: GradeValue | null) {
+    const gradeToFetch = gradeOverride ?? selectedGrade
+    if (!gradeToFetch) {
+      setAnnouncements([])
+      setAnnouncementsError('Select a grade to view announcements.')
+      return
+    }
+    setAnnouncementsError(null)
+    setAnnouncementsLoading(true)
+    try {
+      const res = await fetch(`/api/announcements?grade=${encodeURIComponent(gradeToFetch)}`, { credentials: 'same-origin' })
+      if (res.ok) {
+        const data = await res.json()
+        setAnnouncements(Array.isArray(data) ? data : [])
+      } else {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 401) {
+          setAnnouncementsError('Please sign in to view announcements.')
+        } else {
+          setAnnouncementsError(data?.message || `Failed to load announcements (${res.status})`)
+        }
+        setAnnouncements([])
+      }
+    } catch (err) {
+      console.error('fetchAnnouncements error', err)
+      setAnnouncementsError(err instanceof Error ? err.message : 'Network error')
+      setAnnouncements([])
+    } finally {
+      setAnnouncementsLoading(false)
+    }
+  }
+
   async function fetchUsers() {
     setUsersError(null)
     setUsersLoading(true)
@@ -157,6 +205,56 @@ export default function Dashboard() {
       setUsers(null)
     } finally {
       setUsersLoading(false)
+    }
+  }
+
+  async function createAnnouncement(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedGrade) {
+      alert('Select a grade before posting an announcement')
+      return
+    }
+    const trimmedTitle = announcementTitle.trim()
+    const trimmedContent = announcementContent.trim()
+    if (!trimmedTitle || !trimmedContent) {
+      alert('Title and content are required')
+      return
+    }
+    setCreatingAnnouncement(true)
+    try {
+      const res = await fetch('/api/announcements', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ title: trimmedTitle, content: trimmedContent, grade: selectedGrade })
+      })
+      if (res.ok) {
+        setAnnouncementTitle('')
+        setAnnouncementContent('')
+        fetchAnnouncementsForGrade(selectedGrade)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to create announcement (${res.status})`)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    } finally {
+      setCreatingAnnouncement(false)
+    }
+  }
+
+  async function deleteAnnouncement(id: string) {
+    if (!confirm('Delete this announcement? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/announcements/${id}`, { method: 'DELETE', credentials: 'same-origin' })
+      if (res.ok || res.status === 204) {
+        setAnnouncements(prev => prev.filter(a => a.id !== id))
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to delete announcement (${res.status})`)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
     }
   }
 
@@ -194,6 +292,11 @@ export default function Dashboard() {
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return
     fetchSessionsForGrade(selectedGrade)
+  }, [gradeReady, selectedGrade])
+
+  useEffect(() => {
+    if (!gradeReady || !selectedGrade) return
+    fetchAnnouncementsForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
 
   useEffect(() => {
@@ -303,6 +406,71 @@ export default function Dashboard() {
                 passwordEndpoint={null}
                 isOwner={isOwnerUser}
               />
+            )}
+          </div>
+          <div className="card mb-4">
+            <h2 className="font-semibold mb-3">Announcements — {activeGradeLabel}</h2>
+            {status !== 'authenticated' ? (
+              <div className="text-sm muted">Please sign in to view announcements.</div>
+            ) : !selectedGrade ? (
+              <div className="text-sm muted">Select a grade to view announcements.</div>
+            ) : (
+              <>
+                {canManageAnnouncements && (
+                  <form onSubmit={createAnnouncement} className="space-y-2 mb-4">
+                    <input
+                      className="input"
+                      placeholder="Title"
+                      value={announcementTitle}
+                      onChange={e => setAnnouncementTitle(e.target.value)}
+                    />
+                    <textarea
+                      className="input min-h-[120px]"
+                      placeholder="Share important updates for this grade"
+                      value={announcementContent}
+                      onChange={e => setAnnouncementContent(e.target.value)}
+                    />
+                    <div>
+                      <button className="btn btn-primary" type="submit" disabled={creatingAnnouncement}>
+                        {creatingAnnouncement ? 'Saving…' : 'Post announcement'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+                {announcementsError ? (
+                  <div className="text-sm text-red-600">{announcementsError}</div>
+                ) : announcementsLoading ? (
+                  <div className="text-sm muted">Loading announcements…</div>
+                ) : announcements.length === 0 ? (
+                  <div className="text-sm muted">No announcements yet.</div>
+                ) : (
+                  <ul className="space-y-3">
+                    {announcements.map(a => (
+                      <li key={a.id} className="p-3 border rounded">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-medium">{a.title}</div>
+                            <div className="text-xs muted">
+                              {new Date(a.createdAt).toLocaleString()}
+                              {a.createdBy ? ` • ${a.createdBy}` : ''}
+                            </div>
+                          </div>
+                          {canManageAnnouncements && (
+                            <button
+                              type="button"
+                              className="btn btn-danger"
+                              onClick={() => deleteAnnouncement(a.id)}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-sm mt-2 whitespace-pre-line">{a.content}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
           <div className="flex items-center justify-between mb-4">

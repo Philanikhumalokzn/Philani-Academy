@@ -5,21 +5,21 @@
 @tailwind utilities;
 
 :root{
-  --bg: #f8fafc;
+  --bg: #ffffff;
   --card: #ffffff;
-  --muted: #6b7280;
-  --primary: #1D4ED8;
-  --accent: #06B6D4;
+  --muted: #64748b; /* slate-500 */
+  --primary: #1D4ED8; /* blue-700 */
+  --accent: #60A5FA; /* blue-400 */
 }
 
-html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(180deg, rgba(29,78,216,0.05), rgba(6,182,212,0.02));}
+html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background: linear-gradient(180deg, rgba(29,78,216,0.04), rgba(96,165,250,0.02));}
 
 /* Common containers */
 .container-card{background:var(--card);box-shadow:var(--tw-shadow, 0 10px 30px rgba(17,24,39,0.06));border-radius:12px;padding:1.25rem}
 
 /* Hero */
 .hero{
-  background: linear-gradient(90deg, rgba(29,78,216,0.12), rgba(6,182,212,0.06));
+  background: linear-gradient(90deg, rgba(29,78,216,0.12), rgba(96,165,250,0.08));
   border-radius:14px; padding:2rem; display:flex; gap:1rem; align-items:center;
 }
 
@@ -31,12 +31,12 @@ html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Sego
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;gap:0.5rem;padding:0.6rem 1rem;border-radius:10px;font-weight:600}
-.btn-primary{background:var(--primary);color:white;box-shadow:0 6px 18px rgba(29,78,216,0.18);}
-.btn-ghost{background:transparent;border:1px solid rgba(15,23,42,0.06);}
+.btn-primary{background:var(--primary);color:white;box-shadow:0 6px 18px rgba(29,78,216,0.18);} 
+.btn-ghost{background:transparent;border:1px solid rgba(29,78,216,0.12);color:var(--primary)}
 
 /* Inputs */
 .input{width:100%;padding:0.6rem;border-radius:8px;border:1px solid rgba(15,23,42,0.06);background:linear-gradient(180deg, #fff, #fbfdff)}
-.input:focus{outline:none;box-shadow:0 6px 18px rgba(6,182,212,0.12);border-color:var(--accent)}
+.input:focus{outline:none;box-shadow:0 6px 18px rgba(29,78,216,0.16);border-color:var(--accent)}
 
 /* Cards */
 .card{background:var(--card);border-radius:12px;padding:1rem;box-shadow:0 8px 24px rgba(15,23,42,0.06)}
@@ -47,7 +47,7 @@ html,body,#__next{height:100%;font-family:Inter, system-ui, -apple-system, 'Sego
 
 /* small utilities */
 .muted{color:var(--muted)}
-.tag{display:inline-block;padding:0.2rem 0.5rem;border-radius:999px;background:#eef2ff;color:var(--primary);font-weight:600}
+.tag{display:inline-block;padding:0.2rem 0.5rem;border-radius:999px;background:#eff6ff;color:var(--primary);font-weight:600}
 
 /* Responsive tweaks */
 @media (max-width: 768px) {

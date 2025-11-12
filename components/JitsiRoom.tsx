@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 
 type Props = {
   roomName: string
@@ -22,9 +22,8 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       return new Promise<void>((resolve, reject) => {
         if ((window as any).JitsiMeetExternalAPI) return resolve()
         const script = document.createElement('script')
-        // For JaaS, prefer the 8x8 hosted library to ensure correct domain
-        const defaultApi = 'https://8x8.vc/libs/external_api.min.js'
-        script.src = url || (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || defaultApi
+        // Strictly match the working HTML sample: use 8x8.vc and external_api.min.js
+        script.src = url || 'https://8x8.vc/libs/external_api.min.js'
         script.async = true
         script.onload = () => resolve()
         script.onerror = () => reject(new Error('Failed to load Jitsi script'))
@@ -34,8 +33,9 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     const init = async () => {
       try {
-  const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
-  const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
+        // Strictly match the working HTML sample
+        const domain = '8x8.vc'
+        const apiUrl = 'https://8x8.vc/libs/external_api.min.js'
 
         await loadScript(apiUrl)
         if (!mounted) return
@@ -73,8 +73,11 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           }
         }
 
+        // Minimal options exactly like the sample
         const options: any = {
           roomName,
+          width: 500,
+          height: 500,
           parentNode: containerRef.current,
           interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
           // Keep config minimal; prejoin can help users set devices before knocking
@@ -161,6 +164,11 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         }
 
         setTimeout(() => { applyPassword() }, 800)
+          jwt: jwtToken,
+        }
+
+        // Instantiate with jwt at init
+        apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
       } catch (err) {
         console.error('Failed to initialize Jitsi', err)
       }
@@ -174,18 +182,9 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
     }
   }, [initialRoomName, sessionId, displayName])
 
-  const toggleAudio = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleAudio') }
-  const toggleVideo = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleVideo') }
-  const hangup = () => { if (!apiRef.current) return; apiRef.current.executeCommand('hangup') }
-
   return (
     <div className="jitsi-room">
-      <div className="mb-2 flex gap-2">
-        <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
-        <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
-        <button className="btn btn-danger" onClick={hangup}>Leave</button>
-      </div>
-      <div ref={containerRef} style={{ width: '100%', height: 600 }} />
+      <div ref={containerRef} id="meeting" />
     </div>
   )
 }

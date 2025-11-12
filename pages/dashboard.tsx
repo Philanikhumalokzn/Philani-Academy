@@ -6,6 +6,7 @@ import SimpleJitsiEmbed from '../components/SimpleJitsiEmbed';
 
 export default function Dashboard() {
   const { data: session, status } = useSession()
+  const isAdmin = (session as any)?.user?.role === 'admin'
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
@@ -133,45 +134,89 @@ export default function Dashboard() {
 
   // Compute currently running session and fetch secure room name for it when sessions update
   useEffect(() => {
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
     try {
       const now = new Date()
       const running = sessions.find(s => new Date(s.startsAt) <= now) || null
       setRunningSession(running)
-      if (running) {
-        // For learners: poll until jitsiActive is true, then fetch secure room name
-        const check = async () => {
+
+      if (!running) {
+        setSecureRoomName(null)
+      } else {
+        const fetchRoomName = async () => {
           try {
-            const statusRes = await fetch(`/api/sessions/${running.id}/status`)
-            if (statusRes.ok) {
-              const st = await statusRes.json()
-              if (st?.jitsiActive) {
-                const roomRes = await fetch(`/api/sessions/${running.id}/room`)
-                if (roomRes.ok) {
-                  const data = await roomRes.json()
-                  if (data?.roomName) setSecureRoomName(data.roomName)
-                }
+            const roomRes = await fetch(`/api/sessions/${running.id}/room`, { credentials: 'same-origin' })
+            if (roomRes.ok) {
+              const data = await roomRes.json().catch(() => null)
+              if (!cancelled && data?.roomName) {
+                setSecureRoomName(data.roomName)
                 return true
               }
             }
-          } catch (e) {}
+          } catch (err) {
+            // ignore fetch failures here and retry via caller
+          }
           return false
         }
-        // Run immediately, then poll every 5s until active
-        let mounted = true
-        const runCheck = async () => {
-          if (!mounted) return
-          const ok = await check()
-          if (!ok && mounted) setTimeout(runCheck, 5000)
+
+        if (isAdmin) {
+          const activateAndFetch = async () => {
+            try {
+              await fetch(`/api/sessions/${running.id}/present`, { method: 'POST', credentials: 'same-origin' })
+            } catch (err) {
+              if (process.env.NODE_ENV !== 'production') {
+                console.warn('Unable to mark session active automatically', err)
+              }
+            }
+
+            for (let attempt = 0; attempt < 6 && !cancelled; attempt++) {
+              if (await fetchRoomName()) return
+              await sleep(400)
+            }
+
+            if (!cancelled) await fetchRoomName()
+          }
+
+          activateAndFetch()
+        } else {
+          const check = async () => {
+            try {
+              const statusRes = await fetch(`/api/sessions/${running.id}/status`)
+              if (statusRes.ok) {
+                const st = await statusRes.json().catch(() => null)
+                if (st?.jitsiActive) {
+                  return fetchRoomName()
+                }
+              }
+            } catch (err) {
+              // ignore fetch failures and retry
+            }
+            return false
+          }
+
+          const runCheck = async () => {
+            if (cancelled) return
+            const ok = await check()
+            if (!ok && !cancelled) {
+              pollTimer = setTimeout(runCheck, 5000)
+            }
+          }
+
+          runCheck()
         }
-        runCheck()
-        return () => { mounted = false }
-      } else {
-        setSecureRoomName(null)
       }
-    } catch (e) {
-      // ignore
+    } catch (err) {
+      // ignore unexpected runtime errors while we retry on next poll
     }
-  }, [sessions])
+
+    return () => {
+      cancelled = true
+      if (pollTimer) clearTimeout(pollTimer)
+    }
+  }, [sessions, isAdmin])
 
   async function fetchPlans() {
     setPlansLoading(true)

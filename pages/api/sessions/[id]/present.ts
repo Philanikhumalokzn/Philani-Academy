@@ -11,8 +11,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
-  if (!ownerEmail) return res.status(500).json({ message: 'Owner email not configured' })
-  if ((token as any).email !== ownerEmail) return res.status(403).json({ message: 'Forbidden' })
+  const requesterEmail = (token as any).email || ''
+  const requesterRole = (token as any).role
+  const isConfiguredOwner = !!ownerEmail
+  const isOwner = isConfiguredOwner && requesterEmail === ownerEmail
+  const isAdmin = requesterRole === 'admin'
+
+  if (!isOwner && !isAdmin) {
+    if (!isConfiguredOwner) return res.status(500).json({ message: 'Owner email not configured' })
+    return res.status(403).json({ message: 'Forbidden' })
+  }
 
   try {
     await prisma.sessionRecord.update({ where: { id: String(id) }, data: { jitsiActive: true } as any })

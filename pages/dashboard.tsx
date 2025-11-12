@@ -38,6 +38,11 @@ export default function Dashboard() {
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
   const userRole = (session as any)?.user?.role as string | undefined
+  const isAdmin = userRole === 'admin'
+  const adminRoomName = useMemo(() => {
+    const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
+    return appId ? `${appId}/philani-admin-room` : 'philani-admin-room'
+  }, [])
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
@@ -231,6 +236,11 @@ export default function Dashboard() {
 
   // Compute currently running session and fetch secure room name for it when sessions update
   useEffect(() => {
+    if (isAdmin) {
+      setRunningSession(null)
+      setSecureRoomName(null)
+      return
+    }
     try {
       const now = new Date()
       const running = sessions.find(s => new Date(s.startsAt) <= now) || null
@@ -269,7 +279,7 @@ export default function Dashboard() {
     } catch (e) {
       // ignore
     }
-  }, [sessions])
+  }, [sessions, isAdmin])
 
   async function fetchPlans() {
     setPlansLoading(true)
@@ -324,6 +334,14 @@ export default function Dashboard() {
             <h2 className="font-semibold mb-3">Live class — {activeGradeLabel}</h2>
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
+            ) : isAdmin ? (
+              // Admins bypass session checks and always join the control room
+              <JitsiRoom
+                roomName={adminRoomName}
+                displayName={session?.user?.name || session?.user?.email}
+                sessionId={null}
+                isOwner
+              />
             ) : secureRoomName ? (
               <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             ) : sessions && sessions.length > 0 ? (

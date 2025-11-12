@@ -1,16 +1,22 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
-import SimpleJitsiEmbed from '../components/SimpleJitsiEmbed';
+import { useRouter } from 'next/router'
+import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
 export default function Dashboard() {
+  const router = useRouter()
   const { data: session, status } = useSession()
+  const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
+  const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
+  const [gradeReady, setGradeReady] = useState(false)
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [minStartsAt, setMinStartsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
@@ -18,18 +24,40 @@ export default function Dashboard() {
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newRole, setNewRole] = useState('student')
+  const [newGrade, setNewGrade] = useState<GradeValue | ''>('')
   const [plans, setPlans] = useState<any[]>([])
   const [planName, setPlanName] = useState('')
   const [planAmount, setPlanAmount] = useState<number | ''>('')
   const [planCurrency, setPlanCurrency] = useState('usd')
   const [plansLoading, setPlansLoading] = useState(false)
   const [payfastAvailable, setPayfastAvailable] = useState(false)
-  const payfastFormRef = React.createRef<HTMLFormElement>()
   const [secureRoomName, setSecureRoomName] = useState<string | null>(null)
   const [runningSession, setRunningSession] = useState<any | null>(null)
 
+  const activeGradeLabel = gradeReady
+    ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
+    : 'Resolving grade'
+  const userRole = (session as any)?.user?.role as string | undefined
+  const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
+  const accountGradeLabel = status === 'authenticated'
+    ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
+    : 'N/A'
+
+  const updateGradeSelection = (grade: GradeValue) => {
+    if (selectedGrade === grade) return
+    setSelectedGrade(grade)
+    if (router.isReady) {
+      const nextQuery = { ...router.query, grade }
+      router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+    }
+  }
+
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
+    if (!selectedGrade) {
+      alert('Select a grade before creating a session')
+      return
+    }
     try {
       // convert local datetime-local value to an ISO UTC string before sending
       let startsAtIso = startsAt
@@ -42,7 +70,7 @@ export default function Dashboard() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso })
+        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso, grade: selectedGrade })
       })
 
       if (res.ok) {
@@ -50,7 +78,7 @@ export default function Dashboard() {
         setTitle('')
         setJoinUrl('')
         setStartsAt('')
-        fetchSessions()
+        fetchSessionsForGrade(selectedGrade)
         return
       }
 
@@ -70,11 +98,33 @@ export default function Dashboard() {
     }
   }
 
-  async function fetchSessions() {
-  const res = await fetch('/api/sessions', { credentials: 'same-origin' })
-    if (res.ok) {
-      const data = await res.json()
-      setSessions(data)
+  async function fetchSessionsForGrade(gradeOverride?: GradeValue | null) {
+    const gradeToFetch = gradeOverride ?? selectedGrade
+    if (!gradeToFetch) {
+      setSessions([])
+      setSessionsError('Select a grade to view sessions.')
+      return
+    }
+    setSessionsError(null)
+    setSessions([])
+    try {
+      const res = await fetch(`/api/sessions?grade=${encodeURIComponent(gradeToFetch)}`, { credentials: 'same-origin' })
+      if (res.ok) {
+        const data = await res.json()
+        setSessions(data)
+        setSessionsError(null)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 401) {
+          setSessionsError('Please sign in to view grade-specific sessions.')
+        } else {
+          setSessionsError(data?.message || `Failed to load sessions (${res.status})`)
+        }
+      }
+    } catch (err) {
+      // Network or unexpected error
+      console.error('fetchSessions error', err)
+      setSessionsError(err instanceof Error ? err.message : 'Network error')
     }
   }
 
@@ -99,7 +149,50 @@ export default function Dashboard() {
     }
   }
 
-  useEffect(() => { fetchSessions() }, [])
+  const queryGradeParam = router.query?.grade
+  const queryGradeString = Array.isArray(queryGradeParam) ? queryGradeParam[0] : queryGradeParam
+
+  useEffect(() => {
+    if (!router.isReady || gradeReady) return
+    const normalizedQuery = normalizeGradeInput(typeof queryGradeString === 'string' ? queryGradeString : undefined)
+    const sessionGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
+    const role = (session as any)?.user?.role as string | undefined
+
+    let resolved: GradeValue | null = normalizedQuery || null
+    if (!resolved) {
+      if ((role === 'student' || role === 'teacher') && sessionGrade) {
+        resolved = sessionGrade
+      }
+    }
+    if (!resolved) {
+      resolved = 'GRADE_8'
+    }
+
+    if (resolved) {
+      if (resolved !== normalizedQuery) {
+        if (selectedGrade !== resolved) setSelectedGrade(resolved)
+        const nextQuery = { ...router.query, grade: resolved }
+        router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+      } else if (selectedGrade !== resolved) {
+        setSelectedGrade(resolved)
+      }
+    }
+    setGradeReady(true)
+  }, [router.isReady, router.pathname, gradeReady, session, queryGradeString, selectedGrade])
+
+  useEffect(() => {
+    if (!gradeReady || !selectedGrade) return
+    fetchSessionsForGrade(selectedGrade)
+  }, [gradeReady, selectedGrade])
+
+  useEffect(() => {
+    if (!gradeReady) return
+    if (newRole === 'admin') {
+      setNewGrade('')
+    } else if (!newGrade && selectedGrade) {
+      setNewGrade(selectedGrade)
+    }
+  }, [newRole, selectedGrade, newGrade, gradeReady])
   // Prefill startsAt with the next minute and set a sensible min value
   useEffect(() => {
     const pad = (n: number) => n.toString().padStart(2, '0')
@@ -193,19 +286,42 @@ export default function Dashboard() {
     }
   }
 
-  // sample roomName from the dashboard
-  const roomName = 'vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4/SampleAppAliveIntensitiesSurveyFerociously';
-
-  // sessionId is optional — if provided, the embed will call /api/sessions/<sessionId>/token to get a JWT
-  const sessionId = '<your-session-id-if-you-have-one>';
-
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
         <div className="col-span-2">
+          {gradeReady && status === 'authenticated' && (userRole === 'admin' ? (
+            <div className="card mb-4">
+              <h2 className="font-semibold mb-3">Current grade</h2>
+              <div className="flex flex-wrap gap-4">
+                {gradeOptions.map(option => (
+                  <label key={option.value} className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      name="active-grade"
+                      value={option.value}
+                      checked={selectedGrade === option.value}
+                      onChange={() => updateGradeSelection(option.value)}
+                    />
+                    <span className={selectedGrade === option.value ? 'font-semibold' : ''}>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs muted mt-2">Learners only see sessions, notes, and announcements for the active grade.</p>
+            </div>
+          ) : (
+            <div className="card mb-4">
+              <h2 className="font-semibold mb-1">Grade environment</h2>
+              <p className="text-sm muted">You are currently in the {activeGradeLabel} workspace.</p>
+              {!userGrade && (
+                <p className="text-sm text-red-600 mt-2">Your profile does not have a grade yet. Please contact an administrator.</p>
+              )}
+            </div>
+          ))}
+
           {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
           <div className="card mb-4">
-            <h2 className="font-semibold mb-3">Live class</h2>
+            <h2 className="font-semibold mb-3">Live class — {activeGradeLabel}</h2>
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
             ) : secureRoomName ? (
@@ -227,6 +343,7 @@ export default function Dashboard() {
             <h2 className="font-semibold mb-3">Create session</h2>
             {session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher') ? (
               <form onSubmit={createSession} className="space-y-3">
+                <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
                 <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
@@ -240,20 +357,26 @@ export default function Dashboard() {
           </div>
 
           <div className="card">
-            <h2 className="font-semibold mb-3">Upcoming sessions</h2>
-            <ul className="space-y-3">
-              {sessions.map(s => (
-                <li key={s.id} className="p-3 rounded flex items-center justify-between border">
-                  <div>
-                    <div className="font-medium">{s.title}</div>
-                    <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
-                  </div>
-                  <div>
-                    <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <h2 className="font-semibold mb-3">Upcoming sessions — {activeGradeLabel}</h2>
+            {sessionsError ? (
+              <div className="text-sm text-red-600">{sessionsError}</div>
+            ) : sessions.length === 0 ? (
+              <div className="text-sm muted">No sessions scheduled for this grade yet.</div>
+            ) : (
+              <ul className="space-y-3">
+                {sessions.map(s => (
+                  <li key={s.id} className="p-3 rounded flex items-center justify-between border">
+                    <div>
+                      <div className="font-medium">{s.title}</div>
+                      <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {session && (session as any).user?.role === 'admin' && (
@@ -270,15 +393,43 @@ export default function Dashboard() {
                     <option value="teacher">teacher</option>
                     <option value="admin">admin</option>
                   </select>
+                  {(newRole === 'student' || newRole === 'teacher') && (
+                    <select
+                      className="input"
+                      value={newGrade}
+                      onChange={e => setNewGrade(e.target.value as GradeValue | '')}
+                    >
+                      <option value="">Select grade</option>
+                      {gradeOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  )}
                   <div>
                     <button className="btn btn-primary" onClick={async () => {
+                      if ((newRole === 'student' || newRole === 'teacher') && !newGrade) {
+                        alert('Please assign a grade to the new user')
+                        return
+                      }
                       try {
-                        const res = await fetch('/api/users', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, email: newEmail, password: newPassword, role: newRole }) })
+                        const res = await fetch('/api/users', {
+                          method: 'POST',
+                          credentials: 'same-origin',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            name: newName,
+                            email: newEmail,
+                            password: newPassword,
+                            role: newRole,
+                            grade: newRole === 'admin' ? undefined : newGrade
+                          })
+                        })
                         if (res.ok) {
                           setNewName('')
                           setNewEmail('')
                           setNewPassword('')
                           setNewRole('student')
+                          setNewGrade(selectedGrade ?? '')
                           fetchUsers()
                           alert('User created')
                         } else {
@@ -306,6 +457,7 @@ export default function Dashboard() {
                         <th className="px-2 py-1">Email</th>
                         <th className="px-2 py-1">Name</th>
                         <th className="px-2 py-1">Role</th>
+                        <th className="px-2 py-1">Grade</th>
                         <th className="px-2 py-1">Created</th>
                         <th className="px-2 py-1">Actions</th>
                       </tr>
@@ -316,6 +468,7 @@ export default function Dashboard() {
                           <td className="px-2 py-2">{u.email}</td>
                           <td className="px-2 py-2">{u.name || '-'}</td>
                           <td className="px-2 py-2">{u.role}</td>
+                          <td className="px-2 py-2">{gradeToLabel(u.grade)}</td>
                           <td className="px-2 py-2">{new Date(u.createdAt).toLocaleString()}</td>
                           <td className="px-2 py-2">
                             <button
@@ -444,6 +597,7 @@ export default function Dashboard() {
         <aside className="card">
           <h3 className="font-semibold">Account</h3>
           <div className="mt-3 muted">Role: {(session as any)?.user?.role || 'guest'}</div>
+          <div className="mt-1 text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
           <div className="mt-4">
             <Link href="/subscribe" className="btn btn-primary">Subscribe</Link>
           </div>

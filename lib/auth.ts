@@ -6,6 +6,11 @@ export async function getUserRole(req: NextApiRequest) {
   return token?.role as string | undefined
 }
 
+export async function getUserGrade(req: NextApiRequest) {
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+  return token?.grade as string | undefined
+}
+
 export function requireRole(role: string, userRole?: string) {
   return userRole === role
 }

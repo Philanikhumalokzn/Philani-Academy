@@ -6,6 +6,7 @@ async function main(){
     description: 'Intro to Philani Academy',
     joinUrl: 'https://teams.microsoft.com/l/meetup-join/sample',
     startsAt: new Date(),
+    grade: 'GRADE_8',
     createdBy: 'script'
   }})
   console.log(rec)

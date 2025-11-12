@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import crypto from 'crypto'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../lib/prisma'
+import { normalizeGradeInput } from '../../../../lib/grades'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
@@ -14,6 +15,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) } })
   if (!rec) return res.status(404).json({ message: 'Not found' })
+
+  const sessionGrade = normalizeGradeInput((rec as any).grade as string | undefined)
+  const userRole = (token as any)?.role as string | undefined
+  const userGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  if ((userRole === 'student' || userRole === 'teacher')) {
+    if (!sessionGrade || !userGrade || sessionGrade !== userGrade) {
+      return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+    }
+  }
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (token as any).email === ownerEmail

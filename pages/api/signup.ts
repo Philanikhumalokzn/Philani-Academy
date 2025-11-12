@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import bcrypt from 'bcryptjs'
 import prisma from '../../lib/prisma'
+import { GRADE_VALUES, normalizeGradeInput } from '../../lib/grades'
 
 async function getRawBody(req: NextApiRequest) {
   return await new Promise<string>((resolve, reject) => {
@@ -105,41 +106,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return out
   }
   const { name, email, password } = body
+  const allowedGrades = GRADE_VALUES as readonly string[]
+  const normalizedGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
   // Debug: log which fields we received (mask password)
   try {
-    console.log('/api/signup parsed body:', { name, email, password: password ? '***' : '' })
+    console.log('/api/signup parsed body:', { name, email, password: password ? '***' : '', grade: normalizedGrade || null })
   } catch (e) {
     // ignore logging errors
   }
   if (!email || !password) {
-      // Final fallback: try to extract fields directly from raw text using regexes
-      try {
-        const emailMatch = rawBody.match(/email\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
-        const passMatch = rawBody.match(/password\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
-        const nameMatch = rawBody.match(/name\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
-        if (emailMatch && emailMatch[1]) {
-          body.email = decodeURIComponent(emailMatch[1])
-        }
-        if (passMatch && passMatch[1]) {
-          body.password = decodeURIComponent(passMatch[1])
-        }
-        if (nameMatch && nameMatch[1]) {
-          body.name = decodeURIComponent(nameMatch[1])
-        }
-      } catch (e) {
-        // ignore
+    // Final fallback: try to extract fields directly from raw text using regexes
+    try {
+      const emailMatch = rawBody.match(/email\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
+      const passMatch = rawBody.match(/password\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
+      const nameMatch = rawBody.match(/name\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
+      if (emailMatch && emailMatch[1]) {
+        body.email = decodeURIComponent(emailMatch[1])
       }
-      // recalc locals
-      const { name: _name2, email: _email2, password: _password2 } = body
-      if (_email2 && _password2) {
-        // proceed
-      } else {
-        // Provide safe debug info to help diagnose production parsing differences.
-        const ct = req.headers['content-type'] || ''
-        const rawPreview = rawBody ? rawBody.slice(0, 512) : ''
-        console.warn('/api/signup missing fields', { provided: { name: !!_name2, email: !!_email2, password: !!_password2 }, contentType: ct, rawPreview: rawPreview ? `${rawPreview}${rawBody.length > 512 ? '...(truncated)' : ''}` : '' })
-        return res.status(400).json({ message: 'Missing fields', provided: { name: !!_name2, email: !!_email2, password: !!_password2 }, contentType: ct, rawPreview })
+      if (passMatch && passMatch[1]) {
+        body.password = decodeURIComponent(passMatch[1])
       }
+      if (nameMatch && nameMatch[1]) {
+        body.name = decodeURIComponent(nameMatch[1])
+      }
+    } catch (e) {
+      // ignore
+    }
+    // recalc locals
+    const { name: _name2, email: _email2, password: _password2 } = body
+    if (_email2 && _password2) {
+      // proceed
+    } else {
+      // Provide safe debug info to help diagnose production parsing differences.
+      const ct = req.headers['content-type'] || ''
+      const rawPreview = rawBody ? rawBody.slice(0, 512) : ''
+      console.warn('/api/signup missing fields', { provided: { name: !!_name2, email: !!_email2, password: !!_password2 }, contentType: ct, rawPreview: rawPreview ? `${rawPreview}${rawBody.length > 512 ? '...(truncated)' : ''}` : '' })
+      return res.status(400).json({ message: 'Missing fields', provided: { name: !!_name2, email: !!_email2, password: !!_password2 }, contentType: ct, rawPreview })
+    }
   }
 
   try {
@@ -150,7 +153,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // If first user, make them admin
     const count = await prisma.user.count()
     const role = count === 0 ? 'admin' : 'student'
-    const user = await prisma.user.create({ data: { name, email, password: hashed, role } })
+    if (role !== 'admin') {
+      if (!normalizedGrade || !allowedGrades.includes(normalizedGrade)) {
+        return res.status(400).json({ message: 'Grade is required for learners' })
+      }
+    }
+    const user = await prisma.user.create({ data: { name, email, password: hashed, role, grade: normalizedGrade } })
     return res.status(201).json({ id: user.id, email: user.email })
   } catch (err) {
     // Log full error server-side always (masked in production logs if necessary)

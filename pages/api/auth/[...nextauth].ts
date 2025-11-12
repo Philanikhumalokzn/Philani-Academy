@@ -18,7 +18,7 @@ export default NextAuth({
           if (!user) return null
           const ok = await bcrypt.compare(credentials.password, user.password)
           if (!ok) return null
-          return { id: user.id, name: user.name, email: user.email }
+          return { id: user.id, name: user.name, email: user.email, role: user.role, grade: user.grade }
         } catch (err: any) {
           // When DEBUG=1 we want to surface errors in logs to help diagnose production failures.
           if (process.env.DEBUG === '1') console.error('NextAuth authorize error:', err)
@@ -32,11 +32,19 @@ export default NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
     async jwt({ token, user }) {
-      // Attach role from database user on sign in
-      if (user) {
+      // Attach role/grade from database user on sign in or when missing on the token
+      if (user || !token.role || typeof token.grade === 'undefined') {
         try {
           const dbUser = await prisma.user.findUnique({ where: { email: token.email as string } })
-          if (dbUser) token.role = dbUser.role
+          if (dbUser) {
+            token.role = dbUser.role
+            token.grade = dbUser.grade
+          }
+          if (user) {
+            const userData = user as any
+            if (userData.role) token.role = userData.role
+            if (typeof userData.grade !== 'undefined') token.grade = userData.grade
+          }
         } catch (err: any) {
           if (process.env.DEBUG === '1') console.error('NextAuth jwt callback error:', err)
         }
@@ -45,6 +53,7 @@ export default NextAuth({
     },
     async session({ session, token }) {
       (session as any).user.role = token.role
+      ;(session as any).user.grade = token.grade ?? null
       return session
     }
   }

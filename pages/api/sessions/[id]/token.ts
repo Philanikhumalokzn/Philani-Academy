@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import crypto from 'crypto'
 import prisma from '../../../../lib/prisma'
+import { normalizeGradeInput } from '../../../../lib/grades'
 import jwt from 'jsonwebtoken'
 
 // This endpoint will prefer RS256 signing (using JAAS_PRIVATE_KEY + JAAS_KEY_ID)
@@ -18,6 +19,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) } })
   if (!rec) return res.status(404).json({ message: 'Not found' })
+
+  const sessionGrade = normalizeGradeInput((rec as any).grade as string | undefined)
+  const userRole = (authToken as any)?.role as string | undefined
+  const userGrade = normalizeGradeInput((authToken as any)?.grade as string | undefined)
+
+  if ((userRole === 'student' || userRole === 'teacher')) {
+    if (!sessionGrade || !userGrade || sessionGrade !== userGrade) {
+      return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+    }
+  }
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (authToken as any).email === ownerEmail
@@ -86,9 +97,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         room: roomClaim
       }
 
-  const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
-  const fullRoomName = `${jaasApp}/${roomSegment}`
-  return res.status(200).json({ token, roomName: fullRoomName })
+      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
+      const fullRoomName = `${jaasApp}/${roomSegment}`
+      return res.status(200).json({ token, roomName: fullRoomName })
     } catch (err: any) {
       console.error('RS256 signing failed', err)
       return res.status(500).json({ message: 'Failed to sign token (RS256)', error: String(err) })

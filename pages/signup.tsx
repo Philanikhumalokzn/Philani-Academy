@@ -1,16 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
+import { GRADE_VALUES, GradeValue, gradeToLabel } from '../lib/grades'
 
 export default function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [grade, setGrade] = useState<GradeValue | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const [flash, setFlash] = useState(false)
   const [hydrated, setHydrated] = useState(false)
+  const gradeOptions = GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) }))
 
   // Lightweight diagnostics to help determine if client JS is running in production
   useEffect(() => {
@@ -18,20 +21,25 @@ export default function Signup() {
     console.log('[signup] signup page hydrated')
   }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     try {
-      console.log('[signup] handleSubmit start', { name, email })
+      if (!grade) {
+        setError('Please select your grade')
+        return
+      }
+      console.log('[signup] handleSubmit start', { name, email, grade })
       setLoading(true)
       setError(null)
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), password })
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password, grade })
       })
 
       if (res.ok) {
+        setGrade('')
         router.push('/api/auth/signin')
         return
       }
@@ -77,6 +85,12 @@ export default function Signup() {
           <input className="input" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} required name="name" autoComplete="name" />
           <input className="input" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required name="email" autoComplete="email" />
           <input className="input" placeholder="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required name="password" autoComplete="new-password" />
+          <select className="input" value={grade} onChange={e => setGrade(e.target.value as GradeValue | '')} required name="grade">
+            <option value="">Select your grade</option>
+            {gradeOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
           <noscript>
             <p className="text-sm muted">JavaScript appears to be disabled in your browser. The form will submit normally without client-side enhancements.</p>
           </noscript>

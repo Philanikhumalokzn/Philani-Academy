@@ -12,10 +12,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = (authToken as any)?.role as string | undefined
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (authToken as any)?.email === ownerEmail
+  const isAdmin = role === 'admin'
+  const isTeacher = role === 'teacher'
+  const isStudent = role === 'student'
 
-  if (role !== 'admin' && !isOwner) {
-    return res.status(403).json({ message: 'Forbidden' })
-  }
+    if (!isAdmin && !isOwner && !isTeacher && !isStudent) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+
+    const isModerator = Boolean(isAdmin || isOwner)
+    const displayName = (authToken as any)?.name || (authToken as any)?.email || (isModerator ? 'Admin' : 'Participant')
+    const userId = (authToken as any)?.sub || (authToken as any)?.email || (isModerator ? 'admin' : 'participant')
 
   const secret = process.env.ROOM_SECRET || ''
   const baseKey = 'philani-admin-room'
@@ -48,9 +55,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const user = {
         'hidden-from-recorder': false,
-        moderator: true,
-        name: (authToken as any)?.name || (authToken as any)?.email || 'Admin',
-        id: (authToken as any)?.sub || (authToken as any)?.email || 'admin',
+        moderator: isModerator,
+        name: displayName,
+        id: userId,
         avatar: '',
         email: (authToken as any)?.email || ''
       }
@@ -62,8 +69,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         exp,
         nbf: now - 5,
         sub: jaasApp,
-        context: { features, user },
-        room: roomSegment
+  context: { features, user },
+  room: roomSegment
       }
 
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })

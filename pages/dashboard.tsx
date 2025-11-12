@@ -39,6 +39,7 @@ export default function Dashboard() {
     : 'Resolving grade'
   const userRole = (session as any)?.user?.role as string | undefined
   const isAdmin = userRole === 'admin'
+  const isOwnerUser = Boolean(((session as any)?.user?.email && (session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || isAdmin)
   const adminRoomName = useMemo(() => {
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
     return appId ? `${appId}/philani-admin-room` : 'philani-admin-room'
@@ -334,24 +335,15 @@ export default function Dashboard() {
             <h2 className="font-semibold mb-3">Live class — {activeGradeLabel}</h2>
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
-            ) : isAdmin ? (
-              // Admins bypass session checks and always join the control room
+            ) : (
               <JitsiRoom
                 roomName={adminRoomName}
                 displayName={session?.user?.name || session?.user?.email}
                 sessionId={null}
                 tokenEndpoint="/api/sessions/admin/token"
                 passwordEndpoint={null}
-                isOwner
+                isOwner={isOwnerUser}
               />
-            ) : secureRoomName ? (
-              <JitsiRoom roomName={secureRoomName} displayName={session?.user?.name || session?.user?.email} sessionId={sessions && sessions.length > 0 ? sessions[0].id : null} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : sessions && sessions.length > 0 ? (
-              // The room endpoint now returns a full JaaS path when active; until then,
-              // embed a provisional full path using the workspace prefix + deterministic segment
-              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-${sessions[0].id}`} displayName={session?.user?.name || session?.user?.email} sessionId={sessions[0].id} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
-            ) : (
-              <JitsiRoom roomName={`${process.env.NEXT_PUBLIC_JAAS_APP_ID || ''}/philani-public-room`} displayName={session?.user?.name || session?.user?.email} isOwner={((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'} />
             )}
           </div>
           <div className="flex items-center justify-between mb-4">

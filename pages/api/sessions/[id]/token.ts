@@ -19,13 +19,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) } })
   if (!rec) return res.status(404).json({ message: 'Not found' })
 
-  const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
-  const isOwner = ownerEmail && (authToken as any).email === ownerEmail
-  const role = (authToken as any)?.role
-  const isAdmin = role === 'admin'
+  const jitsiActive = (rec as any)?.jitsiActive ?? false
+  // Unified behavior: everyone waits until the meeting is marked active
+  if (!jitsiActive) return res.status(403).json({ message: 'Meeting not started yet' })
 
-  // Compute room name (identical logic for everyone) up-front so we can
-  // always return the correct full room path, even while waiting.
+  // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''
   const h = crypto.createHmac('sha256', secret).update(String(id)).digest('hex').slice(0, 12)
   const roomSegment = `philani-${String(id)}-${h}`
@@ -59,8 +57,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const privateKey = jaasPriv.replace(/\\n/g, '\n')
 
-      // Determine moderator: admin role or owner email
-      const moderator = Boolean(isOwner || isAdmin)
+  // Determine moderator based on role only; behavior is otherwise the same
+  const role = (authToken as any)?.role
+  const moderator = role === 'admin'
 
       // Features and user block copied from the provided client tool (with safe defaults)
       const features = {
@@ -83,8 +82,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: (authToken as any)?.email || ''
       }
 
-  // For learners (non-owner/non-admin), lock token to a single room; for admins/owner, allow all rooms
-  const roomClaim = moderator ? '*' : roomSegment
+  // Unify join logic: everyone joins the same concrete room; admins/owner only get moderator=true
+  const roomClaim = roomSegment
 
       const payload: any = {
         aud: 'jitsi',

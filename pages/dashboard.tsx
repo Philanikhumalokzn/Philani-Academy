@@ -248,6 +248,8 @@ export default function Dashboard() {
   // Helper flags
   const appPrefix = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
   const runningId = runningSession?.id || (sessions && sessions[0]?.id)
+  const fallbackAdminRoomSegment = 'philani-admin-lobby'
+  const fallbackAdminRoom = process.env.NEXT_PUBLIC_JAAS_DASHBOARD_ROOM || (appPrefix ? `${appPrefix}/${fallbackAdminRoomSegment}` : fallbackAdminRoomSegment)
 
   return (
     <main className="min-h-screen p-8">
@@ -258,6 +260,12 @@ export default function Dashboard() {
             <h2 className="font-semibold mb-3">Live class</h2>
             {status !== 'authenticated' ? (
               <div className="text-sm muted">Please sign in to join the live class.</div>
+            ) : isAdmin ? (
+              <SimpleJitsiEmbed
+                roomName={secureRoomName || fallbackAdminRoom}
+                sessionId={secureRoomName && runningId ? String(runningId) : undefined}
+                height="600px"
+              />
             ) : secureRoomName && runningId ? (
               // Unified behavior: everyone joins the same room via the same tokenized path
               <JitsiRoom

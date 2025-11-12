@@ -140,15 +140,18 @@ export default function Dashboard() {
 
     try {
       const now = new Date()
-      const running = sessions.find(s => new Date(s.startsAt) <= now) || null
-      setRunningSession(running)
+      const currentlyRunning = sessions.find(s => new Date(s.startsAt) <= now) || null
+      const upcoming = sessions.length > 0 ? sessions[0] : null
+      const targetSession = currentlyRunning || (isAdmin ? upcoming : null)
 
-      if (!running) {
+      setRunningSession(targetSession)
+
+      if (!targetSession) {
         setSecureRoomName(null)
       } else {
         const fetchRoomName = async () => {
           try {
-            const roomRes = await fetch(`/api/sessions/${running.id}/room`, { credentials: 'same-origin' })
+            const roomRes = await fetch(`/api/sessions/${targetSession.id}/room`, { credentials: 'same-origin' })
             if (roomRes.ok) {
               const data = await roomRes.json().catch(() => null)
               if (!cancelled && data?.roomName) {
@@ -165,7 +168,7 @@ export default function Dashboard() {
         if (isAdmin) {
           const activateAndFetch = async () => {
             try {
-              await fetch(`/api/sessions/${running.id}/present`, { method: 'POST', credentials: 'same-origin' })
+              await fetch(`/api/sessions/${targetSession.id}/present`, { method: 'POST', credentials: 'same-origin' })
             } catch (err) {
               if (process.env.NODE_ENV !== 'production') {
                 console.warn('Unable to mark session active automatically', err)
@@ -184,7 +187,7 @@ export default function Dashboard() {
         } else {
           const check = async () => {
             try {
-              const statusRes = await fetch(`/api/sessions/${running.id}/status`)
+              const statusRes = await fetch(`/api/sessions/${targetSession.id}/status`)
               if (statusRes.ok) {
                 const st = await statusRes.json().catch(() => null)
                 if (st?.jitsiActive) {

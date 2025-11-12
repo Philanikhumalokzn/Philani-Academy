@@ -15,15 +15,15 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
-  const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(null)
+  const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(isOwner ? false : true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
 
   useEffect(() => {
     let mounted = true
     setInitError(null)
-    setLobbyError(null)
-    setLobbyEnabled(null)
+  setLobbyError(null)
+  setLobbyEnabled(isOwner ? false : true)
 
     const loadScript = (url?: string) => {
       return new Promise<void>((resolve, reject) => {
@@ -79,7 +79,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           roomName,
           parentNode: containerRef.current,
           interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
-          configOverwrite: { disableDeepLinking: true },
+          configOverwrite: { disableDeepLinking: true, lobbyEnabled: true },
           userInfo: { displayName: displayName || 'Learner' }
         }
 
@@ -123,6 +123,17 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
             }
           } catch (err) {
             // ignore capability probe
+          }
+
+          try {
+            const result = apiRef.current.executeCommand('toggleLobby', false)
+            if (result && typeof result.then === 'function') {
+              result.then(() => setLobbyEnabled(false)).catch(() => {})
+            } else {
+              setLobbyEnabled(false)
+            }
+          } catch (err) {
+            // ignore inability to toggle automatically
           }
         }
 

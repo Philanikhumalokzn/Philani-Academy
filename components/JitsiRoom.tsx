@@ -39,20 +39,6 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       })
     }
 
-    const ensureLobbyState = (enabled: boolean) => {
-      if (!apiRef.current) return
-      try {
-        const result = apiRef.current.executeCommand('toggleLobby', enabled)
-        if (result && typeof result.then === 'function') {
-          result.then(() => setLobbyEnabled(enabled)).catch(() => {})
-        } else {
-          setLobbyEnabled(enabled)
-        }
-      } catch (err) {
-        // ignore inability to toggle automatically
-      }
-    }
-
     const init = async () => {
       try {
   const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
@@ -118,17 +104,6 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
           // ignore
         }
 
-        ensureLobbyState(true)
-
-        let lobbyJoinHandler: (() => void) | null = null
-        try {
-          lobbyJoinHandler = () => ensureLobbyState(true)
-          apiRef.current.addEventListener('videoConferenceJoined', lobbyJoinHandler)
-          ;(apiRef.current as any)._lobbyJoinHandler = lobbyJoinHandler
-        } catch (err) {
-          // ignore listener issues
-        }
-
         if (isOwner && apiRef.current) {
           try {
             const listener = (event: any) => {
@@ -185,10 +160,6 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
       if (apiRef.current && (apiRef.current as any)._lobbyToggleListener) {
         try { apiRef.current.removeEventListener('lobby.toggle', (apiRef.current as any)._lobbyToggleListener) } catch (e) {}
         delete (apiRef.current as any)._lobbyToggleListener
-      }
-      if (apiRef.current && (apiRef.current as any)._lobbyJoinHandler) {
-        try { apiRef.current.removeEventListener('videoConferenceJoined', (apiRef.current as any)._lobbyJoinHandler) } catch (e) {}
-        delete (apiRef.current as any)._lobbyJoinHandler
       }
     }
   }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner])

@@ -69,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         'list-visitors': false,
         recording: true,
         flip: false,
-        'lobby-mode': isModerator ? 'disabled' : 'enabled'
+        'lobby-mode': 'enabled'
       }
 
       const user = {
@@ -109,7 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const header = { alg: 'HS256', typ: 'JWT' }
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomSegment, exp, context: { features: { 'lobby-mode': isModerator ? 'disabled' : 'enabled' } } }
+  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomSegment, exp, context: { features: { 'lobby-mode': 'enabled' } } }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')

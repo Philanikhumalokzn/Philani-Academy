@@ -28,6 +28,25 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
 
       try {
         let token: string | undefined;
+        const isOwner = Boolean((window as any).__JITSI_IS_OWNER__)
+        const mustBeModerator = isOwner && !!sessionId
+        const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
+        let effectiveRoomName = roomName
+        const fetchTokenOnce = async () => {
+          if (!sessionId) return undefined
+          try {
+            const res = await fetch(`/api/sessions/${sessionId}/token`, { cache: 'no-store', credentials: 'same-origin' });
+            if (res.ok) {
+              const body = await res.json();
+              if (body?.roomName) {
+                // Replace provided roomName with authoritative one from server
+                effectiveRoomName = body.roomName
+              }
+              return body?.token as string | undefined
+            }
+          } catch {}
+          return undefined
+        }
 
         // DEV override: allow quick testing with a token from the URL
         // Usage: append ?jaas_token=<your_token> to the page or set window.JAAS_TEST_TOKEN
@@ -49,13 +68,12 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
         }
 
         if (!token && sessionId) {
-          // try to fetch a short lived JWT from our server endpoint
-          const res = await fetch(`/api/sessions/${sessionId}/token`, { cache: 'no-store' });
-          if (res.ok) {
-            const body = await res.json();
-            token = body?.token;
-          } else {
-            console.warn('/api/sessions/[id]/token returned', res.status);
+          // Moderators: retry a few times to ensure we get a token before joining
+          let attempts = mustBeModerator ? 3 : 1
+          while (attempts-- > 0 && !token) {
+            token = await fetchTokenOnce()
+            if (token || !mustBeModerator) break
+            await sleep(600)
           }
         }
 
@@ -76,13 +94,31 @@ export default function SimpleJitsiEmbed({ roomName, sessionId, height = '600px'
         }
 
         apiInstance = new Jitsi(domain, {
-          roomName,
+          roomName: effectiveRoomName,
           parentNode: containerRef.current,
           jwt: token,
         });
 
         // attach to window for debugging if needed
         (window as any).__jitsiApi = apiInstance;
+
+        // Best-effort: if this client is a moderator (owner/admin), enable lobby automatically
+        const maybeEnableLobby = () => {
+          try {
+            const isOwner = Boolean((window as any).__JITSI_IS_OWNER__)
+            if (!isOwner || !apiInstance) return
+            try { apiInstance.executeCommand('toggleLobby', true); return } catch (_) {}
+            try { apiInstance.executeCommand('lobby.enable', true); return } catch (_) {}
+            try { apiInstance.executeCommand('toggleLobby'); return } catch (_) {}
+            if (typeof (apiInstance as any).setLobbyEnabled === 'function') {
+              try { (apiInstance as any).setLobbyEnabled(true) } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        try {
+          apiInstance.addEventListener('videoConferenceJoined', maybeEnableLobby)
+          apiInstance.addEventListener('participantRoleChanged', (e: any) => { if (e?.role === 'moderator') maybeEnableLobby() })
+        } catch (_) {}
       } catch (err) {
         console.error('Failed to initialize Jitsi', err);
       }

@@ -140,8 +140,9 @@ export default function Dashboard() {
 
     try {
       const now = new Date()
-      const currentlyRunning = sessions.find(s => new Date(s.startsAt) <= now) || null
-      const upcoming = sessions.length > 0 ? sessions[0] : null
+      const pastSessions = sessions.filter(s => new Date(s.startsAt) <= now)
+      const currentlyRunning = pastSessions.length > 0 ? pastSessions[pastSessions.length - 1] : null
+      const upcoming = sessions.find(s => new Date(s.startsAt) > now) || null
       const targetSession = currentlyRunning || (isAdmin ? upcoming : null)
 
       setRunningSession(targetSession)
@@ -167,8 +168,16 @@ export default function Dashboard() {
 
         if (isAdmin) {
           const activateAndFetch = async () => {
+            let roomBootstrapped = false
             try {
-              await fetch(`/api/sessions/${targetSession.id}/present`, { method: 'POST', credentials: 'same-origin' })
+              const presentRes = await fetch(`/api/sessions/${targetSession.id}/present`, { method: 'POST', credentials: 'same-origin' })
+              if (presentRes.ok) {
+                const payload = await presentRes.json().catch(() => null)
+                if (!cancelled && payload?.roomName) {
+                  setSecureRoomName(payload.roomName)
+                  roomBootstrapped = true
+                }
+              }
             } catch (err) {
               if (process.env.NODE_ENV !== 'production') {
                 console.warn('Unable to mark session active automatically', err)
@@ -180,7 +189,7 @@ export default function Dashboard() {
               await sleep(400)
             }
 
-            if (!cancelled) await fetchRoomName()
+            if (!cancelled && !roomBootstrapped) await fetchRoomName()
           }
 
           activateAndFetch()

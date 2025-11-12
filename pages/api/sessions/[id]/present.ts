@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../../lib/prisma'
 import { getToken } from 'next-auth/jwt'
+import crypto from 'crypto'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -22,9 +23,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ message: 'Forbidden' })
   }
 
+  const secret = process.env.ROOM_SECRET || ''
+  if (!secret) return res.status(500).json({ message: 'Room secret not configured' })
+
+  const roomId = String(id)
+  const hash = crypto.createHmac('sha256', secret).update(roomId).digest('hex').slice(0, 12)
+  const roomSegment = `philani-${roomId}-${hash}`
+  const jaasApp = process.env.JAAS_APP_ID || process.env.JITSI_JAAS_APP_ID || ''
+  const fullRoomName = jaasApp ? `${jaasApp}/${roomSegment}` : roomSegment
+
   try {
-    await prisma.sessionRecord.update({ where: { id: String(id) }, data: { jitsiActive: true } as any })
-    return res.status(200).json({ ok: true })
+    await prisma.sessionRecord.update({ where: { id: roomId }, data: { jitsiActive: true } as any })
+    return res.status(200).json({ ok: true, roomName: fullRoomName })
   } catch (err) {
     return res.status(500).json({ message: 'Failed to set active' })
   }

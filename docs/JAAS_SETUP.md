@@ -80,6 +80,10 @@ Notes:
 - Paste token into https://jwt.io to inspect header/payload. Confirm `alg: RS256` and `kid` present (if using RS256).
 - If the token is valid the demo popup will no longer appear.
 
+7) Lobby / waiting room behavior
+- The app will automatically enable Jitsi's Lobby feature when the first moderator (owner/admin) joins the room. Once enabled, any new participant must request to join and the moderator will see a built‑in prompt inside the meeting UI to admit or reject them.
+- Participants who arrive before the moderator will join the same room context and, once Lobby is enabled, subsequent joiners will knock for access. Existing participants are not ejected; to strictly gate all entries, enable Lobby as soon as you start the class.
+
 6) If you want me to help further
 - I can open a PR that adds these docs and the `.env.local.example` (already done) — you can then copy `.env.local.example` to `.env.local` and paste your non-secret values.
 - If you prefer I can also generate the `.env.local` file for you if you paste non-secret values (deployment id, kid). I will NOT accept private keys pasted here for security — instead you should keep the private key file on your machine and load it as shown above.

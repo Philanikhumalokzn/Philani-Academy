@@ -28,6 +28,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const h = crypto.createHmac('sha256', secret).update(String(id)).digest('hex').slice(0, 12)
   const roomSegment = `philani-${String(id)}-${h}`
 
+  const jitsiActive = (rec as any)?.jitsiActive ?? false
+  // IMPORTANT: Do not change admin/owner behavior. For learners and everyone else,
+  // return the correct room path early (without a token) so they land in the
+  // same room/lobby and can wait for the moderator. This avoids drifting into a
+  // different provisional room and ensures join requests are visible to admin.
+  if (!jitsiActive && !(isOwner || isAdmin)) {
+    const jaasAppForRoom = process.env.JAAS_APP_ID || process.env.JITSI_JAAS_APP_ID || ''
+    const fullRoomNamePending = jaasAppForRoom ? `${jaasAppForRoom}/${roomSegment}` : roomSegment
+    return res.status(200).json({ token: null, roomName: fullRoomNamePending, waitForModerator: true })
+  }
+
+  // Compute room name same as /room endpoint
+
   const now = Math.floor(Date.now() / 1000)
   // Match the HTML tool defaults closely: TTL defaults to 7200s (2h)
   const ttl = parseInt(process.env.JITSI_JAAS_EXP_SECS || '7200', 10)

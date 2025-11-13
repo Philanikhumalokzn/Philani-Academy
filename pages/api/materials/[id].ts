@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import path from 'path'
 import { promises as fs } from 'fs'
+import { del } from '@vercel/blob'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 
@@ -40,13 +41,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  const publicPath = material.url.replace(/^\//, '')
-  const absolutePath = path.join(process.cwd(), 'public', publicPath)
-  try {
-    await fs.unlink(absolutePath)
-  } catch (err: any) {
-    if (err?.code !== 'ENOENT') {
-      console.warn('Failed to remove lesson material file', err)
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+  const storedFilename = (material.filename || '').trim()
+  const fallbackKeyFromUrl = material.url.replace(/^https?:\/\//, '').replace(/^[^/]+\//, '').replace(/^\//, '')
+  const baseKey = storedFilename || fallbackKeyFromUrl
+  const normalizedKey = baseKey.includes('/') ? baseKey : path.posix.join('materials', material.session.id, baseKey)
+
+  if (blobToken) {
+    try {
+      await del(normalizedKey, { token: blobToken })
+    } catch (err: any) {
+      if (err?.statusCode !== 404 && err?.code !== 'not_found') {
+        console.warn('Failed to delete blob material', err)
+      }
+    }
+  } else {
+    const absolutePath = path.join(process.cwd(), 'public', normalizedKey.replace(/^\//, ''))
+    try {
+      await fs.unlink(absolutePath)
+    } catch (err: any) {
+      if (err?.code !== 'ENOENT') {
+        console.warn('Failed to remove lesson material file', err)
+      }
     }
   }
 

@@ -39,6 +39,7 @@ Open http://localhost:3000
 
 Notes
 - This is a prototype. For production, configure a proper database, HTTPS, secure secrets, and Stripe settings.
+- When deploying to Vercel, create a Blob store and expose the `BLOB_READ_WRITE_TOKEN` environment variable so lesson material uploads work. Without it the API falls back to writing into `public/materials`, which only functions during local development.
 
 Branding suggestions
 - Name: Philani Academy for Mathematics (use full name in headers; short form "Philani Academy" in the nav)

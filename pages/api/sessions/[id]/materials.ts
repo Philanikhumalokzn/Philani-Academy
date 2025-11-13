@@ -2,7 +2,9 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import formidable, { File } from 'formidable'
 import path from 'path'
+import { createReadStream } from 'fs'
 import { promises as fs } from 'fs'
+import { put } from '@vercel/blob'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
 
@@ -46,10 +48,6 @@ function sanitizeFilename(original: string | undefined): string {
   const timestamp = Date.now()
   const extension = parsed.ext || ''
   return `${timestamp}_${safeName}${extension}`
-}
-
-function ensureLeadingSlash(urlPath: string): string {
-  return urlPath.startsWith('/') ? urlPath : `/${urlPath}`
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -99,22 +97,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const finalTitle = (providedTitle || uploadedFile.originalFilename || 'Lesson material').toString().trim()
 
       const safeFilename = sanitizeFilename(uploadedFile.originalFilename)
-      const materialsDir = path.join(process.cwd(), 'public', 'materials', sessionRecord.id)
-      await fs.mkdir(materialsDir, { recursive: true })
-      const destinationPath = path.join(materialsDir, safeFilename)
-      await fs.copyFile(uploadedFile.filepath, destinationPath)
-
       const relativePath = path.posix.join('materials', sessionRecord.id, safeFilename).replace(/\\/g, '/')
-      const publicUrl = ensureLeadingSlash(relativePath)
+      const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+
+      let storedFilename = relativePath
+      let publicUrl = `/${relativePath}`
+      const storedSize = typeof uploadedFile.size === 'number' ? uploadedFile.size : null
+
+      if (blobToken) {
+        try {
+          const stream = createReadStream(uploadedFile.filepath)
+          const blob = await put(relativePath, stream, {
+            access: 'public',
+            token: blobToken,
+            contentType: uploadedFile.mimetype || undefined,
+            addRandomSuffix: false
+          })
+          storedFilename = blob.pathname || relativePath
+          publicUrl = blob.url
+        } catch (blobErr: any) {
+          console.error('Vercel Blob upload error', blobErr)
+          return res.status(500).json({ message: blobErr?.message || 'Failed to upload to blob storage' })
+        }
+      } else {
+        const materialsDir = path.join(process.cwd(), 'public', 'materials', sessionRecord.id)
+        await fs.mkdir(materialsDir, { recursive: true })
+        const destinationPath = path.join(materialsDir, safeFilename)
+        await fs.copyFile(uploadedFile.filepath, destinationPath)
+      }
 
       const material = await prisma.lessonMaterial.create({
         data: {
           sessionId: sessionRecord.id,
           title: finalTitle,
-          filename: safeFilename,
+          filename: storedFilename,
           url: publicUrl,
           contentType: uploadedFile.mimetype || null,
-          size: typeof uploadedFile.size === 'number' ? uploadedFile.size : null,
+          size: storedSize,
           createdBy: (token as any)?.email ? String((token as any).email) : null
         }
       })

@@ -37,6 +37,7 @@ model SessionRecord {
   jitsiActive   Boolean @default(false)
   createdBy String
   createdAt DateTime @default(now())
+  materials LessonMaterial[]
 }
 
 model Announcement {
@@ -46,4 +47,17 @@ model Announcement {
   grade     Grade
   createdBy String?
   createdAt DateTime @default(now())
+}
+
+model LessonMaterial {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title       String
+  filename    String
+  url         String
+  contentType String?
+  size        Int?
+  createdBy   String?
+  createdAt   DateTime @default(now())
 }

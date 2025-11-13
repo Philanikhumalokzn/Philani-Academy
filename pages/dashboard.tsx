@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -10,6 +10,18 @@ type Announcement = {
   title: string
   content: string
   grade: GradeValue
+  createdAt: string
+  createdBy?: string | null
+}
+
+type LessonMaterial = {
+  id: string
+  sessionId: string
+  title: string
+  filename: string
+  url: string
+  contentType?: string | null
+  size?: number | null
   createdAt: string
   createdBy?: string | null
 }
@@ -46,6 +58,14 @@ export default function Dashboard() {
   const [announcementTitle, setAnnouncementTitle] = useState('')
   const [announcementContent, setAnnouncementContent] = useState('')
   const [creatingAnnouncement, setCreatingAnnouncement] = useState(false)
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
+  const [materials, setMaterials] = useState<LessonMaterial[]>([])
+  const [materialsLoading, setMaterialsLoading] = useState(false)
+  const [materialsError, setMaterialsError] = useState<string | null>(null)
+  const [materialTitle, setMaterialTitle] = useState('')
+  const [materialFile, setMaterialFile] = useState<File | null>(null)
+  const [materialUploading, setMaterialUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
@@ -53,8 +73,15 @@ export default function Dashboard() {
   const userRole = (session as any)?.user?.role as string | undefined
   const isAdmin = userRole === 'admin'
   const canManageAnnouncements = userRole === 'admin' || userRole === 'teacher'
+  const canUploadMaterials = userRole === 'admin' || userRole === 'teacher'
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
+  const formatFileSize = (bytes?: number | null) => {
+    if (!bytes || bytes <= 0) return ''
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
   const gradeTokenEndpoint = useMemo(() => {
     if (!gradeReady || !selectedGrade) return null
     return `/api/sessions/grade/${selectedGrade}/token`
@@ -187,6 +214,113 @@ export default function Dashboard() {
     }
   }
 
+  async function fetchMaterials(sessionId: string) {
+    setMaterialsError(null)
+    setMaterialsLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/materials`, { credentials: 'same-origin' })
+      if (res.ok) {
+        const data = await res.json()
+        setMaterials(Array.isArray(data) ? data : [])
+      } else {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 401) {
+          setMaterialsError('Please sign in to view lesson materials.')
+        } else {
+          setMaterialsError(data?.message || `Failed to load materials (${res.status})`)
+        }
+        setMaterials([])
+      }
+    } catch (err) {
+      console.error('fetchMaterials error', err)
+      setMaterialsError(err instanceof Error ? err.message : 'Network error')
+      setMaterials([])
+    } finally {
+      setMaterialsLoading(false)
+    }
+  }
+
+  function resetMaterialForm() {
+    setMaterialTitle('')
+    setMaterialFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function handleMaterialFileChange(file: File | null) {
+    setMaterialFile(file)
+    if (file) {
+      setMaterialTitle(prev => prev || file.name.replace(/\.[^.]+$/, ''))
+    } else {
+      setMaterialTitle('')
+    }
+  }
+
+  const toggleMaterialsForSession = (sessionId: string) => {
+    if (expandedSessionId === sessionId) {
+      setExpandedSessionId(null)
+      setMaterials([])
+      setMaterialsError(null)
+      resetMaterialForm()
+      return
+    }
+    setExpandedSessionId(sessionId)
+    setMaterials([])
+    setMaterialsError(null)
+    resetMaterialForm()
+    fetchMaterials(sessionId)
+  }
+
+  async function uploadMaterial(e: React.FormEvent) {
+    e.preventDefault()
+    if (!expandedSessionId) {
+      alert('Select a session before uploading materials')
+      return
+    }
+    if (!materialFile) {
+      alert('Choose a file to upload')
+      return
+    }
+    const trimmedTitle = materialTitle.trim()
+    const formData = new FormData()
+    if (trimmedTitle) formData.append('title', trimmedTitle)
+    formData.append('file', materialFile)
+
+    setMaterialUploading(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(expandedSessionId)}/materials`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData
+      })
+      if (res.ok) {
+        resetMaterialForm()
+        await fetchMaterials(expandedSessionId)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to upload material (${res.status})`)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    } finally {
+      setMaterialUploading(false)
+    }
+  }
+
+  async function deleteMaterial(id: string) {
+    if (!confirm('Delete this material? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/materials/${id}`, { method: 'DELETE', credentials: 'same-origin' })
+      if (res.ok || res.status === 204) {
+        setMaterials(prev => prev.filter(m => m.id !== id))
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to delete material (${res.status})`)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    }
+  }
+
   async function fetchUsers() {
     setUsersError(null)
     setUsersLoading(true)
@@ -298,6 +432,15 @@ export default function Dashboard() {
     if (!gradeReady || !selectedGrade) return
     fetchAnnouncementsForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
+
+  useEffect(() => {
+    setExpandedSessionId(null)
+    setMaterials([])
+    setMaterialsError(null)
+    setMaterialTitle('')
+    setMaterialFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [selectedGrade])
 
   useEffect(() => {
     if (!gradeReady) return
@@ -504,14 +647,80 @@ export default function Dashboard() {
             ) : (
               <ul className="space-y-3">
                 {sessions.map(s => (
-                  <li key={s.id} className="p-3 rounded flex items-center justify-between border">
-                    <div>
-                      <div className="font-medium">{s.title}</div>
-                      <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                  <li key={s.id} className="p-3 border rounded">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{s.title}</div>
+                        <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => toggleMaterialsForSession(s.id)}
+                        >
+                          {expandedSessionId === s.id ? 'Hide materials' : 'View materials'}
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
-                    </div>
+                    {expandedSessionId === s.id && (
+                      <div className="mt-3 border-t pt-3 space-y-3">
+                        {canUploadMaterials && (
+                          <form onSubmit={uploadMaterial} className="space-y-2">
+                            <input
+                              className="input"
+                              placeholder="Material title"
+                              value={materialTitle}
+                              onChange={e => setMaterialTitle(e.target.value)}
+                            />
+                            <input
+                              ref={fileInputRef}
+                              className="input"
+                              type="file"
+                              accept=".pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.key,.txt,.xlsx,.xls,.zip,.rar,.jpg,.jpeg,.png,.mp4,.mov"
+                              onChange={e => handleMaterialFileChange(e.target.files?.[0] ?? null)}
+                            />
+                            <div>
+                              <button className="btn btn-primary" type="submit" disabled={materialUploading || !materialFile}>
+                                {materialUploading ? 'Uploading…' : 'Upload material'}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                        {materialsError ? (
+                          <div className="text-sm text-red-600">{materialsError}</div>
+                        ) : materialsLoading ? (
+                          <div className="text-sm muted">Loading materials…</div>
+                        ) : materials.length === 0 ? (
+                          <div className="text-sm muted">No materials uploaded yet.</div>
+                        ) : (
+                          <ul className="space-y-2">
+                            {materials.map(m => (
+                              <li key={m.id} className="p-2 border rounded flex items-start justify-between gap-4">
+                                <div>
+                                  <a href={m.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{m.title}</a>
+                                  <div className="text-xs muted">
+                                    {new Date(m.createdAt).toLocaleString()}
+                                    {m.createdBy ? ` • ${m.createdBy}` : ''}
+                                    {m.size ? ` • ${formatFileSize(m.size)}` : ''}
+                                  </div>
+                                </div>
+                                {canUploadMaterials && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger"
+                                    onClick={() => deleteMaterial(m.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

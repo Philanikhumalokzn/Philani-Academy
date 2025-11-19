@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 declare global {
   interface Window {
@@ -11,6 +11,12 @@ declare global {
 }
 
 type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+type SnapshotPayload = {
+  symbols: any[] | null
+  latex?: string
+  jiix?: string | null
+}
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
@@ -34,7 +40,6 @@ function loadIinkRuntime(): Promise<void> {
     const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null
 
     const handleLoad = () => {
-      console.log('MyScript iink script loaded successfully')
       resolve()
     }
 
@@ -44,7 +49,6 @@ function loadIinkRuntime(): Promise<void> {
     }
 
     if (existing) {
-      console.log('MyScript script already exists in DOM')
       if (existing.getAttribute('data-loaded') === 'true') {
         resolve()
         return
@@ -54,7 +58,6 @@ function loadIinkRuntime(): Promise<void> {
       return
     }
 
-    console.log('Creating new MyScript script element')
     const script = document.createElement('script')
     script.id = SCRIPT_ID
     script.src = SCRIPT_URL
@@ -64,7 +67,6 @@ function loadIinkRuntime(): Promise<void> {
     script.addEventListener(
       'load',
       () => {
-        console.log('MyScript script load event fired')
         script.setAttribute('data-loaded', 'true')
         resolve()
       },
@@ -86,13 +88,24 @@ function loadIinkRuntime(): Promise<void> {
 
 type MyScriptMathCanvasProps = {
   gradeLabel?: string
+  roomId: string
+  userId: string
+  userDisplayName?: string
 }
 
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 
-export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasProps) {
+const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
+
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
+  const realtimeRef = useRef<any>(null)
+  const channelRef = useRef<any>(null)
+  const clientIdRef = useRef('')
+  const latestSnapshotRef = useRef<SnapshotPayload | null>(null)
+  const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isApplyingRemoteRef = useRef(false)
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [latexOutput, setLatexOutput] = useState('')
@@ -100,6 +113,125 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
+
+  const clientId = useMemo(() => {
+    const base = userId ? sanitizeIdentifier(userId) : 'guest'
+    const randomSuffix = Math.random().toString(36).slice(2, 8)
+    return `${base}-${randomSuffix}`
+  }, [userId])
+
+  useEffect(() => {
+    clientIdRef.current = clientId
+  }, [clientId])
+
+  const channelName = useMemo(() => {
+    const safeRoom = roomId ? sanitizeIdentifier(roomId).toLowerCase() : 'default'
+    return `myscript:${safeRoom || 'default'}`
+  }, [roomId])
+
+  const collectEditorSnapshot = useCallback((): SnapshotPayload | null => {
+    const editor = editorInstanceRef.current
+    if (!editor) return null
+
+    const model = editor.model ?? {}
+    let symbols: any[] | null = null
+    if (model.symbols) {
+      try {
+        symbols = JSON.parse(JSON.stringify(model.symbols))
+      } catch (err) {
+        console.warn('Unable to serialize MyScript symbols', err)
+        symbols = null
+      }
+    }
+
+    const exports = model.exports ?? {}
+    const latexExport = exports['application/x-latex']
+    const jiixRaw = exports['application/vnd.myscript.jiix']
+
+    const snapshot: SnapshotPayload = {
+      symbols,
+      latex: typeof latexExport === 'string' ? latexExport : '',
+      jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
+    }
+
+    latestSnapshotRef.current = snapshot
+    return snapshot
+  }, [])
+
+  const broadcastSnapshot = useCallback(
+    (immediate = false) => {
+      if (isApplyingRemoteRef.current) return
+      const channel = channelRef.current
+      if (!channel) return
+
+      const snapshot = collectEditorSnapshot()
+      if (!snapshot) return
+
+      const publish = async () => {
+        try {
+          await channel.publish('stroke', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            snapshot,
+            ts: Date.now(),
+          })
+        } catch (err) {
+          console.warn('Failed to publish stroke update', err)
+        }
+      }
+
+      if (immediate) {
+        if (pendingBroadcastRef.current) {
+          clearTimeout(pendingBroadcastRef.current)
+          pendingBroadcastRef.current = null
+        }
+        publish()
+        return
+      }
+
+      if (pendingBroadcastRef.current) {
+        clearTimeout(pendingBroadcastRef.current)
+      }
+      pendingBroadcastRef.current = setTimeout(() => {
+        pendingBroadcastRef.current = null
+        publish()
+      }, 180)
+    },
+    [collectEditorSnapshot, userDisplayName]
+  )
+
+  const applySnapshot = useCallback(async (snapshot: SnapshotPayload | null) => {
+    if (!snapshot) return
+    const editor = editorInstanceRef.current
+    if (!editor) return
+
+    isApplyingRemoteRef.current = true
+    try {
+      editor.clear()
+      if (typeof editor.waitForIdle === 'function') {
+        await editor.waitForIdle()
+      }
+
+      if (snapshot.symbols && snapshot.symbols.length) {
+        await editor.importPointEvents(snapshot.symbols)
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
+      }
+
+      if (snapshot.jiix) {
+        await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
+      }
+
+      setLatexOutput(snapshot.latex ?? '')
+    } catch (err) {
+      console.error('Failed to apply remote snapshot', err)
+    } finally {
+      isApplyingRemoteRef.current = false
+      setIsConverting(false)
+      latestSnapshotRef.current = snapshot
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -129,9 +261,6 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
     loadIinkRuntime()
       .then(async () => {
         if (cancelled) return
-        
-        console.log('MyScript runtime loaded, window.iink:', window.iink)
-        
         if (!window.iink?.Editor?.load) {
           throw new Error('MyScript iink runtime did not expose the expected API.')
         }
@@ -156,12 +285,7 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
           },
         }
 
-        console.log('Loading MyScript editor with options:', options)
-        
         const editor = await window.iink.Editor.load(host, 'INTERACTIVEINKSSR', options)
-        
-        console.log('MyScript editor loaded:', editor)
-        
         if (cancelled) {
           editor.destroy?.()
           return
@@ -174,12 +298,14 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
+          broadcastSnapshot(false)
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
+          broadcastSnapshot(true)
         }
         const handleError = (evt: any) => {
           const message = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
@@ -209,6 +335,10 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
 
     return () => {
       cancelled = true
+      if (pendingBroadcastRef.current) {
+        clearTimeout(pendingBroadcastRef.current)
+        pendingBroadcastRef.current = null
+      }
       listeners.forEach(({ type, handler }) => {
         try {
           editorInstanceRef.current?.event?.removeEventListener(type, handler)
@@ -228,22 +358,137 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
         editorInstanceRef.current = null
       }
     }
-  }, [])
+  }, [broadcastSnapshot])
+
+  useEffect(() => {
+    if (status !== 'ready') {
+      return
+    }
+
+    const editor = editorInstanceRef.current
+    if (!editor) {
+      return
+    }
+
+    let disposed = false
+    let channel: any = null
+    let realtime: any = null
+
+    const setupRealtime = async () => {
+      try {
+        const Ably = await import('ably')
+        realtime = new Ably.Realtime.Promise({
+          authUrl: `/api/realtime/ably-token?clientId=${encodeURIComponent(clientIdRef.current)}`,
+          autoConnect: true,
+        })
+
+        realtimeRef.current = realtime
+
+        await new Promise<void>((resolve, reject) => {
+          realtime.connection.once('connected', () => resolve())
+          realtime.connection.once('failed', err => reject(err))
+        })
+
+        if (disposed) return
+
+        channel = realtime.channels.get(channelName)
+        channelRef.current = channel
+        await channel.attach()
+
+        const handleStroke = async (message: any) => {
+          const data = message?.data
+          if (!data || data.clientId === clientIdRef.current) return
+          await applySnapshot(data.snapshot as SnapshotPayload)
+        }
+
+        const handleSyncState = async (message: any) => {
+          const data = message?.data
+          if (!data || data.clientId === clientIdRef.current) return
+          await applySnapshot(data.snapshot as SnapshotPayload)
+        }
+
+        const handleSyncRequest = async (message: any) => {
+          const data = message?.data
+          if (!data || data.clientId === clientIdRef.current) return
+          const existing = latestSnapshotRef.current ?? collectEditorSnapshot()
+          if (!existing) return
+          try {
+            await channel.publish('sync-state', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              snapshot: existing,
+              ts: Date.now(),
+            })
+          } catch (err) {
+            console.warn('Failed to publish sync-state', err)
+          }
+        }
+
+        channel.subscribe('stroke', handleStroke)
+        channel.subscribe('sync-state', handleSyncState)
+        channel.subscribe('sync-request', handleSyncRequest)
+
+        const snapshot = collectEditorSnapshot()
+        if (snapshot?.symbols?.length) {
+          await channel.publish('stroke', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            snapshot,
+            ts: Date.now(),
+          })
+        }
+
+        await channel.publish('sync-request', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          ts: Date.now(),
+        })
+      } catch (err) {
+        console.error('Failed to initialise Ably realtime collaboration', err)
+        if (!disposed) {
+          setError('Realtime collaboration is currently unavailable. Please retry later.')
+        }
+      }
+    }
+
+    setupRealtime()
+
+    return () => {
+      disposed = true
+      try {
+        channelRef.current = null
+        if (channel) {
+          channel.unsubscribe()
+          channel.detach?.()
+        }
+        if (realtime) {
+          realtime.close()
+        }
+      } catch (err) {
+        console.warn('Error while tearing down Ably connection', err)
+      } finally {
+        realtimeRef.current = null
+      }
+    }
+  }, [applySnapshot, collectEditorSnapshot, channelName, status, userDisplayName])
 
   const handleClear = () => {
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
+    broadcastSnapshot(true)
   }
 
   const handleUndo = () => {
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.undo()
+    broadcastSnapshot(false)
   }
 
   const handleRedo = () => {
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.redo()
+    broadcastSnapshot(false)
   }
 
   const handleConvert = () => {

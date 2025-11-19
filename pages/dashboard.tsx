@@ -89,16 +89,26 @@ export default function Dashboard() {
     if (!gradeReady || !selectedGrade) return null
     return `/api/sessions/grade/${selectedGrade}/token`
   }, [gradeReady, selectedGrade])
+  const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const gradeRoomName = useMemo(() => {
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
-    const gradeSlug = selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : 'public-room'
-    const base = `philani-${gradeSlug}`
+    const baseSlug = gradeSlug ?? 'public-room'
+    const base = `philani-${baseSlug}`
     return appId ? `${appId}/${base}` : base
-  }, [selectedGrade])
+  }, [gradeSlug])
+  const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
     : 'N/A'
+  const realtimeUserId = useMemo(() => {
+    const candidate = (session as any)?.user?.id as string | undefined
+    if (candidate && typeof candidate === 'string') return candidate
+    if (session?.user?.email) return session.user.email
+    if (session?.user?.name) return session.user.name
+    return 'guest'
+  }, [session])
+  const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
 
   const updateGradeSelection = (grade: GradeValue) => {
     if (selectedGrade === grade) return
@@ -561,7 +571,12 @@ export default function Dashboard() {
             ) : !selectedGrade ? (
               <div className="text-sm muted">Select a grade to open the shared board.</div>
             ) : (
-              <MyScriptMathCanvas gradeLabel={activeGradeLabel} />
+              <MyScriptMathCanvas
+                gradeLabel={activeGradeLabel}
+                roomId={boardRoomId}
+                userId={realtimeUserId}
+                userDisplayName={realtimeDisplayName}
+              />
             )}
           </div>
           <div className="card mb-4">

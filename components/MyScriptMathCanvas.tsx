@@ -18,6 +18,18 @@ type SnapshotPayload = {
   jiix?: string | null
 }
 
+type SnapshotRecord = {
+  snapshot: SnapshotPayload
+  ts: number
+}
+
+type SnapshotMessage = {
+  clientId?: string
+  author?: string
+  snapshot?: SnapshotPayload | null
+  ts?: number
+}
+
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 
@@ -103,7 +115,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const realtimeRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const clientIdRef = useRef('')
-  const latestSnapshotRef = useRef<SnapshotPayload | null>(null)
+  const latestSnapshotRef = useRef<SnapshotRecord | null>(null)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
   const [status, setStatus] = useState<CanvasStatus>('idle')
@@ -154,7 +166,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
     }
 
-    latestSnapshotRef.current = snapshot
     return snapshot
   }, [])
 
@@ -167,13 +178,20 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const snapshot = collectEditorSnapshot()
       if (!snapshot) return
 
+      const record: SnapshotRecord = {
+        snapshot,
+        ts: Date.now(),
+      }
+
+      latestSnapshotRef.current = record
+
       const publish = async () => {
         try {
           await channel.publish('stroke', {
             clientId: clientIdRef.current,
             author: userDisplayName,
-            snapshot,
-            ts: Date.now(),
+            snapshot: record.snapshot,
+            ts: record.ts,
           })
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
@@ -200,10 +218,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     [collectEditorSnapshot, userDisplayName]
   )
 
-  const applySnapshot = useCallback(async (snapshot: SnapshotPayload | null) => {
+  const applySnapshot = useCallback(async (message: SnapshotMessage) => {
+    const snapshot = message?.snapshot ?? null
     if (!snapshot) return
     const editor = editorInstanceRef.current
     if (!editor) return
+
+    const incomingTs = typeof message?.ts === 'number' ? message.ts : Date.now()
+    const latestRecord = latestSnapshotRef.current
+    if (latestRecord && incomingTs <= latestRecord.ts) {
+      return
+    }
 
     isApplyingRemoteRef.current = true
     try {
@@ -229,7 +254,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     } finally {
       isApplyingRemoteRef.current = false
       setIsConverting(false)
-      latestSnapshotRef.current = snapshot
+      latestSnapshotRef.current = { snapshot, ts: incomingTs }
     }
   }, [])
 
@@ -396,28 +421,43 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         await channel.attach()
 
         const handleStroke = async (message: any) => {
-          const data = message?.data
+          const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data.snapshot as SnapshotPayload)
+          await applySnapshot(data)
         }
 
         const handleSyncState = async (message: any) => {
-          const data = message?.data
+          const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data.snapshot as SnapshotPayload)
+          await applySnapshot(data)
         }
 
         const handleSyncRequest = async (message: any) => {
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
-          const existing = latestSnapshotRef.current ?? collectEditorSnapshot()
-          if (!existing) return
+          const existingRecord = (() => {
+            if (latestSnapshotRef.current) {
+              return latestSnapshotRef.current
+            }
+            const freshSnapshot = collectEditorSnapshot()
+            if (!freshSnapshot) {
+              return null
+            }
+            const record: SnapshotRecord = {
+              snapshot: freshSnapshot,
+              ts: Date.now(),
+            }
+            latestSnapshotRef.current = record
+            return record
+          })()
+
+          if (!existingRecord) return
           try {
             await channel.publish('sync-state', {
               clientId: clientIdRef.current,
               author: userDisplayName,
-              snapshot: existing,
-              ts: Date.now(),
+              snapshot: existingRecord.snapshot,
+              ts: existingRecord.ts,
             })
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
@@ -430,11 +470,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
         const snapshot = collectEditorSnapshot()
         if (snapshot?.symbols?.length) {
+          const record: SnapshotRecord = {
+            snapshot,
+            ts: Date.now(),
+          }
+          latestSnapshotRef.current = record
           await channel.publish('stroke', {
             clientId: clientIdRef.current,
             author: userDisplayName,
-            snapshot,
-            ts: Date.now(),
+            snapshot: record.snapshot,
+            ts: record.ts,
           })
         }
 

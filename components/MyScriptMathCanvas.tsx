@@ -30,6 +30,10 @@ type SnapshotMessage = {
   ts?: number
 }
 
+type BroadcastOptions = {
+  force?: boolean
+}
+
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 
@@ -109,6 +113,14 @@ const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIP
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
+const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
+  if (!snapshot) return true
+  const hasSymbols = Array.isArray(snapshot.symbols) && snapshot.symbols.length > 0
+  const hasLatex = Boolean(snapshot.latex)
+  const hasJiix = Boolean(snapshot.jiix)
+  return !hasSymbols && !hasLatex && !hasJiix
+}
+
 export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
@@ -170,13 +182,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }, [])
 
   const broadcastSnapshot = useCallback(
-    (immediate = false) => {
+    (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
       const channel = channelRef.current
       if (!channel) return
 
       const snapshot = collectEditorSnapshot()
       if (!snapshot) return
+
+      if (isSnapshotEmpty(snapshot) && !options?.force) {
+        return
+      }
 
       const record: SnapshotRecord = {
         snapshot,
@@ -218,13 +234,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     [collectEditorSnapshot, userDisplayName]
   )
 
-  const applySnapshot = useCallback(async (message: SnapshotMessage) => {
+  const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     if (!snapshot) return
     const editor = editorInstanceRef.current
     if (!editor) return
 
-    const incomingTs = typeof message?.ts === 'number' ? message.ts : Date.now()
+    const incomingTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? message.ts : Date.now()
     const latestRecord = latestSnapshotRef.current
     if (latestRecord && incomingTs <= latestRecord.ts) {
       return
@@ -423,13 +439,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         const handleStroke = async (message: any) => {
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data)
+          await applySnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncState = async (message: any) => {
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data)
+          await applySnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
@@ -441,6 +457,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             }
             const freshSnapshot = collectEditorSnapshot()
             if (!freshSnapshot) {
+              return null
+            }
+            if (isSnapshotEmpty(freshSnapshot)) {
               return null
             }
             const record: SnapshotRecord = {
@@ -521,7 +540,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
-    broadcastSnapshot(true)
+    broadcastSnapshot(true, { force: true })
   }
 
   const handleUndo = () => {

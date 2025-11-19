@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -25,6 +26,8 @@ type LessonMaterial = {
   createdAt: string
   createdBy?: string | null
 }
+
+const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 
 export default function Dashboard() {
   const router = useRouter()
@@ -549,6 +552,16 @@ export default function Dashboard() {
                 passwordEndpoint={null}
                 isOwner={isOwnerUser}
               />
+            )}
+          </div>
+          <div className="card mb-4">
+            <h2 className="font-semibold mb-3">Collaborative maths board — {activeGradeLabel}</h2>
+            {status !== 'authenticated' ? (
+              <div className="text-sm muted">Please sign in to launch the maths board.</div>
+            ) : !selectedGrade ? (
+              <div className="text-sm muted">Select a grade to open the shared board.</div>
+            ) : (
+              <MyScriptMathCanvas gradeLabel={activeGradeLabel} />
             )}
           </div>
           <div className="card mb-4">

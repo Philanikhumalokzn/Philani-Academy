@@ -28,10 +28,12 @@ type SnapshotMessage = {
   author?: string
   snapshot?: SnapshotPayload | null
   ts?: number
+  reason?: 'update' | 'clear'
 }
 
 type BroadcastOptions = {
   force?: boolean
+  reason?: 'update' | 'clear'
 }
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
@@ -208,6 +210,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             author: userDisplayName,
             snapshot: record.snapshot,
             ts: record.ts,
+            reason: options?.reason ?? 'update',
           })
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
@@ -236,6 +239,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
+    const reason = message?.reason ?? 'update'
+    if (isSnapshotEmpty(snapshot) && reason !== 'clear') {
+      return
+    }
     if (!snapshot) return
     const editor = editorInstanceRef.current
     if (!editor) return
@@ -477,6 +484,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               author: userDisplayName,
               snapshot: existingRecord.snapshot,
               ts: existingRecord.ts,
+              reason: 'update',
             })
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
@@ -499,6 +507,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             author: userDisplayName,
             snapshot: record.snapshot,
             ts: record.ts,
+            reason: 'update',
           })
         }
 
@@ -540,7 +549,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
-    broadcastSnapshot(true, { force: true })
+    broadcastSnapshot(true, { force: true, reason: 'clear' })
   }
 
   const handleUndo = () => {

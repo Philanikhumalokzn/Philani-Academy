@@ -34,14 +34,17 @@ function loadIinkRuntime(): Promise<void> {
     const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null
 
     const handleLoad = () => {
+      console.log('MyScript iink script loaded successfully')
       resolve()
     }
 
     const handleError = () => {
+      console.error('Failed to load MyScript iink script')
       reject(new Error('Failed to load the MyScript iink runtime.'))
     }
 
     if (existing) {
+      console.log('MyScript script already exists in DOM')
       if (existing.getAttribute('data-loaded') === 'true') {
         resolve()
         return
@@ -51,6 +54,7 @@ function loadIinkRuntime(): Promise<void> {
       return
     }
 
+    console.log('Creating new MyScript script element')
     const script = document.createElement('script')
     script.id = SCRIPT_ID
     script.src = SCRIPT_URL
@@ -60,6 +64,7 @@ function loadIinkRuntime(): Promise<void> {
     script.addEventListener(
       'load',
       () => {
+        console.log('MyScript script load event fired')
         script.setAttribute('data-loaded', 'true')
         resolve()
       },
@@ -124,6 +129,9 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
     loadIinkRuntime()
       .then(async () => {
         if (cancelled) return
+        
+        console.log('MyScript runtime loaded, window.iink:', window.iink)
+        
         if (!window.iink?.Editor?.load) {
           throw new Error('MyScript iink runtime did not expose the expected API.')
         }
@@ -148,7 +156,12 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
           },
         }
 
+        console.log('Loading MyScript editor with options:', options)
+        
         const editor = await window.iink.Editor.load(host, 'INTERACTIVEINKSSR', options)
+        
+        console.log('MyScript editor loaded:', editor)
+        
         if (cancelled) {
           editor.destroy?.()
           return
@@ -243,7 +256,7 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
     <div>
       <div className="flex flex-col gap-3">
         <div className="border rounded bg-white relative overflow-hidden">
-          <div ref={editorHostRef} className="w-full h-[24rem]" />
+          <div ref={editorHostRef} className="w-full h-[24rem]" style={{ minHeight: '384px' }} />
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
               Preparing collaborative canvas…
@@ -252,6 +265,11 @@ export default function MyScriptMathCanvas({ gradeLabel }: MyScriptMathCanvasPro
           {status === 'error' && error && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
               {error}
+            </div>
+          )}
+          {status === 'ready' && (
+            <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
+              Ready
             </div>
           )}
         </div>

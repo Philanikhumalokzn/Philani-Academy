@@ -489,8 +489,11 @@ export default function Dashboard() {
     // fetch plans for admins
     if ((session as any)?.user?.role === 'admin') {
       fetchPlans()
-      // detect PayFast usage by checking NEXT_PUBLIC_PAYFAST flag
-      setPayfastAvailable(!!process.env.NEXT_PUBLIC_PAYFAST)
+      const payfastFlag = process.env.NEXT_PUBLIC_PAYFAST_ONSITE ?? process.env.NEXT_PUBLIC_PAYFAST
+      const enabled = typeof payfastFlag === 'string'
+        ? ['1', 'true', 'on', 'yes'].includes(payfastFlag.toLowerCase())
+        : Boolean(payfastFlag)
+      setPayfastAvailable(enabled)
     }
     // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
     try {

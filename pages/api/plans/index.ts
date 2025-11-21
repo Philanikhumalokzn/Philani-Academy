@@ -6,7 +6,7 @@ import Stripe from 'stripe'
 // Prefer STRIPE_SECRET_KEY (used in DEPLOY_TO_VERCEL.md) but fall back to
 // the older STRIPE_SECRET for backward compatibility.
 const stripeSecret = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || ''
-const stripe = new Stripe(stripeSecret, { apiVersion: '2022-11-15' })
+const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2022-11-15' }) : null
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const method = req.method
@@ -21,11 +21,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
     const { name, amount, currency } = req.body || {}
     if (!name || !amount) return res.status(400).json({ message: 'Missing fields' })
+    if (!stripe) {
+      return res.status(501).json({ message: 'Stripe is not configured for plan creation. Enable PayFast or set STRIPE_SECRET_KEY.' })
+    }
     try {
-      // create Stripe product + price
       const product = await stripe.products.create({ name })
       const price = await stripe.prices.create({ unit_amount: amount, currency: currency || 'usd', recurring: { interval: 'month' }, product: product.id })
-  const plan = await (prisma as any).subscriptionPlan.create({ data: { name, amount, currency: currency || 'usd', stripePriceId: price.id, active: true } })
+      const plan = await (prisma as any).subscriptionPlan.create({ data: { name, amount, currency: currency || 'usd', stripePriceId: price.id, active: true } })
       return res.status(201).json(plan)
     } catch (err: any) {
       console.error('POST /api/plans error', err)

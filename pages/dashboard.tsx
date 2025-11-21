@@ -52,13 +52,10 @@ export default function Dashboard() {
   const [plans, setPlans] = useState<any[]>([])
   const [planName, setPlanName] = useState('')
   const [planAmount, setPlanAmount] = useState<number | ''>('')
-  const [planCurrency, setPlanCurrency] = useState('zar')
   const [plansLoading, setPlansLoading] = useState(false)
-  const [payfastAvailable, setPayfastAvailable] = useState(false)
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
   const [editPlanName, setEditPlanName] = useState('')
   const [editPlanAmount, setEditPlanAmount] = useState<number | ''>('')
-  const [editPlanCurrency, setEditPlanCurrency] = useState('zar')
   const [editPlanActive, setEditPlanActive] = useState(false)
   const [planSaving, setPlanSaving] = useState(false)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -495,11 +492,6 @@ export default function Dashboard() {
     // fetch plans for admins
     if ((session as any)?.user?.role === 'admin') {
       fetchPlans()
-      const payfastFlag = process.env.NEXT_PUBLIC_PAYFAST_ONSITE ?? process.env.NEXT_PUBLIC_PAYFAST
-      const enabled = typeof payfastFlag === 'string'
-        ? ['1', 'true', 'on', 'yes'].includes(payfastFlag.toLowerCase())
-        : Boolean(payfastFlag)
-      setPayfastAvailable(enabled)
     }
     // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
     try {
@@ -526,7 +518,6 @@ export default function Dashboard() {
     setEditingPlanId(null)
     setEditPlanName('')
     setEditPlanAmount('')
-    setEditPlanCurrency('zar')
     setEditPlanActive(false)
     setPlanSaving(false)
   }
@@ -535,7 +526,6 @@ export default function Dashboard() {
     setEditingPlanId(plan.id)
     setEditPlanName(plan.name || '')
     setEditPlanAmount(typeof plan.amount === 'number' ? plan.amount : '')
-    setEditPlanCurrency((plan.currency || 'zar').toLowerCase())
     setEditPlanActive(Boolean(plan.active))
     setPlanSaving(false)
   }
@@ -556,7 +546,7 @@ export default function Dashboard() {
       alert('Plan amount must be greater than zero (in cents)')
       return
     }
-    if (payfastAvailable && amountValue < 500) {
+    if (amountValue < 500) {
       alert('PayFast subscriptions require at least 500 cents (R5.00)')
       return
     }
@@ -569,7 +559,6 @@ export default function Dashboard() {
         body: JSON.stringify({
           name: trimmedName,
           amount: amountValue,
-          currency: editPlanCurrency,
           active: editPlanActive
         })
       })
@@ -958,58 +947,31 @@ export default function Dashboard() {
                 <div className="space-y-2">
                   <input className="input" placeholder="Plan name" value={planName} onChange={e => setPlanName(e.target.value)} />
                   <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} />
-                  <select className="input" value={planCurrency} onChange={e => setPlanCurrency(e.target.value)}>
-                    <option value="zar">ZAR</option>
-                    <option value="usd">USD</option>
-                  </select>
+                  <div className="text-xs muted">PayFast subscriptions are billed in ZAR.</div>
                   <div>
                     <button className="btn btn-primary" onClick={async () => {
                       if (!planName || !planAmount) return alert('Name and amount required')
-                      if (payfastAvailable && typeof planAmount === 'number' && planAmount < 500) {
+                      if (typeof planAmount === 'number' && planAmount < 500) {
                         alert('PayFast subscriptions require at least 500 cents (R5.00)')
                         return
                       }
                       try {
-                        if (payfastAvailable) {
-                          // Use PayFast flow
-                          const res = await fetch('/api/payfast/create-plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: 'zar' }) })
-                          if (!res.ok) {
-                            const data = await res.json().catch(() => ({}))
-                            return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
-                          }
-                          const data = await res.json()
-                          // Build and submit a form to PayFast
-                          const form = document.createElement('form')
-                          form.method = 'POST'
-                          form.action = data.action
-                          Object.entries(data.payload || {}).forEach(([k, v]) => {
-                            const input = document.createElement('input')
-                            input.type = 'hidden'
-                            input.name = k
-                            input.value = v as any
-                            form.appendChild(input)
-                          })
-                          const sigInput = document.createElement('input')
-                          sigInput.type = 'hidden'
-                          sigInput.name = 'signature'
-                          sigInput.value = data.signature || ''
-                          form.appendChild(sigInput)
-                          document.body.appendChild(form)
-                          form.submit()
-                        } else {
-                          // Fallback to Stripe plan creation (existing flow)
-                          const res = await fetch('/api/plans', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: planCurrency }) })
-                          if (res.ok) {
-                            setPlanName('')
-                            setPlanAmount('')
-                            setPlanCurrency('zar')
-                            fetchPlans()
-                            alert('Plan created')
-                          } else {
-                            const data = await res.json().catch(() => ({}))
-                            alert(data?.message || `Failed to create plan (${res.status})`)
-                          }
+                        const res = await fetch('/api/payfast/create-plan', {
+                          method: 'POST',
+                          credentials: 'same-origin',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ name: planName, amount: planAmount })
+                        })
+
+                        if (!res.ok) {
+                          const data = await res.json().catch(() => ({}))
+                          return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
                         }
+
+                        setPlanName('')
+                        setPlanAmount('')
+                        fetchPlans()
+                        alert('Plan created')
                       } catch (err: any) {
                         alert(err?.message || 'Network error')
                       }
@@ -1029,10 +991,7 @@ export default function Dashboard() {
                             <div className="space-y-2">
                               <input className="input" value={editPlanName} onChange={e => setEditPlanName(e.target.value)} placeholder="Plan name" />
                               <input className="input" type="number" value={editPlanAmount as any} onChange={e => setEditPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} placeholder="Amount (cents)" />
-                              <select className="input" value={editPlanCurrency} onChange={e => setEditPlanCurrency(e.target.value)}>
-                                <option value="zar">ZAR</option>
-                                <option value="usd">USD</option>
-                              </select>
+                              <div className="text-sm muted">Currency: {(p.currency || 'zar').toUpperCase()}</div>
                               <label className="flex items-center space-x-2 text-sm">
                                 <input type="checkbox" checked={editPlanActive} onChange={e => setEditPlanActive(e.target.checked)} />
                                 <span>Active</span>

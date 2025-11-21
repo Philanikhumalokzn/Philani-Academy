@@ -15,8 +15,8 @@
   "dependencies": {
     "@prisma/client": "^6.19.0",
     "@vercel/blob": "^2.0.0",
-    "bcryptjs": "^2.4.3",
     "ably": "^1.2.42",
+    "bcryptjs": "^2.4.3",
     "formidable": "^3.5.4",
     "jsonwebtoken": "^9.0.0",
     "next": "^13.4.0",
@@ -28,6 +28,7 @@
   "devDependencies": {
     "@types/formidable": "^3.4.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.14.2",
     "@types/react": "19.1.13",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",

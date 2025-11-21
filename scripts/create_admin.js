@@ -3,14 +3,16 @@ const bcrypt = require('bcryptjs')
 
 async function main(){
   const email = 'admin@philani.test'
-  const existing = await prisma.user.findUnique({ where: { email } })
-  if (existing) {
-    console.log('Admin already exists:', existing)
-    process.exit(0)
-  }
-  const hashed = await bcrypt.hash('AdminPass123!', 10)
-  const user = await prisma.user.create({ data: { name: 'Admin User', email, password: hashed, role: 'admin' } })
-  console.log('Created admin:', user)
+  const password = 'admin'
+  const hashed = await bcrypt.hash(password, 10)
+
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { password: hashed, role: 'admin', name: 'Admin User' },
+    create: { name: 'Admin User', email, password: hashed, role: 'admin' }
+  })
+
+  console.log('Admin ensured:', { id: user.id, email: user.email, role: user.role })
   process.exit(0)
 }
 

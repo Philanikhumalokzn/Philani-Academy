@@ -40,6 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Parse params
     const params = new URLSearchParams(raw)
     const custom = params.get('custom_str1')
+    const subscriberId = params.get('custom_str2')
     const pfPaymentId = params.get('pf_payment_id') || params.get('payment_id') || null
     const paymentStatus = params.get('payment_status') || params.get('status') || 'UNKNOWN'
 
@@ -53,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // You should store the full notification in a payments table for auditing.
-    console.log('PayFast IPN validated, status=', paymentStatus)
+    console.log('PayFast IPN validated, status=', paymentStatus, 'user=', subscriberId, 'pf_id=', pfPaymentId)
     res.status(200).end()
   } catch (err: any) {
     console.error('Error in PayFast notify handler', err)

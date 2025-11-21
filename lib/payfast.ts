@@ -183,14 +183,6 @@ export function getPayfastOnsiteUrl(isSandbox = true) {
   return isSandbox ? PAYFAST_ENDPOINTS.sandboxOnsite : PAYFAST_ENDPOINTS.liveOnsite
 }
 
-export function getPayfastUrl(sandbox = true) {
-  return sandbox ? 'https://sandbox.payfast.co.za/eng/process' : 'https://www.payfast.co.za/eng/process'
-}
-
-export function getPayfastOnsiteUrl(sandbox = true) {
-  return sandbox ? 'https://sandbox.payfast.co.za/onsite/process' : 'https://www.payfast.co.za/onsite/process'
-}
-
 export function getPayfastOnsiteScriptUrl(sandbox = true) {
   return sandbox ? 'https://sandbox.payfast.co.za/onsite/engine.js' : 'https://www.payfast.co.za/onsite/engine.js'
 }

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq } from '../../../lib/auth'
-import { generatePayfastSignature, getPayfastOnsiteUrl } from '../../../lib/payfast'
+import { generatePayfastSignature, getPayfastOnsiteUrl, getPayfastSignatureDebug } from '../../../lib/payfast'
 
 const isSandbox = process.env.PAYFAST_SANDBOX !== 'false'
 const onsiteUrl = getPayfastOnsiteUrl(isSandbox)
@@ -115,6 +115,13 @@ export default async function handler(
 
     const signature = generatePayfastSignature(payload)
 
+    if (process.env.DEBUG === '1') {
+      const sigDebug = getPayfastSignatureDebug(payload)
+      console.log('[payfast] payload', JSON.stringify(payload))
+      console.log('[payfast] signature string', sigDebug.stringToSign)
+      console.log('[payfast] signature md5', signature)
+    }
+
     const response = await fetch(onsiteUrl, {
       method: 'POST',
       headers: {
@@ -124,10 +131,21 @@ export default async function handler(
       body: JSON.stringify({ ...payload, signature }),
     })
 
-    const data = await response.json().catch(() => null)
+    const raw = await response.text()
+    let data: any = null
+    try {
+      data = raw ? JSON.parse(raw) : null
+    } catch (err) {
+      if (process.env.DEBUG === '1') {
+        console.log('[payfast] non-json response body', raw?.slice(0, 500) || '(empty)')
+      }
+    }
 
     if (!response.ok || !data || typeof data.uuid !== 'string') {
-      const message = data?.message || data?.description || 'Failed to initiate PayFast payment'
+      const message = data?.message || data?.description || (raw ? raw.slice(0, 200) : 'Failed to initiate PayFast payment')
+      if (process.env.DEBUG === '1') {
+        console.error('[payfast] onsite error', response.status, raw)
+      }
       return res.status(response.status || 500).json({ message, code: data?.code })
     }
 

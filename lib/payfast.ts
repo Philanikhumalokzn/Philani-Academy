@@ -1,16 +1,25 @@
-export function generatePayfastSignature(params: Record<string, any>) {
-  // PayFast requires a URL-encoded query string sorted by parameter name
+type SignatureParts = {
+  encoded: string
+  stringToSign: string
+}
+
+function buildSignatureParts(params: Record<string, any>): SignatureParts {
   const keys = Object.keys(params)
     .filter(key => typeof params[key] !== 'undefined' && params[key] !== null && key.toLowerCase() !== 'signature')
     .sort()
 
   const encoded = keys.map(k => `${k}=${encodeURIComponent(params[k])}`).join('&')
-
-  // If passphrase is set, append it to the string for signature generation
   const passphrase = process.env.PAYFAST_PASSPHRASE || ''
   const stringToSign = passphrase ? `${encoded}&passphrase=${encodeURIComponent(passphrase)}` : encoded
+  return { encoded, stringToSign }
+}
 
-  // MD5 hash for signature
+export function getPayfastSignatureDebug(params: Record<string, any>): SignatureParts {
+  return buildSignatureParts(params)
+}
+
+export function generatePayfastSignature(params: Record<string, any>) {
+  const { stringToSign } = buildSignatureParts(params)
   const crypto = require('crypto')
   return crypto.createHash('md5').update(stringToSign).digest('hex')
 }

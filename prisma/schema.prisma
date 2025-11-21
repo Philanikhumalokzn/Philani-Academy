@@ -61,3 +61,15 @@ model LessonMaterial {
   createdBy   String?
   createdAt   DateTime @default(now())
 }
+
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  name          String
+  amount        Int
+  currency      String   @default("zar")
+  stripePriceId String?
+  payfastPlanId String?
+  active        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

@@ -52,9 +52,15 @@ export default function Dashboard() {
   const [plans, setPlans] = useState<any[]>([])
   const [planName, setPlanName] = useState('')
   const [planAmount, setPlanAmount] = useState<number | ''>('')
-  const [planCurrency, setPlanCurrency] = useState('usd')
+  const [planCurrency, setPlanCurrency] = useState('zar')
   const [plansLoading, setPlansLoading] = useState(false)
   const [payfastAvailable, setPayfastAvailable] = useState(false)
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
+  const [editPlanName, setEditPlanName] = useState('')
+  const [editPlanAmount, setEditPlanAmount] = useState<number | ''>('')
+  const [editPlanCurrency, setEditPlanCurrency] = useState('zar')
+  const [editPlanActive, setEditPlanActive] = useState(false)
+  const [planSaving, setPlanSaving] = useState(false)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [announcementsLoading, setAnnouncementsLoading] = useState(false)
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null)
@@ -516,6 +522,73 @@ export default function Dashboard() {
     }
   }
 
+  function resetPlanEdit() {
+    setEditingPlanId(null)
+    setEditPlanName('')
+    setEditPlanAmount('')
+    setEditPlanCurrency('zar')
+    setEditPlanActive(false)
+    setPlanSaving(false)
+  }
+
+  function beginEditPlan(plan: any) {
+    setEditingPlanId(plan.id)
+    setEditPlanName(plan.name || '')
+    setEditPlanAmount(typeof plan.amount === 'number' ? plan.amount : '')
+    setEditPlanCurrency((plan.currency || 'zar').toLowerCase())
+    setEditPlanActive(Boolean(plan.active))
+    setPlanSaving(false)
+  }
+
+  async function savePlanChanges() {
+    if (!editingPlanId) return
+    const trimmedName = editPlanName.trim()
+    if (!trimmedName) {
+      alert('Plan name is required')
+      return
+    }
+    if (editPlanAmount === '' || editPlanAmount === null) {
+      alert('Plan amount is required (cents)')
+      return
+    }
+    const amountValue = typeof editPlanAmount === 'string' ? parseInt(editPlanAmount, 10) : editPlanAmount
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      alert('Plan amount must be greater than zero (in cents)')
+      return
+    }
+    if (payfastAvailable && amountValue < 500) {
+      alert('PayFast subscriptions require at least 500 cents (R5.00)')
+      return
+    }
+    setPlanSaving(true)
+    try {
+      const res = await fetch(`/api/plans/${editingPlanId}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmedName,
+          amount: amountValue,
+          currency: editPlanCurrency,
+          active: editPlanActive
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to update plan (${res.status})`)
+        return
+      }
+
+      resetPlanEdit()
+      fetchPlans()
+    } catch (err: any) {
+      alert(err?.message || 'Network error while updating plan')
+    } finally {
+      setPlanSaving(false)
+    }
+  }
+
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
@@ -884,17 +957,22 @@ export default function Dashboard() {
                 <h3 className="font-medium mb-2">Create plan</h3>
                 <div className="space-y-2">
                   <input className="input" placeholder="Plan name" value={planName} onChange={e => setPlanName(e.target.value)} />
-                  <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value) : '')} />
+                  <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} />
                   <select className="input" value={planCurrency} onChange={e => setPlanCurrency(e.target.value)}>
+                    <option value="zar">ZAR</option>
                     <option value="usd">USD</option>
                   </select>
                   <div>
                     <button className="btn btn-primary" onClick={async () => {
                       if (!planName || !planAmount) return alert('Name and amount required')
+                      if (payfastAvailable && typeof planAmount === 'number' && planAmount < 500) {
+                        alert('PayFast subscriptions require at least 500 cents (R5.00)')
+                        return
+                      }
                       try {
                         if (payfastAvailable) {
                           // Use PayFast flow
-                          const res = await fetch('/api/payfast/create-plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: planCurrency }) })
+                          const res = await fetch('/api/payfast/create-plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: planName, amount: planAmount, currency: 'zar' }) })
                           if (!res.ok) {
                             const data = await res.json().catch(() => ({}))
                             return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
@@ -924,7 +1002,7 @@ export default function Dashboard() {
                           if (res.ok) {
                             setPlanName('')
                             setPlanAmount('')
-                            setPlanCurrency('usd')
+                            setPlanCurrency('zar')
                             fetchPlans()
                             alert('Plan created')
                           } else {
@@ -946,23 +1024,47 @@ export default function Dashboard() {
                   plans.length === 0 ? <div className="text-sm muted">No plans found.</div> : (
                     <ul className="space-y-2">
                       {plans.map(p => (
-                        <li key={p.id} className="p-2 border rounded flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">{p.name}</div>
-                            <div className="text-sm muted">{(p.amount/100).toFixed(2)} {p.currency?.toUpperCase()} {p.active ? '(active)' : ''}</div>
-                          </div>
-                          <div>
-                            <button className="btn btn-danger" onClick={async () => {
-                              if (!confirm('Delete plan?')) return
-                              try {
-                                const res = await fetch(`/api/plans`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
-                                if (res.ok) fetchPlans()
-                                else alert('Failed to delete')
-                              } catch (err) {
-                                alert('Network error')
-                              }
-                            }}>Delete</button>
-                          </div>
+                        <li key={p.id} className="p-2 border rounded">
+                          {editingPlanId === p.id ? (
+                            <div className="space-y-2">
+                              <input className="input" value={editPlanName} onChange={e => setEditPlanName(e.target.value)} placeholder="Plan name" />
+                              <input className="input" type="number" value={editPlanAmount as any} onChange={e => setEditPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} placeholder="Amount (cents)" />
+                              <select className="input" value={editPlanCurrency} onChange={e => setEditPlanCurrency(e.target.value)}>
+                                <option value="zar">ZAR</option>
+                                <option value="usd">USD</option>
+                              </select>
+                              <label className="flex items-center space-x-2 text-sm">
+                                <input type="checkbox" checked={editPlanActive} onChange={e => setEditPlanActive(e.target.checked)} />
+                                <span>Active</span>
+                              </label>
+                              <div className="flex gap-2">
+                                <button className="btn btn-primary" onClick={savePlanChanges} disabled={planSaving}>
+                                  {planSaving ? 'Saving…' : 'Save changes'}
+                                </button>
+                                <button className="btn btn-ghost" onClick={resetPlanEdit} disabled={planSaving}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-medium">{p.name}</div>
+                                <div className="text-sm muted">{(p.amount/100).toFixed(2)} {p.currency?.toUpperCase()} {p.active ? '(active)' : '(inactive)'}</div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button className="btn btn-ghost" onClick={() => beginEditPlan(p)}>Edit</button>
+                                <button className="btn btn-danger" onClick={async () => {
+                                  if (!confirm('Delete plan?')) return
+                                  try {
+                                    const res = await fetch(`/api/plans`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
+                                    if (res.ok) fetchPlans()
+                                    else alert('Failed to delete')
+                                  } catch (err) {
+                                    alert('Network error')
+                                  }
+                                }}>Delete</button>
+                              </div>
+                            </div>
+                          )}
                         </li>
                       ))}
                     </ul>

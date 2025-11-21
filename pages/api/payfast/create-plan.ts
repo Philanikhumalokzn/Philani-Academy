@@ -9,12 +9,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
 
   const { name, amount, currency } = req.body || {}
-  if (!name || !amount) return res.status(400).json({ message: 'Missing fields' })
+  if (!name || typeof amount === 'undefined') return res.status(400).json({ message: 'Missing fields' })
+
+  const parsedAmount = typeof amount === 'string' ? parseInt(amount, 10) : Number(amount)
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).json({ message: 'Amount must be a positive number (cents)' })
+  }
+  const intAmount = Math.round(parsedAmount)
+  if (intAmount < 500) {
+    return res.status(400).json({ message: 'PayFast subscriptions require at least 500 cents (R5.00)' })
+  }
+  const normalizedCurrency = (currency || 'zar').toLowerCase()
 
   try {
     // Create local plan record. For PayFast we store plan metadata locally and
     // use the merchant_id/key to create a signed redirect for checkout.
-    const plan = await (prisma as any).subscriptionPlan.create({ data: { name, amount, currency: currency || 'ZAR', active: true } })
+    const plan = await (prisma as any).subscriptionPlan.create({ data: { name, amount: intAmount, currency: normalizedCurrency, active: true } })
 
     const merchant_id = process.env.PAYFAST_MERCHANT_ID || ''
     const merchant_key = process.env.PAYFAST_MERCHANT_KEY || ''
@@ -23,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const payload: any = {
       merchant_id,
       merchant_key,
-      amount: (amount / 100).toFixed(2), // PayFast expects decimal amount in currency units
+      amount: (intAmount / 100).toFixed(2), // PayFast expects decimal amount in currency units
       item_name: name,
       return_url: `${process.env.NEXTAUTH_URL}/dashboard`,
       cancel_url: `${process.env.NEXTAUTH_URL}/dashboard`,

@@ -139,6 +139,9 @@ export default async function handler(
       if (process.env.DEBUG === '1') {
         console.log('[payfast] non-json response body', raw?.slice(0, 500) || '(empty)')
       }
+      if (process.env.DEBUG === '1') {
+        console.log('[payfast] response headers', JSON.stringify(Object.fromEntries(response.headers.entries())))
+      }
     }
 
     if (!response.ok || !data || typeof data.uuid !== 'string') {

@@ -19,11 +19,33 @@ enum Grade {
 model User {
   id        String  @id @default(cuid())
   name      String?
+  firstName String  @default("")
+  lastName  String  @default("")
+  middleNames String?
   email     String  @unique
   password  String
   role      String  @default("student")
   grade     Grade?
+  avatar    String?
+  dateOfBirth DateTime?
+  phoneNumber String @default("")
+  alternatePhone String?
+  recoveryEmail String?
+  emergencyContactName String @default("")
+  emergencyContactRelationship String?
+  emergencyContactPhone String @default("")
+  addressLine1 String @default("")
+  addressLine2 String?
+  city       String @default("")
+  province   String @default("")
+  postalCode String @default("")
+  country    String @default("South Africa")
+  schoolName String @default("")
+  idNumber   String?
+  consentToPolicies Boolean @default(false)
+  consentTimestamp DateTime?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SessionRecord {

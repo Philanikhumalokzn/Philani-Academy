@@ -104,6 +104,12 @@ export default function Dashboard() {
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
     : 'N/A'
+  const formatPhoneDisplay = (value?: string | null) => {
+    if (!value) return '—'
+    if (value.startsWith('+27') && value.length === 12) return `0${value.slice(3)}`
+    if (value.startsWith('27') && value.length === 11) return `0${value.slice(2)}`
+    return value
+  }
   const realtimeUserId = useMemo(() => {
     const candidate = (session as any)?.user?.id as string | undefined
     if (candidate && typeof candidate === 'string') return candidate
@@ -896,9 +902,10 @@ export default function Dashboard() {
                     <thead>
                       <tr>
                         <th className="px-2 py-1">Email</th>
-                        <th className="px-2 py-1">Name</th>
-                        <th className="px-2 py-1">Role</th>
-                        <th className="px-2 py-1">Grade</th>
+                        <th className="px-2 py-1">Learner</th>
+                        <th className="px-2 py-1">Contact</th>
+                        <th className="px-2 py-1">Emergency</th>
+                        <th className="px-2 py-1">Address</th>
                         <th className="px-2 py-1">Created</th>
                         <th className="px-2 py-1">Actions</th>
                       </tr>
@@ -906,11 +913,29 @@ export default function Dashboard() {
                     <tbody>
                       {users && users.map(u => (
                         <tr key={u.id} className="border-t">
-                          <td className="px-2 py-2">{u.email}</td>
-                          <td className="px-2 py-2">{u.name || '-'}</td>
-                          <td className="px-2 py-2">{u.role}</td>
-                          <td className="px-2 py-2">{gradeToLabel(u.grade)}</td>
-                          <td className="px-2 py-2">{new Date(u.createdAt).toLocaleString()}</td>
+                          <td className="px-2 py-2 align-top">{u.email}</td>
+                          <td className="px-2 py-2 align-top">
+                            <div className="font-medium">{u.firstName || u.name || '—'} {u.lastName || ''}</div>
+                            <div className="text-xs muted capitalize">Role: {u.role}</div>
+                            <div className="text-xs muted">Grade: {u.grade ? gradeToLabel(u.grade) : 'Unassigned'}</div>
+                            <div className="text-xs muted">School: {u.schoolName || '—'}</div>
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            <div>{formatPhoneDisplay(u.phoneNumber)}</div>
+                            <div className="text-xs muted">Alt: {formatPhoneDisplay(u.alternatePhone)}</div>
+                            <div className="text-xs muted">Recovery: {u.recoveryEmail || '—'}</div>
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            <div>{u.emergencyContactName || '—'}</div>
+                            <div className="text-xs muted">{u.emergencyContactRelationship || ''}</div>
+                            <div className="text-xs muted">{u.emergencyContactPhone ? formatPhoneDisplay(u.emergencyContactPhone) : 'No number'}</div>
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            <div>{u.addressLine1 || '—'}</div>
+                            <div className="text-xs muted">{u.city || ''} {u.province ? `(${u.province})` : ''}</div>
+                            <div className="text-xs muted">{u.postalCode || ''}</div>
+                          </td>
+                          <td className="px-2 py-2 align-top">{new Date(u.createdAt).toLocaleString()}</td>
                           <td className="px-2 py-2">
                             <button
                               className="btn btn-danger"

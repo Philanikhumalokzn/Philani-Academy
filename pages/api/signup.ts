@@ -105,46 +105,147 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return out
   }
-  const { name, email, password } = body
   const allowedGrades = GRADE_VALUES as readonly string[]
   const normalizedGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
-  // Debug: log which fields we received (mask password)
-  try {
-    console.log('/api/signup parsed body:', { name, email, password: password ? '***' : '', grade: normalizedGrade || null })
-  } catch (e) {
-    // ignore logging errors
-  }
-  if (!email || !password) {
-    // Final fallback: try to extract fields directly from raw text using regexes
+
+  if ((!body.email || !body.password) && rawBody) {
     try {
-      const emailMatch = rawBody.match(/email\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
-      const passMatch = rawBody.match(/password\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
-      const nameMatch = rawBody.match(/name\s*[:=]\s*['\"]?([^,'\"\s\}]+)/i)
-      if (emailMatch && emailMatch[1]) {
-        body.email = decodeURIComponent(emailMatch[1])
-      }
-      if (passMatch && passMatch[1]) {
-        body.password = decodeURIComponent(passMatch[1])
-      }
-      if (nameMatch && nameMatch[1]) {
-        body.name = decodeURIComponent(nameMatch[1])
-      }
-    } catch (e) {
-      // ignore
-    }
-    // recalc locals
-    const { name: _name2, email: _email2, password: _password2 } = body
-    if (_email2 && _password2) {
-      // proceed
-    } else {
-      // Provide safe debug info to help diagnose production parsing differences.
-      const ct = req.headers['content-type'] || ''
-      const rawPreview = rawBody ? rawBody.slice(0, 512) : ''
-      console.warn('/api/signup missing fields', { provided: { name: !!_name2, email: !!_email2, password: !!_password2 }, contentType: ct, rawPreview: rawPreview ? `${rawPreview}${rawBody.length > 512 ? '...(truncated)' : ''}` : '' })
-      return res.status(400).json({ message: 'Missing fields', provided: { name: !!_name2, email: !!_email2, password: !!_password2 }, contentType: ct, rawPreview })
+      const emailMatch = rawBody.match(/email\s*[:=]\s*['"]?([^,'"\s\}]+)/i)
+      const passMatch = rawBody.match(/password\s*[:=]\s*['"]?([^,'"\s\}]+)/i)
+      const firstMatch = rawBody.match(/first[name\s]*[:=]\s*['"]?([^,'"\s\}]+)/i)
+      const lastMatch = rawBody.match(/last[name\s]*[:=]\s*['"]?([^,'"\s\}]+)/i)
+      if (emailMatch && emailMatch[1]) body.email = decodeURIComponent(emailMatch[1])
+      if (passMatch && passMatch[1]) body.password = decodeURIComponent(passMatch[1])
+      if (firstMatch && firstMatch[1] && !body.firstName) body.firstName = decodeURIComponent(firstMatch[1])
+      if (lastMatch && lastMatch[1] && !body.lastName) body.lastName = decodeURIComponent(lastMatch[1])
+    } catch (fallbackErr) {
+      // ignore fallback parsing errors
     }
   }
 
+  const asString = (value: any) => (typeof value === 'string' ? value.trim() : '')
+  const toBoolean = (value: any) => {
+    if (typeof value === 'boolean') return value
+    if (typeof value === 'string') {
+      const normalised = value.trim().toLowerCase()
+      return ['true', '1', 'yes', 'on'].includes(normalised)
+    }
+    return false
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  const postalCodeRegex = /^\d{4}$/
+  const idNumberRegex = /^\d{13}$/
+  const provinceOptions = [
+    'Eastern Cape',
+    'Free State',
+    'Gauteng',
+    'KwaZulu-Natal',
+    'Limpopo',
+    'Mpumalanga',
+    'Northern Cape',
+    'North West',
+    'Western Cape'
+  ]
+
+  const fallbackName = asString(body.name)
+  let firstName = asString(body.firstName)
+  let lastName = asString(body.lastName)
+  const middleNames = asString(body.middleNames)
+  if ((!firstName || !lastName) && fallbackName) {
+    const parts = fallbackName.split(/\s+/).filter(Boolean)
+    if (!firstName && parts.length > 0) firstName = parts.shift() || ''
+    if (!lastName && parts.length > 0) lastName = parts.join(' ')
+  }
+
+  const email = asString(body.email).toLowerCase()
+  const password = typeof body.password === 'string' ? body.password : ''
+  const recoveryEmailRaw = asString(body.recoveryEmail)
+  const recoveryEmail = recoveryEmailRaw ? recoveryEmailRaw.toLowerCase() : ''
+
+  const phoneRaw = asString(body.phoneNumber || body.phone)
+  const alternatePhoneRaw = asString(body.alternatePhone)
+  const emergencyPhoneRaw = asString(body.emergencyContactPhone || body.emergencyPhone)
+
+  function normalisePhone(input: string) {
+    if (!input) return ''
+    const digits = input.replace(/\D/g, '')
+    if (digits.length === 10 && digits.startsWith('0')) {
+      return `+27${digits.slice(1)}`
+    }
+    if (digits.length === 11 && digits.startsWith('27')) {
+      return `+${digits}`
+    }
+    if (input.startsWith('+27') && digits.length === 11) {
+      return `+27${digits.slice(2)}`
+    }
+    return ''
+  }
+
+  const phoneNumber = normalisePhone(phoneRaw)
+  const alternatePhone = alternatePhoneRaw ? normalisePhone(alternatePhoneRaw) : ''
+  const emergencyContactPhone = normalisePhone(emergencyPhoneRaw)
+
+  const emergencyContactName = asString(body.emergencyContactName)
+  const emergencyContactRelationship = asString(body.emergencyContactRelationship)
+
+  const addressLine1 = asString(body.addressLine1)
+  const addressLine2 = asString(body.addressLine2)
+  const city = asString(body.city)
+  const province = asString(body.province)
+  const postalCode = asString(body.postalCode)
+  const country = asString(body.country) || 'South Africa'
+  const schoolName = asString(body.schoolName)
+  const idNumber = asString(body.idNumber).replace(/\D/g, '')
+  const dateOfBirthInput = asString(body.dateOfBirth)
+  const popiConsent = toBoolean(body.popiConsent ?? body.consentToPolicies ?? body.termsConsent)
+
+  const errors: string[] = []
+
+  if (!firstName) errors.push('First name is required')
+  if (!lastName) errors.push('Last name is required')
+  if (!email || !emailRegex.test(email)) errors.push('Valid email address is required')
+  if (!password || password.length < 8) errors.push('Password must be at least 8 characters long')
+  if (!phoneNumber) errors.push('Valid South African contact number is required (e.g. 0XXXXXXXXX)')
+  if (alternatePhoneRaw && !alternatePhone) errors.push('Alternate contact number must be a valid South African number')
+  if (!emergencyContactName) errors.push('Emergency contact name is required')
+  if (!emergencyContactRelationship) errors.push('Emergency contact relationship is required')
+  if (!emergencyContactPhone) errors.push('Emergency contact number is required and must be South African')
+  if (!recoveryEmail || !emailRegex.test(recoveryEmail)) errors.push('Valid recovery email is required')
+  if (!addressLine1) errors.push('Address line 1 is required')
+  if (!city) errors.push('City or town is required')
+  if (!province || !provinceOptions.includes(province)) errors.push('Province selection is required')
+  if (!postalCode || !postalCodeRegex.test(postalCode)) errors.push('Postal code must be a 4-digit South African code')
+  if (!country) errors.push('Country is required')
+  if (!schoolName) errors.push('Current school or institution is required')
+  if (idNumber && !idNumberRegex.test(idNumber)) errors.push('South African ID numbers must be 13 digits')
+  if (!popiConsent) errors.push('You must consent to the POPIA-compliant policy to create an account')
+
+  let dateOfBirth: Date | null = null
+  if (!dateOfBirthInput) {
+    errors.push('Date of birth is required')
+  } else {
+    const parsed = new Date(dateOfBirthInput)
+    if (Number.isNaN(parsed.getTime())) {
+      errors.push('Date of birth is invalid')
+    } else {
+      const today = new Date()
+      if (parsed > today) {
+        errors.push('Date of birth cannot be in the future')
+      } else {
+        const age = today.getFullYear() - parsed.getFullYear() - ((today.getMonth() < parsed.getMonth() || (today.getMonth() === parsed.getMonth() && today.getDate() < parsed.getDate())) ? 1 : 0)
+        if (age < 5) errors.push('Learners must be at least 5 years old to register')
+        if (age > 120) errors.push('Date of birth appears incorrect')
+      }
+      dateOfBirth = parsed
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({ message: 'Validation failed', errors })
+  }
+
+  // After validation, ensure grade requirements for learners
   try {
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) return res.status(409).json({ message: 'User exists' })
@@ -158,7 +259,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ message: 'Grade is required for learners' })
       }
     }
-    const user = await prisma.user.create({ data: { name, email, password: hashed, role, grade: normalizedGrade } })
+
+    const gradeValue = role === 'admin' ? null : (normalizedGrade as any)
+
+    const now = new Date()
+    const user = await prisma.user.create({
+      data: {
+        name: `${firstName} ${middleNames ? `${middleNames} ` : ''}${lastName}`.trim(),
+        firstName,
+        lastName,
+        middleNames: middleNames || null,
+        email,
+        password: hashed,
+        role,
+        grade: gradeValue,
+        avatar: null,
+        dateOfBirth,
+        phoneNumber,
+        alternatePhone: alternatePhone || null,
+        recoveryEmail,
+        emergencyContactName,
+        emergencyContactRelationship: emergencyContactRelationship || null,
+        emergencyContactPhone,
+        addressLine1,
+        addressLine2: addressLine2 || null,
+        city,
+        province,
+        postalCode,
+        country,
+        schoolName,
+        idNumber: idNumber || null,
+        consentToPolicies: true,
+        consentTimestamp: now
+      } as any
+    })
+
     return res.status(201).json({ id: user.id, email: user.email })
   } catch (err) {
     // Log full error server-side always (masked in production logs if necessary)

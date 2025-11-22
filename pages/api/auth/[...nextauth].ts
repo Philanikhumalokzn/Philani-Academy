@@ -2,6 +2,7 @@ import NextAuth from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import prisma from '../../../lib/prisma'
 import bcrypt from 'bcryptjs'
+import { issueEmailVerification, isVerificationBypassed, requirePhoneVerification } from '../../../lib/verification'
 
 export default NextAuth({
   providers: [
@@ -19,12 +20,24 @@ export default NextAuth({
           const ok = await bcrypt.compare(credentials.password, user.password)
           if (!ok) return null
           const userRecord = user as any
-          if (!userRecord.emailVerifiedAt || !userRecord.phoneVerifiedAt) {
-            throw new Error('Account pending verification')
+          const normalizedEmail = (userRecord.email as string).toLowerCase()
+          const skipVerification = isVerificationBypassed(normalizedEmail)
+          if (!skipVerification) {
+            if (!userRecord.emailVerifiedAt) {
+              try {
+                await issueEmailVerification(user.id, user.email)
+              } catch (notificationErr) {
+                if (process.env.DEBUG === '1') console.error('NextAuth issueEmailVerification error:', notificationErr)
+              }
+              throw new Error('Account pending verification. Check your email for the new verification link.')
+            }
+            if (requirePhoneVerification() && !userRecord.phoneVerifiedAt) {
+              throw new Error('Account pending phone verification. Please contact support.')
+            }
           }
           return { id: user.id, name: user.name, email: user.email, role: user.role, grade: user.grade }
         } catch (err: any) {
-          if (err?.message === 'Account pending verification') {
+          if (typeof err?.message === 'string' && err.message.toLowerCase().startsWith('account pending')) {
             throw err
           }
           // When DEBUG=1 we want to surface errors in logs to help diagnose production failures.
@@ -37,6 +50,10 @@ export default NextAuth({
   ],
   session: { strategy: 'jwt' },
   secret: process.env.NEXTAUTH_SECRET,
+  pages: {
+    signIn: '/auth/signin',
+    error: '/auth/signin'
+  },
   callbacks: {
     async jwt({ token, user }) {
       // Attach role/grade from database user on sign in or when missing on the token

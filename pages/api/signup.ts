@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import bcrypt from 'bcryptjs'
 import prisma from '../../lib/prisma'
 import { GRADE_VALUES, normalizeGradeInput } from '../../lib/grades'
+import { issueEmailVerification } from '../../lib/verification'
 
 async function getRawBody(req: NextApiRequest) {
   return await new Promise<string>((resolve, reject) => {
@@ -263,38 +264,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const gradeValue = role === 'admin' ? null : (normalizedGrade as any)
 
     const now = new Date()
+    const userData: any = {
+      name: `${firstName} ${middleNames ? `${middleNames} ` : ''}${lastName}`.trim(),
+      firstName,
+      lastName,
+      middleNames: middleNames || null,
+      email,
+      password: hashed,
+      role,
+      grade: gradeValue,
+      avatar: null,
+      dateOfBirth,
+      phoneNumber,
+      alternatePhone: alternatePhone || null,
+      recoveryEmail,
+      emergencyContactName,
+      emergencyContactRelationship: emergencyContactRelationship || null,
+      emergencyContactPhone,
+      addressLine1,
+      addressLine2: addressLine2 || null,
+      city,
+      province,
+      postalCode,
+      country,
+      schoolName,
+      idNumber: idNumber || null,
+      consentToPolicies: true,
+      consentTimestamp: now
+    }
+
+    if (role === 'admin') {
+      userData.emailVerifiedAt = now
+      userData.phoneVerifiedAt = now
+    }
+
     const user = await prisma.user.create({
-      data: {
-        name: `${firstName} ${middleNames ? `${middleNames} ` : ''}${lastName}`.trim(),
-        firstName,
-        lastName,
-        middleNames: middleNames || null,
-        email,
-        password: hashed,
-        role,
-        grade: gradeValue,
-        avatar: null,
-        dateOfBirth,
-        phoneNumber,
-        alternatePhone: alternatePhone || null,
-        recoveryEmail,
-        emergencyContactName,
-        emergencyContactRelationship: emergencyContactRelationship || null,
-        emergencyContactPhone,
-        addressLine1,
-        addressLine2: addressLine2 || null,
-        city,
-        province,
-        postalCode,
-        country,
-        schoolName,
-        idNumber: idNumber || null,
-        consentToPolicies: true,
-        consentTimestamp: now
-      } as any
+      data: userData
     })
 
-    return res.status(201).json({ id: user.id, email: user.email })
+    let verificationSent = false
+    if (role !== 'admin') {
+      try {
+        await issueEmailVerification(user.id, user.email)
+        verificationSent = true
+      } catch (notificationErr) {
+        console.error('Failed to deliver email verification link', notificationErr)
+      }
+    }
+
+    return res.status(201).json({ id: user.id, email: user.email, verificationRequired: role !== 'admin', verificationSent })
   } catch (err) {
     // Log full error server-side always (masked in production logs if necessary)
     console.error('/api/signup server error', err)

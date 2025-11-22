@@ -42,6 +42,14 @@ Notes
 - When deploying to Vercel, create a Blob store and expose the `BLOB_READ_WRITE_TOKEN` environment variable so lesson material uploads work. Without it the API falls back to writing into `public/materials`, which only functions during local development.
 - PayFast onsite subscription setup is documented in `docs/PAYFAST_ONSITE.md`. Follow it when enabling inline payments.
 
+Email & phone verification
+- Signups and admin-invited users now receive an email verification link that lands on `/verify-email`; the page calls `POST /api/auth/verify-email` to activate the account.
+- The default token lifetime is 24h; override with `EMAIL_VERIFICATION_TOKEN_TTL_MS` if you need longer or shorter validity.
+- Admin accounts (including the bootstrap user `admin@philani.test`) bypass verification. Provide a comma-separated override in `ADMIN_VERIFICATION_BYPASS_EMAILS` when needed.
+- Set `REQUIRE_PHONE_VERIFICATION=1` if you later add SMS/voice verification and want sign-in to enforce a verified phone timestamp. Until then, leave it unset.
+- Optional: `AUTO_VERIFY_PHONE_ON_EMAIL=1` will stamp `phoneVerifiedAt` when a user confirms their email link.
+- The custom sign-in page at `/auth/signin` lets legacy users request a fresh verification email via `/api/auth/resend-verification` if they never received one.
+
 Branding suggestions
 - Name: Philani Academy for Mathematics (use full name in headers; short form "Philani Academy" in the nav)
 - Colors: Primary blue (#1D4ED8) and white accent for a clean educational look

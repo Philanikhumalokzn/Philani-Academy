@@ -6,6 +6,18 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
+const DASHBOARD_SECTIONS = [
+  { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
+  { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
+  { id: 'announcements', label: 'Announcements', description: 'Communicate updates', roles: ['admin', 'teacher', 'student'] },
+  { id: 'sessions', label: 'Sessions', description: 'Schedule classes & materials', roles: ['admin', 'teacher', 'student'] },
+  { id: 'users', label: 'Learners', description: 'Manage enrolments', roles: ['admin'] },
+  { id: 'billing', label: 'Billing', description: 'Subscription plans', roles: ['admin'] }
+] as const
+
+type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
+type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
+
 type Announcement = {
   id: string
   title: string
@@ -71,15 +83,17 @@ export default function Dashboard() {
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [materialUploading, setMaterialUploading] = useState(false)
+  const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
-  const userRole = (session as any)?.user?.role as string | undefined
-  const isAdmin = userRole === 'admin'
-  const canManageAnnouncements = userRole === 'admin' || userRole === 'teacher'
-  const canUploadMaterials = userRole === 'admin' || userRole === 'teacher'
+  const userRole = (session as any)?.user?.role as SectionRole | undefined
+  const normalizedRole: SectionRole = userRole ?? 'guest'
+  const isAdmin = normalizedRole === 'admin'
+  const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
+  const canUploadMaterials = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
   const formatFileSize = (bytes?: number | null) => {
@@ -118,6 +132,17 @@ export default function Dashboard() {
     return 'guest'
   }, [session])
   const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
+  const availableSections = useMemo(
+    () => DASHBOARD_SECTIONS.filter(section => (section.roles as ReadonlyArray<SectionRole>).includes(normalizedRole)),
+    [normalizedRole]
+  )
+
+  useEffect(() => {
+    if (availableSections.length === 0) return
+    if (!availableSections.some(section => section.id === activeSection)) {
+      setActiveSection(availableSections[0].id)
+    }
+  }, [availableSections, activeSection])
 
   const updateGradeSelection = (grade: GradeValue) => {
     if (selectedGrade === grade) return
@@ -584,492 +609,659 @@ export default function Dashboard() {
     }
   }
 
-  return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
-        <div className="col-span-2">
-          {gradeReady && status === 'authenticated' && (userRole === 'admin' ? (
-            <div className="card mb-4">
-              <h2 className="font-semibold mb-3">Current grade</h2>
-              <div className="flex flex-wrap gap-4">
-                {gradeOptions.map(option => (
-                  <label key={option.value} className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      name="active-grade"
-                      value={option.value}
-                      checked={selectedGrade === option.value}
-                      onChange={() => updateGradeSelection(option.value)}
-                    />
-                    <span className={selectedGrade === option.value ? 'font-semibold' : ''}>{option.label}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs muted mt-2">Learners only see sessions, notes, and announcements for the active grade.</p>
-            </div>
-          ) : (
-            <div className="card mb-4">
-              <h2 className="font-semibold mb-1">Grade environment</h2>
-              <p className="text-sm muted">You are currently in the {activeGradeLabel} workspace.</p>
-              {!userGrade && (
-                <p className="text-sm text-red-600 mt-2">Your profile does not have a grade yet. Please contact an administrator.</p>
-              )}
-            </div>
-          ))}
+  const OverviewSection = () => {
+    const quickLinks = availableSections.filter(section => section.id !== 'overview')
 
-          {/* Jitsi meeting area: automatically joins the next upcoming session or a default room */}
-          <div className="card mb-4">
-            <h2 className="font-semibold mb-3">Live class — {activeGradeLabel}</h2>
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="card space-y-3">
+            <h2 className="text-lg font-semibold">Grade workspace</h2>
             {status !== 'authenticated' ? (
-              <div className="text-sm muted">Please sign in to join the live class.</div>
-            ) : !selectedGrade ? (
-              <div className="text-sm muted">Select a grade to join the live class.</div>
-            ) : (
-              <JitsiRoom
-                roomName={gradeRoomName}
-                displayName={session?.user?.name || session?.user?.email}
-                sessionId={null}
-                tokenEndpoint={gradeTokenEndpoint}
-                passwordEndpoint={null}
-                isOwner={isOwnerUser}
-              />
-            )}
-          </div>
-          <div className="card mb-4">
-            <h2 className="font-semibold mb-3">Collaborative maths board — {activeGradeLabel}</h2>
-            {status !== 'authenticated' ? (
-              <div className="text-sm muted">Please sign in to launch the maths board.</div>
-            ) : !selectedGrade ? (
-              <div className="text-sm muted">Select a grade to open the shared board.</div>
-            ) : (
-              <MyScriptMathCanvas
-                gradeLabel={activeGradeLabel}
-                roomId={boardRoomId}
-                userId={realtimeUserId}
-                userDisplayName={realtimeDisplayName}
-              />
-            )}
-          </div>
-          <div className="card mb-4">
-            <h2 className="font-semibold mb-3">Announcements — {activeGradeLabel}</h2>
-            {status !== 'authenticated' ? (
-              <div className="text-sm muted">Please sign in to view announcements.</div>
-            ) : !selectedGrade ? (
-              <div className="text-sm muted">Select a grade to view announcements.</div>
-            ) : (
-              <>
-                {canManageAnnouncements && (
-                  <form onSubmit={createAnnouncement} className="space-y-2 mb-4">
-                    <input
-                      className="input"
-                      placeholder="Title"
-                      value={announcementTitle}
-                      onChange={e => setAnnouncementTitle(e.target.value)}
-                    />
-                    <textarea
-                      className="input min-h-[120px]"
-                      placeholder="Share important updates for this grade"
-                      value={announcementContent}
-                      onChange={e => setAnnouncementContent(e.target.value)}
-                    />
-                    <div>
-                      <button className="btn btn-primary" type="submit" disabled={creatingAnnouncement}>
-                        {creatingAnnouncement ? 'Saving…' : 'Post announcement'}
-                      </button>
-                    </div>
-                  </form>
-                )}
-                {announcementsError ? (
-                  <div className="text-sm text-red-600">{announcementsError}</div>
-                ) : announcementsLoading ? (
-                  <div className="text-sm muted">Loading announcements…</div>
-                ) : announcements.length === 0 ? (
-                  <div className="text-sm muted">No announcements yet.</div>
-                ) : (
-                  <ul className="space-y-3">
-                    {announcements.map(a => (
-                      <li key={a.id} className="p-3 border rounded">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="font-medium">{a.title}</div>
-                            <div className="text-xs muted">
-                              {new Date(a.createdAt).toLocaleString()}
-                              {a.createdBy ? ` • ${a.createdBy}` : ''}
-                            </div>
-                          </div>
-                          {canManageAnnouncements && (
-                            <button
-                              type="button"
-                              className="btn btn-danger"
-                              onClick={() => deleteAnnouncement(a.id)}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-sm mt-2 whitespace-pre-line">{a.content}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </div>
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold">Dashboard</h1>
-            <div>{session ? <span className="mr-4 muted">Signed in as {session.user?.email}</span> : <Link href="/api/auth/signin">Sign in</Link>}</div>
-          </div>
-
-          <div className="card mb-4">
-            <h2 className="font-semibold mb-3">Create session</h2>
-            {session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher') ? (
-              <form onSubmit={createSession} className="space-y-3">
-                <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
-                <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
-                <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
-                <div>
-                  <button className="btn btn-primary" type="submit">Create</button>
-                </div>
-              </form>
-            ) : (
-              <div className="text-sm muted">You do not have permission to create sessions. Contact an admin to request instructor access.</div>
-            )}
-          </div>
-
-          <div className="card">
-            <h2 className="font-semibold mb-3">Upcoming sessions — {activeGradeLabel}</h2>
-            {sessionsError ? (
-              <div className="text-sm text-red-600">{sessionsError}</div>
-            ) : sessions.length === 0 ? (
-              <div className="text-sm muted">No sessions scheduled for this grade yet.</div>
-            ) : (
-              <ul className="space-y-3">
-                {sessions.map(s => (
-                  <li key={s.id} className="p-3 border rounded">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="font-medium">{s.title}</div>
-                        <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => toggleMaterialsForSession(s.id)}
-                        >
-                          {expandedSessionId === s.id ? 'Hide materials' : 'View materials'}
-                        </button>
-                      </div>
-                    </div>
-                    {expandedSessionId === s.id && (
-                      <div className="mt-3 border-t pt-3 space-y-3">
-                        {canUploadMaterials && (
-                          <form onSubmit={uploadMaterial} className="space-y-2">
-                            <input
-                              className="input"
-                              placeholder="Material title"
-                              value={materialTitle}
-                              onChange={e => setMaterialTitle(e.target.value)}
-                            />
-                            <input
-                              ref={fileInputRef}
-                              className="input"
-                              type="file"
-                              accept=".pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.key,.txt,.xlsx,.xls,.zip,.rar,.jpg,.jpeg,.png,.mp4,.mov"
-                              onChange={e => handleMaterialFileChange(e.target.files?.[0] ?? null)}
-                            />
-                            <div>
-                              <button className="btn btn-primary" type="submit" disabled={materialUploading || !materialFile}>
-                                {materialUploading ? 'Uploading…' : 'Upload material'}
-                              </button>
-                            </div>
-                          </form>
-                        )}
-                        {materialsError ? (
-                          <div className="text-sm text-red-600">{materialsError}</div>
-                        ) : materialsLoading ? (
-                          <div className="text-sm muted">Loading materials…</div>
-                        ) : materials.length === 0 ? (
-                          <div className="text-sm muted">No materials uploaded yet.</div>
-                        ) : (
-                          <ul className="space-y-2">
-                            {materials.map(m => (
-                              <li key={m.id} className="p-2 border rounded flex items-start justify-between gap-4">
-                                <div>
-                                  <a href={m.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{m.title}</a>
-                                  <div className="text-xs muted">
-                                    {new Date(m.createdAt).toLocaleString()}
-                                    {m.createdBy ? ` • ${m.createdBy}` : ''}
-                                    {m.size ? ` • ${formatFileSize(m.size)}` : ''}
-                                  </div>
-                                </div>
-                                {canUploadMaterials && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-danger"
-                                    onClick={() => deleteMaterial(m.id)}
-                                  >
-                                    Delete
-                                  </button>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {session && (session as any).user?.role === 'admin' && (
-            <div className="card mt-4">
-              <h2 className="font-semibold mb-3">Manage users</h2>
-              <div className="mb-4">
-                <h3 className="font-medium mb-2">Create user</h3>
-                <div className="space-y-2">
-                  <input className="input" placeholder="Name" value={newName} onChange={e => setNewName(e.target.value)} />
-                  <input className="input" placeholder="Email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-                  <input className="input" placeholder="Password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-                  <select className="input" value={newRole} onChange={e => setNewRole(e.target.value)}>
-                    <option value="student">student</option>
-                    <option value="teacher">teacher</option>
-                    <option value="admin">admin</option>
-                  </select>
-                  {(newRole === 'student' || newRole === 'teacher') && (
-                    <select
-                      className="input"
-                      value={newGrade}
-                      onChange={e => setNewGrade(e.target.value as GradeValue | '')}
+              <p className="text-sm muted">Sign in to manage a grade workspace.</p>
+            ) : !gradeReady ? (
+              <p className="text-sm muted">Loading grade options...</p>
+            ) : isAdmin ? (
+              <div className="space-y-3">
+                <p className="text-sm muted">Switch the active grade to manage sessions and announcements.</p>
+                <div className="flex flex-wrap gap-3">
+                  {gradeOptions.map(option => (
+                    <label
+                      key={option.value}
+                      className={`px-3 py-2 rounded border text-sm cursor-pointer transition ${
+                        selectedGrade === option.value ? 'border-blue-500 bg-blue-50 font-semibold' : 'border-slate-200 hover:border-blue-200'
+                      }`}
                     >
-                      <option value="">Select grade</option>
-                      {gradeOptions.map(option => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  )}
-                  <div>
-                    <button className="btn btn-primary" onClick={async () => {
-                      if ((newRole === 'student' || newRole === 'teacher') && !newGrade) {
-                        alert('Please assign a grade to the new user')
-                        return
-                      }
-                      try {
-                        const res = await fetch('/api/users', {
-                          method: 'POST',
-                          credentials: 'same-origin',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            name: newName,
-                            email: newEmail,
-                            password: newPassword,
-                            role: newRole,
-                            grade: newRole === 'admin' ? undefined : newGrade
-                          })
-                        })
-                        if (res.ok) {
-                          setNewName('')
-                          setNewEmail('')
-                          setNewPassword('')
-                          setNewRole('student')
-                          setNewGrade(selectedGrade ?? '')
-                          fetchUsers()
-                          alert('User created')
-                        } else {
-                          const data = await res.json().catch(() => ({}))
-                          alert(data?.message || `Failed to create user (${res.status})`)
-                        }
-                      } catch (err: any) {
-                        alert(err?.message || 'Network error')
-                      }
-                    }}>Create user</button>
-                  </div>
+                      <input
+                        type="radio"
+                        name="active-grade"
+                        value={option.value}
+                        checked={selectedGrade === option.value}
+                        onChange={() => updateGradeSelection(option.value)}
+                        className="sr-only"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
                 </div>
+                <p className="text-xs muted">Learners only see sessions, notes, and announcements for the selected grade.</p>
               </div>
-              {usersLoading ? (
-                <div className="text-sm muted">Loading users…</div>
-              ) : usersError ? (
-                <div className="text-sm text-red-600">{usersError}</div>
-              ) : users && users.length === 0 ? (
-                <div className="text-sm muted">No users found.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr>
-                        <th className="px-2 py-1">Email</th>
-                        <th className="px-2 py-1">Learner</th>
-                        <th className="px-2 py-1">Contact</th>
-                        <th className="px-2 py-1">Emergency</th>
-                        <th className="px-2 py-1">Address</th>
-                        <th className="px-2 py-1">Created</th>
-                        <th className="px-2 py-1">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users && users.map(u => (
-                        <tr key={u.id} className="border-t">
-                          <td className="px-2 py-2 align-top">{u.email}</td>
-                          <td className="px-2 py-2 align-top">
-                            <div className="font-medium">{u.firstName || u.name || '—'} {u.lastName || ''}</div>
-                            <div className="text-xs muted capitalize">Role: {u.role}</div>
-                            <div className="text-xs muted">Grade: {u.grade ? gradeToLabel(u.grade) : 'Unassigned'}</div>
-                            <div className="text-xs muted">School: {u.schoolName || '—'}</div>
-                          </td>
-                          <td className="px-2 py-2 align-top">
-                            <div>{formatPhoneDisplay(u.phoneNumber)}</div>
-                            <div className="text-xs muted">Alt: {formatPhoneDisplay(u.alternatePhone)}</div>
-                            <div className="text-xs muted">Recovery: {u.recoveryEmail || '—'}</div>
-                          </td>
-                          <td className="px-2 py-2 align-top">
-                            <div>{u.emergencyContactName || '—'}</div>
-                            <div className="text-xs muted">{u.emergencyContactRelationship || ''}</div>
-                            <div className="text-xs muted">{u.emergencyContactPhone ? formatPhoneDisplay(u.emergencyContactPhone) : 'No number'}</div>
-                          </td>
-                          <td className="px-2 py-2 align-top">
-                            <div>{u.addressLine1 || '—'}</div>
-                            <div className="text-xs muted">{u.city || ''} {u.province ? `(${u.province})` : ''}</div>
-                            <div className="text-xs muted">{u.postalCode || ''}</div>
-                          </td>
-                          <td className="px-2 py-2 align-top">{new Date(u.createdAt).toLocaleString()}</td>
-                          <td className="px-2 py-2">
-                            <button
-                              className="btn btn-danger"
-                              onClick={async () => {
-                                if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
-                                try {
-                                  const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'same-origin' })
-                                  if (res.ok) {
-                                    setUsers(prev => prev ? prev.filter(x => x.id !== u.id) : prev)
-                                  } else {
-                                    const data = await res.json().catch(() => ({}))
-                                    alert(data?.message || `Failed to delete (${res.status})`)
-                                  }
-                                } catch (err: any) {
-                                  alert(err?.message || 'Network error')
-                                }
-                              }}
-                            >Delete</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {session && (session as any).user?.role === 'admin' && (
-            <div className="card mt-4">
-              <h2 className="font-semibold mb-3">Subscription plans</h2>
-              <div className="mb-4">
-                <h3 className="font-medium mb-2">Create plan</h3>
-                <div className="space-y-2">
-                  <input className="input" placeholder="Plan name" value={planName} onChange={e => setPlanName(e.target.value)} />
-                  <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} />
-                  <div className="text-xs muted">PayFast subscriptions are billed in ZAR.</div>
-                  <div>
-                    <button className="btn btn-primary" onClick={async () => {
-                      if (!planName || !planAmount) return alert('Name and amount required')
-                      if (typeof planAmount === 'number' && planAmount < 500) {
-                        alert('PayFast subscriptions require at least 500 cents (R5.00)')
-                        return
-                      }
-                      try {
-                        const res = await fetch('/api/payfast/create-plan', {
-                          method: 'POST',
-                          credentials: 'same-origin',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ name: planName, amount: planAmount })
-                        })
-
-                        if (!res.ok) {
-                          const data = await res.json().catch(() => ({}))
-                          return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
-                        }
-
-                        setPlanName('')
-                        setPlanAmount('')
-                        fetchPlans()
-                        alert('Plan created')
-                      } catch (err: any) {
-                        alert(err?.message || 'Network error')
-                      }
-                    }}>Create plan</button>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-medium mb-2">Existing plans</h3>
-                {plansLoading ? <div className="text-sm muted">Loading…</div> : (
-                  plans.length === 0 ? <div className="text-sm muted">No plans found.</div> : (
-                    <ul className="space-y-2">
-                      {plans.map(p => (
-                        <li key={p.id} className="p-2 border rounded">
-                          {editingPlanId === p.id ? (
-                            <div className="space-y-2">
-                              <input className="input" value={editPlanName} onChange={e => setEditPlanName(e.target.value)} placeholder="Plan name" />
-                              <input className="input" type="number" value={editPlanAmount as any} onChange={e => setEditPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} placeholder="Amount (cents)" />
-                              <div className="text-sm muted">Currency: {(p.currency || 'zar').toUpperCase()}</div>
-                              <label className="flex items-center space-x-2 text-sm">
-                                <input type="checkbox" checked={editPlanActive} onChange={e => setEditPlanActive(e.target.checked)} />
-                                <span>Active</span>
-                              </label>
-                              <div className="flex gap-2">
-                                <button className="btn btn-primary" onClick={savePlanChanges} disabled={planSaving}>
-                                  {planSaving ? 'Saving…' : 'Save changes'}
-                                </button>
-                                <button className="btn btn-ghost" onClick={resetPlanEdit} disabled={planSaving}>Cancel</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="font-medium">{p.name}</div>
-                                <div className="text-sm muted">{(p.amount/100).toFixed(2)} {p.currency?.toUpperCase()} {p.active ? '(active)' : '(inactive)'}</div>
-                              </div>
-                              <div className="flex gap-2">
-                                <button className="btn btn-ghost" onClick={() => beginEditPlan(p)}>Edit</button>
-                                <button className="btn btn-danger" onClick={async () => {
-                                  if (!confirm('Delete plan?')) return
-                                  try {
-                                    const res = await fetch(`/api/plans`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
-                                    if (res.ok) fetchPlans()
-                                    else alert('Failed to delete')
-                                  } catch (err) {
-                                    alert('Network error')
-                                  }
-                                }}>Delete</button>
-                              </div>
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm muted">
+                  You are currently in the <span className="font-medium text-slate-700">{activeGradeLabel}</span> workspace.
+                </p>
+                {!userGrade && (
+                  <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
                 )}
               </div>
+            )}
+          </div>
+
+          <div className="card space-y-3">
+            <h2 className="text-lg font-semibold">Account snapshot</h2>
+            <dl className="grid gap-2 text-sm text-slate-600">
+              <div>
+                <dt className="font-medium text-slate-700">Email</dt>
+                <dd>{session?.user?.email || 'Not signed in'}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-700">Role</dt>
+                <dd className="capitalize">{userRole || 'guest'}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-700">Grade</dt>
+                <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
+              </div>
+            </dl>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
+              <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
             </div>
+          </div>
+        </div>
+
+        {quickLinks.length > 0 && (
+          <div className="card space-y-3">
+            <h2 className="text-lg font-semibold">Quick actions</h2>
+            <div className="flex flex-wrap gap-2">
+              {quickLinks.map(section => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveSection(section.id)}
+                  className={`px-3 py-2 rounded border text-left text-sm transition focus:outline-none focus:ring-2 ${
+                    activeSection === section.id ? 'border-blue-500 bg-blue-50 focus:ring-blue-500' : 'border-slate-200 hover:border-blue-200 focus:ring-blue-200'
+                  }`}
+                >
+                  <div className="font-medium text-slate-700">{section.label}</div>
+                  <div className="text-xs text-slate-500">{section.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const LiveSection = () => (
+    <div className="space-y-6">
+      <div className="card space-y-3">
+        <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
+        {status !== 'authenticated' ? (
+          <div className="text-sm muted">Please sign in to join the live class.</div>
+        ) : !selectedGrade ? (
+          <div className="text-sm muted">Select a grade to join the live class.</div>
+        ) : (
+          <JitsiRoom
+            roomName={gradeRoomName}
+            displayName={session?.user?.name || session?.user?.email}
+            sessionId={null}
+            tokenEndpoint={gradeTokenEndpoint}
+            passwordEndpoint={null}
+            isOwner={isOwnerUser}
+          />
+        )}
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="text-lg font-semibold">Collaborative maths board — {activeGradeLabel}</h2>
+        {status !== 'authenticated' ? (
+          <div className="text-sm muted">Please sign in to launch the maths board.</div>
+        ) : !selectedGrade ? (
+          <div className="text-sm muted">Select a grade to open the shared board.</div>
+        ) : (
+          <MyScriptMathCanvas
+            gradeLabel={activeGradeLabel}
+            roomId={boardRoomId}
+            userId={realtimeUserId}
+            userDisplayName={realtimeDisplayName}
+          />
+        )}
+      </div>
+    </div>
+  )
+
+  const AnnouncementsSection = () => (
+    <div className="space-y-6">
+      {canManageAnnouncements && (
+        <div className="card space-y-3">
+          <h2 className="text-lg font-semibold">Create announcement</h2>
+          {!selectedGrade ? (
+            <div className="text-sm muted">Select a grade before posting an announcement.</div>
+          ) : (
+            <form onSubmit={createAnnouncement} className="space-y-2">
+              <input
+                className="input"
+                placeholder="Title"
+                value={announcementTitle}
+                onChange={e => setAnnouncementTitle(e.target.value)}
+              />
+              <textarea
+                className="input min-h-[120px]"
+                placeholder="Share important updates for this grade"
+                value={announcementContent}
+                onChange={e => setAnnouncementContent(e.target.value)}
+              />
+              <div>
+                <button className="btn btn-primary" type="submit" disabled={creatingAnnouncement}>
+                  {creatingAnnouncement ? 'Saving...' : 'Post announcement'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      <div className="card space-y-3">
+        <h2 className="text-lg font-semibold">Grade updates — {activeGradeLabel}</h2>
+        {status !== 'authenticated' ? (
+          <div className="text-sm muted">Please sign in to view announcements.</div>
+        ) : !selectedGrade ? (
+          <div className="text-sm muted">Select a grade to view announcements.</div>
+        ) : announcementsError ? (
+          <div className="text-sm text-red-600">{announcementsError}</div>
+        ) : announcementsLoading ? (
+          <div className="text-sm muted">Loading announcements...</div>
+        ) : announcements.length === 0 ? (
+          <div className="text-sm muted">No announcements yet.</div>
+        ) : (
+          <ul className="space-y-3">
+            {announcements.map(a => (
+              <li key={a.id} className="p-3 border rounded">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-medium">{a.title}</div>
+                    <div className="text-xs muted">
+                      {new Date(a.createdAt).toLocaleString()}
+                      {a.createdBy ? ` • ${a.createdBy}` : ''}
+                    </div>
+                  </div>
+                  {canManageAnnouncements && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() => deleteAnnouncement(a.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm mt-2 whitespace-pre-line">{a.content}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+
+  const SessionsSection = () => {
+    const canCreateSession = Boolean(session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher'))
+
+    return (
+      <div className="space-y-6">
+        <div className="card space-y-3">
+          <h2 className="text-lg font-semibold">Create session</h2>
+          {!canCreateSession ? (
+            <div className="text-sm muted">You do not have permission to create sessions. Contact an admin to request instructor access.</div>
+          ) : !selectedGrade ? (
+            <div className="text-sm muted">Select a grade before creating a session.</div>
+          ) : (
+            <form onSubmit={createSession} className="space-y-3">
+              <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
+              <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+              <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
+              <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
+              <div>
+                <button className="btn btn-primary" type="submit">Create</button>
+              </div>
+            </form>
           )}
         </div>
 
-        <aside className="card">
-          <h3 className="font-semibold">Account</h3>
-          <div className="mt-3 muted">Role: {(session as any)?.user?.role || 'guest'}</div>
-          <div className="mt-1 text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
-          <div className="mt-4">
-            <Link href="/subscribe" className="btn btn-primary">Subscribe</Link>
-          </div>
-        </aside>
+        <div className="card space-y-3">
+          <h2 className="text-lg font-semibold">Upcoming sessions — {activeGradeLabel}</h2>
+          {sessionsError ? (
+            <div className="text-sm text-red-600">{sessionsError}</div>
+          ) : sessions.length === 0 ? (
+            <div className="text-sm muted">No sessions scheduled for this grade yet.</div>
+          ) : (
+            <ul className="space-y-3">
+              {sessions.map(s => (
+                <li key={s.id} className="p-3 border rounded">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{s.title}</div>
+                      <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => toggleMaterialsForSession(s.id)}
+                      >
+                        {expandedSessionId === s.id ? 'Hide materials' : 'View materials'}
+                      </button>
+                    </div>
+                  </div>
+                  {expandedSessionId === s.id && (
+                    <div className="mt-3 border-t pt-3 space-y-3">
+                      {canUploadMaterials && (
+                        <form onSubmit={uploadMaterial} className="space-y-2">
+                          <input
+                            className="input"
+                            placeholder="Material title"
+                            value={materialTitle}
+                            onChange={e => setMaterialTitle(e.target.value)}
+                          />
+                          <input
+                            ref={fileInputRef}
+                            className="input"
+                            type="file"
+                            accept=".pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.key,.txt,.xlsx,.xls,.zip,.rar,.jpg,.jpeg,.png,.mp4,.mov"
+                            onChange={e => handleMaterialFileChange(e.target.files?.[0] ?? null)}
+                          />
+                          <div>
+                            <button className="btn btn-primary" type="submit" disabled={materialUploading || !materialFile}>
+                              {materialUploading ? 'Uploading...' : 'Upload material'}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                      {materialsError ? (
+                        <div className="text-sm text-red-600">{materialsError}</div>
+                      ) : materialsLoading ? (
+                        <div className="text-sm muted">Loading materials...</div>
+                      ) : materials.length === 0 ? (
+                        <div className="text-sm muted">No materials uploaded yet.</div>
+                      ) : (
+                        <ul className="space-y-2">
+                          {materials.map(m => (
+                            <li key={m.id} className="p-2 border rounded flex items-start justify-between gap-4">
+                              <div>
+                                <a href={m.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{m.title}</a>
+                                <div className="text-xs muted">
+                                  {new Date(m.createdAt).toLocaleString()}
+                                  {m.createdBy ? ` • ${m.createdBy}` : ''}
+                                  {m.size ? ` • ${formatFileSize(m.size)}` : ''}
+                                </div>
+                              </div>
+                              {canUploadMaterials && (
+                                <button
+                                  type="button"
+                                  className="btn btn-danger"
+                                  onClick={() => deleteMaterial(m.id)}
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const UsersSection = () => (
+    <div className="card space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Manage users</h2>
+        <p className="text-sm muted">Create learners and instructors, update their access, and remove accounts when needed.</p>
       </div>
 
-      {/* demo embed removed from dashboard to avoid showing public demo heading */}
+      <div className="space-y-2">
+        <h3 className="font-medium">Create user</h3>
+        <div className="grid gap-2 lg:grid-cols-2">
+          <input className="input" placeholder="Name" value={newName} onChange={e => setNewName(e.target.value)} />
+          <input className="input" placeholder="Email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+          <input className="input" placeholder="Password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+          <select className="input" value={newRole} onChange={e => setNewRole(e.target.value)}>
+            <option value="student">student</option>
+            <option value="teacher">teacher</option>
+            <option value="admin">admin</option>
+          </select>
+          {(newRole === 'student' || newRole === 'teacher') && (
+            <select
+              className="input"
+              value={newGrade}
+              onChange={e => setNewGrade(e.target.value as GradeValue | '')}
+            >
+              <option value="">Select grade</option>
+              {gradeOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div>
+          <button className="btn btn-primary" onClick={async () => {
+            if ((newRole === 'student' || newRole === 'teacher') && !newGrade) {
+              alert('Please assign a grade to the new user')
+              return
+            }
+            try {
+              const res = await fetch('/api/users', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: newName,
+                  email: newEmail,
+                  password: newPassword,
+                  role: newRole,
+                  grade: newRole === 'admin' ? undefined : newGrade
+                })
+              })
+              if (res.ok) {
+                setNewName('')
+                setNewEmail('')
+                setNewPassword('')
+                setNewRole('student')
+                setNewGrade(selectedGrade ?? '')
+                fetchUsers()
+                alert('User created')
+              } else {
+                const data = await res.json().catch(() => ({}))
+                alert(data?.message || `Failed to create user (${res.status})`)
+              }
+            } catch (err: any) {
+              alert(err?.message || 'Network error')
+            }
+          }}>Create user</button>
+        </div>
+      </div>
+
+      {usersLoading ? (
+        <div className="text-sm muted">Loading users...</div>
+      ) : usersError ? (
+        <div className="text-sm text-red-600">{usersError}</div>
+      ) : users && users.length === 0 ? (
+        <div className="text-sm muted">No users found.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                <th className="px-2 py-1">Email</th>
+                <th className="px-2 py-1">Learner</th>
+                <th className="px-2 py-1">Contact</th>
+                <th className="px-2 py-1">Emergency</th>
+                <th className="px-2 py-1">Address</th>
+                <th className="px-2 py-1">Created</th>
+                <th className="px-2 py-1">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users && users.map(u => (
+                <tr key={u.id} className="border-t">
+                  <td className="px-2 py-2 align-top">{u.email}</td>
+                  <td className="px-2 py-2 align-top">
+                    <div className="font-medium">{u.firstName || u.name || '—'} {u.lastName || ''}</div>
+                    <div className="text-xs muted capitalize">Role: {u.role}</div>
+                    <div className="text-xs muted">Grade: {u.grade ? gradeToLabel(u.grade) : 'Unassigned'}</div>
+                    <div className="text-xs muted">School: {u.schoolName || '—'}</div>
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <div>{formatPhoneDisplay(u.phoneNumber)}</div>
+                    <div className="text-xs muted">Alt: {formatPhoneDisplay(u.alternatePhone)}</div>
+                    <div className="text-xs muted">Recovery: {u.recoveryEmail || '—'}</div>
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <div>{u.emergencyContactName || '—'}</div>
+                    <div className="text-xs muted">{u.emergencyContactRelationship || ''}</div>
+                    <div className="text-xs muted">{u.emergencyContactPhone ? formatPhoneDisplay(u.emergencyContactPhone) : 'No number'}</div>
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <div>{u.addressLine1 || '—'}</div>
+                    <div className="text-xs muted">{u.city || ''} {u.province ? `(${u.province})` : ''}</div>
+                    <div className="text-xs muted">{u.postalCode || ''}</div>
+                  </td>
+                  <td className="px-2 py-2 align-top">{new Date(u.createdAt).toLocaleString()}</td>
+                  <td className="px-2 py-2">
+                    <button
+                      className="btn btn-danger"
+                      onClick={async () => {
+                        if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
+                        try {
+                          const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'same-origin' })
+                          if (res.ok) {
+                            setUsers(prev => prev ? prev.filter(x => x.id !== u.id) : prev)
+                          } else {
+                            const data = await res.json().catch(() => ({}))
+                            alert(data?.message || `Failed to delete (${res.status})`)
+                          }
+                        } catch (err: any) {
+                          alert(err?.message || 'Network error')
+                        }
+                      }}
+                    >Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+
+  const BillingSection = () => (
+    <div className="space-y-6">
+      <div className="card space-y-3">
+        <h2 className="text-lg font-semibold">Create subscription plan</h2>
+        <div className="space-y-2">
+          <input className="input" placeholder="Plan name" value={planName} onChange={e => setPlanName(e.target.value)} />
+          <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} />
+          <div className="text-xs muted">PayFast subscriptions are billed in ZAR.</div>
+          <div>
+            <button className="btn btn-primary" onClick={async () => {
+              if (!planName || !planAmount) return alert('Name and amount required')
+              if (typeof planAmount === 'number' && planAmount < 500) {
+                alert('PayFast subscriptions require at least 500 cents (R5.00)')
+                return
+              }
+              try {
+                const res = await fetch('/api/payfast/create-plan', {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: planName, amount: planAmount })
+                })
+
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}))
+                  return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
+                }
+
+                setPlanName('')
+                setPlanAmount('')
+                fetchPlans()
+                alert('Plan created')
+              } catch (err: any) {
+                alert(err?.message || 'Network error')
+              }
+            }}>Create plan</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="text-lg font-semibold">Existing plans</h2>
+        {plansLoading ? <div className="text-sm muted">Loading...</div> : (
+          plans.length === 0 ? <div className="text-sm muted">No plans found.</div> : (
+            <ul className="space-y-2">
+              {plans.map(p => (
+                <li key={p.id} className="p-2 border rounded">
+                  {editingPlanId === p.id ? (
+                    <div className="space-y-2">
+                      <input className="input" value={editPlanName} onChange={e => setEditPlanName(e.target.value)} placeholder="Plan name" />
+                      <input className="input" type="number" value={editPlanAmount as any} onChange={e => setEditPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} placeholder="Amount (cents)" />
+                      <div className="text-sm muted">Currency: {(p.currency || 'zar').toUpperCase()}</div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={editPlanActive} onChange={e => setEditPlanActive(e.target.checked)} />
+                        <span>Active</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <button className="btn btn-primary" onClick={savePlanChanges} disabled={planSaving}>
+                          {planSaving ? 'Saving...' : 'Save changes'}
+                        </button>
+                        <button className="btn btn-ghost" onClick={resetPlanEdit} disabled={planSaving}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-sm muted">{(p.amount / 100).toFixed(2)} {p.currency?.toUpperCase()} {p.active ? '(active)' : '(inactive)'}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="btn btn-ghost" onClick={() => beginEditPlan(p)}>Edit</button>
+                        <button className="btn btn-danger" onClick={async () => {
+                          if (!confirm('Delete plan?')) return
+                          try {
+                            const res = await fetch(`/api/plans`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
+                            if (res.ok) fetchPlans()
+                            else alert('Failed to delete')
+                          } catch (err) {
+                            alert('Network error')
+                          }
+                        }}>Delete</button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+      </div>
+    </div>
+  )
+
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'live':
+        return <LiveSection />
+      case 'announcements':
+        return <AnnouncementsSection />
+      case 'sessions':
+        return <SessionsSection />
+      case 'users':
+        return <UsersSection />
+      case 'billing':
+        return <BillingSection />
+      default:
+        return <OverviewSection />
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-50 pb-16">
+      <div className="max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {session ? (
+              <div className="text-sm muted">Signed in as <span className="font-medium text-slate-700">{session.user?.email}</span></div>
+            ) : (
+              <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
+            )}
+          </div>
+        </header>
+
+        <div className="flex flex-col lg:flex-row gap-6">
+          <aside className="lg:w-64 shrink-0 space-y-4">
+            <nav className="space-y-4">
+              <div className="hidden lg:grid gap-2">
+                {availableSections.map(section => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    className={`text-left px-4 py-3 rounded-lg border transition focus:outline-none focus:ring-2 ${
+                      activeSection === section.id ? 'border-blue-500 bg-white shadow-sm focus:ring-blue-500' : 'border-transparent bg-white/70 hover:bg-white focus:ring-blue-200'
+                    }`}
+                  >
+                    <div className="font-medium text-slate-700">{section.label}</div>
+                    <div className="text-xs text-slate-500">{section.description}</div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex lg:hidden gap-2 overflow-x-auto pb-2">
+                {availableSections.map(section => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    className={`flex-1 min-w-[160px] px-3 py-2 rounded-full border text-sm transition focus:outline-none focus:ring-2 ${
+                      activeSection === section.id ? 'border-blue-500 bg-blue-50 focus:ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200 focus:ring-blue-200'
+                    }`}
+                  >
+                    {section.label}
+                  </button>
+                ))}
+              </div>
+            </nav>
+
+            <div className="hidden lg:block">
+              <div className="card space-y-2">
+                <div className="font-semibold">Account status</div>
+                <div className="text-sm muted">Role: {(session as any)?.user?.role || 'guest'}</div>
+                <div className="text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
+                <Link href="/subscribe" className="btn btn-primary w-full">Manage subscription</Link>
+              </div>
+            </div>
+          </aside>
+
+          <section className="flex-1 min-w-0 space-y-6">
+            {renderSection()}
+
+            <div className="lg:hidden">
+              <div className="card space-y-2">
+                <div className="font-semibold">Account status</div>
+                <div className="text-sm muted">Role: {(session as any)?.user?.role || 'guest'}</div>
+                <div className="text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
+                <Link href="/subscribe" className="btn btn-primary w-full">Manage subscription</Link>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
     </main>
   )
 }

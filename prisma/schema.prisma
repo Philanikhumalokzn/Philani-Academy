@@ -29,6 +29,8 @@ model User {
   avatar    String?
   dateOfBirth DateTime?
   phoneNumber String @default("")
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
   alternatePhone String?
   recoveryEmail String?
   emergencyContactName String @default("")

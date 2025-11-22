@@ -44,11 +44,8 @@ model User {
   idNumber   String?
   consentToPolicies Boolean @default(false)
   consentTimestamp DateTime?
-  emailVerifiedAt DateTime?
-  phoneVerifiedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  contactVerifications ContactVerification[]
 }
 
 model SessionRecord {
@@ -97,25 +94,4 @@ model SubscriptionPlan {
   active        Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-}
-
-enum ContactVerificationType {
-  EMAIL
-  PHONE
-}
-
-model ContactVerification {
-  id             String                   @id @default(cuid())
-  userId         String
-  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           ContactVerificationType
-  channelAddress String
-  codeHash       String
-  attempts       Int                      @default(0)
-  expiresAt      DateTime
-  consumedAt     DateTime?
-  createdAt      DateTime                 @default(now())
-
-  @@index([userId, type])
-  @@index([channelAddress, type])
 }

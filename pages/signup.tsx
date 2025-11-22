@@ -31,16 +31,6 @@ export default function Signup() {
   const router = useRouter()
   const [flash, setFlash] = useState(false)
   const [hydrated, setHydrated] = useState(false)
-  const [pendingUser, setPendingUser] = useState<{ userId: string, email: string, phoneNumber: string } | null>(null)
-  const [emailCode, setEmailCode] = useState('')
-  const [phoneCode, setPhoneCode] = useState('')
-  const [emailVerified, setEmailVerified] = useState(false)
-  const [phoneVerified, setPhoneVerified] = useState(false)
-  const [verificationError, setVerificationError] = useState<string | null>(null)
-  const [verificationLoading, setVerificationLoading] = useState(false)
-  const [verificationSuccess, setVerificationSuccess] = useState(false)
-  const [resendStatus, setResendStatus] = useState<{ email?: string | null, phone?: string | null }>({})
-  const [resendLoading, setResendLoading] = useState<{ email?: boolean, phone?: boolean }>({})
   const gradeOptions = GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) }))
   const provinceOptions = [
     'Eastern Cape',
@@ -60,34 +50,9 @@ export default function Signup() {
     console.log('[signup] signup page hydrated')
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const stored = window.sessionStorage.getItem('philani:pending-signup')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed?.userId && parsed?.email && parsed?.phoneNumber) {
-          setPendingUser(parsed)
-        }
-      }
-    } catch (err) {
-      console.warn('[signup] failed to restore pending signup session', err)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (pendingUser) {
-      window.sessionStorage.setItem('philani:pending-signup', JSON.stringify(pendingUser))
-    } else {
-      window.sessionStorage.removeItem('philani:pending-signup')
-    }
-  }, [pendingUser])
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    setVerificationError(null)
     try {
       const cleanedFirst = firstName.trim()
       const cleanedLast = lastName.trim()
@@ -178,14 +143,6 @@ export default function Signup() {
       })
 
       if (res.ok) {
-        const data = await res.json()
-        setPendingUser({ userId: data.userId, email: data.email, phoneNumber: data.phoneNumber })
-        setEmailVerified(false)
-        setPhoneVerified(false)
-        setVerificationSuccess(false)
-        setEmailCode('')
-        setPhoneCode('')
-        setResendStatus({})
         setGrade('')
         setEmail('')
         setPassword('')
@@ -208,7 +165,7 @@ export default function Signup() {
         setSchoolName('')
         setIdNumber('')
         setPopiConsent(false)
-        setLoading(false)
+        router.push('/api/auth/signin')
         return
       }
       // Try to parse JSON error body safely
@@ -237,89 +194,6 @@ export default function Signup() {
     }
   }
 
-  async function handleVerificationSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!pendingUser) return
-    setVerificationError(null)
-    if (!emailVerified && !emailCode.trim()) {
-      setVerificationError('Enter the verification code sent to your email address.')
-      return
-    }
-    if (!phoneVerified && !phoneCode.trim()) {
-      setVerificationError('Enter the verification code sent to your mobile number.')
-      return
-    }
-    setVerificationLoading(true)
-    try {
-      let emailComplete = emailVerified
-      if (!emailComplete) {
-        const emailRes = await fetch('/api/signup/verify-contact', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: pendingUser.userId, type: 'email', code: emailCode.trim() })
-        })
-        if (!emailRes.ok) {
-          const data = await emailRes.json().catch(() => ({}))
-          throw new Error(data?.message || 'Email verification failed')
-        }
-        setEmailVerified(true)
-        emailComplete = true
-      }
-
-      let phoneComplete = phoneVerified
-      if (!phoneComplete) {
-        const phoneRes = await fetch('/api/signup/verify-contact', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: pendingUser.userId, type: 'phone', code: phoneCode.trim() })
-        })
-        if (!phoneRes.ok) {
-          const data = await phoneRes.json().catch(() => ({}))
-          throw new Error(data?.message || 'SMS verification failed')
-        }
-        setPhoneVerified(true)
-        phoneComplete = true
-      }
-
-      if (emailComplete && phoneComplete) {
-        setVerificationSuccess(true)
-        setPendingUser(null)
-        setTimeout(() => {
-          router.push('/api/auth/signin')
-        }, 1200)
-      }
-    } catch (err: any) {
-      setVerificationError(err?.message || 'Verification failed')
-    } finally {
-      setVerificationLoading(false)
-    }
-  }
-
-  async function handleResend(type: 'email' | 'phone') {
-    if (!pendingUser) return
-    setResendStatus(prev => ({ ...prev, [type]: null }))
-    setResendLoading(prev => ({ ...prev, [type]: true }))
-    try {
-      const res = await fetch('/api/signup/resend-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: pendingUser.userId, type })
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setResendStatus(prev => ({ ...prev, [type]: data?.message || 'Unable to send a new code right now.' }))
-        return
-      }
-      setResendStatus(prev => ({ ...prev, [type]: 'A new code has been sent.' }))
-    } catch (err: any) {
-      setResendStatus(prev => ({ ...prev, [type]: err?.message || 'Unable to send a new code right now.' }))
-    } finally {
-      setResendLoading(prev => ({ ...prev, [type]: false }))
-    }
-  }
-
-  const isVerifying = Boolean(pendingUser)
-
   return (
     <main className="min-h-screen flex items-center justify-center p-6 md:p-8">
       {/* Hydration-only banner (shows when client JS ran) */}
@@ -331,37 +205,7 @@ export default function Signup() {
         )}
       </div>
       <div className="max-w-md w-full container-card fade-up">
-        <h2 className="text-2xl font-bold mb-4">{isVerifying ? 'Verify your contact details' : 'Create an account'}</h2>
-        {isVerifying ? (
-          <form onSubmit={handleVerificationSubmit} className="space-y-6">
-            <p className="text-sm text-gray-600">We have sent one-time codes to <strong>{pendingUser?.email}</strong> and <strong>{pendingUser?.phoneNumber}</strong>. Enter both codes to activate your account.</p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Email verification code</label>
-                <input className="input" placeholder="Enter the 6-digit code" value={emailCode} onChange={e => setEmailCode(e.target.value.replace(/[^0-9]/g, ''))} disabled={emailVerified} maxLength={6} />
-                <div className="flex items-center justify-between mt-2 text-xs text-gray-600">
-                  <span>{emailVerified ? 'Email verified' : 'Check your inbox for the code.'}</span>
-                  <button type="button" className="text-blue-600 disabled:opacity-50" onClick={() => handleResend('email')} disabled={resendLoading.email}>Resend</button>
-                </div>
-                {resendStatus.email && <p className="text-xs text-gray-600 mt-1">{resendStatus.email}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">SMS verification code</label>
-                <input className="input" placeholder="Enter the 6-digit code" value={phoneCode} onChange={e => setPhoneCode(e.target.value.replace(/[^0-9]/g, ''))} disabled={phoneVerified} maxLength={6} />
-                <div className="flex items-center justify-between mt-2 text-xs text-gray-600">
-                  <span>{phoneVerified ? 'Mobile number verified' : 'We sent an SMS with your code.'}</span>
-                  <button type="button" className="text-blue-600 disabled:opacity-50" onClick={() => handleResend('phone')} disabled={resendLoading.phone}>Resend</button>
-                </div>
-                {resendStatus.phone && <p className="text-xs text-gray-600 mt-1">{resendStatus.phone}</p>}
-              </div>
-            </div>
-            {verificationError && <p className="text-red-600 text-sm">{verificationError}</p>}
-            {verificationSuccess && <p className="text-green-600 text-sm">All set! Redirecting you to sign in…</p>}
-            <button className="btn btn-primary w-full" type="submit" disabled={verificationLoading || (emailVerified && phoneVerified)}>
-              {verificationLoading ? 'Verifying…' : (emailVerified && phoneVerified ? 'Verified' : 'Verify & Activate')}
-            </button>
-          </form>
-        ) : (
+        <h2 className="text-2xl font-bold mb-4">Create an account</h2>
         <form action="/api/signup" method="post" onSubmit={handleSubmit} className="space-y-6">
           <section>
             <h3 className="font-semibold mb-2">Personal details</h3>
@@ -451,7 +295,6 @@ export default function Signup() {
           </div>
           {error && <p className="text-red-600">{error}</p>}
         </form>
-        )}
       </div>
     </main>
   )

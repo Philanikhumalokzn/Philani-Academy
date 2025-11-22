@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import bcrypt from 'bcryptjs'
 import prisma from '../../lib/prisma'
 import { GRADE_VALUES, normalizeGradeInput } from '../../lib/grades'
-import { issueVerificationCode } from '../../lib/verification'
 
 async function getRawBody(req: NextApiRequest) {
   return await new Promise<string>((resolve, reject) => {
@@ -264,9 +263,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const gradeValue = role === 'admin' ? null : (normalizedGrade as any)
 
     const now = new Date()
-    let user
-    try {
-      user = await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         name: `${firstName} ${middleNames ? `${middleNames} ` : ''}${lastName}`.trim(),
         firstName,
@@ -295,44 +292,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         consentToPolicies: true,
         consentTimestamp: now
       } as any
-      })
-
-      await issueVerificationCode({ userId: user.id, type: 'email' })
-      await issueVerificationCode({ userId: user.id, type: 'phone' })
-    } catch (verificationError) {
-      if (user) {
-        try {
-          await prisma.user.delete({ where: { id: user.id } })
-        } catch (cleanupErr) {
-          console.error('/api/signup cleanup failed after verification error', cleanupErr)
-        }
-      }
-      throw verificationError
-    }
-
-    return res.status(201).json({
-      userId: user.id,
-      email: user.email,
-      phoneNumber: user.phoneNumber,
-      requiresVerification: true,
-      message: 'Verification codes sent to your email and phone number. Please confirm both to activate your account.'
     })
+
+    return res.status(201).json({ id: user.id, email: user.email })
   } catch (err) {
     // Log full error server-side always (masked in production logs if necessary)
     console.error('/api/signup server error', err)
     // When DEBUG=1 expose a helpful message in the JSON body to aid diagnosis.
     const debug = process.env.DEBUG === '1'
-    let msg = 'Server error'
-    if (err && typeof err === 'object' && 'message' in err) {
-      const message = String((err as any).message)
-      if (/verification/i.test(message) && !debug) {
-        msg = 'Unable to send verification codes. Please try again shortly.'
-      } else if (debug) {
-        msg = message
-      } else {
-        msg = 'Server error'
-      }
-    }
+    const msg = debug && err && typeof err === 'object' && 'message' in err ? (err as any).message : 'Server error'
     return res.status(500).json({ message: msg })
   }
 }

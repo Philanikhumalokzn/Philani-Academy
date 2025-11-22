@@ -19,7 +19,6 @@
     "bcryptjs": "^2.4.3",
     "formidable": "^3.5.4",
     "jsonwebtoken": "^9.0.0",
-    "nodemailer": "^6.9.13",
     "next": "^13.4.0",
     "next-auth": "^4.22.0",
     "react": "^18.2.0",

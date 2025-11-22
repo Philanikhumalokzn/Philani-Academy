@@ -20,7 +20,7 @@ export default NextAuth({
           const ok = await bcrypt.compare(credentials.password, user.password)
           if (!ok) return null
           const userRecord = user as any
-          const normalizedEmail = (userRecord.email as string).toLowerCase()
+          const normalizedEmail = typeof userRecord.email === 'string' ? userRecord.email.trim().toLowerCase() : ''
           const skipVerification = isVerificationBypassed(normalizedEmail)
           if (!skipVerification) {
             if (!userRecord.emailVerifiedAt) {

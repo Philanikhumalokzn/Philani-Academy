@@ -18,8 +18,15 @@ export default NextAuth({
           if (!user) return null
           const ok = await bcrypt.compare(credentials.password, user.password)
           if (!ok) return null
+          const userRecord = user as any
+          if (!userRecord.emailVerifiedAt || !userRecord.phoneVerifiedAt) {
+            throw new Error('Account pending verification')
+          }
           return { id: user.id, name: user.name, email: user.email, role: user.role, grade: user.grade }
         } catch (err: any) {
+          if (err?.message === 'Account pending verification') {
+            throw err
+          }
           // When DEBUG=1 we want to surface errors in logs to help diagnose production failures.
           if (process.env.DEBUG === '1') console.error('NextAuth authorize error:', err)
           // Fail the signin attempt without leaking details to the client.

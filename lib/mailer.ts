@@ -1,46 +1,35 @@
-import { Resend } from 'resend'
-// Minimal Resend mailer logic, copied from resend-email-tester
-const DEFAULT_FROM = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_FROM || 'Philani Academy <no-reply@philaniacademy.org>'
+// --- HARDCODED resend-email-tester logic ---
+const { Resend } = require('resend')
 
-let resendClient: any = null
-function getResendClient() {
-  if (resendClient) return resendClient
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is not set. Cannot send email.')
-  }
-  resendClient = new Resend(process.env.RESEND_API_KEY)
-  return resendClient
-}
+// Copy your working values from resend-email-tester/.env here:
+const API_KEY = 'YOUR_RESEND_API_KEY_HERE'
+const FROM = 'Your Name <your_verified_sender@yourdomain.com>'
 
-export interface SendEmailOptions {
-  to: string
-  subject: string
-  html: string
-  text?: string
-}
+const resendClient = new Resend(API_KEY)
 
-export async function sendEmail(options: SendEmailOptions) {
-  const fromAddress = DEFAULT_FROM
-  const toAddress = (options.to && typeof options.to === 'string' && options.to.trim())
-  if (!toAddress) {
-    throw new Error('Destination email is required')
-  }
-  const subject = options.subject && options.subject.trim() ? options.subject.trim() : 'Philani Academy email'
-  const html = options.html && options.html.trim() ? options.html.trim() : '<p>Hello! This is a Philani Academy email.</p>'
-  const text = options.text && options.text.trim() ? options.text.trim() : undefined
-
-  const client = getResendClient()
+/**
+ * Send an email using the exact resend-email-tester logic.
+ * @param {Object} options
+ * @param {string} options.to
+ * @param {string} options.subject
+ * @param {string} options.html
+ * @param {string} [options.text]
+ */
+async function sendEmail({ to, subject, html, text }) {
+  if (!to) throw new Error('Destination email is required')
   try {
-    const response = await client.emails.send({
-      from: fromAddress,
-      to: toAddress,
-      subject,
-      html,
+    const response = await resendClient.emails.send({
+      from: FROM,
+      to,
+      subject: subject && subject.trim() ? subject.trim() : 'Resend Test Email',
+      html: html && html.trim() ? html.trim() : '<p>Hello! This is a Resend test email from the Philani Academy test harness.</p>',
       ...(text ? { text } : {})
     })
     return response
-  } catch (err: any) {
+  } catch (err) {
     console.error('Resend send error:', err)
     throw new Error(err?.message || 'Failed to send email via Resend.')
   }
 }
+
+exports.sendEmail = sendEmail

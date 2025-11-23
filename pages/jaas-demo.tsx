@@ -9,7 +9,7 @@ export default function JaaSDemoPage() {
   const roomName = 'vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4/SampleAppAliveIntensitiesSurveyFerociously';
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <NavArrows backHref="/dashboard" />
+      <NavArrows backHref="/dashboard" forwardHref={undefined} />
       <h1 style={{ textAlign: 'center' }}>JaaS demo page</h1>
       <div style={{ flex: 1 }}>
         <SimpleJitsiEmbed roomName={roomName} height="100%" />

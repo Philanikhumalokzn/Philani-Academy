@@ -1190,7 +1190,7 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-16">
-      <NavArrows backHref="/api/auth/signin" />
+      <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />
       <div className="max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">

@@ -206,7 +206,7 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen p-8">
-      <NavArrows backHref="/dashboard" />
+      <NavArrows backHref="/dashboard" forwardHref={undefined} />
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold mb-4">My profile</h1>
         {loading ? (

@@ -50,6 +50,7 @@ Email & phone verification
 - Optional: `AUTO_VERIFY_PHONE_ON_EMAIL=1` will stamp `phoneVerifiedAt` when a user confirms their email code.
 - The custom sign-in page at `/auth/signin` lets legacy users request a fresh verification code via `/api/auth/resend-verification` if they never received one.
 - Email delivery uses [Resend](https://resend.com/). Configure `RESEND_API_KEY` and `MAIL_FROM_ADDRESS` (must be a verified sender) in production. Without those env vars the app simply logs the verification payload to the server console.
+- For manual smoke tests, set `ENABLE_EMAIL_TESTER=1`. This enables `/api/debug/send-test-email` and a “Send test email” helper on the verification screen so you can confirm deliveries with the same Resend logic.
 - Manage domains quickly with `npm run resend:domains <action>`. Actions: `create <domain>`, `list`, `get <id>`, `verify <id>`, `update <id> [--open-tracking=false --click-tracking=true]`, `remove <id>`. The command reads `RESEND_API_KEY` from your environment and surfaces Resend API errors in the console.
 
 Branding suggestions

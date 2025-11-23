@@ -16,6 +16,8 @@ export default function VerifyEmailPage() {
   const [testBody, setTestBody] = useState('This is a test email sent from the Philani Academy app.')
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [testFeedback, setTestFeedback] = useState('')
+  const [lastOtpEmail, setLastOtpEmail] = useState<string | null>(null)
+  const [lastTestEmail, setLastTestEmail] = useState<string | null>(null)
 
   useEffect(() => {
     if (!router.isReady) return
@@ -86,6 +88,7 @@ export default function VerifyEmailPage() {
 
       setResendStatus('sent')
       setResendMessage('If your email is registered, you will receive a new verification code shortly.')
+      setLastOtpEmail(email.trim())
     } catch (err: any) {
       setResendStatus('error')
       setResendMessage(err?.message || 'Could not resend code')
@@ -120,6 +123,7 @@ export default function VerifyEmailPage() {
 
       setTestStatus('sent')
       setTestFeedback(data?.message || 'Test email dispatched. Check your inbox.')
+      setLastTestEmail(email.trim())
     } catch (err: any) {
       setTestStatus('error')
       setTestFeedback(err?.message || 'Could not send test email')
@@ -179,6 +183,9 @@ export default function VerifyEmailPage() {
           {resendMessage && (
             <p className={resendStatus === 'error' ? 'text-red-600 text-center' : 'text-gray-600 text-center'}>{resendMessage}</p>
           )}
+          {lastOtpEmail && (
+            <p className="text-xs text-center text-gray-500">Last verification code attempt sent to <span className="font-medium text-gray-700">{lastOtpEmail}</span></p>
+          )}
           <div className="mt-6 rounded border border-dashed border-gray-300 p-4">
             <h2 className="text-sm font-semibold mb-2 text-gray-700">Send a quick test email</h2>
             <p className="text-xs text-gray-500 mb-3">Use this to confirm the mailer can reach the same inbox. The test email uses the same Resend integration.</p>
@@ -207,6 +214,9 @@ export default function VerifyEmailPage() {
             </button>
             {testFeedback && (
               <p className={`mt-2 text-center text-sm ${testStatus === 'error' ? 'text-red-600' : 'text-gray-600'}`}>{testFeedback}</p>
+            )}
+            {lastTestEmail && (
+              <p className="text-xs text-center text-gray-500">Last test email attempt sent to <span className="font-medium text-gray-700">{lastTestEmail}</span></p>
             )}
           </div>
         </div>

@@ -22,6 +22,8 @@ export default function SignInPage() {
   const [testBody, setTestBody] = useState('This is a test email sent from the Philani Academy sign-in screen.')
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [testFeedback, setTestFeedback] = useState('')
+  const [lastOtpEmail, setLastOtpEmail] = useState<string | null>(null)
+  const [lastTestEmail, setLastTestEmail] = useState<string | null>(null)
 
   const callbackUrl = typeof router.query.callbackUrl === 'string' ? router.query.callbackUrl : '/dashboard'
 
@@ -82,6 +84,7 @@ export default function SignInPage() {
       }
       setResendStatus('sent')
       setInfo(data?.message || 'Check your inbox for the new verification code.')
+      setLastOtpEmail(email)
     } catch (err: any) {
       setResendStatus('error')
       setError(err?.message || 'Something went wrong. Please try again later.')
@@ -116,6 +119,7 @@ export default function SignInPage() {
 
       setTestStatus('sent')
       setTestFeedback(data?.message || 'Test email dispatched. Check your inbox.')
+      setLastTestEmail(email)
     } catch (err: any) {
       setTestStatus('error')
       setTestFeedback(err?.message || 'Could not send test email.')
@@ -198,6 +202,9 @@ export default function SignInPage() {
               {resendStatus === 'error' && (
                 <p className="mt-2 text-sm text-red-600">We could not send the email. Please try again later.</p>
               )}
+              {lastOtpEmail && (
+                <p className="mt-1 text-xs text-gray-500 text-center">Last verification attempt sent to <span className="font-medium text-gray-700">{lastOtpEmail}</span></p>
+              )}
 
               <div className="mt-6 rounded border border-dashed border-gray-300 p-4">
                 <p className="text-sm font-medium text-gray-700 mb-2">Send a test email</p>
@@ -227,6 +234,9 @@ export default function SignInPage() {
                 </button>
                 {testFeedback && (
                   <p className={`mt-2 text-sm text-center ${testStatus === 'error' ? 'text-red-600' : 'text-green-700'}`}>{testFeedback}</p>
+                )}
+                {lastTestEmail && (
+                  <p className="mt-1 text-xs text-gray-500 text-center">Last test email attempt sent to <span className="font-medium text-gray-700">{lastTestEmail}</span></p>
                 )}
               </div>
             </div>

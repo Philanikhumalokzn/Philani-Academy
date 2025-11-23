@@ -1,13 +1,15 @@
 import { Resend } from 'resend'
 
-// HARDCODED values for direct test (replace with your working values from resend-email-tester)
-const HARDCODED_API_KEY = 'YOUR_RESEND_API_KEY_HERE'
-const HARDCODED_FROM = 'Your Name <your_verified_sender@yourdomain.com>'
+const DEFAULT_FROM = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_FROM || 'Philani Academy <no-reply@philaniacademy.org>'
 
 let resendClient: any = null
 function getResendClient() {
   if (resendClient) return resendClient
-  resendClient = new Resend(HARDCODED_API_KEY)
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is not set. Cannot send email.')
+  }
+  resendClient = new Resend(apiKey)
   return resendClient
 }
 
@@ -19,7 +21,7 @@ export interface SendEmailOptions {
 }
 
 export async function sendEmail(options: SendEmailOptions) {
-  const fromAddress = HARDCODED_FROM
+  const fromAddress = DEFAULT_FROM
   const toAddress = (options.to && typeof options.to === 'string' && options.to.trim())
   if (!toAddress) {
     throw new Error('Destination email is required')

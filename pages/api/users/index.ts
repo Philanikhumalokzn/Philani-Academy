@@ -81,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           await issueEmailVerification(user.id, email)
           verificationSent = true
         } catch (notificationErr) {
-          console.error('Failed to deliver email verification link (admin create)', notificationErr)
+          console.error('Failed to deliver email verification code (admin create)', notificationErr)
         }
       }
 

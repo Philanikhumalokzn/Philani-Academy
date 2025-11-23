@@ -58,7 +58,7 @@ export default function SignInPage() {
 
   const handleResend = useCallback(async () => {
     if (!email) {
-      setError('Enter your email first so we know where to send the link.')
+      setError('Enter your email first so we know where to send the code.')
       return
     }
 
@@ -77,7 +77,7 @@ export default function SignInPage() {
         throw new Error(data?.message || 'Could not send verification email.')
       }
       setResendStatus('sent')
-      setInfo(data?.message || 'Check your inbox for the verification link.')
+      setInfo(data?.message || 'Check your inbox for the new verification code.')
     } catch (err: any) {
       setResendStatus('error')
       setError(err?.message || 'Something went wrong. Please try again later.')
@@ -144,7 +144,7 @@ export default function SignInPage() {
             <div className="border-t border-gray-200 pt-4">
               <p className="font-medium text-gray-700 mb-2">Email verification</p>
               <p className="mb-3">
-                If you created an account earlier and have not verified your email, request a new link below.
+                If you created an account earlier and have not verified your email, request a new code below.
               </p>
               <button
                 type="button"
@@ -152,10 +152,10 @@ export default function SignInPage() {
                 onClick={handleResend}
                 disabled={resendStatus === 'loading'}
               >
-                {resendStatus === 'loading' ? 'Sending…' : 'Resend verification email'}
+                {resendStatus === 'loading' ? 'Sending…' : 'Resend verification code'}
               </button>
               {resendStatus === 'sent' && (
-                <p className="mt-2 text-sm text-green-700">Check your inbox for the latest verification link.</p>
+                <p className="mt-2 text-sm text-green-700">Check your inbox for the latest verification code.</p>
               )}
               {resendStatus === 'error' && (
                 <p className="mt-2 text-sm text-red-600">We could not send the email. Please try again later.</p>

@@ -3,7 +3,7 @@ import prisma from '../../../lib/prisma'
 import { issueEmailVerification, isVerificationBypassed } from '../../../lib/verification'
 
 function okResponse(res: NextApiResponse) {
-  return res.status(200).json({ message: 'If your email is registered, you will receive a new verification link shortly.' })
+  return res.status(200).json({ message: 'If your email is registered, you will receive a new verification code shortly.' })
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -29,9 +29,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      await issueEmailVerification(user.id, user.email)
+      await issueEmailVerification(user.id, email)
     } catch (notificationErr) {
-      console.error('Failed to resend verification link', notificationErr)
+      console.error('Failed to resend verification code', notificationErr)
       return res.status(500).json({ message: 'Could not send verification email. Please try again later.' })
     }
 

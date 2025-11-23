@@ -25,11 +25,11 @@ export default NextAuth({
           if (!skipVerification) {
             if (!userRecord.emailVerifiedAt) {
               try {
-                await issueEmailVerification(user.id, user.email)
+                await issueEmailVerification(user.id, normalizedEmail)
               } catch (notificationErr) {
                 if (process.env.DEBUG === '1') console.error('NextAuth issueEmailVerification error:', notificationErr)
               }
-              throw new Error('Account pending verification. Check your email for the new verification link.')
+              throw new Error('Account pending verification. Check your email for the verification code we just sent.')
             }
             if (requirePhoneVerification() && !userRecord.phoneVerifiedAt) {
               throw new Error('Account pending phone verification. Please contact support.')

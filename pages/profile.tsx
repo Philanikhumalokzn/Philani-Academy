@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { gradeToLabel } from '../lib/grades'
 
+import NavArrows from '../components/NavArrows'
+
 const provinceOptions = [
   'Eastern Cape',
   'Free State',
@@ -204,6 +206,7 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen p-8">
+      <NavArrows backHref="/dashboard" />
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold mb-4">My profile</h1>
         {loading ? (

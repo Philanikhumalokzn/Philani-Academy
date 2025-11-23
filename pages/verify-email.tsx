@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 
+import NavArrows from '../components/NavArrows'
+
 type VerifyState = 'idle' | 'submitting' | 'success' | 'error'
 type ResendState = 'idle' | 'sending' | 'sent' | 'error'
 
@@ -91,7 +93,9 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <>
+      <NavArrows backHref="/signup" forwardHref="/auth/signin" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
         <h1 className="text-2xl font-semibold mb-4 text-center">Verify your email</h1>
         <p className="text-gray-700 mb-6 text-center">{message}</p>

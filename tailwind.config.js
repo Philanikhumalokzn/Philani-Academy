@@ -3,9 +3,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: '#1D4ED8',
+        primary: '#0a1931', // deep navy
         accent: '#06B6D4',
-        warm: '#F59E0B'
+        warm: '#F59E0B',
+        background: '#ffffff',
+        muted: '#6b7280',
+        card: '#f8fafc',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial'],

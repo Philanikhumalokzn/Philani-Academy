@@ -3,6 +3,8 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { GRADE_VALUES, GradeValue, gradeToLabel } from '../lib/grades'
 
+import NavArrows from '../components/NavArrows'
+
 const gradeOptions = GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) }))
 
 function normalisePhoneNumber(input: string) {
@@ -109,6 +111,7 @@ export default function Signup() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 md:p-8">
+      <NavArrows backHref="/api/auth/signin" forwardHref="/verify-email" />
       <div className="fixed top-4 right-4">
         {hydrated ? (
           <div className="text-sm bg-green-100 text-green-800 px-3 py-1 rounded shadow-sm">Client JS loaded ✔</div>

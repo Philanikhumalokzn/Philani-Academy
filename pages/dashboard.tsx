@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
+import NavArrows from '../components/NavArrows'
+
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -1188,6 +1190,7 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-16">
+      <NavArrows backHref="/api/auth/signin" />
       <div className="max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">

@@ -18,6 +18,10 @@ export default function SignInPage() {
   const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [resendStatus, setResendStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
+  const [testSubject, setTestSubject] = useState('Philani Academy test email')
+  const [testBody, setTestBody] = useState('This is a test email sent from the Philani Academy sign-in screen.')
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [testFeedback, setTestFeedback] = useState('')
 
   const callbackUrl = typeof router.query.callbackUrl === 'string' ? router.query.callbackUrl : '/dashboard'
 
@@ -83,6 +87,40 @@ export default function SignInPage() {
       setError(err?.message || 'Something went wrong. Please try again later.')
     }
   }, [email])
+
+  const handleSendTestEmail = useCallback(async () => {
+    if (!email) {
+      setTestStatus('error')
+      setTestFeedback('Enter your email first so we know where to send the test message.')
+      return
+    }
+
+    setTestStatus('sending')
+    setTestFeedback('Sending test email…')
+
+    try {
+      const response = await fetch('/api/debug/send-test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          subject: testSubject,
+          message: testBody
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.message || 'Unable to send test email.')
+      }
+
+      setTestStatus('sent')
+      setTestFeedback(data?.message || 'Test email dispatched. Check your inbox.')
+    } catch (err: any) {
+      setTestStatus('error')
+      setTestFeedback(err?.message || 'Could not send test email.')
+    }
+  }, [email, testBody, testSubject])
 
   return (
     <>
@@ -160,6 +198,37 @@ export default function SignInPage() {
               {resendStatus === 'error' && (
                 <p className="mt-2 text-sm text-red-600">We could not send the email. Please try again later.</p>
               )}
+
+              <div className="mt-6 rounded border border-dashed border-gray-300 p-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Send a test email</p>
+                <p className="text-xs text-gray-500 mb-3">This uses the same mailer as the verification codes so you can confirm delivery to your inbox.</p>
+                <div className="space-y-2">
+                  <input
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={testSubject}
+                    onChange={(e) => setTestSubject(e.target.value)}
+                    placeholder="Subject"
+                  />
+                  <textarea
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    rows={3}
+                    value={testBody}
+                    onChange={(e) => setTestBody(e.target.value)}
+                    placeholder="Message"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="mt-3 w-full py-2 rounded-md border border-blue-600 text-blue-600 font-medium hover:bg-blue-50 disabled:opacity-50"
+                  onClick={handleSendTestEmail}
+                  disabled={testStatus === 'sending'}
+                >
+                  {testStatus === 'sending' ? 'Sending test…' : 'Send test email'}
+                </button>
+                {testFeedback && (
+                  <p className={`mt-2 text-sm text-center ${testStatus === 'error' ? 'text-red-600' : 'text-green-700'}`}>{testFeedback}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

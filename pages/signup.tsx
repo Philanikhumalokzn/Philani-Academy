@@ -110,20 +110,20 @@ export default function Signup() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 md:p-8">
+    <main className="min-h-screen flex items-center justify-center p-6 md:p-8 bg-primary">
       <NavArrows backHref="/api/auth/signin" forwardHref="/verify-email" />
       <div className="fixed top-4 right-4">
         {hydrated ? (
           <div className="text-sm bg-green-100 text-green-800 px-3 py-1 rounded shadow-sm">Client JS loaded ✔</div>
         ) : (
-          <div className="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded">Client JS not loaded</div>
+          <div className="text-sm bg-primary/10 text-primary px-3 py-1 rounded">Client JS not loaded</div>
         )}
       </div>
       <div className="max-w-md w-full container-card fade-up">
-        <h2 className="text-2xl font-bold mb-4">Create an account</h2>
+        <h2 className="text-2xl font-bold mb-4 text-primary">Create an account</h2>
         <form onSubmit={handleSubmit} className="space-y-6">
           <section>
-            <h3 className="font-semibold mb-2">Learner details</h3>
+            <h3 className="font-semibold mb-2 text-primary">Learner details</h3>
             <div className="space-y-3">
               <input className="input" placeholder="First name" value={firstName} onChange={e => setFirstName(e.target.value)} autoComplete="given-name" required />
               <input className="input" placeholder="Last name" value={lastName} onChange={e => setLastName(e.target.value)} autoComplete="family-name" required />
@@ -137,7 +137,7 @@ export default function Signup() {
           </section>
 
           <section>
-            <h3 className="font-semibold mb-2">Contact details</h3>
+            <h3 className="font-semibold mb-2 text-primary">Contact details</h3>
             <div className="space-y-3">
               <input className="input" type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required />
               <input className="input" placeholder="Mobile number (e.g. 0821234567)" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} autoComplete="tel" required />
@@ -145,7 +145,7 @@ export default function Signup() {
           </section>
 
           <section>
-            <h3 className="font-semibold mb-2">Security</h3>
+            <h3 className="font-semibold mb-2 text-primary">Security</h3>
             <div className="space-y-3">
               <input className="input" type="password" placeholder="Password (min 8 characters)" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
               <label className="flex items-start space-x-2 text-sm">
@@ -159,7 +159,7 @@ export default function Signup() {
             <button className="btn btn-primary" type="submit" disabled={loading}>
               {loading ? 'Creating…' : 'Sign up'}
             </button>
-            <Link href="/api/auth/signin" className="text-sm muted">Already registered? Sign in</Link>
+            <Link href="/api/auth/signin" className="text-sm text-primary hover:underline">Already registered? Sign in</Link>
           </div>
 
           {error && <p className="text-red-600">{error}</p>}

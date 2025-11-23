@@ -95,14 +95,14 @@ export default function VerifyEmailPage() {
   return (
     <>
       <NavArrows backHref="/signup" forwardHref="/auth/signin" />
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-primary flex items-center justify-center px-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
-          <h1 className="text-2xl font-semibold mb-4 text-center">Verify your email</h1>
-          <p className="text-gray-700 mb-6 text-center">{message}</p>
+          <h1 className="text-2xl font-semibold mb-4 text-center text-primary">Verify your email</h1>
+          <p className="muted mb-6 text-center">{message}</p>
 
           <form className="space-y-4" onSubmit={handleVerify}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+              <label className="block text-sm font-medium text-primary mb-1">Email address</label>
               <input
                 className="input"
                 type="email"
@@ -114,7 +114,7 @@ export default function VerifyEmailPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Verification code</label>
+              <label className="block text-sm font-medium text-primary mb-1">Verification code</label>
               <input
                 className="input tracking-widest text-center"
                 value={code}
@@ -128,7 +128,7 @@ export default function VerifyEmailPage() {
 
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-60"
+              className="btn btn-primary w-full"
               disabled={status === 'submitting'}
             >
               {status === 'submitting' ? 'Verifying…' : 'Verify email'}
@@ -138,17 +138,17 @@ export default function VerifyEmailPage() {
           <div className="mt-6 space-y-2 text-sm">
             <button
               type="button"
-              className="w-full py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-60"
+              className="btn btn-ghost w-full border-primary text-primary font-medium hover:bg-primary/10 disabled:opacity-60"
               onClick={handleResend}
               disabled={resendStatus === 'sending'}
             >
               {resendStatus === 'sending' ? 'Resending…' : 'Resend code'}
             </button>
             {resendMessage && (
-              <p className={resendStatus === 'error' ? 'text-red-600 text-center' : 'text-gray-600 text-center'}>{resendMessage}</p>
+              <p className={resendStatus === 'error' ? 'text-red-600 text-center' : 'muted text-center'}>{resendMessage}</p>
             )}
             {lastOtpEmail && (
-              <p className="text-xs text-center text-gray-500">Last verification code attempt sent to <span className="font-medium text-gray-700">{lastOtpEmail}</span></p>
+              <p className="text-xs text-center muted">Last verification code attempt sent to <span className="font-medium text-primary">{lastOtpEmail}</span></p>
             )}
           </div>
 

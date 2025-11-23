@@ -7,7 +7,7 @@ export default function NavBar() {
   const role = (session as any)?.user?.role
   const [open, setOpen] = useState(false)
   return (
-    <nav className="bg-white border-b">
+    <nav className="bg-primary border-b border-primary text-white">
       <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-3 items-center gap-4">
         {/* Left: logo */}
         <div className="flex items-center col-start-1">

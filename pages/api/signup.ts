@@ -305,7 +305,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let verificationSent = false
     if (role !== 'admin') {
       try {
-        await issueEmailVerification(user.id, user.email)
+        await issueEmailVerification(user.id, email)
         verificationSent = true
       } catch (notificationErr) {
         console.error('Failed to deliver email verification link', notificationErr)

@@ -148,10 +148,16 @@ Philani Academy for Mathematics is a comprehensive online learning platform buil
 
 ## Current Limitations & Notes
 - Prototype stage - requires production hardening for scaling
-- Phone verification infrastructure present but not fully implemented
-- Some features require environment variable configuration
+- Phone verification infrastructure present (database fields, `REQUIRE_PHONE_VERIFICATION` flag) but SMS/voice sending not configured
+- Features requiring environment configuration (see `.env.example`):
+  - `NEXTAUTH_SECRET` and `NEXTAUTH_URL` for authentication
+  - `RESEND_API_KEY` and `MAIL_FROM_ADDRESS` for email delivery
+  - `BLOB_READ_WRITE_TOKEN` for Vercel Blob storage in production
+  - `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY` for payments
+  - `NEXT_PUBLIC_JAAS_APP_ID` for Jitsi video conferencing
+  - `NEXT_PUBLIC_ABLY_API_KEY` for real-time collaboration
 - PayFast subscription minimum: R5.00 (500 cents)
-- Email delivery requires Resend API key in production
+- Email delivery requires Resend API key in production (falls back to console logging in development)
 
 ## User Workflows
 

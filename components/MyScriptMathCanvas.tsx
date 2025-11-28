@@ -117,10 +117,11 @@ const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '
 
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
-  // Consider only recognized exports for sync to avoid replaying raw stroke history
+  // For realtime drawing, consider symbols as the primary signal
+  const hasSymbols = Array.isArray(snapshot.symbols) && snapshot.symbols.length > 0
   const hasLatex = Boolean(snapshot.latex && String(snapshot.latex).trim())
   const hasJiix = Boolean(snapshot.jiix && String(snapshot.jiix).trim())
-  return !hasLatex && !hasJiix
+  return !hasSymbols && !hasLatex && !hasJiix
 }
 
 export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName }: MyScriptMathCanvasProps) {
@@ -160,8 +161,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editor) return null
 
     const model = editor.model ?? {}
-    // Do not sync raw point events; rely on recognized exports only
-    const symbols: any[] | null = null
+    // Capture raw point events for realtime stroke sync
+    let symbols: any[] | null = null
+    if (model.symbols) {
+      try {
+        symbols = JSON.parse(JSON.stringify(model.symbols))
+      } catch (err) {
+        console.warn('Unable to serialize MyScript symbols', err)
+        symbols = null
+      }
+    }
 
     const exports = model.exports ?? {}
     const latexExport = exports['application/x-latex']
@@ -185,7 +194,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const snapshot = collectEditorSnapshot()
       if (!snapshot) return
 
-      // Skip broadcasting if there is nothing recognized yet unless forced
+      // Skip broadcasting if there is nothing to sync unless forced
       if (isSnapshotEmpty(snapshot) && !options?.force) {
         return
       }
@@ -260,23 +269,27 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return
     }
 
-    // For normal updates, only apply recognized content
-    if (isSnapshotEmpty(snapshot)) {
-      // No recognized update to apply; keep current state
-      latestSnapshotRef.current = { snapshot, ts: incomingTs }
-      return
+    // For normal updates, apply point events incrementally when present; avoid clearing
+    if (snapshot.symbols && snapshot.symbols.length) {
+      try {
+        isApplyingRemoteRef.current = true
+        await editor.importPointEvents(snapshot.symbols)
+      } catch (err) {
+        console.error('Failed to import remote point events', err)
+      } finally {
+        isApplyingRemoteRef.current = false
+      }
     }
 
-    isApplyingRemoteRef.current = true
+    // Optionally apply recognized exports if present (does not clear)
     try {
       if (snapshot.jiix) {
         await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
       }
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
-      console.error('Failed to apply remote snapshot', err)
+      console.warn('Unable to apply recognized export; continuing with strokes', err)
     } finally {
-      isApplyingRemoteRef.current = false
       setIsConverting(false)
       latestSnapshotRef.current = { snapshot, ts: incomingTs }
     }
@@ -347,7 +360,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
-          // Do not broadcast raw changes; rely on recognized export events for sync
+          // Broadcast changes with throttling for realtime stroke sync
+          broadcastSnapshot(false)
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
@@ -497,7 +511,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('sync-request', handleSyncRequest)
 
         const snapshot = collectEditorSnapshot()
-        // Share current recognized state if available
+        // Share current state (strokes and/or recognized) if available
         if (snapshot && !isSnapshotEmpty(snapshot)) {
           const record: SnapshotRecord = {
             snapshot,

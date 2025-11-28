@@ -201,8 +201,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       if (isApplyingRemoteRef.current) return
       const channel = channelRef.current
       if (!channel) return
-
-  const snapshot = collectEditorSnapshot(true)
+      const snapshot = collectEditorSnapshot(true)
       if (!snapshot) return
 
       if (isSnapshotEmpty(snapshot) && !options?.force) {
@@ -251,72 +250,57 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
-    if (isSnapshotEmpty(snapshot) && reason !== 'clear') {
-      return
-    }
+    if (isSnapshotEmpty(snapshot) && reason !== 'clear') return
     if (!snapshot) return
-    // Idempotency: ignore already-applied snapshots
-    if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) {
-      return
-    }
-    // Avoid processing our own echo if somehow looped
-    if (message.originClientId && message.originClientId === clientIdRef.current) {
-      return
-    }
+    // Idempotency & origin checks
+    if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) return
+    if (message.originClientId && message.originClientId === clientIdRef.current) return
     const editor = editorInstanceRef.current
     if (!editor) return
-
-    // Version ordering: ignore stale snapshots
-    if (snapshot.version <= appliedVersionRef.current) {
-      return
-    }
+    // Ignore stale versions
+    if (snapshot.version <= appliedVersionRef.current) return
 
     isApplyingRemoteRef.current = true
     try {
-  const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
-  const previousCount = lastSymbolCountRef.current
-  const shouldRebuild = reason === 'clear' || (incomingSymbolCount < previousCount && previousCount > 0)
+      const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
+      const previousCount = lastSymbolCountRef.current
 
-      if (shouldRebuild) {
+      if (reason === 'clear') {
         editor.clear()
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-      }
-
-      if (snapshot.symbols && snapshot.symbols.length) {
-        try {
-          if (shouldRebuild) {
-            await editor.importPointEvents(snapshot.symbols)
-          } else {
-            // Import only the delta (new symbols since previous count)
-            const delta = snapshot.symbols.slice(previousCount)
-            if (delta.length) {
-              await editor.importPointEvents(delta)
+        if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+      } else if (snapshot.symbols && snapshot.symbols.length && incomingSymbolCount > previousCount) {
+        // Import only new tail delta
+        const delta = snapshot.symbols.slice(previousCount)
+        if (delta.length) {
+          try {
+            await editor.importPointEvents(delta)
+            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          } catch (e) {
+            console.warn('Delta import failed; attempting full import', e)
+            try {
+              editor.clear()
+              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+              await editor.importPointEvents(snapshot.symbols)
+              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+            } catch (e2) {
+              console.error('Full import failed', e2)
             }
           }
-          if (typeof editor.waitForIdle === 'function') {
-            await editor.waitForIdle()
-          }
-        } catch (e) {
-          console.warn('Failed to import point events; falling back to full rebuild', e)
-          editor.clear()
-          await editor.importPointEvents(snapshot.symbols)
         }
       }
 
-      if (snapshot.jiix) {
-        try {
-          await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
-        } catch (e) {
-          // Importing JIIX may fail mid-stroke; ignore.
+      // Tracking
+      lastSymbolCountRef.current = snapshot.symbols ? snapshot.symbols.length : 0
+      appliedVersionRef.current = snapshot.version
+      lastAppliedRemoteVersionRef.current = snapshot.version
+      suppressBroadcastUntilTsRef.current = Date.now() + 500
+      if (snapshot.snapshotId) {
+        appliedSnapshotIdsRef.current.add(snapshot.snapshotId)
+        if (appliedSnapshotIdsRef.current.size > 200) {
+          const iter = appliedSnapshotIdsRef.current.values()
+          appliedSnapshotIdsRef.current.delete(iter.next().value as string)
         }
       }
-
-  lastSymbolCountRef.current = incomingSymbolCount
-  appliedVersionRef.current = snapshot.version
-  lastAppliedRemoteVersionRef.current = snapshot.version
-  suppressBroadcastUntilTsRef.current = Date.now() + 350
 
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
@@ -710,6 +694,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500 mb-1">Latest LaTeX export</p>
             <pre className="text-sm bg-slate-100 border rounded p-3 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
+          </div>
+        )}
+        {process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
+          <div className="text-[10px] mt-2 p-2 rounded border bg-white shadow-sm space-y-1">
+            <div className="font-semibold">Debug</div>
+            <div>localVersion: {localVersionRef.current}</div>
+            <div>appliedVersion: {appliedVersionRef.current}</div>
+            <div>lastRemoteVersion: {lastAppliedRemoteVersionRef.current}</div>
+            <div>symbolCount: {lastSymbolCountRef.current}</div>
+            <div>suppressUntil: {suppressBroadcastUntilTsRef.current}</div>
+            <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
           </div>
         )}
       </div>

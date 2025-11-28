@@ -117,10 +117,10 @@ const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '
 
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
-  const hasSymbols = Array.isArray(snapshot.symbols) && snapshot.symbols.length > 0
-  const hasLatex = Boolean(snapshot.latex)
-  const hasJiix = Boolean(snapshot.jiix)
-  return !hasSymbols && !hasLatex && !hasJiix
+  // Consider only recognized exports for sync to avoid replaying raw stroke history
+  const hasLatex = Boolean(snapshot.latex && String(snapshot.latex).trim())
+  const hasJiix = Boolean(snapshot.jiix && String(snapshot.jiix).trim())
+  return !hasLatex && !hasJiix
 }
 
 export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName }: MyScriptMathCanvasProps) {
@@ -160,15 +160,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editor) return null
 
     const model = editor.model ?? {}
-    let symbols: any[] | null = null
-    if (model.symbols) {
-      try {
-        symbols = JSON.parse(JSON.stringify(model.symbols))
-      } catch (err) {
-        console.warn('Unable to serialize MyScript symbols', err)
-        symbols = null
-      }
-    }
+    // Do not sync raw point events; rely on recognized exports only
+    const symbols: any[] | null = null
 
     const exports = model.exports ?? {}
     const latexExport = exports['application/x-latex']
@@ -177,7 +170,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const snapshot: SnapshotPayload = {
       symbols,
       latex: typeof latexExport === 'string' ? latexExport : '',
-      jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
+      jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : '',
     }
 
     return snapshot
@@ -192,6 +185,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const snapshot = collectEditorSnapshot()
       if (!snapshot) return
 
+      // Skip broadcasting if there is nothing recognized yet unless forced
       if (isSnapshotEmpty(snapshot) && !options?.force) {
         return
       }
@@ -240,9 +234,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
-    if (isSnapshotEmpty(snapshot) && reason !== 'clear') {
-      return
-    }
     if (!snapshot) return
     const editor = editorInstanceRef.current
     if (!editor) return
@@ -253,24 +244,34 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return
     }
 
+    // If this is an explicit clear, clear and record state
+    if (reason === 'clear') {
+      try {
+        isApplyingRemoteRef.current = true
+        editor.clear()
+        setLatexOutput('')
+      } catch (err) {
+        console.error('Failed to clear editor on remote clear', err)
+      } finally {
+        isApplyingRemoteRef.current = false
+        setIsConverting(false)
+        latestSnapshotRef.current = { snapshot, ts: incomingTs }
+      }
+      return
+    }
+
+    // For normal updates, only apply recognized content
+    if (isSnapshotEmpty(snapshot)) {
+      // No recognized update to apply; keep current state
+      latestSnapshotRef.current = { snapshot, ts: incomingTs }
+      return
+    }
+
     isApplyingRemoteRef.current = true
     try {
-      editor.clear()
-      if (typeof editor.waitForIdle === 'function') {
-        await editor.waitForIdle()
-      }
-
-      if (snapshot.symbols && snapshot.symbols.length) {
-        await editor.importPointEvents(snapshot.symbols)
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-      }
-
       if (snapshot.jiix) {
         await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
       }
-
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
       console.error('Failed to apply remote snapshot', err)
@@ -346,7 +347,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
-          broadcastSnapshot(false)
+          // Do not broadcast raw changes; rely on recognized export events for sync
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
@@ -496,7 +497,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('sync-request', handleSyncRequest)
 
         const snapshot = collectEditorSnapshot()
-        if (snapshot?.symbols?.length) {
+        // Share current recognized state if available
+        if (snapshot && !isSnapshotEmpty(snapshot)) {
           const record: SnapshotRecord = {
             snapshot,
             ts: Date.now(),

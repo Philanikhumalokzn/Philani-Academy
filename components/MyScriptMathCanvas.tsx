@@ -269,27 +269,29 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return
     }
 
-    // For normal updates, apply point events incrementally when present; avoid clearing
-    if (snapshot.symbols && snapshot.symbols.length) {
-      try {
-        isApplyingRemoteRef.current = true
-        await editor.importPointEvents(snapshot.symbols)
-      } catch (err) {
-        console.error('Failed to import remote point events', err)
-      } finally {
-        isApplyingRemoteRef.current = false
-      }
-    }
-
-    // Optionally apply recognized exports if present (does not clear)
+    // For normal updates we replace the current drawing with the full remote state
+    // Clear first to avoid duplicate strokes when importing full symbol arrays.
     try {
+      isApplyingRemoteRef.current = true
+      if (snapshot.symbols && snapshot.symbols.length) {
+        editor.clear()
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
+        await editor.importPointEvents(snapshot.symbols)
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
+      }
       if (snapshot.jiix) {
+        // Import recognized structure after raw strokes so latex export panel reflects remote user conversion.
         await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
       }
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
-      console.warn('Unable to apply recognized export; continuing with strokes', err)
+      console.error('Failed to apply remote snapshot', err)
     } finally {
+      isApplyingRemoteRef.current = false
       setIsConverting(false)
       latestSnapshotRef.current = { snapshot, ts: incomingTs }
     }

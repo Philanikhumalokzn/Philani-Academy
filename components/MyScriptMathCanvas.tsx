@@ -141,6 +141,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -250,8 +251,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      // Avoid clearing and replaying raw strokes. Import JIIX as the authoritative state.
+      // Clear before importing JIIX to ensure model resets properly and avoids glyph import errors.
       if (snapshot.jiix) {
+        editor.clear()
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
         await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
       } else if (reason === 'clear') {
         editor.clear()
@@ -574,11 +579,23 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     editorInstanceRef.current.convert()
   }
 
+  const toggleFullscreen = () => {
+    setIsFullscreen(prev => !prev)
+    // Resize editor after layout change
+    try {
+      editorInstanceRef.current?.resize?.()
+    } catch {}
+  }
+
   return (
     <div>
       <div className="flex flex-col gap-3">
-        <div className="border rounded bg-white relative overflow-hidden">
-          <div ref={editorHostRef} className="w-full h-[24rem]" style={{ minHeight: '384px' }} />
+        <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+          <div
+            ref={editorHostRef}
+            className={isFullscreen ? 'w-full h-full' : 'w-full h-[24rem]'}
+            style={{ minHeight: isFullscreen ? undefined : '384px' }}
+          />
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
               Preparing collaborative canvas…
@@ -594,6 +611,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Ready
             </div>
           )}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+          >
+            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -608,6 +632,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           </button>
           <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready'}>
             {isConverting ? 'Converting…' : 'Convert to LaTeX'}
+          </button>
+          <button className="btn" type="button" onClick={toggleFullscreen}>
+            {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>
         </div>
 

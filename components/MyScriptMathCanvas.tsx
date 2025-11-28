@@ -521,7 +521,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             if (latestSnapshotRef.current) {
               return latestSnapshotRef.current
             }
-            const freshSnapshot = collectEditorSnapshot()
+            const freshSnapshot = collectEditorSnapshot(false)
             if (!freshSnapshot) {
               return null
             }

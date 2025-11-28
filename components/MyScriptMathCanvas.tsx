@@ -17,6 +17,7 @@ type SnapshotPayload = {
   latex?: string
   jiix?: string | null
   version: number
+  snapshotId: string
 }
 
 type SnapshotRecord = {
@@ -30,6 +31,7 @@ type SnapshotMessage = {
   snapshot?: SnapshotPayload | null
   ts?: number
   reason?: 'update' | 'clear'
+  originClientId?: string
 }
 
 type BroadcastOptions = {
@@ -134,11 +136,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const localVersionRef = useRef(0)
   const appliedVersionRef = useRef(0)
   const lastSymbolCountRef = useRef(0)
-  const lastAppliedRemoteVersionRef = useRef(0)
-  const suppressBroadcastUntilTsRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
+  const lastAppliedRemoteVersionRef = useRef(0)
+  const suppressBroadcastUntilTsRef = useRef(0)
+  const appliedSnapshotIdsRef = useRef<Set<string>>(new Set())
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [latexOutput, setLatexOutput] = useState('')
@@ -187,6 +190,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       latex: typeof latexExport === 'string' ? latexExport : '',
       jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
       version: incrementVersion ? ++localVersionRef.current : localVersionRef.current,
+      snapshotId: `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
     }
 
     return snapshot
@@ -217,6 +221,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             snapshot: record.snapshot,
             ts: record.ts,
             reason: options?.reason ?? 'update',
+            originClientId: clientIdRef.current,
           })
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
@@ -250,6 +255,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return
     }
     if (!snapshot) return
+    // Idempotency: ignore already-applied snapshots
+    if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) {
+      return
+    }
+    // Avoid processing our own echo if somehow looped
+    if (message.originClientId && message.originClientId === clientIdRef.current) {
+      return
+    }
     const editor = editorInstanceRef.current
     if (!editor) return
 

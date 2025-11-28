@@ -13,10 +13,10 @@ declare global {
 type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 type SnapshotPayload = {
-  // Use JIIX + LaTeX as the canonical state. Avoid raw point events to prevent replaying erased strokes.
-  symbols?: any[] | null
+  symbols: any[] | null
   latex?: string
   jiix?: string | null
+  version: number
 }
 
 type SnapshotRecord = {
@@ -131,6 +131,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const channelRef = useRef<any>(null)
   const clientIdRef = useRef('')
   const latestSnapshotRef = useRef<SnapshotRecord | null>(null)
+  const localVersionRef = useRef(0)
+  const appliedVersionRef = useRef(0)
+  const lastSymbolCountRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
@@ -163,8 +166,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editor) return null
 
     const model = editor.model ?? {}
-    // Do not serialize point events (symbols). Rely on exports as the single source of truth.
-    const symbols = null
+    let symbols: any[] | null = null
+    if (model.symbols) {
+      try {
+        symbols = JSON.parse(JSON.stringify(model.symbols))
+      } catch (err) {
+        console.warn('Unable to serialize MyScript symbols', err)
+        symbols = null
+      }
+    }
 
     const exports = model.exports ?? {}
     const latexExport = exports['application/x-latex']
@@ -174,6 +184,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       symbols,
       latex: typeof latexExport === 'string' ? latexExport : '',
       jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
+      version: ++localVersionRef.current,
     }
 
     return snapshot
@@ -243,24 +254,55 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const editor = editorInstanceRef.current
     if (!editor) return
 
-    const incomingTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? message.ts : Date.now()
-    const latestRecord = latestSnapshotRef.current
-    if (latestRecord && incomingTs <= latestRecord.ts) {
+    // Version ordering: ignore stale snapshots
+    if (snapshot.version <= appliedVersionRef.current) {
       return
     }
 
     isApplyingRemoteRef.current = true
     try {
-      // Clear before importing JIIX to ensure model resets properly and avoids glyph import errors.
-      if (snapshot.jiix) {
+      const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
+      const previousCount = lastSymbolCountRef.current
+      const shouldRebuild = reason === 'clear' || incomingSymbolCount < previousCount
+
+      if (shouldRebuild) {
         editor.clear()
         if (typeof editor.waitForIdle === 'function') {
           await editor.waitForIdle()
         }
-        await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
-      } else if (reason === 'clear') {
-        editor.clear()
       }
+
+      if (snapshot.symbols && snapshot.symbols.length) {
+        try {
+          if (shouldRebuild) {
+            await editor.importPointEvents(snapshot.symbols)
+          } else {
+            // Import only the delta (new symbols since previous count)
+            const delta = snapshot.symbols.slice(previousCount)
+            if (delta.length) {
+              await editor.importPointEvents(delta)
+            }
+          }
+          if (typeof editor.waitForIdle === 'function') {
+            await editor.waitForIdle()
+          }
+        } catch (e) {
+          console.warn('Failed to import point events; falling back to full rebuild', e)
+          editor.clear()
+          await editor.importPointEvents(snapshot.symbols)
+        }
+      }
+
+      if (snapshot.jiix) {
+        try {
+          await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
+        } catch (e) {
+          // Importing JIIX may fail mid-stroke; ignore.
+        }
+      }
+
+      lastSymbolCountRef.current = incomingSymbolCount
+      appliedVersionRef.current = snapshot.version
 
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
@@ -268,7 +310,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     } finally {
       isApplyingRemoteRef.current = false
       setIsConverting(false)
-      latestSnapshotRef.current = { snapshot, ts: incomingTs }
+      latestSnapshotRef.current = { snapshot, ts: Date.now() }
     }
   }, [])
 
@@ -505,8 +547,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('sync-request', handleSyncRequest)
 
         const snapshot = collectEditorSnapshot()
-        // If we already have a non-empty export (JIIX or LaTeX), publish it once after connect.
-        if (snapshot && !isSnapshotEmpty(snapshot)) {
+        // Publish initial state if there are existing symbols.
+        if (snapshot && snapshot.symbols && snapshot.symbols.length) {
           const record: SnapshotRecord = {
             snapshot,
             ts: Date.now(),

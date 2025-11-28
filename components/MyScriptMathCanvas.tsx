@@ -134,6 +134,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const localVersionRef = useRef(0)
   const appliedVersionRef = useRef(0)
   const lastSymbolCountRef = useRef(0)
+  const lastAppliedRemoteVersionRef = useRef(0)
+  const suppressBroadcastUntilTsRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
@@ -161,7 +163,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     return `myscript:${safeRoom || 'default'}`
   }, [roomId])
 
-  const collectEditorSnapshot = useCallback((): SnapshotPayload | null => {
+  const collectEditorSnapshot = useCallback((incrementVersion: boolean): SnapshotPayload | null => {
     const editor = editorInstanceRef.current
     if (!editor) return null
 
@@ -184,7 +186,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       symbols,
       latex: typeof latexExport === 'string' ? latexExport : '',
       jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
-      version: ++localVersionRef.current,
+      version: incrementVersion ? ++localVersionRef.current : localVersionRef.current,
     }
 
     return snapshot
@@ -196,17 +198,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const channel = channelRef.current
       if (!channel) return
 
-      const snapshot = collectEditorSnapshot()
+  const snapshot = collectEditorSnapshot(true)
       if (!snapshot) return
 
       if (isSnapshotEmpty(snapshot) && !options?.force) {
         return
       }
 
-      const record: SnapshotRecord = {
-        snapshot,
-        ts: Date.now(),
-      }
+      const record: SnapshotRecord = { snapshot, ts: Date.now() }
 
       latestSnapshotRef.current = record
 
@@ -261,9 +260,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
-      const previousCount = lastSymbolCountRef.current
-      const shouldRebuild = reason === 'clear' || incomingSymbolCount < previousCount
+  const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
+  const previousCount = lastSymbolCountRef.current
+  const shouldRebuild = reason === 'clear' || (incomingSymbolCount < previousCount && previousCount > 0)
 
       if (shouldRebuild) {
         editor.clear()
@@ -301,8 +300,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
       }
 
-      lastSymbolCountRef.current = incomingSymbolCount
-      appliedVersionRef.current = snapshot.version
+  lastSymbolCountRef.current = incomingSymbolCount
+  appliedVersionRef.current = snapshot.version
+  lastAppliedRemoteVersionRef.current = snapshot.version
+  suppressBroadcastUntilTsRef.current = Date.now() + 350
 
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
@@ -379,7 +380,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
-          // Throttled broadcast of current snapshot; exports may be empty mid-stroke, which is fine.
+          const now = Date.now()
+          if (now < suppressBroadcastUntilTsRef.current) {
+            return
+          }
+          // Collect snapshot with version increment only if not from remote apply.
+          const snapshot = collectEditorSnapshot(true)
+          if (!snapshot) return
+          if (snapshot.version === lastAppliedRemoteVersionRef.current) return
           broadcastSnapshot(false)
 
           // Debounce a lightweight export request (not convert) so JIIX/LaTeX stay updated without heavy operations.
@@ -546,7 +554,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('sync-state', handleSyncState)
         channel.subscribe('sync-request', handleSyncRequest)
 
-        const snapshot = collectEditorSnapshot()
+        const snapshot = collectEditorSnapshot(true)
         // Publish initial state if there are existing symbols.
         if (snapshot && snapshot.symbols && snapshot.symbols.length) {
           const record: SnapshotRecord = {

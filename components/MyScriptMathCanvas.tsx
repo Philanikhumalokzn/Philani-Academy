@@ -13,7 +13,8 @@ declare global {
 type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 type SnapshotPayload = {
-  symbols: any[] | null
+  // Use JIIX + LaTeX as the canonical state. Avoid raw point events to prevent replaying erased strokes.
+  symbols?: any[] | null
   latex?: string
   jiix?: string | null
 }
@@ -160,15 +161,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editor) return null
 
     const model = editor.model ?? {}
-    let symbols: any[] | null = null
-    if (model.symbols) {
-      try {
-        symbols = JSON.parse(JSON.stringify(model.symbols))
-      } catch (err) {
-        console.warn('Unable to serialize MyScript symbols', err)
-        symbols = null
-      }
-    }
+    // Do not serialize point events (symbols). Rely on exports as the single source of truth.
+    const symbols = null
 
     const exports = model.exports ?? {}
     const latexExport = exports['application/x-latex']
@@ -255,20 +249,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      editor.clear()
-      if (typeof editor.waitForIdle === 'function') {
-        await editor.waitForIdle()
-      }
-
-      if (snapshot.symbols && snapshot.symbols.length) {
-        await editor.importPointEvents(snapshot.symbols)
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-      }
-
+      // Avoid clearing and replaying raw strokes. Import JIIX as the authoritative state.
       if (snapshot.jiix) {
         await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
+      } else if (reason === 'clear') {
+        editor.clear()
       }
 
       setLatexOutput(snapshot.latex ?? '')
@@ -346,6 +331,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
+          // Throttled broadcast for incremental edits using JIIX-only snapshot.
           broadcastSnapshot(false)
         }
         const handleExported = (evt: any) => {
@@ -496,7 +482,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('sync-request', handleSyncRequest)
 
         const snapshot = collectEditorSnapshot()
-        if (snapshot?.symbols?.length) {
+        // If we already have a non-empty export (JIIX or LaTeX), publish it once after connect.
+        if (snapshot && !isSnapshotEmpty(snapshot)) {
           const record: SnapshotRecord = {
             snapshot,
             ts: Date.now(),

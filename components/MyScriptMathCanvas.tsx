@@ -132,7 +132,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const clientIdRef = useRef('')
   const latestSnapshotRef = useRef<SnapshotRecord | null>(null)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingAutoConvertRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -337,20 +336,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
-          // Debounce an auto convert so JIIX export stays fresh for realtime sync.
-          if (pendingAutoConvertRef.current) {
-            clearTimeout(pendingAutoConvertRef.current)
-            pendingAutoConvertRef.current = null
-          }
-          pendingAutoConvertRef.current = setTimeout(() => {
-            try {
-              setIsConverting(true)
-              editor.convert()
-            } catch (e) {
-              // ignore convert errors
-              setIsConverting(false)
-            }
-          }, 250)
+          // Throttled broadcast of current snapshot; exports may be empty mid-stroke, which is fine.
+          broadcastSnapshot(false)
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
@@ -390,10 +377,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       if (pendingBroadcastRef.current) {
         clearTimeout(pendingBroadcastRef.current)
         pendingBroadcastRef.current = null
-      }
-      if (pendingAutoConvertRef.current) {
-        clearTimeout(pendingAutoConvertRef.current)
-        pendingAutoConvertRef.current = null
       }
       listeners.forEach(({ type, handler }) => {
         try {

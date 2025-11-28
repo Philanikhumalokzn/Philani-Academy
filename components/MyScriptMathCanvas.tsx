@@ -132,6 +132,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const clientIdRef = useRef('')
   const latestSnapshotRef = useRef<SnapshotRecord | null>(null)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -338,6 +339,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanClear(Boolean(evt.detail?.canClear))
           // Throttled broadcast of current snapshot; exports may be empty mid-stroke, which is fine.
           broadcastSnapshot(false)
+
+          // Debounce a lightweight export request (not convert) so JIIX/LaTeX stay updated without heavy operations.
+          if (pendingExportRef.current) {
+            clearTimeout(pendingExportRef.current)
+            pendingExportRef.current = null
+          }
+          pendingExportRef.current = setTimeout(() => {
+            try {
+              if (typeof (editor as any)?.export === 'function') {
+                ;(editor as any).export(['application/x-latex', 'application/vnd.myscript.jiix'])
+              }
+            } catch {}
+          }, 300)
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
@@ -377,6 +391,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       if (pendingBroadcastRef.current) {
         clearTimeout(pendingBroadcastRef.current)
         pendingBroadcastRef.current = null
+      }
+      if (pendingExportRef.current) {
+        clearTimeout(pendingExportRef.current)
+        pendingExportRef.current = null
       }
       listeners.forEach(({ type, handler }) => {
         try {

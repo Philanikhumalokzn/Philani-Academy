@@ -117,10 +117,9 @@ const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '
 
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
-  // For realtime drawing, consider symbols as the primary signal
   const hasSymbols = Array.isArray(snapshot.symbols) && snapshot.symbols.length > 0
-  const hasLatex = Boolean(snapshot.latex && String(snapshot.latex).trim())
-  const hasJiix = Boolean(snapshot.jiix && String(snapshot.jiix).trim())
+  const hasLatex = Boolean(snapshot.latex)
+  const hasJiix = Boolean(snapshot.jiix)
   return !hasSymbols && !hasLatex && !hasJiix
 }
 
@@ -161,7 +160,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editor) return null
 
     const model = editor.model ?? {}
-    // Capture raw point events for realtime stroke sync
     let symbols: any[] | null = null
     if (model.symbols) {
       try {
@@ -179,7 +177,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const snapshot: SnapshotPayload = {
       symbols,
       latex: typeof latexExport === 'string' ? latexExport : '',
-      jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : '',
+      jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
     }
 
     return snapshot
@@ -194,7 +192,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const snapshot = collectEditorSnapshot()
       if (!snapshot) return
 
-      // Skip broadcasting if there is nothing to sync unless forced
       if (isSnapshotEmpty(snapshot) && !options?.force) {
         return
       }
@@ -243,6 +240,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
+    if (isSnapshotEmpty(snapshot) && reason !== 'clear') {
+      return
+    }
     if (!snapshot) return
     const editor = editorInstanceRef.current
     if (!editor) return
@@ -253,40 +253,24 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return
     }
 
-    // If this is an explicit clear, clear and record state
-    if (reason === 'clear') {
-      try {
-        isApplyingRemoteRef.current = true
-        editor.clear()
-        setLatexOutput('')
-      } catch (err) {
-        console.error('Failed to clear editor on remote clear', err)
-      } finally {
-        isApplyingRemoteRef.current = false
-        setIsConverting(false)
-        latestSnapshotRef.current = { snapshot, ts: incomingTs }
-      }
-      return
-    }
-
-    // For normal updates we replace the current drawing with the full remote state
-    // Clear first to avoid duplicate strokes when importing full symbol arrays.
+    isApplyingRemoteRef.current = true
     try {
-      isApplyingRemoteRef.current = true
+      editor.clear()
+      if (typeof editor.waitForIdle === 'function') {
+        await editor.waitForIdle()
+      }
+
       if (snapshot.symbols && snapshot.symbols.length) {
-        editor.clear()
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
         await editor.importPointEvents(snapshot.symbols)
         if (typeof editor.waitForIdle === 'function') {
           await editor.waitForIdle()
         }
       }
+
       if (snapshot.jiix) {
-        // Import recognized structure after raw strokes so latex export panel reflects remote user conversion.
         await editor.import(snapshot.jiix, 'application/vnd.myscript.jiix')
       }
+
       setLatexOutput(snapshot.latex ?? '')
     } catch (err) {
       console.error('Failed to apply remote snapshot', err)
@@ -362,7 +346,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
-          // Broadcast changes with throttling for realtime stroke sync
           broadcastSnapshot(false)
         }
         const handleExported = (evt: any) => {
@@ -513,8 +496,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('sync-request', handleSyncRequest)
 
         const snapshot = collectEditorSnapshot()
-        // Share current state (strokes and/or recognized) if available
-        if (snapshot && !isSnapshotEmpty(snapshot)) {
+        if (snapshot?.symbols?.length) {
           const record: SnapshotRecord = {
             snapshot,
             ts: Date.now(),

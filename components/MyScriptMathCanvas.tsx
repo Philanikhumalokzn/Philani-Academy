@@ -171,6 +171,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [multiBroadcastEnabled, setMultiBroadcastEnabled] = useState(false)
   const multiBroadcastEnabledRef = useRef(false)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
+  const pendingControlQueueRef = useRef<Array<{ clientId: string; ts: number; control: any }>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -626,22 +627,36 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
-            const toSend = [...pendingPublishQueueRef.current]
-            pendingPublishQueueRef.current = []
-            for (const rec of toSend) {
-              try {
-                await channelRef.current.publish('stroke', {
-                  clientId: clientIdRef.current,
-                  author: userDisplayName,
-                  snapshot: rec.snapshot,
-                  ts: rec.ts,
-                  reason: rec.reason,
-                  originClientId: clientIdRef.current,
-                })
-              } catch (e) {
-                console.warn('Retry publish failed', e)
-                pendingPublishQueueRef.current.push(rec)
+          if (connected && channelRef.current) {
+            if (pendingPublishQueueRef.current.length) {
+              const toSend = [...pendingPublishQueueRef.current]
+              pendingPublishQueueRef.current = []
+              for (const rec of toSend) {
+                try {
+                  await channelRef.current.publish('stroke', {
+                    clientId: clientIdRef.current,
+                    author: userDisplayName,
+                    snapshot: rec.snapshot,
+                    ts: rec.ts,
+                    reason: rec.reason,
+                    originClientId: clientIdRef.current,
+                  })
+                } catch (e) {
+                  console.warn('Retry publish failed', e)
+                  pendingPublishQueueRef.current.push(rec)
+                }
+              }
+            }
+            if (pendingControlQueueRef.current.length) {
+              const toSendCtrl = [...pendingControlQueueRef.current]
+              pendingControlQueueRef.current = []
+              for (const msg of toSendCtrl) {
+                try {
+                  await channelRef.current.publish('control', msg)
+                } catch (e) {
+                  console.warn('Retry control publish failed', e)
+                  pendingControlQueueRef.current.push(msg)
+                }
               }
             }
             reconnectAttemptsRef.current = 0
@@ -940,15 +955,20 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const handleSetBroadcaster = async (targetClientId: string) => {
     if (!isAdmin) return
     const channel = channelRef.current
-    if (!channel) return
+    // Update local state immediately for responsiveness
     activeBroadcasterClientIdRef.current = targetClientId
     setActiveBroadcasterClientId(targetClientId)
+    const payload = {
+      clientId: clientIdRef.current,
+      control: { type: 'set-broadcaster', broadcasterClientId: targetClientId },
+      ts: Date.now(),
+    }
     try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        control: { type: 'set-broadcaster', broadcasterClientId: targetClientId },
-        ts: Date.now(),
-      })
+      if (channel) {
+        await channel.publish('control', payload)
+      } else {
+        pendingControlQueueRef.current.push(payload)
+      }
     } catch (e) {
       console.warn('Failed to set broadcaster', e)
     }
@@ -956,19 +976,23 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const handleToggleSelfBroadcast = async () => {
     const channel = channelRef.current
-    if (!channel) return
     const current = activeBroadcasterClientIdRef.current
     const canSelfToggle = Boolean(isAdmin) || !current || current === clientIdRef.current
     if (!canSelfToggle) return
     const nextId = current === clientIdRef.current ? null : clientIdRef.current
     activeBroadcasterClientIdRef.current = nextId
     setActiveBroadcasterClientId(nextId)
+    const payload = {
+      clientId: clientIdRef.current,
+      control: { type: 'set-broadcaster', broadcasterClientId: nextId },
+      ts: Date.now(),
+    }
     try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        control: { type: 'set-broadcaster', broadcasterClientId: nextId },
-        ts: Date.now(),
-      })
+      if (channel) {
+        await channel.publish('control', payload)
+      } else {
+        pendingControlQueueRef.current.push(payload)
+      }
     } catch (e) {
       console.warn('Failed to toggle self broadcaster', e)
     }
@@ -988,7 +1012,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const handleToggleMultiBroadcast = async () => {
     if (!isAdmin) return
     const channel = channelRef.current
-    if (!channel) return
     const next = !multiBroadcastEnabledRef.current
     multiBroadcastEnabledRef.current = next
     setMultiBroadcastEnabled(next)
@@ -996,20 +1019,30 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!next && !activeBroadcasterClientIdRef.current) {
       activeBroadcasterClientIdRef.current = clientIdRef.current
       setActiveBroadcasterClientId(clientIdRef.current)
+      const electPayload = {
+        clientId: clientIdRef.current,
+        control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
+        ts: Date.now(),
+      }
       try {
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
-          ts: Date.now(),
-        })
+        if (channel) {
+          await channel.publish('control', electPayload)
+        } else {
+          pendingControlQueueRef.current.push(electPayload)
+        }
       } catch {}
     }
+    const payload = {
+      clientId: clientIdRef.current,
+      control: { type: 'set-multi-broadcast', multiBroadcastEnabled: next },
+      ts: Date.now(),
+    }
     try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        control: { type: 'set-multi-broadcast', multiBroadcastEnabled: next },
-        ts: Date.now(),
-      })
+      if (channel) {
+        await channel.publish('control', payload)
+      } else {
+        pendingControlQueueRef.current.push(payload)
+      }
     } catch (e) {
       console.warn('Failed to toggle multi broadcast', e)
     }

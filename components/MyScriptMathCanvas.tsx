@@ -32,6 +32,10 @@ type SnapshotMessage = {
   ts?: number
   reason?: 'update' | 'clear'
   originClientId?: string
+  control?: {
+    type: 'set-broadcaster'
+    broadcasterClientId: string
+  }
 }
 
 type BroadcastOptions = {
@@ -112,6 +116,7 @@ type MyScriptMathCanvasProps = {
   roomId: string
   userId: string
   userDisplayName?: string
+  isAdmin?: boolean
 }
 
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
@@ -126,7 +131,7 @@ const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   return !hasSymbols && !hasLatex && !hasJiix
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName }: MyScriptMathCanvasProps) {
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -150,6 +155,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [activeBroadcasterClientId, setActiveBroadcasterClientId] = useState<string | null>(null)
+  const activeBroadcasterClientIdRef = useRef<string | null>(null)
+  const [connectedClients, setConnectedClients] = useState<Array<{ clientId: string; name?: string }>>([])
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -199,6 +207,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
+      // Gate broadcasting: only active broadcaster may send (except forced clear)
+      if (activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current !== clientIdRef.current) {
+        if (!options?.force) return
+      }
       const channel = channelRef.current
       if (!channel) return
       const snapshot = collectEditorSnapshot(true)
@@ -253,6 +265,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
+    // Control message handling: update active broadcaster
+    if (message.control?.type === 'set-broadcaster') {
+      activeBroadcasterClientIdRef.current = message.control.broadcasterClientId
+      setActiveBroadcasterClientId(message.control.broadcasterClientId)
+      return
+    }
     if (!snapshot) return
     const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
     const previousCount = lastSymbolCountRef.current
@@ -574,6 +592,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
         channel.subscribe('sync-request', handleSyncRequest)
+        channel.subscribe('control', async (message: any) => {
+          const data = message?.data as SnapshotMessage
+          if (data?.control?.type === 'set-broadcaster') {
+            activeBroadcasterClientIdRef.current = data.control.broadcasterClientId
+            setActiveBroadcasterClientId(data.control.broadcasterClientId)
+          }
+        })
 
         const snapshot = collectEditorSnapshot(true)
         // Publish initial state if there are existing symbols.
@@ -597,6 +622,36 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           author: userDisplayName,
           ts: Date.now(),
         })
+
+        // Presence tracking
+        try {
+          await channel.presence.enter({ name: userDisplayName })
+          const members = await channel.presence.get()
+          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+          channel.presence.subscribe(async () => {
+            try {
+              const list = await channel.presence.get()
+              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+            } catch {}
+          })
+        } catch (e) {
+          console.warn('Presence tracking failed', e)
+        }
+
+        // Default broadcaster assignment if admin
+        if (isAdmin && !activeBroadcasterClientIdRef.current) {
+          activeBroadcasterClientIdRef.current = clientIdRef.current
+          setActiveBroadcasterClientId(clientIdRef.current)
+          try {
+            await channel.publish('control', {
+              clientId: clientIdRef.current,
+              control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
+              ts: Date.now(),
+            })
+          } catch (e) {
+            console.warn('Failed to publish initial broadcaster control', e)
+          }
+        }
       } catch (err) {
         console.error('Failed to initialise Ably realtime collaboration', err)
         if (!disposed) {
@@ -651,6 +706,25 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     setIsConverting(true)
     editorInstanceRef.current.convert()
   }
+
+  const handleSetBroadcaster = async (targetClientId: string) => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    activeBroadcasterClientIdRef.current = targetClientId
+    setActiveBroadcasterClientId(targetClientId)
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        control: { type: 'set-broadcaster', broadcasterClientId: targetClientId },
+        ts: Date.now(),
+      })
+    } catch (e) {
+      console.warn('Failed to set broadcaster', e)
+    }
+  }
+
+  const isActiveBroadcaster = activeBroadcasterClientId === clientIdRef.current
 
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
@@ -730,6 +804,29 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>symbolCount: {lastSymbolCountRef.current}</div>
             <div>suppressUntil: {suppressBroadcastUntilTsRef.current}</div>
             <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
+            <div>broadcaster: {activeBroadcasterClientId || '—'}</div>
+            <div>isActiveBroadcaster: {isActiveBroadcaster ? 'yes' : 'no'}</div>
+          </div>
+        )}
+        <div className="text-xs mt-2">
+          <span className="px-2 py-1 rounded border bg-white">Broadcast mode: {isActiveBroadcaster ? 'Active (sending)' : 'Receiving only'}</span>
+        </div>
+        {isAdmin && (
+          <div className="mt-3 p-2 border rounded bg-white">
+            <p className="text-xs font-semibold mb-2">Select Active Broadcaster</p>
+            <div className="flex flex-wrap gap-2">
+              {connectedClients.map(c => (
+                <button
+                  key={c.clientId}
+                  type="button"
+                  onClick={() => handleSetBroadcaster(c.clientId)}
+                  className={`text-xs px-2 py-1 rounded border ${c.clientId === activeBroadcasterClientId ? 'bg-green-100 border-green-500' : 'bg-white'}`}
+                >
+                  {(c.name || c.clientId)}{c.clientId === clientIdRef.current ? ' (you)' : ''}
+                </button>
+              ))}
+              {connectedClients.length === 0 && <span className="text-xs text-slate-500">No other clients connected.</span>}
+            </div>
           </div>
         )}
       </div>

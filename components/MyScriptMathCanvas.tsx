@@ -34,7 +34,7 @@ type SnapshotMessage = {
   originClientId?: string
   control?: {
     type: 'set-broadcaster'
-    broadcasterClientId: string
+    broadcasterClientId: string | null
   }
 }
 
@@ -211,8 +211,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
-      // Gate broadcasting: only active broadcaster may send (except forced clear)
-      if (activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current !== clientIdRef.current) {
+      // Strict gating: only the active broadcaster may send. If none set, nobody sends.
+      const activeId = activeBroadcasterClientIdRef.current
+      if (!activeId || activeId !== clientIdRef.current) {
         if (!options?.force) return
       }
       // Pause overrides everything except forced clears
@@ -782,6 +783,25 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const handleToggleSelfBroadcast = async () => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const current = activeBroadcasterClientIdRef.current
+    const nextId = current === clientIdRef.current ? null : clientIdRef.current
+    activeBroadcasterClientIdRef.current = nextId
+    setActiveBroadcasterClientId(nextId)
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        control: { type: 'set-broadcaster', broadcasterClientId: nextId },
+        ts: Date.now(),
+      })
+    } catch (e) {
+      console.warn('Failed to toggle self broadcaster', e)
+    }
+  }
+
   const isActiveBroadcaster = activeBroadcasterClientId === clientIdRef.current
 
   const toggleBroadcastPause = () => {
@@ -893,6 +913,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           )}
           {!isRealtimeConnected && (
             <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued and sent on reconnect</span>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleToggleSelfBroadcast}
+              className="ml-2 px-2 py-1 rounded border text-xs bg-white"
+            >
+              {isActiveBroadcaster ? 'Stop Broadcasting' : 'Become Broadcaster'}
+            </button>
           )}
         </div>
         {isAdmin && (

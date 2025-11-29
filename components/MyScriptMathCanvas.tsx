@@ -197,19 +197,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }, [])
 
   const broadcastSnapshot = useCallback(
-    (options?: { immediate?: boolean; reason?: 'update' | 'clear'; force?: boolean; snapshot?: SnapshotPayload; incrementVersion?: boolean }) => {
+    (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
       const channel = channelRef.current
       if (!channel) return
-      // Use provided snapshot or collect a new one (optionally increment version)
-      const snapshot = options?.snapshot ?? collectEditorSnapshot(options?.incrementVersion !== false)
+      const snapshot = collectEditorSnapshot(true)
       if (!snapshot) return
-
-      if (isSnapshotEmpty(snapshot) && !options?.force) {
+      // Allow broadcasting empty snapshot if it represents an actual erase (previous symbol count > 0)
+      const previousCount = lastSymbolCountRef.current
+      const currentCount = snapshot.symbols ? snapshot.symbols.length : 0
+      const isErase = previousCount > 0 && currentCount === 0
+      if (isSnapshotEmpty(snapshot) && !options?.force && !isErase) {
         return
       }
 
       const record: SnapshotRecord = { snapshot, ts: Date.now() }
+
       latestSnapshotRef.current = record
 
       const publish = async () => {
@@ -227,7 +230,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
       }
 
-      if (options?.immediate) {
+      if (immediate) {
         if (pendingBroadcastRef.current) {
           clearTimeout(pendingBroadcastRef.current)
           pendingBroadcastRef.current = null
@@ -250,8 +253,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
-    if (isSnapshotEmpty(snapshot) && reason !== 'clear') return
     if (!snapshot) return
+    const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
+    const previousCount = lastSymbolCountRef.current
+    // Skip redundant empty updates when both sides already empty.
+    if (incomingSymbolCount === 0 && previousCount === 0 && reason !== 'clear') {
+      return
+    }
     // Idempotency & origin checks
     if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) return
     if (message.originClientId && message.originClientId === clientIdRef.current) return
@@ -262,54 +270,48 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
-      const previousCount = lastSymbolCountRef.current
-
       if (reason === 'clear') {
         editor.clear()
         if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-      } else if (snapshot.symbols && snapshot.symbols.length) {
-        if (incomingSymbolCount > previousCount) {
-          // Growth: import tail delta only.
-          const delta = snapshot.symbols.slice(previousCount)
-          if (delta.length) {
-            try {
-              await editor.importPointEvents(delta)
-              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-            } catch (e) {
-              console.warn('Delta import failed; attempting full import', e)
-              try {
-                editor.clear()
-                if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-                await editor.importPointEvents(snapshot.symbols)
-                if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-              } catch (e2) {
-                console.error('Full import failed', e2)
-              }
-            }
-          }
-        } else if (incomingSymbolCount < previousCount) {
-          // Shrink (e.g. undo/erase): rebuild fully to reflect removals.
+      } else if (incomingSymbolCount < previousCount) {
+        // Remote performed an erase/undo sequence. Rebuild from full snapshot (including empty).
+        editor.clear()
+        if (incomingSymbolCount > 0 && snapshot.symbols) {
           try {
-            editor.clear()
             if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
             await editor.importPointEvents(snapshot.symbols)
             if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          } catch (e3) {
-            console.warn('Full rebuild after shrink failed', e3)
+          } catch (e) {
+            console.error('Failed to rebuild after shrink', e)
           }
         } else {
-          // Same count; optionally ignore.
+          // Fully empty after erase
+          setLatexOutput('')
+        }
+      } else if (snapshot.symbols && snapshot.symbols.length && incomingSymbolCount > previousCount) {
+        // Import only new tail delta
+        const delta = snapshot.symbols.slice(previousCount)
+        if (delta.length) {
+          try {
+            await editor.importPointEvents(delta)
+            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          } catch (e) {
+            console.warn('Delta import failed; attempting full import', e)
+            try {
+              editor.clear()
+              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+              await editor.importPointEvents(snapshot.symbols)
+              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+            } catch (e2) {
+              console.error('Full import failed', e2)
+            }
+          }
         }
       }
 
       // Tracking
-      lastSymbolCountRef.current = snapshot.symbols ? snapshot.symbols.length : 0
+  lastSymbolCountRef.current = incomingSymbolCount
       appliedVersionRef.current = snapshot.version
-      // Ensure local version does not lag behind remote head.
-      if (snapshot.version > localVersionRef.current) {
-        localVersionRef.current = snapshot.version
-      }
       lastAppliedRemoteVersionRef.current = snapshot.version
       suppressBroadcastUntilTsRef.current = Date.now() + 500
       if (snapshot.snapshotId) {
@@ -399,12 +401,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (now < suppressBroadcastUntilTsRef.current) {
             return
           }
-          // Collect snapshot and increment version once for this local change.
+          // Collect snapshot with version increment only if not from remote apply.
           const snapshot = collectEditorSnapshot(true)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
-          // Broadcast using the already incremented snapshot (do NOT increment again)
-          broadcastSnapshot({ snapshot, incrementVersion: false })
+          // Update local symbol count tracking for accurate delta math for remote peers.
+          if (snapshot.symbols) {
+            lastSymbolCountRef.current = snapshot.symbols.length
+          }
+          broadcastSnapshot(false)
 
           // Debounce a lightweight export request (not convert) so JIIX/LaTeX stay updated without heavy operations.
           if (pendingExportRef.current) {
@@ -424,9 +429,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
-          // Broadcast current state without bumping version again.
-          const snapshot = collectEditorSnapshot(false)
-          broadcastSnapshot({ immediate: true, snapshot, incrementVersion: false })
+          broadcastSnapshot(true)
         }
         const handleError = (evt: any) => {
           const message = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
@@ -627,30 +630,26 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
-    // After a local clear, broadcast a snapshot with reason clear; increment version once via collectEditorSnapshot.
-    const snapshot = collectEditorSnapshot(true)
-    broadcastSnapshot({ immediate: true, force: true, reason: 'clear', snapshot, incrementVersion: false })
+    lastSymbolCountRef.current = 0
+    broadcastSnapshot(true, { force: true, reason: 'clear' })
   }
 
   const handleUndo = () => {
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.undo()
-    const snapshot = collectEditorSnapshot(true)
-    broadcastSnapshot({ snapshot, incrementVersion: false })
+    broadcastSnapshot(false)
   }
 
   const handleRedo = () => {
     if (!editorInstanceRef.current) return
     editorInstanceRef.current.redo()
-    const snapshot = collectEditorSnapshot(true)
-    broadcastSnapshot({ snapshot, incrementVersion: false })
+    broadcastSnapshot(false)
   }
 
   const handleConvert = () => {
     if (!editorInstanceRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
-    // Conversion will trigger exported event; no immediate broadcast needed here.
   }
 
   const toggleFullscreen = () => {

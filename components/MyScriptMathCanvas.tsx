@@ -463,15 +463,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (now < suppressBroadcastUntilTsRef.current) {
             return
           }
-          // Collect snapshot with version increment only if not from remote apply.
-          const snapshot = collectEditorSnapshot(true)
+          // Only the active broadcaster should increment version and send.
+          const canSend = !!activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current === clientIdRef.current && !isBroadcastPausedRef.current
+          const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
           // Update local symbol count tracking for accurate delta math for remote peers.
           if (snapshot.symbols) {
-            lastSymbolCountRef.current = snapshot.symbols.length
+            const sym: any = snapshot.symbols as any
+            lastSymbolCountRef.current = Array.isArray(sym) ? sym.length : (Array.isArray(sym?.events) ? sym.events.length : 0)
           }
-          broadcastSnapshot(false)
+          if (canSend) {
+            broadcastSnapshot(false)
+          }
 
           // Debounce a lightweight export request (not convert) so JIIX/LaTeX stay updated without heavy operations.
           if (pendingExportRef.current) {
@@ -491,7 +495,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
-          broadcastSnapshot(true)
+          // On export, only the active broadcaster should send immediately
+          const canSend = !!activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current === clientIdRef.current && !isBroadcastPausedRef.current
+          if (canSend) {
+            broadcastSnapshot(true)
+          }
         }
         const handleError = (evt: any) => {
           const message = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
@@ -570,6 +578,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         realtime = new Ably.Realtime.Promise({
           authUrl: `/api/realtime/ably-token?clientId=${encodeURIComponent(clientIdRef.current)}`,
           autoConnect: true,
+          closeOnUnload: false,
+          transports: ['web_socket', 'xhr_streaming', 'xhr_polling'],
         })
 
   realtimeRef.current = realtime

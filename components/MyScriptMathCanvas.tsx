@@ -154,6 +154,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const appliedSnapshotIdsRef = useRef<Set<string>>(new Set())
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [transientError, setTransientError] = useState<string | null>(null)
   const [latexOutput, setLatexOutput] = useState('')
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
@@ -502,9 +503,24 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }
         }
         const handleError = (evt: any) => {
-          const message = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
-          setError(message)
-          setStatus('error')
+          const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
+          const lower = String(raw).toLowerCase()
+          const isSessionTooLong = /session too long/.test(lower)
+          const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
+          const isSymbolsUndefined = /cannot read properties of undefined.*symbols/i.test(raw)
+          const fatal = isSessionTooLong || isAuthMissing
+
+          if (fatal) {
+            setError(raw)
+            setStatus('error')
+            return
+          }
+          // Transient: keep canvas usable
+          setTransientError(raw)
+          // Auto-clear transient after 6s
+          setTimeout(() => {
+            setTransientError(curr => (curr === raw ? null : curr))
+          }, 6000)
         }
 
         listeners.push({ type: 'changed', handler: handleChanged })
@@ -982,6 +998,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               {error}
             </div>
           )}
+          {transientError && status === 'ready' && (
+            <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
+              {transientError}
+            </div>
+          )}
           {status === 'ready' && (
             <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
               Ready
@@ -997,16 +1018,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready'}>
+          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(error)}>
             Undo
           </button>
-          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready'}>
+          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(error)}>
             Redo
           </button>
-          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready'}>
+          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(error)}>
             Clear
           </button>
-          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready'}>
+          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(error)}>
             {isConverting ? 'Converting…' : 'Convert to LaTeX'}
           </button>
           <button className="btn" type="button" onClick={toggleFullscreen}>
@@ -1057,7 +1078,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {!isRealtimeConnected && (
             <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued and sent on reconnect</span>
           )}
-          {(isAdmin || !activeBroadcasterClientId || activeBroadcasterClientId === clientIdRef.current) && (
+          {(isAdmin || !activeBroadcasterClientId || activeBroadcasterClientId === clientIdRef.current) && !error && (
             <button
               type="button"
               onClick={handleToggleSelfBroadcast}

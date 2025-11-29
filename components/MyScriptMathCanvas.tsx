@@ -713,13 +713,44 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
         // Presence tracking
         try {
-          await channel.presence.enter({ name: userDisplayName })
+          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin) })
           const members = await channel.presence.get()
           setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+          // Helper: attempt broadcaster election when needed
+          const tryElection = async () => {
+            try {
+              const list = await channel.presence.get()
+              const memberIds: string[] = list.map((m: any) => m.clientId)
+              const current = activeBroadcasterClientIdRef.current
+              // If current broadcaster is present, do nothing
+              if (current && memberIds.includes(current)) return
+              // Prefer an admin if present, else lexicographically smallest clientId
+              const adminMember = list
+                .filter((m: any) => m?.data?.isAdmin)
+                .sort((a: any, b: any) => (a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0))[0]
+              const candidateId: string | null = adminMember?.clientId || (memberIds.length ? [...memberIds].sort()[0] : null)
+              if (!candidateId) return
+              // Only self-elect if we are the candidate to avoid setting others without consent
+              if (candidateId === clientIdRef.current && current !== candidateId) {
+                activeBroadcasterClientIdRef.current = candidateId
+                setActiveBroadcasterClientId(candidateId)
+                try {
+                  await channel.publish('control', {
+                    clientId: clientIdRef.current,
+                    control: { type: 'set-broadcaster', broadcasterClientId: candidateId },
+                    ts: Date.now(),
+                  })
+                } catch {}
+              }
+            } catch {}
+          }
+
           channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
               setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+              // Elect a broadcaster if missing or left
+              await tryElection()
               // When someone new enters, proactively send a full snapshot if we are the broadcaster
               if (presenceMsg?.action === 'enter' && activeBroadcasterClientIdRef.current === clientIdRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {
@@ -739,6 +770,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               }
             } catch {}
           })
+          // Initial election after we joined
+          await tryElection()
         } catch (e) {
           console.warn('Presence tracking failed', e)
         }
@@ -882,10 +915,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }
 
   const handleToggleSelfBroadcast = async () => {
-    if (!isAdmin) return
     const channel = channelRef.current
     if (!channel) return
     const current = activeBroadcasterClientIdRef.current
+    const canSelfToggle = Boolean(isAdmin) || !current || current === clientIdRef.current
+    if (!canSelfToggle) return
     const nextId = current === clientIdRef.current ? null : clientIdRef.current
     activeBroadcasterClientIdRef.current = nextId
     setActiveBroadcasterClientId(nextId)
@@ -1013,7 +1047,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {!isRealtimeConnected && (
             <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued and sent on reconnect</span>
           )}
-          {isAdmin && (
+          {(isAdmin || !activeBroadcasterClientId || activeBroadcasterClientId === clientIdRef.current) && (
             <button
               type="button"
               onClick={handleToggleSelfBroadcast}

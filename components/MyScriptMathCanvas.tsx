@@ -162,6 +162,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const isBroadcastPausedRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
+  const reconnectAttemptsRef = useRef(0)
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -560,7 +562,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             reject(err)
           })
         })
-        // Connection state tracking & reauth
+        // Connection state tracking & reauth with attempt counter
         realtime.connection.on('state', async (stateChange: any) => {
           const state = stateChange?.current
           const connected = state === 'connected'
@@ -583,9 +585,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                 pendingPublishQueueRef.current.push(rec)
               }
             }
+            reconnectAttemptsRef.current = 0
           }
           if (!connected && (state === 'closed' || state === 'failed')) {
             try {
+              reconnectAttemptsRef.current += 1
               await realtime.auth.authorize({ force: true })
               realtime.connect()
             } catch (reauthErr) {
@@ -711,6 +715,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             console.warn('Failed to publish initial broadcaster control', e)
           }
         }
+
+        // Heartbeat reconnection loop
+        heartbeatIntervalRef.current = setInterval(async () => {
+          if (realtime.connection.state === 'connected') return
+          // Backoff logic: attempt more aggressively for first 5 tries, then every second heartbeat
+          const attempts = reconnectAttemptsRef.current
+          const shouldAttempt = attempts < 5 || attempts % 2 === 0
+          if (!shouldAttempt) return
+          try {
+            reconnectAttemptsRef.current += 1
+            await realtime.auth.authorize({ force: true })
+            realtime.connect()
+          } catch (hbErr) {
+            // Silent; debug shows attempts
+          }
+        }, 10000)
       } catch (err) {
         console.error('Failed to initialise Ably realtime collaboration', err)
         if (!disposed) {
@@ -736,6 +756,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         console.warn('Error while tearing down Ably connection', err)
       } finally {
         realtimeRef.current = null
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current)
+          heartbeatIntervalRef.current = null
+        }
       }
     }
   }, [applySnapshot, collectEditorSnapshot, channelName, status, userDisplayName])
@@ -895,6 +919,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>isActiveBroadcaster: {isActiveBroadcaster ? 'yes' : 'no'}</div>
             <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
             <div>queueLen: {pendingPublishQueueRef.current.length}</div>
+            <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
         <div className="text-xs mt-2">

@@ -308,7 +308,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return
     }
     if (!snapshot) return
-    const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
+    const incomingSymbolCount = (() => {
+      const sym: any = snapshot.symbols as any
+      if (Array.isArray(sym)) return sym.length
+      if (Array.isArray(sym?.events)) return sym.events.length
+      return 0
+    })()
     const previousCount = lastSymbolCountRef.current
     // Skip redundant empty updates when both sides already empty.
     if (incomingSymbolCount === 0 && previousCount === 0 && reason !== 'clear') {
@@ -342,9 +347,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           // Fully empty after erase
           setLatexOutput('')
         }
-      } else if (snapshot.symbols && snapshot.symbols.length && incomingSymbolCount > previousCount) {
+      } else if (snapshot.symbols && incomingSymbolCount > previousCount) {
         // Import only new tail delta
-        const delta = snapshot.symbols.slice(previousCount)
+        const all = Array.isArray(snapshot.symbols)
+          ? snapshot.symbols
+          : (Array.isArray((snapshot.symbols as any)?.events) ? (snapshot.symbols as any).events : [])
+        const delta = all.slice(previousCount)
         if (delta.length) {
           try {
             await editor.importPointEvents(delta)
@@ -354,7 +362,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             try {
               editor.clear()
               if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-              await editor.importPointEvents(snapshot.symbols)
+              await editor.importPointEvents(all)
               if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
             } catch (e2) {
               console.error('Full import failed', e2)
@@ -661,6 +669,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               snapshot: existingRecord.snapshot,
               ts: existingRecord.ts,
               reason: existingRecord.reason ?? 'update',
+              originClientId: clientIdRef.current,
             })
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
@@ -707,10 +716,27 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           await channel.presence.enter({ name: userDisplayName })
           const members = await channel.presence.get()
           setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
-          channel.presence.subscribe(async () => {
+          channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
               setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+              // When someone new enters, proactively send a full snapshot if we are the broadcaster
+              if (presenceMsg?.action === 'enter' && activeBroadcasterClientIdRef.current === clientIdRef.current) {
+                const rec = latestSnapshotRef.current ?? (() => {
+                  const snap = collectEditorSnapshot(false)
+                  return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
+                })()
+                if (rec && rec.snapshot && !isSnapshotEmpty(rec.snapshot)) {
+                  await channel.publish('stroke', {
+                    clientId: clientIdRef.current,
+                    author: userDisplayName,
+                    snapshot: rec.snapshot,
+                    ts: rec.ts,
+                    reason: rec.reason,
+                    originClientId: clientIdRef.current,
+                  })
+                }
+              }
             } catch {}
           })
         } catch (e) {

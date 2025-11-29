@@ -160,6 +160,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [connectedClients, setConnectedClients] = useState<Array<{ clientId: string; name?: string }>>([])
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
+  const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -243,6 +245,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           })
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
+          // If connection closed, queue for retry on reconnect
+          pendingPublishQueueRef.current.push(record)
         }
       }
 
@@ -535,8 +539,39 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         realtimeRef.current = realtime
 
         await new Promise<void>((resolve, reject) => {
-          realtime.connection.once('connected', () => resolve())
-          realtime.connection.once('failed', err => reject(err))
+          realtime.connection.once('connected', () => {
+            setIsRealtimeConnected(true)
+            resolve()
+          })
+          realtime.connection.once('failed', err => {
+            setIsRealtimeConnected(false)
+            reject(err)
+          })
+        })
+        // Connection state tracking
+        realtime.connection.on('state', (stateChange: any) => {
+          const state = stateChange?.current
+          const connected = state === 'connected'
+          setIsRealtimeConnected(connected)
+          // Flush queued publishes on reconnect
+          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
+            const toSend = [...pendingPublishQueueRef.current]
+            pendingPublishQueueRef.current = []
+            toSend.forEach(async rec => {
+              try {
+                await channelRef.current.publish('stroke', {
+                  clientId: clientIdRef.current,
+                  author: userDisplayName,
+                  snapshot: rec.snapshot,
+                  ts: rec.ts,
+                  reason: 'update',
+                  originClientId: clientIdRef.current,
+                })
+              } catch (e) {
+                console.warn('Retry publish failed', e)
+              }
+            })
+          }
         })
 
         if (disposed) return
@@ -819,6 +854,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
             <div>broadcaster: {activeBroadcasterClientId || '—'}</div>
             <div>isActiveBroadcaster: {isActiveBroadcaster ? 'yes' : 'no'}</div>
+            <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
+            <div>queueLen: {pendingPublishQueueRef.current.length}</div>
           </div>
         )}
         <div className="text-xs mt-2">
@@ -834,6 +871,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           )}
           {isAdmin && isBroadcastPaused && (
             <span className="ml-2 text-[10px] text-red-600">Paused: no strokes sent</span>
+          )}
+          {!isRealtimeConnected && (
+            <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued and sent on reconnect</span>
           )}
         </div>
         {isAdmin && (

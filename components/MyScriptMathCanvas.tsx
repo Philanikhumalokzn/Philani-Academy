@@ -23,6 +23,7 @@ type SnapshotPayload = {
 type SnapshotRecord = {
   snapshot: SnapshotPayload
   ts: number
+  reason: 'update' | 'clear'
 }
 
 type SnapshotMessage = {
@@ -125,7 +126,11 @@ const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '
 
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
-  const hasSymbols = Array.isArray(snapshot.symbols) && snapshot.symbols.length > 0
+  const sym = snapshot.symbols as any
+  const symCount = Array.isArray(sym)
+    ? sym.length
+    : (Array.isArray(sym?.events) ? sym.events.length : 0)
+  const hasSymbols = symCount > 0
   const hasLatex = Boolean(snapshot.latex)
   const hasJiix = Boolean(snapshot.jiix)
   return !hasSymbols && !hasLatex && !hasJiix
@@ -164,6 +169,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -186,13 +192,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     const model = editor.model ?? {}
     let symbols: any[] | null = null
-    if (model && Array.isArray((model as any).symbols)) {
-      try {
-        symbols = JSON.parse(JSON.stringify((model as any).symbols))
-      } catch (err) {
-        console.warn('Unable to serialize MyScript symbols', err)
-        symbols = null
+    try {
+      const raw = (model as any).symbols
+      const src = Array.isArray(raw) ? raw : (Array.isArray(raw?.events) ? raw.events : null)
+      if (src) {
+        symbols = JSON.parse(JSON.stringify(src))
       }
+    } catch (err) {
+      console.warn('Unable to serialize MyScript symbols', err)
+      symbols = null
     }
 
     const exports = model.exports ?? {}
@@ -222,11 +230,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
       if (!channel) return
+      const reason: 'update' | 'clear' = options?.reason ?? 'update'
       // If disconnected, queue snapshot for later instead of attempting publish now
       if (!isRealtimeConnected) {
         const queuedSnapshot = collectEditorSnapshot(true)
-        if (queuedSnapshot && !isSnapshotEmpty(queuedSnapshot)) {
-          pendingPublishQueueRef.current.push({ snapshot: queuedSnapshot, ts: Date.now() })
+        if (queuedSnapshot) {
+          const previousCount = lastSymbolCountRef.current
+          const currentCount = queuedSnapshot.symbols ? queuedSnapshot.symbols.length : 0
+          const isErase = previousCount > 0 && currentCount === 0
+          if (reason === 'clear' || isErase || !isSnapshotEmpty(queuedSnapshot)) {
+            pendingPublishQueueRef.current.push({ snapshot: queuedSnapshot, ts: Date.now(), reason })
+          }
         }
         return
       }
@@ -240,7 +254,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         return
       }
 
-      const record: SnapshotRecord = { snapshot, ts: Date.now() }
+      const record: SnapshotRecord = { snapshot, ts: Date.now(), reason }
 
       latestSnapshotRef.current = record
 
@@ -255,7 +269,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             author: userDisplayName,
             snapshot: record.snapshot,
             ts: record.ts,
-            reason: options?.reason ?? 'update',
+            reason: record.reason,
             originClientId: clientIdRef.current,
           })
         } catch (err) {
@@ -368,7 +382,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     } finally {
       isApplyingRemoteRef.current = false
       setIsConverting(false)
-      latestSnapshotRef.current = { snapshot, ts: Date.now() }
+      latestSnapshotRef.current = { snapshot, ts: Date.now(), reason }
     }
   }, [])
 
@@ -550,7 +564,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           autoConnect: true,
         })
 
-        realtimeRef.current = realtime
+  realtimeRef.current = realtime
 
         await new Promise<void>((resolve, reject) => {
           realtime.connection.once('connected', () => {
@@ -577,7 +591,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                   author: userDisplayName,
                   snapshot: rec.snapshot,
                   ts: rec.ts,
-                  reason: 'update',
+                  reason: rec.reason,
                   originClientId: clientIdRef.current,
                 })
               } catch (e) {
@@ -633,6 +647,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             const record: SnapshotRecord = {
               snapshot: freshSnapshot,
               ts: Date.now(),
+              reason: 'update',
             }
             latestSnapshotRef.current = record
             return record
@@ -645,7 +660,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               author: userDisplayName,
               snapshot: existingRecord.snapshot,
               ts: existingRecord.ts,
-              reason: 'update',
+              reason: existingRecord.reason ?? 'update',
             })
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
@@ -669,6 +684,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const record: SnapshotRecord = {
             snapshot,
             ts: Date.now(),
+            reason: 'update',
           }
           latestSnapshotRef.current = record
           await channel.publish('stroke', {
@@ -676,7 +692,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             author: userDisplayName,
             snapshot: record.snapshot,
             ts: record.ts,
-            reason: 'update',
+            reason: record.reason,
           })
         }
 
@@ -731,6 +747,34 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             // Silent; debug shows attempts
           }
         }, 10000)
+
+        // Periodic reconcile: active broadcaster sends a full snapshot periodically so late joiners catch up
+        reconcileIntervalRef.current = setInterval(async () => {
+          try {
+            if (!channelRef.current) return
+            if (!isRealtimeConnected) return
+            if (isBroadcastPausedRef.current) return
+            if (activeBroadcasterClientIdRef.current !== clientIdRef.current) return
+            // Use current latest snapshot if available; collect without increment to avoid version bump
+            const rec = latestSnapshotRef.current ?? (() => {
+              const snap = collectEditorSnapshot(false)
+              return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
+            })()
+            if (!rec || !rec.snapshot) return
+            // If empty, skip
+            if (isSnapshotEmpty(rec.snapshot)) return
+            await channelRef.current.publish('stroke', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              snapshot: rec.snapshot,
+              ts: rec.ts,
+              reason: rec.reason,
+              originClientId: clientIdRef.current,
+            })
+          } catch (e) {
+            // non-fatal
+          }
+        }, 8000)
       } catch (err) {
         console.error('Failed to initialise Ably realtime collaboration', err)
         if (!disposed) {
@@ -759,6 +803,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         if (heartbeatIntervalRef.current) {
           clearInterval(heartbeatIntervalRef.current)
           heartbeatIntervalRef.current = null
+        }
+        if (reconcileIntervalRef.current) {
+          clearInterval(reconcileIntervalRef.current)
+          reconcileIntervalRef.current = null
         }
       }
     }

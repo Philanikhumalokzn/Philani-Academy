@@ -219,6 +219,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
       if (!channel) return
+      // If disconnected, queue snapshot for later instead of attempting publish now
+      if (!isRealtimeConnected) {
+        const queuedSnapshot = collectEditorSnapshot(true)
+        if (queuedSnapshot && !isSnapshotEmpty(queuedSnapshot)) {
+          pendingPublishQueueRef.current.push({ snapshot: queuedSnapshot, ts: Date.now() })
+        }
+        return
+      }
       const snapshot = collectEditorSnapshot(true)
       if (!snapshot) return
       // Allow broadcasting empty snapshot if it represents an actual erase (previous symbol count > 0)
@@ -234,6 +242,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       latestSnapshotRef.current = record
 
       const publish = async () => {
+        if (!isRealtimeConnected) {
+          pendingPublishQueueRef.current.push(record)
+          return
+        }
         try {
           await channel.publish('stroke', {
             clientId: clientIdRef.current,
@@ -245,7 +257,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           })
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
-          // If connection closed, queue for retry on reconnect
           pendingPublishQueueRef.current.push(record)
         }
       }
@@ -548,16 +559,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             reject(err)
           })
         })
-        // Connection state tracking
-        realtime.connection.on('state', (stateChange: any) => {
+        // Connection state tracking & reauth
+        realtime.connection.on('state', async (stateChange: any) => {
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          // Flush queued publishes on reconnect
           if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
             const toSend = [...pendingPublishQueueRef.current]
             pendingPublishQueueRef.current = []
-            toSend.forEach(async rec => {
+            for (const rec of toSend) {
               try {
                 await channelRef.current.publish('stroke', {
                   clientId: clientIdRef.current,
@@ -569,8 +579,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                 })
               } catch (e) {
                 console.warn('Retry publish failed', e)
+                pendingPublishQueueRef.current.push(rec)
               }
-            })
+            }
+          }
+          if (!connected && (state === 'closed' || state === 'failed')) {
+            try {
+              await realtime.auth.authorize({ force: true })
+              realtime.connect()
+            } catch (reauthErr) {
+              console.warn('Reauth attempt failed', reauthErr)
+            }
           }
         })
 

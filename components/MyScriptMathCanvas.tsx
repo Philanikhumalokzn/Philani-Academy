@@ -158,6 +158,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [activeBroadcasterClientId, setActiveBroadcasterClientId] = useState<string | null>(null)
   const activeBroadcasterClientIdRef = useRef<string | null>(null)
   const [connectedClients, setConnectedClients] = useState<Array<{ clientId: string; name?: string }>>([])
+  const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
+  const isBroadcastPausedRef = useRef(false)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -180,9 +182,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     const model = editor.model ?? {}
     let symbols: any[] | null = null
-    if (model.symbols) {
+    if (model && Array.isArray((model as any).symbols)) {
       try {
-        symbols = JSON.parse(JSON.stringify(model.symbols))
+        symbols = JSON.parse(JSON.stringify((model as any).symbols))
       } catch (err) {
         console.warn('Unable to serialize MyScript symbols', err)
         symbols = null
@@ -211,6 +213,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       if (activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current !== clientIdRef.current) {
         if (!options?.force) return
       }
+      // Pause overrides everything except forced clears
+      if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
       if (!channel) return
       const snapshot = collectEditorSnapshot(true)
@@ -726,6 +730,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const isActiveBroadcaster = activeBroadcasterClientId === clientIdRef.current
 
+  const toggleBroadcastPause = () => {
+    if (!isAdmin) return
+    setIsBroadcastPaused(prev => {
+      const next = !prev
+      isBroadcastPausedRef.current = next
+      return next
+    })
+  }
+
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
     // Resize editor after layout change
@@ -810,6 +823,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         )}
         <div className="text-xs mt-2">
           <span className="px-2 py-1 rounded border bg-white">Broadcast mode: {isActiveBroadcaster ? 'Active (sending)' : 'Receiving only'}</span>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={toggleBroadcastPause}
+              className="ml-2 px-2 py-1 rounded border text-xs bg-white"
+            >
+              {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Broadcast'}
+            </button>
+          )}
+          {isAdmin && isBroadcastPaused && (
+            <span className="ml-2 text-[10px] text-red-600">Paused: no strokes sent</span>
+          )}
         </div>
         {isAdmin && (
           <div className="mt-3 p-2 border rounded bg-white">

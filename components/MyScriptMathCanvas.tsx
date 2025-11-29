@@ -34,8 +34,9 @@ type SnapshotMessage = {
   reason?: 'update' | 'clear'
   originClientId?: string
   control?: {
-    type: 'set-broadcaster'
-    broadcasterClientId: string | null
+    type: 'set-broadcaster' | 'set-multi-broadcast'
+    broadcasterClientId?: string | null
+    multiBroadcastEnabled?: boolean
   }
 }
 
@@ -152,7 +153,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
   const appliedSnapshotIdsRef = useRef<Set<string>>(new Set())
-  const [status, setStatus] = useState<CanvasStatus>('idle')
+  const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [transientError, setTransientError] = useState<string | null>(null)
   const [latexOutput, setLatexOutput] = useState('')
@@ -167,6 +168,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
+  const [multiBroadcastEnabled, setMultiBroadcastEnabled] = useState(false)
+  const multiBroadcastEnabledRef = useRef(false)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -223,10 +226,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
       // Strict gating: only the active broadcaster may send. If none set, nobody sends.
-      const activeId = activeBroadcasterClientIdRef.current
-      if (!activeId || activeId !== clientIdRef.current) {
-        if (!options?.force) return
-      }
+      if (!multiBroadcastEnabledRef.current) {
+        const activeId = activeBroadcasterClientIdRef.current
+        if (!activeId || activeId !== clientIdRef.current) {
+          if (!options?.force) return
+        }
+    }
       // Pause overrides everything except forced clears
       if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
@@ -302,10 +307,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
-    // Control message handling: update active broadcaster
-    if (message.control?.type === 'set-broadcaster') {
-      activeBroadcasterClientIdRef.current = message.control.broadcasterClientId
-      setActiveBroadcasterClientId(message.control.broadcasterClientId)
+  // Control message handling: update active broadcaster (single mode)
+  if (message.control?.type === 'set-broadcaster') {
+      activeBroadcasterClientIdRef.current = message.control.broadcasterClientId ?? null
+      setActiveBroadcasterClientId(message.control.broadcasterClientId ?? null)
+      return
+    }
+    if (message.control?.type === 'set-multi-broadcast') {
+      multiBroadcastEnabledRef.current = !!message.control.multiBroadcastEnabled
+      setMultiBroadcastEnabled(!!message.control.multiBroadcastEnabled)
       return
     }
     if (!snapshot) return
@@ -326,7 +336,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const editor = editorInstanceRef.current
     if (!editor) return
     // Ignore stale versions
-    if (snapshot.version <= appliedVersionRef.current) return
+  // Ignore stale versions only when single broadcast; allow concurrent versions in multi mode
+  if (!multiBroadcastEnabledRef.current && snapshot.version <= appliedVersionRef.current) return
 
     isApplyingRemoteRef.current = true
     try {
@@ -409,13 +420,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const websocketHost = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_HOST || 'cloud.myscript.com'
 
     if (!appKey || !hmacKey) {
-      setStatus('error')
+  setCanvasStatus('error')
       setError(missingKeyMessage)
       return
     }
 
-    setStatus('loading')
-    setError(null)
+  setCanvasStatus('loading')
+  setError(null)
 
     let resizeHandler: (() => void) | null = null
     const listeners: Array<{ type: string; handler: (event: any) => void }> = []
@@ -454,7 +465,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
 
         editorInstanceRef.current = editor
-        setStatus('ready')
+  setCanvasStatus('ready')
 
         const handleChanged = (evt: any) => {
           setCanUndo(Boolean(evt.detail?.canUndo))
@@ -512,7 +523,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
           if (fatal) {
             setError(raw)
-            setStatus('error')
+            setCanvasStatus('error')
             return
           }
           // Transient: keep canvas usable
@@ -540,7 +551,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         if (cancelled) return
         console.error('MyScript initialization failed', err)
         setError(err instanceof Error ? err.message : String(err))
-        setStatus('error')
+  setCanvasStatus('error')
       })
 
     return () => {
@@ -575,7 +586,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }, [broadcastSnapshot])
 
   useEffect(() => {
-    if (status !== 'ready') {
+    if (canvasStatus !== 'ready') {
       return
     }
 
@@ -705,11 +716,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
         channel.subscribe('sync-request', handleSyncRequest)
-        channel.subscribe('control', async (message: any) => {
+  channel.subscribe('control', async (message: any) => {
           const data = message?.data as SnapshotMessage
           if (data?.control?.type === 'set-broadcaster') {
-            activeBroadcasterClientIdRef.current = data.control.broadcasterClientId
-            setActiveBroadcasterClientId(data.control.broadcasterClientId)
+            activeBroadcasterClientIdRef.current = data.control.broadcasterClientId ?? null
+            setActiveBroadcasterClientId(data.control.broadcasterClientId ?? null)
+          } else if (data?.control?.type === 'set-multi-broadcast') {
+            multiBroadcastEnabledRef.current = !!data.control.multiBroadcastEnabled
+            setMultiBroadcastEnabled(!!data.control.multiBroadcastEnabled)
           }
         })
 
@@ -802,8 +816,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           console.warn('Presence tracking failed', e)
         }
 
-        // Default broadcaster assignment if admin
-        if (isAdmin && !activeBroadcasterClientIdRef.current) {
+        // Default broadcaster assignment if admin (only in single mode)
+        if (isAdmin && !activeBroadcasterClientIdRef.current && !multiBroadcastEnabledRef.current) {
           activeBroadcasterClientIdRef.current = clientIdRef.current
           setActiveBroadcasterClientId(clientIdRef.current)
           try {
@@ -960,7 +974,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
-  const isActiveBroadcaster = activeBroadcasterClientId === clientIdRef.current
+  const isActiveBroadcaster = multiBroadcastEnabled || activeBroadcasterClientId === clientIdRef.current
 
   const toggleBroadcastPause = () => {
     if (!isAdmin) return
@@ -969,6 +983,36 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       isBroadcastPausedRef.current = next
       return next
     })
+  }
+
+  const handleToggleMultiBroadcast = async () => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const next = !multiBroadcastEnabledRef.current
+    multiBroadcastEnabledRef.current = next
+    setMultiBroadcastEnabled(next)
+    // If disabling and no single broadcaster selected, elect self.
+    if (!next && !activeBroadcasterClientIdRef.current) {
+      activeBroadcasterClientIdRef.current = clientIdRef.current
+      setActiveBroadcasterClientId(clientIdRef.current)
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
+          ts: Date.now(),
+        })
+      } catch {}
+    }
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        control: { type: 'set-multi-broadcast', multiBroadcastEnabled: next },
+        ts: Date.now(),
+      })
+    } catch (e) {
+      console.warn('Failed to toggle multi broadcast', e)
+    }
   }
 
   const toggleFullscreen = () => {
@@ -988,22 +1032,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             className={isFullscreen ? 'w-full h-full' : 'w-full h-[24rem]'}
             style={{ minHeight: isFullscreen ? undefined : '384px' }}
           />
-          {(status === 'loading' || status === 'idle') && (
+          {(canvasStatus === 'loading' || canvasStatus === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
               Preparing collaborative canvas…
             </div>
           )}
-          {status === 'error' && error && (
+          {canvasStatus === 'error' && error && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
               {error}
             </div>
           )}
-          {transientError && status === 'ready' && (
+          {transientError && canvasStatus === 'ready' && (
             <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
               {transientError}
             </div>
           )}
-          {status === 'ready' && (
+          {canvasStatus === 'ready' && (
             <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
               Ready
             </div>
@@ -1018,16 +1062,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(error)}>
+          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || canvasStatus !== 'ready' || Boolean(error)}>
             Undo
           </button>
-          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(error)}>
+          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || canvasStatus !== 'ready' || Boolean(error)}>
             Redo
           </button>
-          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(error)}>
+          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || canvasStatus !== 'ready' || Boolean(error)}>
             Clear
           </button>
-          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(error)}>
+          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={canvasStatus !== 'ready' || Boolean(error)}>
             {isConverting ? 'Converting…' : 'Convert to LaTeX'}
           </button>
           <button className="btn" type="button" onClick={toggleFullscreen}>
@@ -1059,6 +1103,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
             <div>queueLen: {pendingPublishQueueRef.current.length}</div>
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
+            <div>multiBroadcastEnabled: {multiBroadcastEnabled ? 'yes' : 'no'}</div>
           </div>
         )}
         <div className="text-xs mt-2">
@@ -1078,13 +1123,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {!isRealtimeConnected && (
             <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued and sent on reconnect</span>
           )}
-          {(isAdmin || !activeBroadcasterClientId || activeBroadcasterClientId === clientIdRef.current) && !error && (
+          {(isAdmin || !activeBroadcasterClientId || activeBroadcasterClientId === clientIdRef.current) && !error && !multiBroadcastEnabled && (
             <button
               type="button"
               onClick={handleToggleSelfBroadcast}
               className="ml-2 px-2 py-1 rounded border text-xs bg-white"
             >
               {isActiveBroadcaster ? 'Stop Broadcasting' : 'Become Broadcaster'}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleToggleMultiBroadcast}
+              className="ml-2 px-2 py-1 rounded border text-xs bg-white"
+            >
+              {multiBroadcastEnabled ? 'Disable Dual Broadcast' : 'Enable Dual Broadcast'}
             </button>
           )}
         </div>

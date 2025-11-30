@@ -36,6 +36,12 @@ type SnapshotMessage = {
   originClientId?: string
 }
 
+type ControlState = {
+  controllerId: string
+  controllerName?: string
+  ts: number
+} | null
+
 type BroadcastOptions = {
   force?: boolean
   reason?: 'update' | 'clear'
@@ -184,6 +190,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
+  const [controlState, setControlState] = useState<ControlState>(null)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -192,6 +199,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const pendingRemoteSnapshotsRef = useRef<Array<{ message: SnapshotMessage; receivedTs?: number }>>([])
   const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
   const remoteProcessingRef = useRef(false)
+  const controlStateRef = useRef<ControlState>(null)
+  const lockedOutRef = useRef(false)
+  const hasExclusiveControlRef = useRef(false)
+  const lastControlBroadcastTsRef = useRef(0)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -204,6 +215,21 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }, [clientId])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
+
+  const updateControlState = useCallback(
+    (next: ControlState) => {
+      controlStateRef.current = next
+      const isController = Boolean(next && next.controllerId === clientIdRef.current)
+      hasExclusiveControlRef.current = isController
+      const lockedOut = Boolean(next && next.controllerId && next.controllerId !== clientIdRef.current)
+      lockedOutRef.current = lockedOut
+      if (lockedOut) {
+        pendingPublishQueueRef.current = []
+      }
+      setControlState(next)
+    },
+    []
+  )
 
   const channelName = useMemo(() => {
     // Force a single shared board across instances unless a specific boardId is provided.
@@ -258,7 +284,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
       // Pause overrides everything except forced clears
-      if (isBroadcastPausedRef.current && !options?.force) return
+  if (lockedOutRef.current) return
+  if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
       if (!channel) return
       const reason: 'update' | 'clear' = options?.reason ?? 'update'
@@ -578,7 +605,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (now < suppressBroadcastUntilTsRef.current) {
             return
           }
-          const canSend = !isBroadcastPausedRef.current
+          const canSend = !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -815,9 +842,20 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }
         }
 
+        const handleControlMessage = (message: any) => {
+          const data = message?.data as { locked?: boolean; controllerId?: string; controllerName?: string; ts?: number }
+          if (!data || typeof data.locked !== 'boolean' || !data.controllerId) return
+          if (data.locked) {
+            updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: data.ts ?? Date.now() })
+          } else if (controlStateRef.current && controlStateRef.current.controllerId === data.controllerId) {
+            updateControlState(null)
+          }
+        }
+
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
         channel.subscribe('sync-request', handleSyncRequest)
+        channel.subscribe('control', handleControlMessage)
         // Removed control channel subscription.
 
         const snapshot = captureFullSnapshot()
@@ -870,6 +908,24 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                     originClientId: clientIdRef.current,
                   })
                 }
+                if (hasExclusiveControlRef.current) {
+                  const now = Date.now()
+                  if (now - lastControlBroadcastTsRef.current > 1500) {
+                    await channel.publish('control', {
+                      clientId: clientIdRef.current,
+                      author: userDisplayName,
+                      locked: true,
+                      controllerId: clientIdRef.current,
+                      controllerName: userDisplayName,
+                      ts: now,
+                    })
+                    lastControlBroadcastTsRef.current = now
+                  }
+                }
+              }
+              const action = presenceMsg?.action
+              if ((action === 'leave' || action === 'absent' || action === 'timeout') && controlStateRef.current?.controllerId === presenceMsg?.clientId) {
+                updateControlState(null)
               }
             } catch {}
           })
@@ -917,6 +973,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       try {
         channelRef.current = null
         if (channel) {
+          if (hasExclusiveControlRef.current) {
+            const ts = Date.now()
+            channel
+              .publish('control', {
+                clientId: clientIdRef.current,
+                author: userDisplayName,
+                locked: false,
+                controllerId: clientIdRef.current,
+                controllerName: userDisplayName,
+                ts,
+              })
+              .catch(() => {})
+          }
           channel.unsubscribe()
           channel.detach?.()
         }
@@ -951,10 +1020,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, status, userDisplayName])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName])
 
   const handleClear = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
     lastSymbolCountRef.current = 0
@@ -964,18 +1034,21 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const handleUndo = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     editorInstanceRef.current.undo()
     broadcastSnapshot(false)
   }
 
   const handleRedo = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     editorInstanceRef.current.redo()
     broadcastSnapshot(false)
   }
 
   const handleConvert = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
   }
@@ -991,6 +1064,54 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     })
   }
 
+  const requestExclusiveControl = async () => {
+    if (!isAdmin) return
+    if (controlStateRef.current && controlStateRef.current.controllerId === clientIdRef.current) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: true,
+        controllerId: clientIdRef.current,
+        controllerName: userDisplayName,
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState({ controllerId: clientIdRef.current, controllerName: userDisplayName, ts })
+    } catch (err) {
+      console.warn('Failed to request exclusive control', err)
+    }
+  }
+
+  const releaseExclusiveControl = async () => {
+    if (!isAdmin) return
+    if (!controlStateRef.current || controlStateRef.current.controllerId !== clientIdRef.current) return
+    const channel = channelRef.current
+    if (!channel) {
+      updateControlState(null)
+      return
+    }
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: false,
+        controllerId: clientIdRef.current,
+        controllerName: userDisplayName,
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState(null)
+    } catch (err) {
+      console.warn('Failed to release exclusive control', err)
+      updateControlState(null)
+    }
+  }
+
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
     // Resize editor after layout change
@@ -999,6 +1120,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     } catch {}
   }
 
+  const isViewOnly = Boolean(controlState && controlState.controllerId && controlState.controllerId !== clientId)
+  const controlOwnerLabel = controlState
+    ? controlState.controllerId === clientId
+      ? 'You'
+      : controlState.controllerName || 'Instructor'
+    : null
+
   return (
     <div>
       <div className="flex flex-col gap-3">
@@ -1006,7 +1134,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           <div
             ref={editorHostRef}
             className={isFullscreen ? 'w-full h-full' : 'w-full h-[24rem]'}
-            style={{ minHeight: isFullscreen ? undefined : '384px' }}
+            style={{
+              minHeight: isFullscreen ? undefined : '384px',
+              pointerEvents: isViewOnly ? 'none' : undefined,
+            }}
           />
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
@@ -1028,6 +1159,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Ready
             </div>
           )}
+          {isViewOnly && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
+              {controlOwnerLabel || 'Instructor'} is writing. You're in view-only mode.
+            </div>
+          )}
           <button
             type="button"
             onClick={toggleFullscreen}
@@ -1038,16 +1174,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError)}>
+          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
             Undo
           </button>
-          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError)}>
+          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
             Redo
           </button>
-          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError)}>
+          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
             Clear
           </button>
-          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError)}>
+          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
             {isConverting ? 'Converting…' : 'Convert to LaTeX'}
           </button>
           <button className="btn" type="button" onClick={toggleFullscreen}>
@@ -1088,6 +1224,21 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             >
               {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Updates'}
             </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={controlState && controlState.controllerId === clientId ? releaseExclusiveControl : requestExclusiveControl}
+              className="px-2 py-1 rounded border text-xs bg-white ml-2"
+              disabled={Boolean(fatalError) || status !== 'ready'}
+            >
+              {controlState && controlState.controllerId === clientId ? 'Release Control' : 'Take Control'}
+            </button>
+          )}
+          {controlState && (
+            <span className="ml-2 text-[10px] text-slate-600 align-middle">
+              Controlled by {controlOwnerLabel}
+            </span>
           )}
           {!isRealtimeConnected && (
             <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued</span>

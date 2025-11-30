@@ -43,6 +43,7 @@ type BroadcastOptions = {
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
+const DEFAULT_BROADCAST_DEBOUNCE_MS = 60
 
 let scriptPromise: Promise<void> | null = null
 
@@ -122,12 +123,25 @@ const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIP
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
+const getBroadcastDebounce = () => {
+  const parsed = Number(process.env.NEXT_PUBLIC_MYSCRIPT_BROADCAST_DEBOUNCE_MS)
+  if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 500) {
+    return parsed
+  }
+  return DEFAULT_BROADCAST_DEBOUNCE_MS
+}
+
 const countSymbols = (source: any): number => {
   if (!source) return 0
   if (Array.isArray(source)) return source.length
   if (Array.isArray(source?.events)) return source.events.length
   return 0
 }
+
+const nextAnimationFrame = () =>
+  typeof window === 'undefined'
+    ? new Promise<void>(resolve => setTimeout(resolve, 16))
+    : new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
 
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
@@ -175,6 +189,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // (Unused now; kept for potential future periodic sync)
   const realtimeRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRemoteSnapshotsRef = useRef<Array<{ message: SnapshotMessage; receivedTs?: number }>>([])
+  const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
+  const remoteProcessingRef = useRef(false)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -185,6 +202,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   useEffect(() => {
     clientIdRef.current = clientId
   }, [clientId])
+
+  const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
   const channelName = useMemo(() => {
     // Force a single shared board across instances unless a specific boardId is provided.
@@ -316,12 +335,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       pendingBroadcastRef.current = setTimeout(() => {
         pendingBroadcastRef.current = null
         publish()
-      }, 180)
+      }, broadcastDebounceMs)
     },
-    [collectEditorSnapshot, userDisplayName]
+    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName]
   )
 
-  const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
+  const applySnapshotCore = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
     if (!snapshot) return
@@ -351,9 +370,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     const rebuildFromSnapshot = async (count: number) => {
       try {
+        await nextAnimationFrame()
         editor.clear()
         if (count > 0) {
           if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          await nextAnimationFrame()
           await editor.importPointEvents(symbolsArray)
           if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
         } else {
@@ -372,6 +393,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const delta = symbolsArray.slice(startIndex)
       if (!delta.length) return false
       try {
+        await nextAnimationFrame()
         await editor.importPointEvents(delta)
         if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
         lastSymbolCountRef.current = previousCount + delta.length
@@ -441,6 +463,51 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       setIsConverting(false)
     }
   }, [captureFullSnapshot])
+
+  const scheduleRemoteProcessing = useCallback(() => {
+    if (remoteProcessingRef.current) {
+      return
+    }
+    const processNext = () => {
+      const task = pendingRemoteSnapshotsRef.current.shift()
+      if (!task) {
+        remoteProcessingRef.current = false
+        remoteFrameHandleRef.current = null
+        return
+      }
+      applySnapshotCore(task.message, task.receivedTs)
+        .catch(err => {
+          console.error('Remote snapshot application failed', err)
+        })
+        .finally(() => {
+          if (pendingRemoteSnapshotsRef.current.length) {
+            if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+              remoteFrameHandleRef.current = setTimeout(processNext, 16)
+            } else {
+              remoteFrameHandleRef.current = window.requestAnimationFrame(() => processNext())
+            }
+          } else {
+            remoteProcessingRef.current = false
+            remoteFrameHandleRef.current = null
+          }
+        })
+    }
+
+    remoteProcessingRef.current = true
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      remoteFrameHandleRef.current = setTimeout(processNext, 0)
+    } else {
+      remoteFrameHandleRef.current = window.requestAnimationFrame(() => processNext())
+    }
+  }, [applySnapshotCore])
+
+  const enqueueSnapshot = useCallback(
+    (message: SnapshotMessage, receivedTs?: number) => {
+      pendingRemoteSnapshotsRef.current.push({ message, receivedTs })
+      scheduleRemoteProcessing()
+    },
+    [scheduleRemoteProcessing]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -696,16 +763,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channelRef.current = channel
         await channel.attach()
 
-        const handleStroke = async (message: any) => {
+        const handleStroke = (message: any) => {
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
+          enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
-        const handleSyncState = async (message: any) => {
+        const handleSyncState = (message: any) => {
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
+          enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
@@ -872,9 +939,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           clearTimeout(realtimeRetryTimeoutRef.current)
           realtimeRetryTimeoutRef.current = null
         }
+        if (remoteFrameHandleRef.current !== null) {
+          if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function' && typeof remoteFrameHandleRef.current === 'number') {
+            window.cancelAnimationFrame(remoteFrameHandleRef.current)
+          } else {
+            clearTimeout(remoteFrameHandleRef.current as ReturnType<typeof setTimeout>)
+          }
+          remoteFrameHandleRef.current = null
+        }
+        pendingRemoteSnapshotsRef.current = []
+        remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshot, captureFullSnapshot, collectEditorSnapshot, channelName, status, userDisplayName])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, status, userDisplayName])
 
   const handleClear = () => {
     if (!editorInstanceRef.current) return

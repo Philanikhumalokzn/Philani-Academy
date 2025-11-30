@@ -1086,6 +1086,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
             <div>broadcaster: {activeBroadcasterClientId || '—'}</div>
             <div>isActiveBroadcaster: {isActiveBroadcaster ? 'yes' : 'no'}</div>
+            <div>bidirectional: {isBidirectionalBroadcast ? 'on' : 'off'}</div>
+            <div>isAdmin: {isAdmin ? 'yes' : 'no'}</div>
             <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
             <div>queueLen: {pendingPublishQueueRef.current.length}</div>
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
@@ -1130,6 +1132,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         {isAdmin && (
           <div className="mt-3 p-2 border rounded bg-white">
             <p className="text-xs font-semibold mb-2">Select Active Broadcaster</p>
+            <div className="mb-2 text-[11px]">Bidirectional mode: <span className={`px-1 rounded border ${isBidirectionalBroadcast ? 'bg-green-100 border-green-500' : 'bg-slate-100 border-slate-300'}`}>{isBidirectionalBroadcast ? 'Enabled' : 'Disabled'}</span></div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                onClick={toggleBidirectionalMode}
+                className="text-xs px-2 py-1 rounded border bg-white"
+              >
+                {isBidirectionalBroadcast ? 'Disable Bidirectional' : 'Enable Bidirectional'}
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
               {connectedClients.map(c => (
                 <button

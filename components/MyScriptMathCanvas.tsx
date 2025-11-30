@@ -172,6 +172,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isBootstrappingRef = useRef(false)
+  const awaitingBootstrapSyncRef = useRef(false)
+  const bootstrapRetryTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
 
   // Bootstrap the local editor when we become the broadcaster: clear locally and request latest state
   const bootstrapAsBroadcaster = useCallback(async () => {
@@ -191,11 +193,31 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       localVersionRef.current = 0
       isApplyingRemoteRef.current = false
       // Ask current peers for latest state
+      awaitingBootstrapSyncRef.current = true
       await channel.publish('sync-request', {
         clientId: clientIdRef.current,
         author: userDisplayName,
         ts: Date.now(),
       })
+      // Retry a few times if no one responds quickly
+      bootstrapRetryTimersRef.current.forEach(t => clearTimeout(t))
+      bootstrapRetryTimersRef.current = [
+        setTimeout(async () => {
+          if (!awaitingBootstrapSyncRef.current) return
+          try {
+            await channel.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
+          } catch {}
+        }, 700),
+        setTimeout(async () => {
+          if (!awaitingBootstrapSyncRef.current) return
+          try {
+            await channel.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
+          } catch {}
+        }, 1500),
+        setTimeout(() => {
+          awaitingBootstrapSyncRef.current = false
+        }, 3500),
+      ]
       // End bootstrap after request is sent
       isBootstrappingRef.current = false
     } catch (e) {
@@ -424,6 +446,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       isApplyingRemoteRef.current = false
       setIsConverting(false)
       latestSnapshotRef.current = { snapshot, ts: Date.now(), reason }
+      // If we were awaiting a bootstrap sync, mark it completed once any valid snapshot is applied
+      if (snapshot && lastSymbolCountRef.current > 0) {
+        awaitingBootstrapSyncRef.current = false
+      }
     }
   }, [])
 
@@ -587,6 +613,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         clearTimeout(pendingExportRef.current)
         pendingExportRef.current = null
       }
+      // Clear any bootstrap retry timers
+      bootstrapRetryTimersRef.current.forEach(t => clearTimeout(t))
+      bootstrapRetryTimersRef.current = []
       listeners.forEach(({ type, handler }) => {
         try {
           editorInstanceRef.current?.event?.removeEventListener(type, handler)

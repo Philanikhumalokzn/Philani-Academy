@@ -883,12 +883,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         await channel.attach()
 
         const handleStroke = (message: any) => {
+          if (!isAdmin && latexDisplayStateRef.current.enabled) {
+            return
+          }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncState = (message: any) => {
+          if (!isAdmin && latexDisplayStateRef.current.enabled) {
+            return
+          }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
@@ -961,6 +967,23 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             const enabled = Boolean(data.enabled)
             const latex = typeof data.latex === 'string' ? data.latex : ''
             setLatexDisplayState({ enabled, latex })
+            if (!isAdmin) {
+              if (enabled) {
+                try {
+                  editor.clear()
+                  lastSymbolCountRef.current = 0
+                  lastBroadcastBaseCountRef.current = 0
+                } catch {}
+              } else if (channel) {
+                channel
+                  .publish('sync-request', {
+                    clientId: clientIdRef.current,
+                    author: userDisplayName,
+                    ts: Date.now(),
+                  })
+                  .catch(err => console.warn('Failed to request sync after exiting LaTeX display mode', err))
+              }
+            }
             return
           }
           if (data?.action === 'force-resync') {

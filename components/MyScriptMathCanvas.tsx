@@ -306,14 +306,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (msgTs <= lastGlobalUpdateTsRef.current) {
       return
     }
-    const incomingSymbolCount = (() => {
-      const sym: any = snapshot.symbols as any
-      if (Array.isArray(sym)) return sym.length
-      if (Array.isArray(sym?.events)) return sym.events.length
-      return 0
-    })()
+    const symbolsArray: any[] = Array.isArray(snapshot.symbols)
+      ? snapshot.symbols
+      : Array.isArray((snapshot.symbols as any)?.events)
+      ? (snapshot.symbols as any).events
+      : []
+    const incomingSymbolCount = symbolsArray.length
     const previousCount = lastSymbolCountRef.current
-    // Skip redundant empty updates when both sides already empty.
+    // Skip redundant empty updates when both sides already empty and not a forced clear
     if (incomingSymbolCount === 0 && previousCount === 0 && reason !== 'clear') {
       return
     }
@@ -326,50 +326,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      if (reason === 'clear') {
-        editor.clear()
-        if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-      } else if (incomingSymbolCount < previousCount) {
-        // Remote performed an erase/undo sequence. Rebuild from full snapshot (including empty).
-        editor.clear()
-        if (incomingSymbolCount > 0 && snapshot.symbols) {
-          try {
-            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-            await editor.importPointEvents(snapshot.symbols)
-            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          } catch (e) {
-            console.error('Failed to rebuild after shrink', e)
-          }
-        } else {
-          // Fully empty after erase
-          setLatexOutput('')
+      // Authoritative replay: clear and import the full symbol list from the latest board
+      editor.clear()
+      if (incomingSymbolCount > 0) {
+        try {
+          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          await editor.importPointEvents(symbolsArray)
+          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+        } catch (e) {
+          console.error('Failed to import remote snapshot', e)
         }
-      } else if (snapshot.symbols && incomingSymbolCount > previousCount) {
-        // Import only new tail delta
-        const all = Array.isArray(snapshot.symbols)
-          ? snapshot.symbols
-          : (Array.isArray((snapshot.symbols as any)?.events) ? (snapshot.symbols as any).events : [])
-        const delta = all.slice(previousCount)
-        if (delta.length) {
-          try {
-            await editor.importPointEvents(delta)
-            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          } catch (e) {
-            console.warn('Delta import failed; attempting full import', e)
-            try {
-              editor.clear()
-              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-              await editor.importPointEvents(all)
-              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-            } catch (e2) {
-              console.error('Full import failed', e2)
-            }
-          }
-        }
+      } else {
+        setLatexOutput('')
       }
 
       // Tracking
-  lastSymbolCountRef.current = incomingSymbolCount
+      lastSymbolCountRef.current = incomingSymbolCount
       appliedVersionRef.current = snapshot.version
       lastAppliedRemoteVersionRef.current = snapshot.version
       suppressBroadcastUntilTsRef.current = Date.now() + 500
@@ -387,7 +359,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     } finally {
       isApplyingRemoteRef.current = false
       setIsConverting(false)
-      latestSnapshotRef.current = { snapshot, ts: Date.now(), reason }
+      latestSnapshotRef.current = { snapshot, ts: msgTs, reason }
       lastGlobalUpdateTsRef.current = msgTs
     }
   }, [])

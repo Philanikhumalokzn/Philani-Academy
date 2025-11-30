@@ -172,6 +172,33 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Bootstrap the local editor when we become the broadcaster: clear locally and request latest state
+  const bootstrapAsBroadcaster = useCallback(async () => {
+    try {
+      const editor = editorInstanceRef.current
+      const channel = channelRef.current
+      if (!editor || !channel) return
+      // Locally clear without broadcasting; reset counters
+      isApplyingRemoteRef.current = true
+      editor.clear()
+      await editor.waitForIdle?.()
+      lastSymbolCountRef.current = 0
+      appliedVersionRef.current = 0
+      localVersionRef.current = 0
+      // Suppress outgoing for a short window until we import the remote state
+      suppressBroadcastUntilTsRef.current = Date.now() + 1500
+      isApplyingRemoteRef.current = false
+      // Ask current peers for latest state
+      await channel.publish('sync-request', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        ts: Date.now(),
+      })
+    } catch (e) {
+      // non-fatal
+    }
+  }, [userDisplayName])
+
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
     const randomSuffix = Math.random().toString(36).slice(2, 8)
@@ -710,6 +737,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (data?.control?.type === 'set-broadcaster') {
             activeBroadcasterClientIdRef.current = data.control.broadcasterClientId
             setActiveBroadcasterClientId(data.control.broadcasterClientId)
+            // If we are being set as broadcaster, bootstrap our local editor from the latest remote state
+            if (data.control.broadcasterClientId && data.control.broadcasterClientId === clientIdRef.current) {
+              await bootstrapAsBroadcaster()
+            }
           }
         })
 
@@ -955,6 +986,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         control: { type: 'set-broadcaster', broadcasterClientId: nextId },
         ts: Date.now(),
       })
+      if (nextId === clientIdRef.current) {
+        await bootstrapAsBroadcaster()
+      }
     } catch (e) {
       console.warn('Failed to toggle self broadcaster', e)
     }

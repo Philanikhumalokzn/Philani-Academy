@@ -1609,7 +1609,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const right = line.slice(equalsIndex + 1).trim()
           return `${left} &= ${right}`
         })
-        latexString = `\begin{aligned}${processed.join(' \\ ')}\end{aligned}`
+        latexString = `\\begin{aligned}${processed.join(' \\ ')}\\end{aligned}`
       }
     }
     try {

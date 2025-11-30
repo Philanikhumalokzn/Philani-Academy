@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { renderToString } from 'katex'
 
 declare global {
   interface Window {
@@ -200,6 +201,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const isBroadcastPausedRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
+  const [latexDisplayState, setLatexDisplayState] = useState<{ enabled: boolean; latex: string }>({ enabled: false, latex: '' })
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -213,6 +215,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
+  const latexDisplayStateRef = useRef<{ enabled: boolean; latex: string }>({ enabled: false, latex: '' })
   const forcedConvertDepthRef = useRef(0)
 
   const clientId = useMemo(() => {
@@ -224,6 +227,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   useEffect(() => {
     clientIdRef.current = clientId
   }, [clientId])
+
+  useEffect(() => {
+    latexDisplayStateRef.current = latexDisplayState
+  }, [latexDisplayState])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -382,6 +389,36 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     },
     [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin]
   )
+
+  const publishLatexDisplayState = useCallback(
+    async (enabled: boolean, latex: string) => {
+      if (!isAdmin) return
+      const channel = channelRef.current
+      if (!channel) return
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'latex-display',
+          enabled,
+          latex,
+          ts: Date.now(),
+        })
+      } catch (err) {
+        console.warn('Failed to broadcast LaTeX display state', err)
+      }
+    },
+    [isAdmin, userDisplayName]
+  )
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!latexDisplayStateRef.current.enabled) return
+    const trimmed = (latexOutput || '').trim()
+    if (trimmed === latexDisplayStateRef.current.latex) return
+    setLatexDisplayState(curr => (curr.enabled ? { ...curr, latex: trimmed } : curr))
+    publishLatexDisplayState(true, trimmed)
+  }, [latexOutput, isAdmin, publishLatexDisplayState])
 
   const applySnapshotCore = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
@@ -905,9 +942,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display'
             targetClientId?: string
             snapshot?: SnapshotPayload | null
+            enabled?: boolean
+            latex?: string
           }
           if (data?.action === 'convert') {
             if (isAdmin) return
@@ -916,6 +955,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             forcedConvertDepthRef.current += 1
             setIsConverting(true)
             editor.convert()
+            return
+          }
+          if (data?.action === 'latex-display') {
+            const enabled = Boolean(data.enabled)
+            const latex = typeof data.latex === 'string' ? data.latex : ''
+            setLatexDisplayState({ enabled, latex })
             return
           }
           if (data?.action === 'force-resync') {
@@ -1028,6 +1073,21 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                     reason: rec.reason,
                     originClientId: clientIdRef.current,
                   })
+                }
+                if (latexDisplayStateRef.current.enabled) {
+                  const latex = latexDisplayStateRef.current.latex || (latexOutput || '').trim()
+                  try {
+                    await channel.publish('control', {
+                      clientId: clientIdRef.current,
+                      author: userDisplayName,
+                      action: 'latex-display',
+                      enabled: true,
+                      latex,
+                      ts: Date.now(),
+                    })
+                  } catch (err) {
+                    console.warn('Failed to rebroadcast latex display state', err)
+                  }
                 }
                 if (isAdmin && hasExclusiveControlRef.current) {
                   const now = Date.now()
@@ -1302,6 +1362,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const toggleLatexProjection = async () => {
+    if (!isAdmin) return
+    const nextEnabled = !latexDisplayStateRef.current.enabled
+    const latex = nextEnabled ? (latexOutput || '').trim() : ''
+    setLatexDisplayState({ enabled: nextEnabled, latex })
+    await publishLatexDisplayState(nextEnabled, latex)
+  }
+
   const forcePublishCanvas = async (targetClientId?: string) => {
     if (!isAdmin) return
     const channel = channelRef.current
@@ -1376,6 +1444,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
     return 'Instructor'
   })()
+  const latexProjectionMarkup = useMemo(() => {
+    if (!latexDisplayState.latex) return ''
+    try {
+      return renderToString(latexDisplayState.latex, {
+        throwOnError: false,
+        displayMode: true,
+      })
+    } catch (err) {
+      console.warn('Failed to render LaTeX overlay', err)
+      return ''
+    }
+  }, [latexDisplayState.latex])
 
   return (
     <div>
@@ -1409,9 +1489,21 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Ready
             </div>
           )}
-          {isViewOnly && (
+          {isViewOnly && !( !isAdmin && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
               {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+            </div>
+          )}
+          {!isAdmin && latexDisplayState.enabled && (
+            <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
+              {latexProjectionMarkup ? (
+                <div
+                  className="text-slate-900 text-base sm:text-xl leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                />
+              ) : (
+                <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+              )}
             </div>
           )}
           <button
@@ -1444,6 +1536,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
             >
               Publish LaTeX to Students
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
+              type="button"
+              onClick={toggleLatexProjection}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+            >
+              {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
             </button>
           )}
           {isAdmin && (

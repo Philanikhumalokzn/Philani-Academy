@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderToString } from 'katex'
 
 declare global {
@@ -43,6 +43,18 @@ type ControlState = {
   controllerName?: string
   ts: number
 } | null
+
+type LatexDisplayOptions = {
+  fontScale: number
+  textAlign: 'left' | 'center' | 'right'
+  alignAtEquals: boolean
+}
+
+type LatexDisplayState = {
+  enabled: boolean
+  latex: string
+  options: LatexDisplayOptions
+}
 
 type PresenceClient = {
   clientId: string
@@ -167,6 +179,25 @@ const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   return !hasSymbols && !hasLatex && !hasJiix
 }
 
+const DEFAULT_LATEX_OPTIONS: LatexDisplayOptions = {
+  fontScale: 1,
+  textAlign: 'center',
+  alignAtEquals: false,
+}
+
+const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisplayOptions => {
+  if (!options) return { ...DEFAULT_LATEX_OPTIONS }
+  const fontScaleRaw = Number(options.fontScale)
+  const fontScale = Number.isFinite(fontScaleRaw) ? Math.min(2, Math.max(0.5, fontScaleRaw)) : DEFAULT_LATEX_OPTIONS.fontScale
+  const textAlign = options.textAlign === 'left' || options.textAlign === 'right' ? options.textAlign : 'center'
+  const alignAtEquals = Boolean(options.alignAtEquals)
+  return {
+    fontScale,
+    textAlign,
+    alignAtEquals,
+  }
+}
+
 export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
@@ -201,7 +232,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const isBroadcastPausedRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
-  const [latexDisplayState, setLatexDisplayState] = useState<{ enabled: boolean; latex: string }>({ enabled: false, latex: '' })
+  const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
+  const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const [pageIndex, setPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -215,7 +248,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
-  const latexDisplayStateRef = useRef<{ enabled: boolean; latex: string }>({ enabled: false, latex: '' })
+  const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
+  const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
   const forcedConvertDepthRef = useRef(0)
 
   const clientId = useMemo(() => {
@@ -231,6 +266,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   useEffect(() => {
     latexDisplayStateRef.current = latexDisplayState
   }, [latexDisplayState])
+
+  useEffect(() => {
+    latexProjectionOptionsRef.current = latexProjectionOptions
+  }, [latexProjectionOptions])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -299,6 +338,51 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!snapshot) return null
     return { ...snapshot, baseSymbolCount: -1 }
   }, [collectEditorSnapshot])
+
+  const applyPageSnapshot = useCallback(
+    async (snapshot: SnapshotPayload | null) => {
+      const editor = editorInstanceRef.current
+      if (!editor) return
+      suppressBroadcastUntilTsRef.current = Date.now() + 800
+      await nextAnimationFrame()
+      editor.clear()
+      if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+      const symbolsArray = snapshot?.symbols
+      if (symbolsArray && countSymbols(symbolsArray) > 0) {
+        await nextAnimationFrame()
+        const points = Array.isArray(symbolsArray)
+          ? symbolsArray
+          : Array.isArray((symbolsArray as any)?.events)
+          ? (symbolsArray as any).events
+          : []
+        if (points.length) {
+          await editor.importPointEvents(points)
+          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+        }
+        if (snapshot?.latex) {
+          setLatexOutput(snapshot.latex)
+        }
+      } else {
+        setLatexOutput('')
+      }
+      const count = countSymbols(symbolsArray)
+      lastSymbolCountRef.current = count
+      lastBroadcastBaseCountRef.current = count
+      if (snapshot) {
+        latestSnapshotRef.current = { snapshot: { ...snapshot, baseSymbolCount: -1 }, ts: Date.now(), reason: 'update' }
+      } else {
+        latestSnapshotRef.current = null
+      }
+    },
+    []
+  )
+
+  const persistCurrentPageSnapshot = useCallback(() => {
+    const currentSnapshot = captureFullSnapshot()
+    pageRecordsRef.current[pageIndex] = {
+      snapshot: currentSnapshot && !isSnapshotEmpty(currentSnapshot) ? currentSnapshot : null,
+    }
+  }, [captureFullSnapshot, pageIndex])
 
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
@@ -391,7 +475,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   )
 
   const publishLatexDisplayState = useCallback(
-    async (enabled: boolean, latex: string) => {
+    async (enabled: boolean, latex: string, options?: LatexDisplayOptions) => {
       if (!isAdmin) return
       const channel = channelRef.current
       if (!channel) return
@@ -402,6 +486,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           action: 'latex-display',
           enabled,
           latex,
+          options: options ?? latexProjectionOptionsRef.current,
           ts: Date.now(),
         })
       } catch (err) {
@@ -417,7 +502,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const trimmed = (latexOutput || '').trim()
     if (trimmed === latexDisplayStateRef.current.latex) return
     setLatexDisplayState(curr => (curr.enabled ? { ...curr, latex: trimmed } : curr))
-    publishLatexDisplayState(true, trimmed)
+    publishLatexDisplayState(true, trimmed, latexProjectionOptionsRef.current)
   }, [latexOutput, isAdmin, publishLatexDisplayState])
 
   const applySnapshotCore = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
@@ -953,6 +1038,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             snapshot?: SnapshotPayload | null
             enabled?: boolean
             latex?: string
+            options?: Partial<LatexDisplayOptions>
           }
           if (data?.action === 'convert') {
             if (isAdmin) return
@@ -966,7 +1052,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (data?.action === 'latex-display') {
             const enabled = Boolean(data.enabled)
             const latex = typeof data.latex === 'string' ? data.latex : ''
-            setLatexDisplayState({ enabled, latex })
+            const options = sanitizeLatexOptions(data.options)
+            setLatexDisplayState({ enabled, latex, options })
+            if (!isAdmin) {
+              setLatexProjectionOptions(options)
+            }
             if (!isAdmin) {
               if (enabled) {
                 try {
@@ -1389,9 +1479,24 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!isAdmin) return
     const nextEnabled = !latexDisplayStateRef.current.enabled
     const latex = nextEnabled ? (latexOutput || '').trim() : ''
-    setLatexDisplayState({ enabled: nextEnabled, latex })
-    await publishLatexDisplayState(nextEnabled, latex)
+    const options = latexProjectionOptionsRef.current
+    setLatexDisplayState({ enabled: nextEnabled, latex, options })
+    await publishLatexDisplayState(nextEnabled, latex, options)
   }
+
+  const updateLatexProjectionOptions = useCallback(
+    (partial: Partial<LatexDisplayOptions>) => {
+      setLatexProjectionOptions(prev => {
+        const next = sanitizeLatexOptions({ ...prev, ...partial })
+        if (latexDisplayStateRef.current.enabled) {
+          setLatexDisplayState(curr => (curr.enabled ? { ...curr, options: next } : curr))
+          publishLatexDisplayState(true, latexDisplayStateRef.current.latex, next)
+        }
+        return next
+      })
+    },
+    [publishLatexDisplayState]
+  )
 
   const forcePublishCanvas = async (targetClientId?: string) => {
     if (!isAdmin) return
@@ -1443,6 +1548,30 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const navigateToPage = useCallback(
+    async (targetIndex: number) => {
+      if (!isAdmin) return
+      if (targetIndex === pageIndex) return
+      if (targetIndex < 0 || targetIndex >= pageRecordsRef.current.length) return
+      persistCurrentPageSnapshot()
+      const snapshot = pageRecordsRef.current[targetIndex]?.snapshot ?? null
+      await applyPageSnapshot(snapshot)
+      setPageIndex(targetIndex)
+      await forcePublishCanvas()
+    },
+    [applyPageSnapshot, forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot]
+  )
+
+  const addNewPage = useCallback(async () => {
+    if (!isAdmin) return
+    persistCurrentPageSnapshot()
+    pageRecordsRef.current.push({ snapshot: null })
+    const targetIndex = pageRecordsRef.current.length - 1
+    await applyPageSnapshot(null)
+    setPageIndex(targetIndex)
+    await forcePublishCanvas()
+  }, [applyPageSnapshot, forcePublishCanvas, isAdmin, persistCurrentPageSnapshot])
+
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
     // Resize editor after layout change
@@ -1469,8 +1598,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   })()
   const latexProjectionMarkup = useMemo(() => {
     if (!latexDisplayState.latex) return ''
+    let latexString = latexDisplayState.latex
+    if (latexDisplayState.options.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
+      const lines = latexString.split(/\\\\/g).map(line => line.trim()).filter(Boolean)
+      if (lines.length) {
+        const processed = lines.map(line => {
+          const equalsIndex = line.indexOf('=')
+          if (equalsIndex === -1) return line
+          const left = line.slice(0, equalsIndex).trim()
+          const right = line.slice(equalsIndex + 1).trim()
+          return `${left} &= ${right}`
+        })
+        latexString = `\begin{aligned}${processed.join(' \\ ')}\end{aligned}`
+      }
+    }
     try {
-      return renderToString(latexDisplayState.latex, {
+      return renderToString(latexString, {
         throwOnError: false,
         displayMode: true,
       })
@@ -1478,7 +1621,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       console.warn('Failed to render LaTeX overlay', err)
       return ''
     }
-  }, [latexDisplayState.latex])
+  }, [latexDisplayState.latex, latexDisplayState.options.alignAtEquals])
+
+  const latexOverlayStyle = useMemo<CSSProperties>(
+    () => ({
+      fontSize: `${latexDisplayState.options.fontScale}rem`,
+      textAlign: latexDisplayState.options.textAlign,
+    }),
+    [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
+  )
 
   return (
     <div>
@@ -1512,7 +1663,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Ready
             </div>
           )}
-          {isViewOnly && !( !isAdmin && latexDisplayState.enabled) && (
+          {isViewOnly && !(!isAdmin && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
               {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
             </div>
@@ -1521,7 +1672,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
               {latexProjectionMarkup ? (
                 <div
-                  className="text-slate-900 text-base sm:text-xl leading-relaxed"
+                  className="text-slate-900 leading-relaxed max-w-3xl"
+                  style={latexOverlayStyle}
                   dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                 />
               ) : (
@@ -1605,6 +1757,69 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>
         </div>
+
+        {isAdmin && (
+          <div className="flex flex-wrap gap-4 items-center text-xs bg-white border rounded px-3 py-2 shadow-sm">
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold">LaTeX font size</span>
+              <input
+                type="range"
+                min="0.7"
+                max="1.6"
+                step="0.05"
+                value={latexProjectionOptions.fontScale}
+                onChange={e => updateLatexProjectionOptions({ fontScale: Number(e.target.value) })}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold">Text alignment</span>
+              <select
+                className="border rounded px-2 py-1 text-xs"
+                value={latexProjectionOptions.textAlign}
+                onChange={e => updateLatexProjectionOptions({ textAlign: e.target.value as LatexDisplayOptions['textAlign'] })}
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={latexProjectionOptions.alignAtEquals}
+                onChange={e => updateLatexProjectionOptions({ alignAtEquals: e.target.checked })}
+              />
+              <span className="font-semibold">Align at “=”</span>
+            </label>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="flex flex-wrap gap-2 items-center text-xs bg-white border rounded px-3 py-2 shadow-sm">
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigateToPage(pageIndex - 1)}
+              disabled={pageIndex === 0}
+            >
+              Previous Page
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigateToPage(pageIndex + 1)}
+              disabled={pageIndex >= pageRecordsRef.current.length - 1}
+            >
+              Next Page
+            </button>
+            <button className="btn" type="button" onClick={addNewPage}>
+              New Page
+            </button>
+            <span className="font-semibold">
+              Page {pageIndex + 1} / {pageRecordsRef.current.length}
+            </span>
+          </div>
+        )}
 
         {gradeLabel && (
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>

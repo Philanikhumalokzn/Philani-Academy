@@ -1250,6 +1250,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (status !== 'ready') return
     if (!channelRef.current) return
     if (controlState?.controllerId === clientId) return
+    if (controlState?.controllerId === ALL_STUDENTS_ID) return
     lockStudentEditing()
   }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing])
 

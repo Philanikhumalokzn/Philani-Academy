@@ -149,6 +149,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
   const appliedSnapshotIdsRef = useRef<Set<string>>(new Set())
+  const lastGlobalUpdateTsRef = useRef(0)
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [transientError, setTransientError] = useState<string | null>(null)
@@ -300,6 +301,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
     if (!snapshot) return
+    const msgTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? (message.ts as number) : Date.now()
+    // Last-writer-wins: ignore any snapshot older than the most recent applied
+    if (msgTs <= lastGlobalUpdateTsRef.current) {
+      return
+    }
     const incomingSymbolCount = (() => {
       const sym: any = snapshot.symbols as any
       if (Array.isArray(sym)) return sym.length
@@ -382,6 +388,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       isApplyingRemoteRef.current = false
       setIsConverting(false)
       latestSnapshotRef.current = { snapshot, ts: Date.now(), reason }
+      lastGlobalUpdateTsRef.current = msgTs
     }
   }, [])
 
@@ -661,6 +668,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               reason: 'update',
             }
             latestSnapshotRef.current = record
+        // Mark our local publish as the latest global update
+        lastGlobalUpdateTsRef.current = record.ts
             return record
           })()
 

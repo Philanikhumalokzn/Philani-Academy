@@ -57,6 +57,7 @@ type BroadcastOptions = {
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 const DEFAULT_BROADCAST_DEBOUNCE_MS = 60
+const ALL_STUDENTS_ID = '__all__'
 
 let scriptPromise: Promise<void> | null = null
 
@@ -208,7 +209,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
-  const lockedOutRef = useRef(false)
+  const lockedOutRef = useRef(!isAdmin)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
@@ -229,16 +230,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const updateControlState = useCallback(
     (next: ControlState) => {
       controlStateRef.current = next
-      const isController = Boolean(next && next.controllerId === clientIdRef.current)
-      hasExclusiveControlRef.current = isController
-      const lockedOut = Boolean(next && next.controllerId && next.controllerId !== clientIdRef.current)
+      const controllerId = next?.controllerId
+      const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
+      hasExclusiveControlRef.current = isExclusiveController
+      const hasWriteAccess = Boolean(isAdmin) || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+      const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
         pendingPublishQueueRef.current = []
       }
       setControlState(next)
     },
-    []
+    [isAdmin]
   )
 
   const channelName = useMemo(() => {
@@ -550,6 +553,29 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     [scheduleRemoteProcessing]
   )
 
+  const enforceAuthoritativeSnapshot = useCallback(() => {
+    if (isAdmin) {
+      return
+    }
+    const record = latestSnapshotRef.current
+    if (!record || !record.snapshot) {
+      const editor = editorInstanceRef.current
+      editor?.clear?.()
+      return
+    }
+    applySnapshotCore(
+      {
+        snapshot: record.snapshot,
+        reason: record.reason ?? 'update',
+        ts: record.ts,
+        originClientId: '__authority__',
+      },
+      Date.now()
+    ).catch(err => {
+      console.warn('Failed to enforce authoritative snapshot', err)
+    })
+  }, [applySnapshotCore, isAdmin])
+
   useEffect(() => {
     let cancelled = false
     const host = editorHostRef.current
@@ -618,6 +644,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const now = Date.now()
           if (now < suppressBroadcastUntilTsRef.current) {
             return
+          }
+          if (!isAdmin) {
+            const controllerId = controlStateRef.current?.controllerId
+            const hasPermission = controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+            if (!hasPermission) {
+              enforceAuthoritativeSnapshot()
+              return
+            }
           }
           const canSend = !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
@@ -886,10 +920,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             setLatexOutput('')
             return
           }
-          if (typeof data?.locked !== 'boolean' || !data?.controllerId) return
+          if (typeof data?.locked !== 'boolean') return
+          const controlTs = data?.ts ?? Date.now()
           if (data.locked) {
-            updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: data.ts ?? Date.now() })
-          } else if (controlStateRef.current && controlStateRef.current.controllerId === data.controllerId) {
+            if (!data.controllerId) return
+            updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: controlTs })
+            return
+          }
+          if (!data.controllerId || data.controllerId === ALL_STUDENTS_ID) {
+            updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: data.controllerName || 'All Students', ts: controlTs })
+          } else {
             updateControlState(null)
           }
         }
@@ -1166,17 +1206,52 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         clientId: clientIdRef.current,
         author: userDisplayName,
         locked: false,
-        controllerId: clientIdRef.current,
-        controllerName: userDisplayName,
+        controllerId: ALL_STUDENTS_ID,
+        controllerName: 'All Students',
         ts,
       })
       lastControlBroadcastTsRef.current = ts
-      updateControlState(null)
+      updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts })
     } catch (err) {
       console.warn('Failed to release exclusive control', err)
-      updateControlState(null)
+      updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts })
     }
   }
+
+  const allowSelectedClientEditing = async () => {
+    if (!isAdmin) return
+    const targetId = selectedClientId
+    if (!targetId) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    const isAll = targetId === 'all'
+    const targetRecord = connectedClients.find(c => c.clientId === targetId)
+    const controllerId = isAll ? ALL_STUDENTS_ID : targetId
+    const controllerName = isAll ? 'All Students' : targetRecord?.name || targetId
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: !isAll,
+        controllerId,
+        controllerName,
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState({ controllerId, controllerName, ts })
+    } catch (err) {
+      console.warn('Failed to grant selected client editing rights', err)
+    }
+  }
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (status !== 'ready') return
+    if (!channelRef.current) return
+    if (controlState?.controllerId === clientId) return
+    lockStudentEditing()
+  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing])
 
   const forcePublishLatex = async () => {
     if (!isAdmin) return
@@ -1248,12 +1323,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     } catch {}
   }
 
-  const isViewOnly = Boolean(controlState && controlState.controllerId && controlState.controllerId !== clientId)
-  const controlOwnerLabel = controlState
-    ? controlState.controllerId === clientId
-      ? 'You'
-      : controlState.controllerName || 'Instructor'
-    : null
+  const hasWriteAccess = Boolean(isAdmin) || Boolean(
+    controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
+  )
+  const isViewOnly = !hasWriteAccess
+  const controlOwnerLabel = (() => {
+    if (controlState) {
+      if (controlState.controllerId === ALL_STUDENTS_ID) {
+        return 'Everyone'
+      }
+      if (controlState.controllerId === clientId) {
+        return 'You'
+      }
+      return controlState.controllerName || 'Instructor'
+    }
+    return 'Instructor'
+  })()
 
   return (
     <div>
@@ -1344,6 +1429,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Wipe Selected Student Canvas
             </button>
           )}
+          {isAdmin && (
+            <button
+              className="btn"
+              type="button"
+              onClick={allowSelectedClientEditing}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+            >
+              {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
+            </button>
+          )}
           <button className="btn" type="button" onClick={toggleFullscreen}>
             {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>
@@ -1409,10 +1504,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                 ))}
             </select>
           )}
-          {controlState && (
+          {controlState && controlState.controllerId !== ALL_STUDENTS_ID && (
             <span className="ml-2 text-[10px] text-slate-600 align-middle">
               Student editing locked by {controlOwnerLabel}
             </span>
+          )}
+          {controlState && controlState.controllerId === ALL_STUDENTS_ID && (
+            <span className="ml-2 text-[10px] text-slate-600 align-middle">All students may edit the board.</span>
           )}
           {!isRealtimeConnected && (
             <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued</span>

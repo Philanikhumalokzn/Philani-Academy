@@ -157,7 +157,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const appliedSnapshotIdsRef = useRef<Set<string>>(new Set())
   const lastGlobalUpdateTsRef = useRef(0)
   const [status, setStatus] = useState<CanvasStatus>('idle')
-  const [error, setError] = useState<string | null>(null)
+  const [fatalError, setFatalError] = useState<string | null>(null)
   const [transientError, setTransientError] = useState<string | null>(null)
   const [latexOutput, setLatexOutput] = useState('')
   const [canUndo, setCanUndo] = useState(false)
@@ -174,6 +174,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // (Unused now; kept for potential future periodic sync)
+  const realtimeRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -455,13 +456,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const websocketHost = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_HOST || 'cloud.myscript.com'
 
     if (!appKey || !hmacKey) {
-      setStatus('error')
-      setError(missingKeyMessage)
+  setStatus('error')
+  setFatalError(missingKeyMessage)
       return
     }
 
     setStatus('loading')
-    setError(null)
+  setFatalError(null)
 
     let resizeHandler: (() => void) | null = null
     const listeners: Array<{ type: string; handler: (event: any) => void }> = []
@@ -541,7 +542,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const fatal = isSessionTooLong || isAuthMissing
 
           if (fatal) {
-            setError(raw)
+            setFatalError(raw)
             setStatus('error')
             return
           }
@@ -569,7 +570,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       .catch(err => {
         if (cancelled) return
         console.error('MyScript initialization failed', err)
-        setError(err instanceof Error ? err.message : String(err))
+        setFatalError(err instanceof Error ? err.message : String(err))
         setStatus('error')
       })
 
@@ -617,6 +618,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     let disposed = false
     let channel: any = null
     let realtime: any = null
+    const scheduleRealtimeRetry = () => {
+      if (disposed) return
+      if (realtimeRetryTimeoutRef.current) return
+      const attempt = reconnectAttemptsRef.current || 1
+      const delay = Math.min(30000, 2000 * attempt)
+      realtimeRetryTimeoutRef.current = setTimeout(() => {
+        realtimeRetryTimeoutRef.current = null
+        if (!disposed) {
+          setupRealtime()
+        }
+      }, delay)
+    }
 
     const setupRealtime = async () => {
       try {
@@ -820,7 +833,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       } catch (err) {
         console.error('Failed to initialise Ably realtime collaboration', err)
         if (!disposed) {
-          setError('Realtime collaboration is currently unavailable. Please retry later.')
+          const message = 'Realtime collaboration is temporarily unavailable. Retrying…'
+          setTransientError(message)
+          setTimeout(() => {
+            setTransientError(curr => (curr === message ? null : curr))
+          }, 6000)
+          scheduleRealtimeRetry()
         }
       }
     }
@@ -849,6 +867,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         if (reconcileIntervalRef.current) {
           clearInterval(reconcileIntervalRef.current)
           reconcileIntervalRef.current = null
+        }
+        if (realtimeRetryTimeoutRef.current) {
+          clearTimeout(realtimeRetryTimeoutRef.current)
+          realtimeRetryTimeoutRef.current = null
         }
       }
     }
@@ -914,9 +936,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Preparing collaborative canvas…
             </div>
           )}
-          {status === 'error' && error && (
+          {status === 'error' && fatalError && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
-              {error}
+              {fatalError}
             </div>
           )}
           {transientError && status === 'ready' && (
@@ -939,16 +961,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(error)}>
+          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError)}>
             Undo
           </button>
-          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(error)}>
+          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError)}>
             Redo
           </button>
-          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(error)}>
+          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError)}>
             Clear
           </button>
-          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(error)}>
+          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError)}>
             {isConverting ? 'Converting…' : 'Convert to LaTeX'}
           </button>
           <button className="btn" type="button" onClick={toggleFullscreen}>

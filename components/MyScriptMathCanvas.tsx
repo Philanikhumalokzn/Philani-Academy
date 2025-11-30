@@ -33,10 +33,6 @@ type SnapshotMessage = {
   ts?: number
   reason?: 'update' | 'clear'
   originClientId?: string
-  control?: {
-    type: 'set-broadcaster'
-    broadcasterClientId: string | null
-  }
 }
 
 type BroadcastOptions = {
@@ -162,8 +158,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [activeBroadcasterClientId, setActiveBroadcasterClientId] = useState<string | null>(null)
-  const activeBroadcasterClientIdRef = useRef<string | null>(null)
+  // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<{ clientId: string; name?: string }>>([])
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
@@ -171,7 +166,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // (Unused now; kept for potential future periodic sync)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -229,11 +224,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
-      // Strict gating: only the active broadcaster may send. If none set, nobody sends.
-      const activeId = activeBroadcasterClientIdRef.current
-      if (!activeId || activeId !== clientIdRef.current) {
-        if (!options?.force) return
-      }
       // Pause overrides everything except forced clears
       if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
@@ -309,12 +299,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
-    // Control message handling: update active broadcaster
-    if (message.control?.type === 'set-broadcaster') {
-      activeBroadcasterClientIdRef.current = message.control.broadcasterClientId
-      setActiveBroadcasterClientId(message.control.broadcasterClientId)
-      return
-    }
     if (!snapshot) return
     const incomingSymbolCount = (() => {
       const sym: any = snapshot.symbols as any
@@ -332,8 +316,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (message.originClientId && message.originClientId === clientIdRef.current) return
     const editor = editorInstanceRef.current
     if (!editor) return
-    // Ignore stale versions
-    if (snapshot.version <= appliedVersionRef.current) return
+  // Version gating removed for multi-author editing.
 
     isApplyingRemoteRef.current = true
     try {
@@ -471,8 +454,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (now < suppressBroadcastUntilTsRef.current) {
             return
           }
-          // Only the active broadcaster should increment version and send.
-          const canSend = !!activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current === clientIdRef.current && !isBroadcastPausedRef.current
+          const canSend = !isBroadcastPausedRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -503,8 +485,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
-          // On export, only the active broadcaster should send immediately
-          const canSend = !!activeBroadcasterClientIdRef.current && activeBroadcasterClientIdRef.current === clientIdRef.current && !isBroadcastPausedRef.current
+          const canSend = !isBroadcastPausedRef.current
           if (canSend) {
             broadcastSnapshot(true)
           }
@@ -712,13 +693,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
         channel.subscribe('sync-request', handleSyncRequest)
-        channel.subscribe('control', async (message: any) => {
-          const data = message?.data as SnapshotMessage
-          if (data?.control?.type === 'set-broadcaster') {
-            activeBroadcasterClientIdRef.current = data.control.broadcasterClientId
-            setActiveBroadcasterClientId(data.control.broadcasterClientId)
-          }
-        })
+        // Removed control channel subscription.
 
         const snapshot = collectEditorSnapshot(true)
         // Publish initial state if there are existing symbols.
@@ -744,48 +719,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           ts: Date.now(),
         })
 
-        // Presence tracking
+        // Presence tracking (simplified; no broadcaster election)
         try {
           await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin) })
           const members = await channel.presence.get()
           setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
-          // Helper: attempt broadcaster election when needed
-          const tryElection = async () => {
-            try {
-              const list = await channel.presence.get()
-              const memberIds: string[] = list.map((m: any) => m.clientId)
-              const current = activeBroadcasterClientIdRef.current
-              // If current broadcaster is present, do nothing
-              if (current && memberIds.includes(current)) return
-              // Prefer an admin if present, else lexicographically smallest clientId
-              const adminMember = list
-                .filter((m: any) => m?.data?.isAdmin)
-                .sort((a: any, b: any) => (a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0))[0]
-              const candidateId: string | null = adminMember?.clientId || (memberIds.length ? [...memberIds].sort()[0] : null)
-              if (!candidateId) return
-              // Only self-elect if we are the candidate to avoid setting others without consent
-              if (candidateId === clientIdRef.current && current !== candidateId) {
-                activeBroadcasterClientIdRef.current = candidateId
-                setActiveBroadcasterClientId(candidateId)
-                try {
-                  await channel.publish('control', {
-                    clientId: clientIdRef.current,
-                    control: { type: 'set-broadcaster', broadcasterClientId: candidateId },
-                    ts: Date.now(),
-                  })
-                } catch {}
-              }
-            } catch {}
-          }
-
           channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
               setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
-              // Elect a broadcaster if missing or left
-              await tryElection()
-              // When someone new enters, proactively send a full snapshot if we are the broadcaster
-              if (presenceMsg?.action === 'enter' && activeBroadcasterClientIdRef.current === clientIdRef.current) {
+              // When someone new enters, proactively push current snapshot (any client may respond)
+              if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {
                   const snap = collectEditorSnapshot(false)
                   return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
@@ -803,26 +747,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               }
             } catch {}
           })
-          // Initial election after we joined
-          await tryElection()
+          // No election required.
         } catch (e) {
           console.warn('Presence tracking failed', e)
         }
 
-        // Default broadcaster assignment if admin
-        if (isAdmin && !activeBroadcasterClientIdRef.current) {
-          activeBroadcasterClientIdRef.current = clientIdRef.current
-          setActiveBroadcasterClientId(clientIdRef.current)
-          try {
-            await channel.publish('control', {
-              clientId: clientIdRef.current,
-              control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
-              ts: Date.now(),
-            })
-          } catch (e) {
-            console.warn('Failed to publish initial broadcaster control', e)
-          }
-        }
+        // No default broadcaster assignment.
 
         // Heartbeat reconnection loop
         heartbeatIntervalRef.current = setInterval(async () => {
@@ -840,33 +770,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }
         }, 10000)
 
-        // Periodic reconcile: active broadcaster sends a full snapshot periodically so late joiners catch up
-        reconcileIntervalRef.current = setInterval(async () => {
-          try {
-            if (!channelRef.current) return
-            if (!isRealtimeConnected) return
-            if (isBroadcastPausedRef.current) return
-            if (activeBroadcasterClientIdRef.current !== clientIdRef.current) return
-            // Use current latest snapshot if available; collect without increment to avoid version bump
-            const rec = latestSnapshotRef.current ?? (() => {
-              const snap = collectEditorSnapshot(false)
-              return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
-            })()
-            if (!rec || !rec.snapshot) return
-            // If empty, skip
-            if (isSnapshotEmpty(rec.snapshot)) return
-            await channelRef.current.publish('stroke', {
-              clientId: clientIdRef.current,
-              author: userDisplayName,
-              snapshot: rec.snapshot,
-              ts: rec.ts,
-              reason: rec.reason,
-              originClientId: clientIdRef.current,
-            })
-          } catch (e) {
-            // non-fatal
-          }
-        }, 8000)
+        // Removed periodic reconcile tied to broadcaster role.
       } catch (err) {
         console.error('Failed to initialise Ably realtime collaboration', err)
         if (!disposed) {
@@ -930,44 +834,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     editorInstanceRef.current.convert()
   }
 
-  const handleSetBroadcaster = async (targetClientId: string) => {
-    if (!isAdmin) return
-    const channel = channelRef.current
-    if (!channel) return
-    activeBroadcasterClientIdRef.current = targetClientId
-    setActiveBroadcasterClientId(targetClientId)
-    try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        control: { type: 'set-broadcaster', broadcasterClientId: targetClientId },
-        ts: Date.now(),
-      })
-    } catch (e) {
-      console.warn('Failed to set broadcaster', e)
-    }
-  }
-
-  const handleToggleSelfBroadcast = async () => {
-    const channel = channelRef.current
-    if (!channel) return
-    const current = activeBroadcasterClientIdRef.current
-    const canSelfToggle = Boolean(isAdmin) || !current || current === clientIdRef.current
-    if (!canSelfToggle) return
-    const nextId = current === clientIdRef.current ? null : clientIdRef.current
-    activeBroadcasterClientIdRef.current = nextId
-    setActiveBroadcasterClientId(nextId)
-    try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        control: { type: 'set-broadcaster', broadcasterClientId: nextId },
-        ts: Date.now(),
-      })
-    } catch (e) {
-      console.warn('Failed to toggle self broadcaster', e)
-    }
-  }
-
-  const isActiveBroadcaster = activeBroadcasterClientId === clientIdRef.current
+  // Removed broadcaster handlers and state.
 
   const toggleBroadcastPause = () => {
     if (!isAdmin) return
@@ -1061,58 +928,25 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>symbolCount: {lastSymbolCountRef.current}</div>
             <div>suppressUntil: {suppressBroadcastUntilTsRef.current}</div>
             <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
-            <div>broadcaster: {activeBroadcasterClientId || '—'}</div>
-            <div>isActiveBroadcaster: {isActiveBroadcaster ? 'yes' : 'no'}</div>
             <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
             <div>queueLen: {pendingPublishQueueRef.current.length}</div>
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
         <div className="text-xs mt-2">
-          <span className="px-2 py-1 rounded border bg-white">Broadcast mode: {isActiveBroadcaster ? 'Active (sending)' : 'Receiving only'}</span>
           {isAdmin && (
             <button
               type="button"
               onClick={toggleBroadcastPause}
-              className="ml-2 px-2 py-1 rounded border text-xs bg-white"
+              className="px-2 py-1 rounded border text-xs bg-white"
             >
-              {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Broadcast'}
+              {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Updates'}
             </button>
-          )}
-          {isAdmin && isBroadcastPaused && (
-            <span className="ml-2 text-[10px] text-red-600">Paused: no strokes sent</span>
           )}
           {!isRealtimeConnected && (
-            <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued and sent on reconnect</span>
-          )}
-          {(isAdmin || !activeBroadcasterClientId || activeBroadcasterClientId === clientIdRef.current) && !error && (
-            <button
-              type="button"
-              onClick={handleToggleSelfBroadcast}
-              className="ml-2 px-2 py-1 rounded border text-xs bg-white"
-            >
-              {isActiveBroadcaster ? 'Stop Broadcasting' : 'Become Broadcaster'}
-            </button>
+            <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued</span>
           )}
         </div>
-        {isAdmin && (
-          <div className="mt-3 p-2 border rounded bg-white">
-            <p className="text-xs font-semibold mb-2">Select Active Broadcaster</p>
-            <div className="flex flex-wrap gap-2">
-              {connectedClients.map(c => (
-                <button
-                  key={c.clientId}
-                  type="button"
-                  onClick={() => handleSetBroadcaster(c.clientId)}
-                  className={`text-xs px-2 py-1 rounded border ${c.clientId === activeBroadcasterClientId ? 'bg-green-100 border-green-500' : 'bg-white'}`}
-                >
-                  {(c.name || c.clientId)}{c.clientId === clientIdRef.current ? ' (you)' : ''}
-                </button>
-              ))}
-              {connectedClients.length === 0 && <span className="text-xs text-slate-500">No other clients connected.</span>}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

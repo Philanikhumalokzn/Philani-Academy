@@ -861,8 +861,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe'
+            action?: 'wipe' | 'convert'
             targetClientId?: string
+          }
+          if (data?.action === 'convert') {
+            if (isAdmin) return
+            if (isBroadcastPausedRef.current) return
+            if (!editor) return
+            setIsConverting(true)
+            editor.convert()
+            return
           }
           if (data?.action === 'wipe') {
             if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
@@ -1090,6 +1098,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (lockedOutRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
+    if (isAdmin && !isBroadcastPausedRef.current) {
+      const channel = channelRef.current
+      if (channel) {
+        channel
+          .publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'convert',
+            ts: Date.now(),
+          })
+          .catch(err => console.warn('Failed to broadcast convert command', err))
+      }
+    }
   }
 
   // Removed broadcaster handlers and state.

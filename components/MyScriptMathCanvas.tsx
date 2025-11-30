@@ -900,12 +900,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
         const handleControlMessage = (message: any) => {
           const data = message?.data as {
+            clientId?: string
             locked?: boolean
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert'
+            action?: 'wipe' | 'convert' | 'force-resync'
             targetClientId?: string
+            snapshot?: SnapshotPayload | null
           }
           if (data?.action === 'convert') {
             if (isAdmin) return
@@ -914,6 +916,26 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             forcedConvertDepthRef.current += 1
             setIsConverting(true)
             editor.convert()
+            return
+          }
+          if (data?.action === 'force-resync') {
+            if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
+            const snapshot = data.snapshot
+            if (snapshot) {
+              enqueueSnapshot(
+                {
+                  clientId: data.clientId || '__controller__',
+                  snapshot,
+                  ts: data.ts ?? Date.now(),
+                  reason: 'update',
+                  originClientId: data.clientId || '__controller__',
+                  targetClientId: data.targetClientId,
+                },
+                typeof message?.timestamp === 'number' ? message.timestamp : undefined
+              )
+            } else {
+              enforceAuthoritativeSnapshot()
+            }
             return
           }
           if (data?.action === 'wipe') {
@@ -1299,6 +1321,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       })
       latestSnapshotRef.current = { snapshot, ts, reason: 'update' }
       lastGlobalUpdateTsRef.current = ts
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'force-resync',
+        snapshot: { ...snapshot, baseSymbolCount: -1 },
+        targetClientId,
+        ts,
+      })
     } catch (err) {
       console.warn('Failed to publish canvas snapshot', err)
     }

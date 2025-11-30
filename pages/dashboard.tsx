@@ -739,6 +739,7 @@ export default function Dashboard() {
             roomId={boardRoomId}
             userId={realtimeUserId}
             userDisplayName={realtimeDisplayName}
+            isAdmin={isOwnerUser}
           />
         )}
       </div>

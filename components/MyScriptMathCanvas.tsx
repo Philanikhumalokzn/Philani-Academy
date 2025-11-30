@@ -34,6 +34,7 @@ type SnapshotMessage = {
   ts?: number
   reason?: 'update' | 'clear'
   originClientId?: string
+  targetClientId?: string
 }
 
 type ControlState = {
@@ -41,6 +42,12 @@ type ControlState = {
   controllerName?: string
   ts: number
 } | null
+
+type PresenceClient = {
+  clientId: string
+  name?: string
+  isAdmin?: boolean
+}
 
 type BroadcastOptions = {
   force?: boolean
@@ -186,7 +193,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   // Broadcaster role removed: all clients can publish.
-  const [connectedClients, setConnectedClients] = useState<Array<{ clientId: string; name?: string }>>([])
+  const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
+  const [selectedClientId, setSelectedClientId] = useState<string>('all')
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
@@ -372,6 +380,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
     if (!snapshot) return
+    const targetClientId = message?.targetClientId
+    if (targetClientId && targetClientId !== clientIdRef.current) {
+      return
+    }
     const msgTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? (message.ts as number) : Date.now()
     const symbolsArray: any[] = Array.isArray(snapshot.symbols)
       ? snapshot.symbols
@@ -392,7 +404,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     // Idempotency & origin checks
     if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) return
-    if (message.originClientId && message.originClientId === clientIdRef.current) return
+  if (message.originClientId && message.originClientId === clientIdRef.current && !targetClientId) return
     const editor = editorInstanceRef.current
     if (!editor) return
 
@@ -844,8 +856,23 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
 
         const handleControlMessage = (message: any) => {
-          const data = message?.data as { locked?: boolean; controllerId?: string; controllerName?: string; ts?: number }
-          if (!data || typeof data.locked !== 'boolean' || !data.controllerId) return
+          const data = message?.data as {
+            locked?: boolean
+            controllerId?: string
+            controllerName?: string
+            ts?: number
+            action?: 'wipe'
+            targetClientId?: string
+          }
+          if (data?.action === 'wipe') {
+            if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
+            editor.clear()
+            lastSymbolCountRef.current = 0
+            lastBroadcastBaseCountRef.current = 0
+            setLatexOutput('')
+            return
+          }
+          if (typeof data?.locked !== 'boolean' || !data?.controllerId) return
           if (data.locked) {
             updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: data.ts ?? Date.now() })
           } else if (controlStateRef.current && controlStateRef.current.controllerId === data.controllerId) {
@@ -899,11 +926,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         try {
           await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin) })
           const members = await channel.presence.get()
-          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
           channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
-              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name })))
+              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
               // When someone new enters, proactively push current snapshot (any client may respond)
               if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {
@@ -1144,6 +1171,48 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const forcePublishCanvas = async (targetClientId?: string) => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const snapshot = captureFullSnapshot()
+    if (!snapshot || isSnapshotEmpty(snapshot)) return
+    const ts = Date.now()
+    try {
+      await channel.publish('stroke', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        snapshot: { ...snapshot, baseSymbolCount: -1 },
+        ts,
+        reason: 'update',
+        originClientId: clientIdRef.current,
+        targetClientId,
+      })
+      latestSnapshotRef.current = { snapshot, ts, reason: 'update' }
+      lastGlobalUpdateTsRef.current = ts
+    } catch (err) {
+      console.warn('Failed to publish canvas snapshot', err)
+    }
+  }
+
+  const forceClearStudentCanvas = async (targetClientId: string) => {
+    if (!isAdmin || !targetClientId) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'wipe',
+        targetClientId,
+        ts,
+      })
+    } catch (err) {
+      console.warn('Failed to send wipe command', err)
+    }
+  }
+
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
     // Resize editor after layout change
@@ -1228,6 +1297,26 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Publish LaTeX to Students
             </button>
           )}
+          {isAdmin && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId)}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+            >
+              Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
+            </button>
+          )}
+          {isAdmin && selectedClientId !== 'all' && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => forceClearStudentCanvas(selectedClientId)}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+            >
+              Wipe Selected Student Canvas
+            </button>
+          )}
           <button className="btn" type="button" onClick={toggleFullscreen}>
             {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>
@@ -1276,6 +1365,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             >
               {controlState && controlState.controllerId === clientId ? 'Unlock Student Editing' : 'Lock Student Editing'}
             </button>
+          )}
+          {isAdmin && connectedClients.length > 0 && (
+            <select
+              className="ml-2 text-xs border rounded px-2 py-1 bg-white"
+              value={selectedClientId}
+              onChange={e => setSelectedClientId(e.target.value)}
+            >
+              <option value="all">All students</option>
+              {connectedClients
+                .filter(c => c.clientId !== clientId)
+                .map(c => (
+                  <option key={c.clientId} value={c.clientId}>
+                    {c.name || c.clientId}
+                  </option>
+                ))}
+            </select>
           )}
           {controlState && (
             <span className="ml-2 text-[10px] text-slate-600 align-middle">

@@ -181,19 +181,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const editor = editorInstanceRef.current
       const channel = channelRef.current
       if (!editor || !channel) return
-      // Locally clear without broadcasting; reset counters
+      // Prepare to receive and apply a full snapshot without showing an empty state
       isBootstrappingRef.current = true
-      isApplyingRemoteRef.current = true
-      // Suppress outgoing before any clear triggers 'changed'
       suppressBroadcastUntilTsRef.current = Date.now() + 2000
-      editor.clear()
-      await editor.waitForIdle?.()
+      awaitingBootstrapSyncRef.current = true
+      // Reset counters so we treat incoming snapshot as authoritative
       lastSymbolCountRef.current = 0
       appliedVersionRef.current = 0
       localVersionRef.current = 0
-      isApplyingRemoteRef.current = false
-      // Ask current peers for latest state
-      awaitingBootstrapSyncRef.current = true
+      // Ask current peers (previous broadcaster) for latest state
       await channel.publish('sync-request', {
         clientId: clientIdRef.current,
         author: userDisplayName,
@@ -218,11 +214,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           awaitingBootstrapSyncRef.current = false
         }, 3500),
       ]
-      // End bootstrap after request is sent
-      isBootstrappingRef.current = false
+      // Keep bootstrapping flag until we apply the incoming snapshot
     } catch (e) {
       // non-fatal
-      isBootstrappingRef.current = false
     }
   }, [userDisplayName])
 
@@ -384,7 +378,23 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      if (reason === 'clear') {
+      // If bootstrapping to broadcaster and awaiting a full state, do a one-shot replace: clear then import full snapshot
+      if (awaitingBootstrapSyncRef.current && snapshot && !isSnapshotEmpty(snapshot)) {
+        try {
+          editor.clear()
+          await editor.waitForIdle?.()
+          const all = Array.isArray(snapshot.symbols)
+            ? snapshot.symbols
+            : (Array.isArray((snapshot.symbols as any)?.events) ? (snapshot.symbols as any).events : [])
+          if (all.length) {
+            await editor.importPointEvents(all)
+            await editor.waitForIdle?.()
+          }
+        } finally {
+          awaitingBootstrapSyncRef.current = false
+          isBootstrappingRef.current = false
+        }
+      } else if (reason === 'clear') {
         editor.clear()
         if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
       } else if (incomingSymbolCount < previousCount) {
@@ -449,6 +459,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       // If we were awaiting a bootstrap sync, mark it completed once any valid snapshot is applied
       if (snapshot && lastSymbolCountRef.current > 0) {
         awaitingBootstrapSyncRef.current = false
+        isBootstrappingRef.current = false
       }
     }
   }, [])
@@ -776,6 +787,24 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             // If we are being set as broadcaster, bootstrap our local editor from the latest remote state
             if (data.control.broadcasterClientId && data.control.broadcasterClientId === clientIdRef.current) {
               await bootstrapAsBroadcaster()
+            } else if (data.control.broadcasterClientId && data.control.broadcasterClientId !== clientIdRef.current) {
+              // If we were the previous broadcaster and another client is taking over, immediately publish our latest snapshot to help them sync
+              try {
+                const rec = latestSnapshotRef.current ?? (() => {
+                  const snap = collectEditorSnapshot(false)
+                  return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
+                })()
+                if (rec && rec.snapshot && !isSnapshotEmpty(rec.snapshot)) {
+                  await channel.publish('sync-state', {
+                    clientId: clientIdRef.current,
+                    author: userDisplayName,
+                    snapshot: rec.snapshot,
+                    ts: rec.ts,
+                    reason: rec.reason,
+                    originClientId: clientIdRef.current,
+                  })
+                }
+              } catch {}
             }
           }
         })

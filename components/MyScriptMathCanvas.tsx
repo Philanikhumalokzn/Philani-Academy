@@ -203,6 +203,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const lockedOutRef = useRef(false)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
+  const lastLatexBroadcastTsRef = useRef(0)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -852,10 +853,21 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }
         }
 
+        const handleLatexMessage = (message: any) => {
+          const data = message?.data as { latex?: string; ts?: number; clientId?: string }
+          const latex = typeof data?.latex === 'string' ? data.latex : ''
+          if (!latex) return
+          const msgTs = typeof message?.timestamp === 'number' ? message.timestamp : data?.ts ?? Date.now()
+          if (msgTs < lastLatexBroadcastTsRef.current) return
+          lastLatexBroadcastTsRef.current = msgTs
+          setLatexOutput(latex)
+        }
+
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
         channel.subscribe('sync-request', handleSyncRequest)
         channel.subscribe('control', handleControlMessage)
+  channel.subscribe('latex', handleLatexMessage)
         // Removed control channel subscription.
 
         const snapshot = captureFullSnapshot()
@@ -1112,6 +1124,26 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const forcePublishLatex = async () => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const latex = (latexOutput || '').trim()
+    if (!latex) return
+    const ts = Date.now()
+    try {
+      await channel.publish('latex', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        latex,
+        ts,
+      })
+      lastLatexBroadcastTsRef.current = ts
+    } catch (err) {
+      console.warn('Failed to broadcast LaTeX', err)
+    }
+  }
+
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
     // Resize editor after layout change
@@ -1186,6 +1218,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
             {isConverting ? 'Converting…' : 'Convert to LaTeX'}
           </button>
+          {isAdmin && (
+            <button
+              className="btn"
+              type="button"
+              onClick={forcePublishLatex}
+              disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
+            >
+              Publish LaTeX to Students
+            </button>
+          )}
           <button className="btn" type="button" onClick={toggleFullscreen}>
             {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>

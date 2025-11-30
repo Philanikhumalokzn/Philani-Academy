@@ -375,7 +375,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
       }
 
-      setLatexOutput(snapshot.latex ?? '')
+      // Do not update LaTeX output on remote snapshot application to avoid cumulative content.
     } catch (err) {
       console.error('Failed to apply remote snapshot', err)
     } finally {
@@ -467,18 +467,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             broadcastSnapshot(false)
           }
 
-          // Debounce a lightweight export request (not convert) so JIIX/LaTeX stay updated without heavy operations.
-          if (pendingExportRef.current) {
-            clearTimeout(pendingExportRef.current)
-            pendingExportRef.current = null
-          }
-          pendingExportRef.current = setTimeout(() => {
-            try {
-              if (typeof (editor as any)?.export === 'function') {
-                ;(editor as any).export(['application/x-latex', 'application/vnd.myscript.jiix'])
-              }
-            } catch {}
-          }, 300)
+          // Removed auto-export on change to prevent cumulative/garbage LaTeX updates.
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}

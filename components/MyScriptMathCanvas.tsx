@@ -171,6 +171,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isBootstrappingRef = useRef(false)
 
   // Bootstrap the local editor when we become the broadcaster: clear locally and request latest state
   const bootstrapAsBroadcaster = useCallback(async () => {
@@ -179,14 +180,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const channel = channelRef.current
       if (!editor || !channel) return
       // Locally clear without broadcasting; reset counters
+      isBootstrappingRef.current = true
       isApplyingRemoteRef.current = true
+      // Suppress outgoing before any clear triggers 'changed'
+      suppressBroadcastUntilTsRef.current = Date.now() + 2000
       editor.clear()
       await editor.waitForIdle?.()
       lastSymbolCountRef.current = 0
       appliedVersionRef.current = 0
       localVersionRef.current = 0
-      // Suppress outgoing for a short window until we import the remote state
-      suppressBroadcastUntilTsRef.current = Date.now() + 1500
       isApplyingRemoteRef.current = false
       // Ask current peers for latest state
       await channel.publish('sync-request', {
@@ -194,8 +196,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         author: userDisplayName,
         ts: Date.now(),
       })
+      // End bootstrap after request is sent
+      isBootstrappingRef.current = false
     } catch (e) {
       // non-fatal
+      isBootstrappingRef.current = false
     }
   }, [userDisplayName])
 
@@ -484,6 +489,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         setStatus('ready')
 
         const handleChanged = (evt: any) => {
+          if (isBootstrappingRef.current) return
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
@@ -519,6 +525,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }, 300)
         }
         const handleExported = (evt: any) => {
+          if (isBootstrappingRef.current) return
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')

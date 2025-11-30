@@ -295,6 +295,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
+      if (!isAdmin) {
+        return
+      }
       if (isApplyingRemoteRef.current) return
       // Pause overrides everything except forced clears
   if (lockedOutRef.current) return
@@ -377,7 +380,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         publish()
       }, broadcastDebounceMs)
     },
-    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName]
+    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin]
   )
 
   const applySnapshotCore = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
@@ -653,7 +656,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               return
             }
           }
-          const canSend = !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = isAdmin && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -670,7 +673,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
-          const canSend = !isBroadcastPausedRef.current
+          const canSend = isAdmin && !isBroadcastPausedRef.current
           if (forcedConvertDepthRef.current > 0) {
             forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
             return
@@ -804,7 +807,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
+          if (isAdmin && connected && pendingPublishQueueRef.current.length && channelRef.current) {
             const toSend = [...pendingPublishQueueRef.current]
             pendingPublishQueueRef.current = []
             for (const rec of toSend) {
@@ -855,6 +858,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
 
         const handleSyncRequest = async (message: any) => {
+          if (!isAdmin) return
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
           const existingRecord = (() => {
@@ -946,7 +950,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
-        channel.subscribe('sync-request', handleSyncRequest)
+  channel.subscribe('sync-request', handleSyncRequest)
         channel.subscribe('control', handleControlMessage)
   channel.subscribe('latex', handleLatexMessage)
         // Removed control channel subscription.
@@ -961,13 +965,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }
           latestSnapshotRef.current = record
           lastBroadcastBaseCountRef.current = countSymbols(snapshot.symbols)
-          await channel.publish('stroke', {
-            clientId: clientIdRef.current,
-            author: userDisplayName,
-            snapshot: record.snapshot,
-            ts: record.ts,
-            reason: record.reason,
-          })
+          if (isAdmin) {
+            await channel.publish('stroke', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              snapshot: record.snapshot,
+              ts: record.ts,
+              reason: record.reason,
+            })
+          }
         }
 
         await channel.publish('sync-request', {
@@ -986,7 +992,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               const list = await channel.presence.get()
               setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
               // When someone new enters, proactively push current snapshot (any client may respond)
-              if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
+              if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current && isAdmin) {
                 const rec = latestSnapshotRef.current ?? (() => {
                   const snap = collectEditorSnapshot(false)
                   return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
@@ -1001,7 +1007,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                     originClientId: clientIdRef.current,
                   })
                 }
-                if (hasExclusiveControlRef.current) {
+                if (isAdmin && hasExclusiveControlRef.current) {
                   const now = Date.now()
                   if (now - lastControlBroadcastTsRef.current > 1500) {
                     await channel.publish('control', {
@@ -1066,7 +1072,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       try {
         channelRef.current = null
         if (channel) {
-          if (hasExclusiveControlRef.current) {
+          if (isAdmin && hasExclusiveControlRef.current) {
             const ts = Date.now()
             channel
               .publish('control', {

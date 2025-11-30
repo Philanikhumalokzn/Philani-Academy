@@ -212,6 +212,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
+  const forcedConvertDepthRef = useRef(0)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -636,6 +637,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
           const canSend = !isBroadcastPausedRef.current
+          if (forcedConvertDepthRef.current > 0) {
+            forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+            return
+          }
           if (canSend) {
             broadcastSnapshot(true)
           }
@@ -868,6 +873,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             if (isAdmin) return
             if (isBroadcastPausedRef.current) return
             if (!editor) return
+            forcedConvertDepthRef.current += 1
             setIsConverting(true)
             editor.convert()
             return

@@ -235,6 +235,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [pageIndex, setPageIndex] = useState(0)
+  const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -251,6 +252,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
+  const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
 
   const clientId = useMemo(() => {
@@ -270,6 +272,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   useEffect(() => {
     latexProjectionOptionsRef.current = latexProjectionOptions
   }, [latexProjectionOptions])
+
+  useEffect(() => {
+    sharedPageIndexRef.current = sharedPageIndex
+  }, [sharedPageIndex])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -368,11 +374,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const count = countSymbols(symbolsArray)
       lastSymbolCountRef.current = count
       lastBroadcastBaseCountRef.current = count
-      if (snapshot) {
-        latestSnapshotRef.current = { snapshot: { ...snapshot, baseSymbolCount: -1 }, ts: Date.now(), reason: 'update' }
-      } else {
-        latestSnapshotRef.current = null
-      }
     },
     []
   )
@@ -387,6 +388,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
       if (!isAdmin) {
+        return
+      }
+      if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
         return
       }
       if (isApplyingRemoteRef.current) return
@@ -471,7 +475,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         publish()
       }, broadcastDebounceMs)
     },
-    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin]
+    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin, pageIndex]
   )
 
   const publishLatexDisplayState = useCallback(
@@ -778,7 +782,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               return
             }
           }
-          const canSend = isAdmin && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const isSharedPage = pageIndex === sharedPageIndexRef.current
+          const canSend = isAdmin && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -795,7 +800,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
-          const canSend = isAdmin && !isBroadcastPausedRef.current
+          const isSharedPage = pageIndex === sharedPageIndexRef.current
+          const canSend = isAdmin && isSharedPage && !isBroadcastPausedRef.current
           if (forcedConvertDepthRef.current > 0) {
             forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
             return
@@ -1323,7 +1329,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     setLatexOutput('')
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
-    broadcastSnapshot(true, { force: true, reason: 'clear' })
+    if (pageIndex === sharedPageIndexRef.current) {
+      broadcastSnapshot(true, { force: true, reason: 'clear' })
+    }
   }
 
   const handleUndo = () => {
@@ -1345,7 +1353,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (lockedOutRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
-    if (isAdmin && !isBroadcastPausedRef.current) {
+    if (isAdmin && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
       const channel = channelRef.current
       if (channel) {
         channel
@@ -1517,6 +1525,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       })
       latestSnapshotRef.current = { snapshot, ts, reason: 'update' }
       lastGlobalUpdateTsRef.current = ts
+      if (!targetClientId) {
+        setSharedPageIndex(pageIndex)
+      }
       await channel.publish('control', {
         clientId: clientIdRef.current,
         author: userDisplayName,
@@ -1557,9 +1568,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       const snapshot = pageRecordsRef.current[targetIndex]?.snapshot ?? null
       await applyPageSnapshot(snapshot)
       setPageIndex(targetIndex)
-      await forcePublishCanvas()
     },
-    [applyPageSnapshot, forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot]
+    [applyPageSnapshot, isAdmin, pageIndex, persistCurrentPageSnapshot]
   )
 
   const addNewPage = useCallback(async () => {
@@ -1569,8 +1579,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const targetIndex = pageRecordsRef.current.length - 1
     await applyPageSnapshot(null)
     setPageIndex(targetIndex)
+  }, [applyPageSnapshot, isAdmin, persistCurrentPageSnapshot])
+
+  const shareCurrentPageWithStudents = useCallback(async () => {
+    if (!isAdmin) return
+    persistCurrentPageSnapshot()
     await forcePublishCanvas()
-  }, [applyPageSnapshot, forcePublishCanvas, isAdmin, persistCurrentPageSnapshot])
+    setSharedPageIndex(pageIndex)
+  }, [forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot])
 
   const toggleFullscreen = () => {
     setIsFullscreen(prev => !prev)
@@ -1815,8 +1831,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <button className="btn" type="button" onClick={addNewPage}>
               New Page
             </button>
+            <button className="btn btn-primary" type="button" onClick={shareCurrentPageWithStudents}>
+              Show Current Page to Students
+            </button>
             <span className="font-semibold">
-              Page {pageIndex + 1} / {pageRecordsRef.current.length}
+              Your Page: {pageIndex + 1} / {pageRecordsRef.current.length}
+            </span>
+            <span className="text-slate-600">
+              Students See Page {sharedPageIndex + 1}
             </span>
           </div>
         )}

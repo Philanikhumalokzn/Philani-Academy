@@ -34,9 +34,8 @@ type SnapshotMessage = {
   reason?: 'update' | 'clear'
   originClientId?: string
   control?: {
-    type: 'set-broadcaster' | 'set-mode'
-    broadcasterClientId?: string | null
-    bidirectional?: boolean
+    type: 'set-broadcaster'
+    broadcasterClientId: string | null
   }
 }
 
@@ -167,8 +166,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [connectedClients, setConnectedClients] = useState<Array<{ clientId: string; name?: string }>>([])
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
-  const [isBidirectionalBroadcast, setIsBidirectionalBroadcast] = useState(false)
-  const isBidirectionalBroadcastRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
@@ -225,10 +222,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
       if (isApplyingRemoteRef.current) return
-      // Gating: allow any client to send when bidirectional is enabled; otherwise only active broadcaster.
+      // Strict gating: only the active broadcaster may send. If none set, nobody sends.
       const activeId = activeBroadcasterClientIdRef.current
-      const canSendByRole = isBidirectionalBroadcastRef.current || (activeId && activeId === clientIdRef.current)
-      if (!canSendByRole) {
+      if (!activeId || activeId !== clientIdRef.current) {
         if (!options?.force) return
       }
       // Pause overrides everything except forced clears
@@ -306,16 +302,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
-    // Control message handling: update active broadcaster or mode
+    // Control message handling: update active broadcaster
     if (message.control?.type === 'set-broadcaster') {
-      activeBroadcasterClientIdRef.current = message.control.broadcasterClientId ?? null
-      setActiveBroadcasterClientId(message.control.broadcasterClientId ?? null)
-      return
-    }
-    if (message.control?.type === 'set-mode') {
-      const bidirectional = Boolean(message.control.bidirectional)
-      isBidirectionalBroadcastRef.current = bidirectional
-      setIsBidirectionalBroadcast(bidirectional)
+      activeBroadcasterClientIdRef.current = message.control.broadcasterClientId
+      setActiveBroadcasterClientId(message.control.broadcasterClientId)
       return
     }
     if (!snapshot) return
@@ -758,8 +748,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               const list = await channel.presence.get()
               const memberIds: string[] = list.map((m: any) => m.clientId)
               const current = activeBroadcasterClientIdRef.current
-              // If bidirectional mode is enabled, skip election; otherwise ensure a broadcaster exists
-              if (isBidirectionalBroadcastRef.current) return
               // If current broadcaster is present, do nothing
               if (current && memberIds.includes(current)) return
               // Prefer an admin if present, else lexicographically smallest clientId
@@ -972,7 +960,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
-  const isActiveBroadcaster = isBidirectionalBroadcast || activeBroadcasterClientId === clientIdRef.current
+  const isActiveBroadcaster = activeBroadcasterClientId === clientIdRef.current
 
   const toggleBroadcastPause = () => {
     if (!isAdmin) return
@@ -981,24 +969,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       isBroadcastPausedRef.current = next
       return next
     })
-  }
-
-  const toggleBidirectionalMode = async () => {
-    if (!isAdmin) return
-    const channel = channelRef.current
-    if (!channel) return
-    const next = !isBidirectionalBroadcastRef.current
-    isBidirectionalBroadcastRef.current = next
-    setIsBidirectionalBroadcast(next)
-    try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        control: { type: 'set-mode', bidirectional: next },
-        ts: Date.now(),
-      })
-    } catch (e) {
-      console.warn('Failed to toggle bidirectional mode', e)
-    }
   }
 
   const toggleFullscreen = () => {
@@ -1086,8 +1056,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
             <div>broadcaster: {activeBroadcasterClientId || '—'}</div>
             <div>isActiveBroadcaster: {isActiveBroadcaster ? 'yes' : 'no'}</div>
-            <div>bidirectional: {isBidirectionalBroadcast ? 'on' : 'off'}</div>
-            <div>isAdmin: {isAdmin ? 'yes' : 'no'}</div>
             <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
             <div>queueLen: {pendingPublishQueueRef.current.length}</div>
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
@@ -1102,15 +1070,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               className="ml-2 px-2 py-1 rounded border text-xs bg-white"
             >
               {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Broadcast'}
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={toggleBidirectionalMode}
-              className="ml-2 px-2 py-1 rounded border text-xs bg-white"
-            >
-              {isBidirectionalBroadcast ? 'Disable Bidirectional' : 'Enable Bidirectional'}
             </button>
           )}
           {isAdmin && isBroadcastPaused && (
@@ -1132,16 +1091,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         {isAdmin && (
           <div className="mt-3 p-2 border rounded bg-white">
             <p className="text-xs font-semibold mb-2">Select Active Broadcaster</p>
-            <div className="mb-2 text-[11px]">Bidirectional mode: <span className={`px-1 rounded border ${isBidirectionalBroadcast ? 'bg-green-100 border-green-500' : 'bg-slate-100 border-slate-300'}`}>{isBidirectionalBroadcast ? 'Enabled' : 'Disabled'}</span></div>
-            <div className="flex flex-wrap gap-2 mb-2">
-              <button
-                type="button"
-                onClick={toggleBidirectionalMode}
-                className="text-xs px-2 py-1 rounded border bg-white"
-              >
-                {isBidirectionalBroadcast ? 'Disable Bidirectional' : 'Enable Bidirectional'}
-              </button>
-            </div>
             <div className="flex flex-wrap gap-2">
               {connectedClients.map(c => (
                 <button

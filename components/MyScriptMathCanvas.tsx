@@ -1064,7 +1064,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     })
   }
 
-  const requestExclusiveControl = async () => {
+  const lockStudentEditing = async () => {
     if (!isAdmin) return
     if (controlStateRef.current && controlStateRef.current.controllerId === clientIdRef.current) return
     const channel = channelRef.current
@@ -1086,7 +1086,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
-  const releaseExclusiveControl = async () => {
+  const unlockStudentEditing = async () => {
     if (!isAdmin) return
     if (!controlStateRef.current || controlStateRef.current.controllerId !== clientIdRef.current) return
     const channel = channelRef.current
@@ -1161,7 +1161,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           )}
           {isViewOnly && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
-              {controlOwnerLabel || 'Instructor'} is writing. You're in view-only mode.
+              {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
             </div>
           )}
           <button
@@ -1228,16 +1228,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {isAdmin && (
             <button
               type="button"
-              onClick={controlState && controlState.controllerId === clientId ? releaseExclusiveControl : requestExclusiveControl}
+              onClick={controlState && controlState.controllerId === clientId ? unlockStudentEditing : lockStudentEditing}
               className="px-2 py-1 rounded border text-xs bg-white ml-2"
               disabled={Boolean(fatalError) || status !== 'ready'}
             >
-              {controlState && controlState.controllerId === clientId ? 'Release Control' : 'Take Control'}
+              {controlState && controlState.controllerId === clientId ? 'Unlock Student Editing' : 'Lock Student Editing'}
             </button>
           )}
           {controlState && (
             <span className="ml-2 text-[10px] text-slate-600 align-middle">
-              Controlled by {controlOwnerLabel}
+              Student editing locked by {controlOwnerLabel}
             </span>
           )}
           {!isRealtimeConnected && (

@@ -302,10 +302,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const reason = message?.reason ?? 'update'
     if (!snapshot) return
     const msgTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? (message.ts as number) : Date.now()
-    // Last-writer-wins: ignore any snapshot older than the most recent applied
-    if (msgTs <= lastGlobalUpdateTsRef.current) {
-      return
-    }
     const symbolsArray: any[] = Array.isArray(snapshot.symbols)
       ? snapshot.symbols
       : Array.isArray((snapshot.symbols as any)?.events)
@@ -313,8 +309,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       : []
     const incomingSymbolCount = symbolsArray.length
     const previousCount = lastSymbolCountRef.current
-    // Skip redundant empty updates when both sides already empty and not a forced clear
-    if (incomingSymbolCount === 0 && previousCount === 0 && reason !== 'clear') {
+    const isNewer = msgTs >= lastGlobalUpdateTsRef.current
+    // Skip redundant empty updates unless it's an explicit clear or a newer shrink
+    if (incomingSymbolCount === 0 && previousCount === 0 && reason !== 'clear' && !isNewer) {
+      return
+    }
+    // If snapshot is older and doesn't add new data, ignore to preserve latest strokes
+    if (!isNewer && incomingSymbolCount <= previousCount && reason !== 'clear') {
       return
     }
     // Idempotency & origin checks
@@ -326,22 +327,59 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      // Authoritative replay: clear and import the full symbol list from the latest board
-      editor.clear()
-      if (incomingSymbolCount > 0) {
-        try {
-          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          await editor.importPointEvents(symbolsArray)
-          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-        } catch (e) {
-          console.error('Failed to import remote snapshot', e)
-        }
-      } else {
+      let applied = false
+      if (reason === 'clear') {
+        editor.clear()
+        if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
         setLatexOutput('')
+        lastSymbolCountRef.current = 0
+        applied = true
+      } else if (incomingSymbolCount < previousCount) {
+        if (!isNewer) {
+          return
+        }
+        editor.clear()
+        if (incomingSymbolCount > 0) {
+          try {
+            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+            await editor.importPointEvents(symbolsArray)
+            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          } catch (e) {
+            console.error('Failed to rebuild after shrink', e)
+          }
+        } else {
+          setLatexOutput('')
+        }
+        lastSymbolCountRef.current = incomingSymbolCount
+        applied = true
+      } else if (incomingSymbolCount > previousCount) {
+        const delta = symbolsArray.slice(previousCount)
+        if (delta.length) {
+          try {
+            await editor.importPointEvents(delta)
+            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+            lastSymbolCountRef.current = incomingSymbolCount
+            applied = true
+          } catch (e) {
+            console.warn('Delta import failed; attempting full import', e)
+            try {
+              editor.clear()
+              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+              await editor.importPointEvents(symbolsArray)
+              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+              lastSymbolCountRef.current = incomingSymbolCount
+              applied = true
+            } catch (e2) {
+              console.error('Full import failed', e2)
+            }
+          }
+        }
       }
 
-      // Tracking
-      lastSymbolCountRef.current = incomingSymbolCount
+      if (!applied) {
+        return
+      }
+
       appliedVersionRef.current = snapshot.version
       lastAppliedRemoteVersionRef.current = snapshot.version
       suppressBroadcastUntilTsRef.current = Date.now() + 500
@@ -352,15 +390,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           appliedSnapshotIdsRef.current.delete(iter.next().value as string)
         }
       }
-
       // Do not update LaTeX output on remote snapshot application to avoid cumulative content.
+      latestSnapshotRef.current = { snapshot, ts: msgTs, reason }
+      if (isNewer || reason === 'clear' || incomingSymbolCount >= previousCount) {
+        lastGlobalUpdateTsRef.current = Math.max(lastGlobalUpdateTsRef.current, msgTs)
+      }
     } catch (err) {
       console.error('Failed to apply remote snapshot', err)
     } finally {
       isApplyingRemoteRef.current = false
       setIsConverting(false)
-      latestSnapshotRef.current = { snapshot, ts: msgTs, reason }
-      lastGlobalUpdateTsRef.current = msgTs
     }
   }, [])
 

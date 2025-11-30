@@ -784,6 +784,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (data?.control?.type === 'set-broadcaster') {
             activeBroadcasterClientIdRef.current = data.control.broadcasterClientId
             setActiveBroadcasterClientId(data.control.broadcasterClientId)
+            console.log('[control] set-broadcaster to', data.control.broadcasterClientId, 'on', clientIdRef.current)
             // If we are being set as broadcaster, bootstrap our local editor from the latest remote state
             if (data.control.broadcasterClientId && data.control.broadcasterClientId === clientIdRef.current) {
               await bootstrapAsBroadcaster()
@@ -795,6 +796,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                   return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
                 })()
                 if (rec && rec.snapshot && !isSnapshotEmpty(rec.snapshot)) {
+                  console.log('[control] previous broadcaster publishing sync-state', { len: Array.isArray(rec.snapshot.symbols) ? rec.snapshot.symbols.length : (Array.isArray((rec.snapshot.symbols as any)?.events) ? (rec.snapshot.symbols as any).events.length : 0) })
                   await channel.publish('sync-state', {
                     clientId: clientIdRef.current,
                     author: userDisplayName,
@@ -912,6 +914,24 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             console.warn('Failed to publish initial broadcaster control', e)
           }
         }
+
+        // Fallback self-election: if no broadcaster is set shortly after attach, become broadcaster
+        setTimeout(async () => {
+          if (!activeBroadcasterClientIdRef.current) {
+            activeBroadcasterClientIdRef.current = clientIdRef.current
+            setActiveBroadcasterClientId(clientIdRef.current)
+            try {
+              await channel.publish('control', {
+                clientId: clientIdRef.current,
+                control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
+                ts: Date.now(),
+              })
+              console.log('[election] no broadcaster found; self-elected', clientIdRef.current)
+            } catch (e) {
+              console.warn('Fallback election publish failed', e)
+            }
+          }
+        }, 2000)
 
         // Heartbeat reconnection loop
         heartbeatIntervalRef.current = setInterval(async () => {

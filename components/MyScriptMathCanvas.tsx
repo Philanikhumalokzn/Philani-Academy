@@ -171,54 +171,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isBootstrappingRef = useRef(false)
-  const awaitingBootstrapSyncRef = useRef(false)
-  const bootstrapRetryTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
-
-  // Bootstrap the local editor when we become the broadcaster: clear locally and request latest state
-  const bootstrapAsBroadcaster = useCallback(async () => {
-    try {
-      const editor = editorInstanceRef.current
-      const channel = channelRef.current
-      if (!editor || !channel) return
-      // Prepare to receive and apply a full snapshot without showing an empty state
-      isBootstrappingRef.current = true
-      suppressBroadcastUntilTsRef.current = Date.now() + 2000
-      awaitingBootstrapSyncRef.current = true
-      // Reset counters so we treat incoming snapshot as authoritative
-      lastSymbolCountRef.current = 0
-      appliedVersionRef.current = 0
-      localVersionRef.current = 0
-      // Ask current peers (previous broadcaster) for latest state
-      await channel.publish('sync-request', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        ts: Date.now(),
-      })
-      // Retry a few times if no one responds quickly
-      bootstrapRetryTimersRef.current.forEach(t => clearTimeout(t))
-      bootstrapRetryTimersRef.current = [
-        setTimeout(async () => {
-          if (!awaitingBootstrapSyncRef.current) return
-          try {
-            await channel.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
-          } catch {}
-        }, 700),
-        setTimeout(async () => {
-          if (!awaitingBootstrapSyncRef.current) return
-          try {
-            await channel.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
-          } catch {}
-        }, 1500),
-        setTimeout(() => {
-          awaitingBootstrapSyncRef.current = false
-        }, 3500),
-      ]
-      // Keep bootstrapping flag until we apply the incoming snapshot
-    } catch (e) {
-      // non-fatal
-    }
-  }, [userDisplayName])
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -378,23 +330,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     isApplyingRemoteRef.current = true
     try {
-      // If bootstrapping to broadcaster and awaiting a full state, do a one-shot replace: clear then import full snapshot
-      if (awaitingBootstrapSyncRef.current && snapshot && !isSnapshotEmpty(snapshot)) {
-        try {
-          editor.clear()
-          await editor.waitForIdle?.()
-          const all = Array.isArray(snapshot.symbols)
-            ? snapshot.symbols
-            : (Array.isArray((snapshot.symbols as any)?.events) ? (snapshot.symbols as any).events : [])
-          if (all.length) {
-            await editor.importPointEvents(all)
-            await editor.waitForIdle?.()
-          }
-        } finally {
-          awaitingBootstrapSyncRef.current = false
-          isBootstrappingRef.current = false
-        }
-      } else if (reason === 'clear') {
+      if (reason === 'clear') {
         editor.clear()
         if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
       } else if (incomingSymbolCount < previousCount) {
@@ -456,11 +392,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       isApplyingRemoteRef.current = false
       setIsConverting(false)
       latestSnapshotRef.current = { snapshot, ts: Date.now(), reason }
-      // If we were awaiting a bootstrap sync, mark it completed once any valid snapshot is applied
-      if (snapshot && lastSymbolCountRef.current > 0) {
-        awaitingBootstrapSyncRef.current = false
-        isBootstrappingRef.current = false
-      }
     }
   }, [])
 
@@ -526,7 +457,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         setStatus('ready')
 
         const handleChanged = (evt: any) => {
-          if (isBootstrappingRef.current) return
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
@@ -562,7 +492,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           }, 300)
         }
         const handleExported = (evt: any) => {
-          if (isBootstrappingRef.current) return
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
@@ -624,9 +553,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         clearTimeout(pendingExportRef.current)
         pendingExportRef.current = null
       }
-      // Clear any bootstrap retry timers
-      bootstrapRetryTimersRef.current.forEach(t => clearTimeout(t))
-      bootstrapRetryTimersRef.current = []
       listeners.forEach(({ type, handler }) => {
         try {
           editorInstanceRef.current?.event?.removeEventListener(type, handler)
@@ -784,30 +710,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (data?.control?.type === 'set-broadcaster') {
             activeBroadcasterClientIdRef.current = data.control.broadcasterClientId
             setActiveBroadcasterClientId(data.control.broadcasterClientId)
-            console.log('[control] set-broadcaster to', data.control.broadcasterClientId, 'on', clientIdRef.current)
-            // If we are being set as broadcaster, bootstrap our local editor from the latest remote state
-            if (data.control.broadcasterClientId && data.control.broadcasterClientId === clientIdRef.current) {
-              await bootstrapAsBroadcaster()
-            } else if (data.control.broadcasterClientId && data.control.broadcasterClientId !== clientIdRef.current) {
-              // If we were the previous broadcaster and another client is taking over, immediately publish our latest snapshot to help them sync
-              try {
-                const rec = latestSnapshotRef.current ?? (() => {
-                  const snap = collectEditorSnapshot(false)
-                  return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
-                })()
-                if (rec && rec.snapshot && !isSnapshotEmpty(rec.snapshot)) {
-                  console.log('[control] previous broadcaster publishing sync-state', { len: Array.isArray(rec.snapshot.symbols) ? rec.snapshot.symbols.length : (Array.isArray((rec.snapshot.symbols as any)?.events) ? (rec.snapshot.symbols as any).events.length : 0) })
-                  await channel.publish('sync-state', {
-                    clientId: clientIdRef.current,
-                    author: userDisplayName,
-                    snapshot: rec.snapshot,
-                    ts: rec.ts,
-                    reason: rec.reason,
-                    originClientId: clientIdRef.current,
-                  })
-                }
-              } catch {}
-            }
           }
         })
 
@@ -914,24 +816,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             console.warn('Failed to publish initial broadcaster control', e)
           }
         }
-
-        // Fallback self-election: if no broadcaster is set shortly after attach, become broadcaster
-        setTimeout(async () => {
-          if (!activeBroadcasterClientIdRef.current) {
-            activeBroadcasterClientIdRef.current = clientIdRef.current
-            setActiveBroadcasterClientId(clientIdRef.current)
-            try {
-              await channel.publish('control', {
-                clientId: clientIdRef.current,
-                control: { type: 'set-broadcaster', broadcasterClientId: clientIdRef.current },
-                ts: Date.now(),
-              })
-              console.log('[election] no broadcaster found; self-elected', clientIdRef.current)
-            } catch (e) {
-              console.warn('Fallback election publish failed', e)
-            }
-          }
-        }, 2000)
 
         // Heartbeat reconnection loop
         heartbeatIntervalRef.current = setInterval(async () => {
@@ -1071,9 +955,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         control: { type: 'set-broadcaster', broadcasterClientId: nextId },
         ts: Date.now(),
       })
-      if (nextId === clientIdRef.current) {
-        await bootstrapAsBroadcaster()
-      }
     } catch (e) {
       console.warn('Failed to toggle self broadcaster', e)
     }

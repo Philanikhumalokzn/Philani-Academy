@@ -118,6 +118,7 @@ type MyScriptMathCanvasProps = {
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
+  boardId?: string // optional logical board identifier; if absent, we'll use a shared/global per grade
 }
 
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
@@ -136,7 +137,7 @@ const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   return !hasSymbols && !hasLatex && !hasJiix
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin }: MyScriptMathCanvasProps) {
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -183,9 +184,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }, [clientId])
 
   const channelName = useMemo(() => {
-    const safeRoom = roomId ? sanitizeIdentifier(roomId).toLowerCase() : 'default'
-    return `myscript:${safeRoom || 'default'}`
-  }, [roomId])
+    // Force a single shared board across instances unless a specific boardId is provided.
+    // Prefer per-grade board scoping if gradeLabel is present.
+    const base = boardId
+      ? sanitizeIdentifier(boardId).toLowerCase()
+      : gradeLabel
+      ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
+      : 'shared'
+    return `myscript:${base}`
+  }, [boardId, gradeLabel])
 
   const collectEditorSnapshot = useCallback((incrementVersion: boolean): SnapshotPayload | null => {
     const editor = editorInstanceRef.current

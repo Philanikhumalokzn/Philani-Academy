@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { signOut, useSession } from 'next-auth/react'
 import { useState } from 'react'
+import BrandLogo from './BrandLogo'
 
 export default function NavBar() {
   const { data: session } = useSession()
@@ -11,8 +12,8 @@ export default function NavBar() {
       <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-3 items-center gap-4">
         {/* Left: logo */}
         <div className="flex items-center col-start-1">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/logo.svg" alt="Philani Academy" style={{ height: 36 }} />
+          <Link href="/" className="flex items-center gap-2" aria-label="Philani Academy home">
+            <BrandLogo height={38} className="drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)]" />
           </Link>
         </div>
 

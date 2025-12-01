@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
 import NavArrows from '../components/NavArrows'
+import BrandLogo from '../components/BrandLogo'
 
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
@@ -1192,6 +1193,9 @@ export default function Dashboard() {
       <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
         {isMobile ? (
           <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-4">
+            <div className="flex justify-center">
+              <BrandLogo height={68} className="drop-shadow-[0_15px_35px_rgba(5,10,35,0.7)]" />
+            </div>
             <div className="space-y-2">
               <p className="text-[11px] uppercase tracking-[0.35em] text-blue-200">Dashboard</p>
               <h1 className="text-3xl font-semibold">Stay ready for class</h1>
@@ -1226,9 +1230,12 @@ export default function Dashboard() {
           </section>
         ) : (
           <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-1">
-              <h1 className="text-3xl font-bold">Dashboard</h1>
-              <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+            <div className="space-y-2">
+              <BrandLogo height={56} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+              <div>
+                <h1 className="text-3xl font-bold">Dashboard</h1>
+                <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {session ? (

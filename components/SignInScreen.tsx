@@ -3,6 +3,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { signIn } from 'next-auth/react'
+import BrandLogo from './BrandLogo'
 
 function normalizeError(error?: string | null) {
   if (!error) return null
@@ -98,7 +99,10 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
       </Head>
       <div className="deep-page min-h-screen flex items-center justify-center px-4 py-12">
         <div className="max-w-md w-full bg-white text-slate-900 shadow-md rounded-3xl p-8">
-          <div className="space-y-2 mb-6 text-center">
+          <div className="space-y-3 mb-6 text-center">
+            <div className="flex justify-center">
+              <BrandLogo height={64} />
+            </div>
             <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Philani Academy</p>
             <h1 className="text-3xl font-semibold text-slate-900">Sign in</h1>
             <p className="text-sm text-slate-600">Welcome back! Enter your credentials to access the dashboard.</p>

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import NavArrows from '../components/NavArrows'
+import BrandLogo from '../components/BrandLogo'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
@@ -120,6 +121,9 @@ export default function BoardPage() {
     return (
       <div className="flex h-screen flex-col bg-slate-900 text-white">
         <div className="px-5 pt-6 pb-4 space-y-3 border-b border-slate-800 text-center">
+          <div className="flex justify-center">
+            <BrandLogo height={60} className="drop-shadow-[0_18px_40px_rgba(2,6,20,0.7)]" />
+          </div>
           <button
             type="button"
             className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/30 px-4 py-1 text-sm text-blue-100"
@@ -177,6 +181,9 @@ export default function BoardPage() {
           <div className="flex items-center justify-between">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />
             <Link href="/dashboard" className="btn btn-ghost text-sm">Back to dashboard</Link>
+          </div>
+          <div className="flex justify-center">
+            <BrandLogo height={72} className="drop-shadow-[0_30px_60px_rgba(0,0,0,0.55)]" />
           </div>
           <p className="text-[12px] uppercase tracking-[0.3em] text-white">Shared board</p>
           <h1 className="text-4xl font-semibold text-white">Maths Canvas</h1>

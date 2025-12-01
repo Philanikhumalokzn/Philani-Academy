@@ -233,6 +233,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
+  const [isStudentPublishEnabled, setIsStudentPublishEnabled] = useState(false)
+  const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -278,6 +280,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   }, [latexProjectionOptions])
 
   useEffect(() => {
+    isStudentPublishEnabledRef.current = isStudentPublishEnabled
+  }, [isStudentPublishEnabled])
+
+  useEffect(() => {
     sharedPageIndexRef.current = sharedPageIndex
   }, [sharedPageIndex])
 
@@ -305,6 +311,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     },
     [isAdmin]
   )
+
+  const studentCanPublish = useCallback(() => {
+    if (!isStudentPublishEnabledRef.current) return false
+    const controllerId = controlStateRef.current?.controllerId
+    if (!controllerId) return false
+    if (controllerId === ALL_STUDENTS_ID) return true
+    return controllerId === clientIdRef.current
+  }, [])
 
   const channelName = useMemo(() => {
     // Force a single shared board across instances unless a specific boardId is provided.
@@ -397,7 +411,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
-      if (!isAdmin) {
+      const canPublish = isAdmin || studentCanPublish()
+      if (!canPublish) {
         return
       }
       if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
@@ -485,7 +500,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         publish()
       }, broadcastDebounceMs)
     },
-    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin, pageIndex]
+    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin, pageIndex, studentCanPublish]
   )
 
   const publishLatexDisplayState = useCallback(
@@ -1049,12 +1064,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast'
             targetClientId?: string
             snapshot?: SnapshotPayload | null
             enabled?: boolean
             latex?: string
             options?: Partial<LatexDisplayOptions>
+          }
+          if (data?.action === 'student-broadcast') {
+            const enabled = Boolean(data.enabled)
+            setIsStudentPublishEnabled(enabled)
+            isStudentPublishEnabledRef.current = enabled
+            return
           }
           if (data?.action === 'convert') {
             if (isAdmin) return
@@ -1216,6 +1237,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                     })
                   } catch (err) {
                     console.warn('Failed to rebroadcast latex display state', err)
+                  }
+                }
+                if (isStudentPublishEnabledRef.current) {
+                  try {
+                    await channel.publish('control', {
+                      clientId: clientIdRef.current,
+                      author: userDisplayName,
+                      action: 'student-broadcast',
+                      enabled: true,
+                      ts: Date.now(),
+                    })
+                  } catch (err) {
+                    console.warn('Failed to rebroadcast student publish state', err)
                   }
                 }
                 if (isAdmin && hasExclusiveControlRef.current) {
@@ -1387,6 +1421,26 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       isBroadcastPausedRef.current = next
       return next
     })
+  }
+
+  const toggleStudentPublishing = async () => {
+    if (!isAdmin) return
+    const next = !isStudentPublishEnabledRef.current
+    setIsStudentPublishEnabled(next)
+    isStudentPublishEnabledRef.current = next
+    const channel = channelRef.current
+    if (!channel) return
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'student-broadcast',
+        enabled: next,
+        ts: Date.now(),
+      })
+    } catch (err) {
+      console.warn('Failed to toggle student publishing', err)
+    }
   }
 
   const lockStudentEditing = async () => {
@@ -1819,6 +1873,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               >
                 {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
               </button>
+              <button
+                className={`btn ${isStudentPublishEnabled ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={toggleStudentPublishing}
+                disabled={status !== 'ready' || Boolean(fatalError)}
+              >
+                {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
+              </button>
             </div>
           )}
         </div>
@@ -1989,6 +2051,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {controlState && controlState.controllerId === ALL_STUDENTS_ID && (
             <span className="canvas-settings-panel__hint">All students may edit the board.</span>
           )}
+          <span className="canvas-settings-panel__hint">
+            Student publishing is {isStudentPublishEnabled ? 'enabled' : 'disabled'} by the instructor.
+          </span>
           {!isRealtimeConnected && (
             <span className="text-xs text-amber-200">Realtime disconnected — updates will be queued</span>
           )}

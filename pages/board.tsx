@@ -159,47 +159,41 @@ export default function BoardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div className="flex flex-col gap-4">
-          <div className="hidden md:block">
+    <div className="board-page min-h-screen">
+      <div className="board-page__inner mx-auto px-4 sm:px-6 lg:px-0 py-10 space-y-8">
+        <section className="board-page__hero text-center space-y-4">
+          <div className="flex items-center justify-between">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />
+            <Link href="/dashboard" className="btn btn-ghost text-sm">Back to dashboard</Link>
           </div>
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Shared board</p>
-              <h1 className="text-2xl font-bold text-slate-900">Mathematics Canvas</h1>
-              <p className="text-sm text-slate-600">Full-screen collaborative board for instructors and students.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/dashboard" className="btn btn-ghost">Return to Dashboard</Link>
-            </div>
+          <p className="text-[12px] uppercase tracking-[0.3em] text-slate-200">Shared board</p>
+          <h1 className="text-4xl font-semibold text-white">Maths Canvas</h1>
+          <p className="text-base text-slate-200 max-w-2xl mx-auto">One focused space for handwriting, LaTeX projection, and live instruction. Keep the class aligned without distractions.</p>
+          <div className="flex flex-wrap justify-center gap-3 text-xs">
+            <span className="board-chip">Grade: {activeGradeLabel}</span>
+            <span className="board-chip">{status === 'authenticated' ? 'Signed in' : 'Sign in required'}</span>
           </div>
-          <div className="card space-y-3">
-            <div className="flex flex-wrap items-center gap-3 justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Active grade</h2>
-                <p className="text-sm text-slate-500">{activeGradeLabel}</p>
-              </div>
-              <select
-                className="input w-full sm:w-auto"
-                value={selectedGrade ?? ''}
-                onChange={e => handleGradeChange(e.target.value)}
-              >
-                <option value="">Select a grade</option>
-                {gradeOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+        </section>
 
-        <div className="card">
+        <section className="board-card text-center space-y-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Choose grade</p>
+          <select
+            className="input mx-auto max-w-sm text-center"
+            value={selectedGrade ?? ''}
+            onChange={e => handleGradeChange(e.target.value)}
+          >
+            <option value="">Select a grade</option>
+            {gradeOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <section className="board-card board-card--canvas">
           {renderCanvas()}
-        </div>
+        </section>
       </div>
     </div>
   )

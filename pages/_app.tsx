@@ -24,8 +24,10 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <meta name="twitter:title" content="Philani Academy" />
         <meta name="twitter:description" content="Philani Academy — online sessions and learning for your community." />
       </Head>
-      <NavBar />
-      <Component {...pageProps} />
+      <div className="app-shell">
+        <NavBar />
+        <Component {...pageProps} />
+      </div>
     </SessionProvider>
   )
 }

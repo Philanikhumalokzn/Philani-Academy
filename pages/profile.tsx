@@ -205,12 +205,27 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <NavArrows backHref="/dashboard" forwardHref={undefined} />
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">My profile</h1>
+    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <section className="hero flex-col gap-5">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <NavArrows backHref="/dashboard" forwardHref={undefined} />
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="board-chip">Grade: {gradeLabel}</span>
+              <span className="board-chip">{popiConsent ? 'POPIA consent active' : 'Consent required'}</span>
+              <span className="board-chip">{loading ? 'Syncing profile' : 'Profile updated'}</span>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Account control</p>
+            <h1 className="text-3xl font-semibold md:text-4xl">My profile</h1>
+            <p className="max-w-3xl text-sm text-slate-200 md:text-base">
+              Keep learner information in one POPIA-compliant place. Every card below groups information the exams board expects and keeps the no-scroll layout tidy.
+            </p>
+          </div>
+        </section>
         {loading ? (
-          <div>Loading…</div>
+          <div className="card p-6 text-center text-sm text-slate-200">Loading…</div>
         ) : (
           <div className="space-y-6">
             <section className="card p-6 space-y-4">

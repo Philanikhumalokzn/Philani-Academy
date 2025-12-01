@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import dynamic from 'next/dynamic'
 import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -40,8 +39,6 @@ type LessonMaterial = {
   createdAt: string
   createdBy?: string | null
 }
-
-const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 
 export default function Dashboard() {
   const router = useRouter()
@@ -115,7 +112,6 @@ export default function Dashboard() {
     const base = `philani-${baseSlug}`
     return appId ? `${appId}/${base}` : base
   }, [gradeSlug])
-  const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
@@ -126,14 +122,6 @@ export default function Dashboard() {
     if (value.startsWith('27') && value.length === 11) return `0${value.slice(2)}`
     return value
   }
-  const realtimeUserId = useMemo(() => {
-    const candidate = (session as any)?.user?.id as string | undefined
-    if (candidate && typeof candidate === 'string') return candidate
-    if (session?.user?.email) return session.user.email
-    if (session?.user?.name) return session.user.name
-    return 'guest'
-  }, [session])
-  const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
   const availableSections = useMemo(
     () => DASHBOARD_SECTIONS.filter(section => (section.roles as ReadonlyArray<SectionRole>).includes(normalizedRole)),
     [normalizedRole]
@@ -707,44 +695,42 @@ export default function Dashboard() {
     )
   }
 
-  const LiveSection = () => (
-    <div className="space-y-6">
-      <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
-        {status !== 'authenticated' ? (
-          <div className="text-sm muted">Please sign in to join the live class.</div>
-        ) : !selectedGrade ? (
-          <div className="text-sm muted">Select a grade to join the live class.</div>
-        ) : (
-          <JitsiRoom
-            roomName={gradeRoomName}
-            displayName={session?.user?.name || session?.user?.email}
-            sessionId={null}
-            tokenEndpoint={gradeTokenEndpoint}
-            passwordEndpoint={null}
-            isOwner={isOwnerUser}
-          />
-        )}
-      </div>
+  const LiveSection = () => {
+    const canvasPath = selectedGrade ? `/board?grade=${encodeURIComponent(selectedGrade)}` : '/board'
+    const canvasLabel = selectedGrade ? `Canvas (${gradeToLabel(selectedGrade)})` : 'Canvas workspace'
 
-      <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Collaborative maths board — {activeGradeLabel}</h2>
-        {status !== 'authenticated' ? (
-          <div className="text-sm muted">Please sign in to launch the maths board.</div>
-        ) : !selectedGrade ? (
-          <div className="text-sm muted">Select a grade to open the shared board.</div>
-        ) : (
-          <MyScriptMathCanvas
-            gradeLabel={activeGradeLabel}
-            roomId={boardRoomId}
-            userId={realtimeUserId}
-            userDisplayName={realtimeDisplayName}
-            isAdmin={isOwnerUser}
-          />
-        )}
+    return (
+      <div className="space-y-6">
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => router.push(canvasPath)}
+            >
+              {canvasLabel}
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">Canvas opens on its own page so you get the entire screen for handwriting.</p>
+          {status !== 'authenticated' ? (
+            <div className="text-sm muted">Please sign in to join the live class.</div>
+          ) : !selectedGrade ? (
+            <div className="text-sm muted">Select a grade to join the live class.</div>
+          ) : (
+            <JitsiRoom
+              roomName={gradeRoomName}
+              displayName={session?.user?.name || session?.user?.email}
+              sessionId={null}
+              tokenEndpoint={gradeTokenEndpoint}
+              passwordEndpoint={null}
+              isOwner={isOwnerUser}
+            />
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const AnnouncementsSection = () => (
     <div className="space-y-6">

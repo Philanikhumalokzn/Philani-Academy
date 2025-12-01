@@ -310,6 +310,121 @@ body{
   color:#f8fafc;
 }
 
+.canvas-stage{
+  position:relative;
+  min-height:620px;
+}
+
+.floating-video-window{
+  position:absolute;
+  top:1.5rem;
+  right:auto;
+  left:1.5rem;
+  background:rgba(2,7,34,0.95);
+  border:1px solid rgba(113,159,255,0.3);
+  border-radius:28px;
+  box-shadow:0 35px 70px rgba(5,8,32,0.7);
+  z-index:30;
+  display:flex;
+  flex-direction:column;
+  cursor:default;
+  transition:box-shadow 0.2s ease, transform 0.2s ease;
+  overflow:hidden;
+  backdrop-filter:blur(14px);
+}
+
+.floating-video-window.is-dragging{
+  box-shadow:0 40px 80px rgba(16,29,74,0.8);
+}
+
+.floating-video-window__header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:0.75rem;
+  padding:0.75rem 1rem;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  cursor:grab;
+  user-select:none;
+  touch-action:none;
+}
+
+.floating-video-window__heading{text-align:left;}
+.floating-video-window__eyebrow{
+  text-transform:uppercase;
+  letter-spacing:0.35em;
+  font-size:0.55rem;
+  color:rgba(205,219,255,0.8);
+  margin-bottom:0.15rem;
+}
+.floating-video-window__title{
+  font-size:0.95rem;
+  font-weight:600;
+  color:#fff;
+}
+
+.floating-video-window__header-controls{display:flex;gap:0.35rem;}
+.floating-video-window__icon{
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.2);
+  background:rgba(255,255,255,0.12);
+  color:#f8fafc;
+  font-size:0.9rem;
+  line-height:1;
+}
+
+.floating-video-window__body{
+  flex:1;
+  min-height:0;
+  padding:0.5rem;
+  display:flex;
+  flex-direction:column;
+  gap:0.5rem;
+}
+
+.floating-video-window__jitsi{
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+
+.floating-video-window__jitsi > div:last-child{
+  flex:1;
+}
+
+.floating-video-window__resize-handle{
+  position:absolute;
+  bottom:0.45rem;
+  right:0.45rem;
+  width:26px;
+  height:26px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.25);
+  background:rgba(255,255,255,0.18);
+  cursor:nwse-resize;
+}
+
+.floating-video-window--minimized{
+  height:auto;
+}
+
+.floating-video-window--minimized .floating-video-window__header{
+  border-bottom:none;
+  cursor:pointer;
+}
+
+.floating-video-window--minimized .floating-video-window__body,
+.floating-video-window--minimized .floating-video-window__resize-handle{
+  display:none;
+}
+
+@media (max-width: 1024px) {
+  .canvas-stage{min-height:520px;}
+}
+
 table{width:100%;color:#f8fafc;}
 th{color:rgba(248,250,252,0.65);font-weight:600;}
 td{color:#f8fafc;}

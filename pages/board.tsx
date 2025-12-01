@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -7,6 +7,7 @@ import NavArrows from '../components/NavArrows'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
+const FloatingJitsiWindow = dynamic(() => import('../components/FloatingJitsiWindow'), { ssr: false })
 
 const useIsMobile = (maxWidth = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
@@ -34,6 +35,7 @@ export default function BoardPage() {
   const [gradeReady, setGradeReady] = useState(false)
   const [gradePickerOpen, setGradePickerOpen] = useState(false)
   const isMobile = useIsMobile(768)
+  const canvasStageRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!router.isReady) return
@@ -55,6 +57,12 @@ export default function BoardPage() {
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
+  const gradeRoomName = useMemo(() => {
+    const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
+    const baseSlug = gradeSlug ?? 'public-room'
+    const base = `philani-${baseSlug}`
+    return appId ? `${appId}/${base}` : base
+  }, [gradeSlug])
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || (session as any)?.user?.role === 'admin')
   const realtimeUserId = useMemo(() => {
@@ -66,6 +74,10 @@ export default function BoardPage() {
   }, [session])
   const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
   const activeGradeLabel = gradeReady ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade') : 'Resolving grade'
+  const gradeTokenEndpoint = useMemo(() => {
+    if (!gradeReady || !selectedGrade) return null
+    return `/api/sessions/grade/${selectedGrade}/token`
+  }, [gradeReady, selectedGrade])
 
   const handleGradeChange = (value: string) => {
     const next = normalizeGradeInput(value)
@@ -192,7 +204,19 @@ export default function BoardPage() {
         </section>
 
         <section className="board-card board-card--canvas">
-          {renderCanvas()}
+          <div className="canvas-stage" ref={canvasStageRef}>
+            {renderCanvas()}
+            {status === 'authenticated' && !isMobile && selectedGrade && (
+              <FloatingJitsiWindow
+                roomName={gradeRoomName}
+                displayName={realtimeDisplayName}
+                tokenEndpoint={gradeTokenEndpoint}
+                isOwner={isOwnerUser}
+                gradeLabel={activeGradeLabel}
+                boundsRef={canvasStageRef}
+              />
+            )}
+          </div>
         </section>
       </div>
     </div>

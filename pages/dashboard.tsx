@@ -46,6 +46,7 @@ export default function Dashboard() {
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
@@ -133,6 +134,16 @@ export default function Dashboard() {
       setActiveSection(availableSections[0].id)
     }
   }, [availableSections, activeSection])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateViewport = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
 
   const updateGradeSelection = (grade: GradeValue) => {
     if (selectedGrade === grade) return
@@ -1175,26 +1186,64 @@ export default function Dashboard() {
     }
   }
 
+  const boardLinkHref = selectedGrade ? `/board?grade=${encodeURIComponent(selectedGrade)}` : '/board'
+
   return (
-    <main className="min-h-screen bg-slate-50 pb-16">
-      <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />
-      <div className="max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {session ? (
-              <div className="text-sm muted">Signed in as <span className="font-medium text-slate-700">{session.user?.email}</span></div>
-            ) : (
-              <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
-            )}
-          </div>
-        </header>
+    <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white' : 'bg-slate-50'} min-h-screen pb-16`}>
+      {!isMobile && <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />}
+      <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
+        {isMobile ? (
+          <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-4">
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-blue-200">Dashboard</p>
+              <h1 className="text-3xl font-semibold">Stay ready for class</h1>
+              <p className="text-sm text-blue-100/80">Manage your grade workspace, join live sessions, and launch the canvas without leaving this hub.</p>
+            </div>
+            <div className="text-xs text-blue-100/70">
+              {session ? (
+                <>Signed in as <span className="font-semibold">{session.user?.email}</span></>
+              ) : (
+                'Sign in to unlock every tool.'
+              )}
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                onClick={() => setActiveSection('live')}
+              >
+                Live class
+              </button>
+              <Link
+                href={boardLinkHref}
+                className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Canvas
+              </Link>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 text-[11px] text-blue-100/70">
+              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">Grade: {activeGradeLabel}</span>
+              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">Role: {(session as any)?.user?.role || 'guest'}</span>
+            </div>
+          </section>
+        ) : (
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold">Dashboard</h1>
+              <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {session ? (
+                <div className="text-sm muted">Signed in as <span className="font-medium text-slate-700">{session.user?.email}</span></div>
+              ) : (
+                <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
+              )}
+            </div>
+          </header>
+        )}
 
         <div className="flex flex-col lg:flex-row gap-6">
-          <aside className="lg:w-64 shrink-0 space-y-4">
+          <aside className={`shrink-0 space-y-4 ${isMobile ? 'w-full rounded-3xl border border-white/10 bg-white/5 p-4 text-white backdrop-blur' : 'lg:w-64'}`}>
             <nav className="space-y-4">
               <div className="hidden lg:grid gap-2">
                 {availableSections.map(section => (
@@ -1212,19 +1261,31 @@ export default function Dashboard() {
                 ))}
               </div>
 
-              <div className="flex lg:hidden gap-2 overflow-x-auto pb-2">
-                {availableSections.map(section => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setActiveSection(section.id)}
-                    className={`flex-1 min-w-[160px] px-3 py-2 rounded-full border text-sm transition focus:outline-none focus:ring-2 ${
-                      activeSection === section.id ? 'border-blue-500 bg-blue-50 focus:ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200 focus:ring-blue-200'
-                    }`}
-                  >
-                    {section.label}
-                  </button>
-                ))}
+              <div className={`${isMobile ? 'grid grid-cols-2 gap-3' : 'flex gap-2 overflow-x-auto pb-2'} lg:hidden`}>
+                {availableSections.map(section => {
+                  const isActive = activeSection === section.id
+                  const buttonClass = isMobile
+                    ? `px-4 py-3 rounded-2xl text-sm font-semibold border transition focus:outline-none focus:ring-2 ${
+                        isActive
+                          ? 'bg-white text-[#04123b] border-white focus:ring-white/40 shadow-lg'
+                          : 'bg-white/10 border-white/20 text-white focus:ring-white/20'
+                      }`
+                    : `flex-1 min-w-[160px] px-3 py-2 rounded-full border text-sm transition focus:outline-none focus:ring-2 ${
+                        isActive
+                          ? 'border-blue-500 bg-blue-50 focus:ring-blue-500'
+                          : 'border-slate-200 bg-white hover:border-blue-200 focus:ring-blue-200'
+                      }`
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      onClick={() => setActiveSection(section.id)}
+                      className={buttonClass}
+                    >
+                      {section.label}
+                    </button>
+                  )
+                })}
               </div>
             </nav>
 

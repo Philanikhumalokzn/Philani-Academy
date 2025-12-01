@@ -114,3 +114,41 @@ html,body,#__next{
   .btn.w-full{width:100%}
 }
 
+/* Mobile dashboard deep-blue treatment */
+.mobile-dashboard-theme{
+  color:#f8fafc;
+}
+
+.mobile-dashboard-theme .card{
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.1);
+  color:#f8fafc;
+  box-shadow:0 25px 45px rgba(2,8,32,0.45);
+}
+
+.mobile-dashboard-theme .card .muted,
+.mobile-dashboard-theme .muted{
+  color:rgba(226,232,255,0.75);
+}
+
+.mobile-dashboard-theme .btn-primary{
+  background:linear-gradient(135deg,#4c6ef5,#1d4ed8);
+  color:#f8fafc;
+  box-shadow:0 12px 24px rgba(76,110,245,0.35);
+}
+
+.mobile-dashboard-theme .btn,
+.mobile-dashboard-theme .input{
+  border-radius:999px;
+}
+
+.mobile-dashboard-theme .input{
+  background:rgba(255,255,255,0.12);
+  border-color:rgba(255,255,255,0.2);
+  color:#f8fafc;
+}
+
+.mobile-dashboard-theme .input::placeholder{
+  color:rgba(248,250,252,0.6);
+}
+

@@ -44,22 +44,22 @@ export default function PrivacyNotice() {
           <div className="space-y-3">
             <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Privacy notice</p>
             <h1 className="text-3xl font-semibold md:text-4xl">How we protect learner information</h1>
-            <p className="text-sm text-slate-200 md:text-base">
+            <p className="text-sm text-white md:text-base">
               This page mirrors the deep-blue hero treatment everywhere else, so you always know you&apos;re still inside Philani Academy when reviewing your data rights.
             </p>
           </div>
         </section>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
             <p className="text-xs uppercase tracking-[0.25em] text-blue-200">Contact</p>
             <p className="mt-2 font-semibold text-white">support@philaniacademy.org</p>
-            <p className="text-slate-300">Use this address for POPIA requests, updates, or withdrawal of consent.</p>
+            <p className="text-white">Use this address for POPIA requests, updates, or withdrawal of consent.</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
             <p className="text-xs uppercase tracking-[0.25em] text-blue-200">Actions</p>
             <p className="mt-2 font-semibold text-white">Visit your <Link className="text-blue-200 underline" href="/profile">profile</Link></p>
-            <p className="text-slate-300">Update details anytime to keep examination records accurate.</p>
+            <p className="text-white">Update details anytime to keep examination records accurate.</p>
           </div>
         </div>
 
@@ -92,7 +92,7 @@ export default function PrivacyNotice() {
           <p>You may request access, corrections or deletion by emailing <a className="text-blue-600" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.</p>
         </section>
 
-        <footer className="space-y-1 text-sm text-slate-300">
+  <footer className="space-y-1 text-sm text-white">
           <p>
             Need to adjust your information? Visit your <Link className="text-blue-200" href="/profile">profile</Link> at any time.
           </p>

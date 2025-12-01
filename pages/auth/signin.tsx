@@ -112,7 +112,7 @@ export default function SignInPage() {
                 type="email"
                 required
                 autoComplete="email"
-                className="input mt-1"
+                className="input input-light mt-1"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -125,7 +125,7 @@ export default function SignInPage() {
                 type="password"
                 required
                 autoComplete="current-password"
-                className="input mt-1"
+                className="input input-light mt-1"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />

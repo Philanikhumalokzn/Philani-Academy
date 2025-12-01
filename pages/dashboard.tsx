@@ -650,7 +650,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2">
                 <p className="text-sm muted">
-                  You are currently in the <span className="font-medium text-slate-700">{activeGradeLabel}</span> workspace.
+                  You are currently in the <span className="font-medium text-white">{activeGradeLabel}</span> workspace.
                 </p>
                 {!userGrade && (
                   <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
@@ -661,17 +661,17 @@ export default function Dashboard() {
 
           <div className="card space-y-3">
             <h2 className="text-lg font-semibold">Account snapshot</h2>
-            <dl className="grid gap-2 text-sm text-slate-600">
+            <dl className="grid gap-2 text-sm text-white">
               <div>
-                <dt className="font-medium text-slate-700">Email</dt>
+                <dt className="font-medium text-white">Email</dt>
                 <dd>{session?.user?.email || 'Not signed in'}</dd>
               </div>
               <div>
-                <dt className="font-medium text-slate-700">Role</dt>
+                <dt className="font-medium text-white">Role</dt>
                 <dd className="capitalize">{userRole || 'guest'}</dd>
               </div>
               <div>
-                <dt className="font-medium text-slate-700">Grade</dt>
+                <dt className="font-medium text-white">Grade</dt>
                 <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
               </div>
             </dl>
@@ -723,7 +723,7 @@ export default function Dashboard() {
               {canvasLabel}
             </button>
           </div>
-          <p className="text-xs text-slate-500">Canvas opens on its own page so you get the entire screen for handwriting.</p>
+          <p className="text-xs text-white">Canvas opens on its own page so you get the entire screen for handwriting.</p>
           {status !== 'authenticated' ? (
             <div className="text-sm muted">Please sign in to join the live class.</div>
           ) : !selectedGrade ? (
@@ -1234,7 +1234,7 @@ export default function Dashboard() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {session ? (
-                <div className="text-sm muted">Signed in as <span className="font-medium text-slate-700">{session.user?.email}</span></div>
+                <div className="text-sm muted">Signed in as <span className="font-medium text-white">{session.user?.email}</span></div>
               ) : (
                 <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
               )}

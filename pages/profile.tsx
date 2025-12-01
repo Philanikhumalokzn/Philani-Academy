@@ -219,13 +219,13 @@ export default function ProfilePage() {
           <div className="space-y-3">
             <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Account control</p>
             <h1 className="text-3xl font-semibold md:text-4xl">My profile</h1>
-            <p className="max-w-3xl text-sm text-slate-200 md:text-base">
+            <p className="max-w-3xl text-sm text-white md:text-base">
               Keep learner information in one POPIA-compliant place. Every card below groups information the exams board expects and keeps the no-scroll layout tidy.
             </p>
           </div>
         </section>
         {loading ? (
-          <div className="card p-6 text-center text-sm text-slate-200">Loading…</div>
+          <div className="card p-6 text-center text-sm text-white">Loading…</div>
         ) : (
           <div className="space-y-6">
             <section className="card p-6 space-y-4">

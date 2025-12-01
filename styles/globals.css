@@ -15,7 +15,7 @@
   --bg-soft: #041138;
   --bg-gradient: radial-gradient(circle at top, rgba(40,82,255,0.35), transparent 45%), linear-gradient(180deg, #010924, #041138 60%, #030b21 100%);
   --card: rgba(255,255,255,0.05);
-  --muted: rgba(226,232,255,0.75);
+  --muted: #ffffff;
   --primary: #4c6ef5;
   --accent: #60a5fa;
   --text: #f8fafc;
@@ -98,6 +98,22 @@ body{
   border-color:var(--accent)
 }
 .input option{color:#0f172a;}
+
+.container-card .input,
+.input-light{
+  background:#fff;
+  color:#0f172a;
+  border:1px solid rgba(15,23,42,0.2);
+}
+.container-card .input:focus,
+.input-light:focus{
+  box-shadow:0 0 0 2px rgba(15,76,230,0.25);
+  border-color:rgba(15,76,230,0.45);
+}
+.container-card .input::placeholder,
+.input-light::placeholder{
+  color:#475569;
+}
 
 /* Cards */
 .card{

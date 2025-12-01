@@ -86,11 +86,11 @@ export default function Subscribe() {
           <div className="space-y-3">
             <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Subscriptions</p>
             <h1 className="text-3xl font-semibold md:text-4xl">Choose your Philani Academy plan</h1>
-            <p className="text-sm text-slate-200 md:text-base">
+            <p className="text-sm text-white md:text-base">
               Plans stay light, mobile-first, and aligned with the no-scroll classrooms. Select the plan that matches your grade bundle, then we hand you off to a POPIA-ready PayFast form.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-sm text-slate-100">
+          <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-sm text-white">
             Need to update billing details first? Visit your <Link className="text-blue-200 underline" href="/profile">profile</Link> or read the <Link className="text-blue-200 underline" href="/privacy">privacy notice</Link>.
           </div>
         </section>
@@ -98,7 +98,7 @@ export default function Subscribe() {
         <section className="card p-6 space-y-5">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">Pick a plan to activate</h2>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-white">
               Active plans appear first. We surface the same cards learners see in the dashboard so everything feels consistent.
             </p>
           </div>
@@ -117,7 +117,7 @@ export default function Subscribe() {
                   >
                     <div>
                       <p className="text-base font-semibold text-white">{plan.name}</p>
-                      <p className="text-sm text-slate-300">
+                      <p className="text-sm text-white">
                         {formatAmount(plan.amount, plan.currency)} {plan.active ? '• Currently active' : ''}
                       </p>
                     </div>
@@ -139,7 +139,7 @@ export default function Subscribe() {
               {statusMessage && <p className="text-sm text-amber-200">{statusMessage}</p>}
             </div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
               No subscription plans are published yet. Ping an admin so they can flip one live from the dashboard.
             </div>
           )}

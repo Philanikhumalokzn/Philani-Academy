@@ -104,7 +104,7 @@ export default function VerifyEmailPage() {
             <div>
               <label className="block text-sm font-medium text-primary mb-1">Email address</label>
               <input
-                className="input"
+                className="input input-light"
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -116,7 +116,7 @@ export default function VerifyEmailPage() {
             <div>
               <label className="block text-sm font-medium text-primary mb-1">Verification code</label>
               <input
-                className="input tracking-widest text-center"
+                className="input input-light tracking-widest text-center"
                 value={code}
                 onChange={e => setCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                 placeholder="123456"

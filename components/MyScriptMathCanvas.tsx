@@ -1927,7 +1927,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
         {latexOutput && (
           <div>
-            <p className="text-xs font-semibold uppercase text-slate-300 mb-1">Latest LaTeX export</p>
+            <p className="text-xs font-semibold uppercase text-white mb-1">Latest LaTeX export</p>
             <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}

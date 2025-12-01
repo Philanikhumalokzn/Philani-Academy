@@ -11,7 +11,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <Head>
         <title>Philani Academy</title>
         <meta name="description" content="Philani Academy — online sessions and learning for your community." />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=1280, initial-scale=1, user-scalable=yes" />
         <link rel="icon" href="/philani-logo.png" type="image/png" />
         <link rel="apple-touch-icon" href="/philani-logo.png" />
         <meta name="theme-color" content="#000000" />

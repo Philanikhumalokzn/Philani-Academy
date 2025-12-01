@@ -107,33 +107,27 @@ export default function BoardPage() {
   if (isMobile) {
     return (
       <div className="flex h-screen flex-col bg-slate-900 text-white">
-        <div className="px-4 pt-5 pb-3 space-y-3 border-b border-slate-800">
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              className="text-sm text-blue-200 underline underline-offset-2"
-              onClick={() => router.push('/dashboard')}
-            >
-              Dashboard
-            </button>
-            <div className="text-right">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Shared board</p>
-              <h1 className="text-xl font-semibold">Maths Canvas</h1>
-              <p className="text-xs text-slate-400">Tap the grade selector, then draw with pen or finger.</p>
-            </div>
-          </div>
-          <p className="text-xs text-slate-400">Tip: rotate your phone to landscape for extra writing space.</p>
-        </div>
-
-        <div className="px-4 py-3 border-b border-slate-800 space-y-2">
+        <div className="px-5 pt-6 pb-4 space-y-3 border-b border-slate-800 text-center">
           <button
             type="button"
-            className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-left"
+            className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/30 px-4 py-1 text-sm text-blue-100"
+            onClick={() => router.push('/dashboard')}
+          >
+            ← Dashboard
+          </button>
+          <p className="text-[11px] uppercase tracking-[0.35em] text-slate-300">Shared board</p>
+          <h1 className="text-2xl font-semibold">Maths Canvas</h1>
+          <p className="text-xs text-slate-400">Write, present, and share all in one place.</p>
+        </div>
+
+        <div className="px-5 py-4 border-b border-slate-800 space-y-3 text-center">
+          <p className="text-[12px] uppercase tracking-[0.2em] text-slate-400">Active grade</p>
+          <button
+            type="button"
+            className="mx-auto inline-flex min-w-[180px] items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 px-5 py-3 text-base font-semibold"
             onClick={() => setGradePickerOpen(prev => !prev)}
           >
-            <span className="block text-xs uppercase text-slate-400">Active grade</span>
-            <span className="text-base font-semibold">{activeGradeLabel}</span>
-            <span className="text-[11px] text-slate-500">Tap to {gradePickerOpen ? 'hide' : 'change'} grade</span>
+            {activeGradeLabel}
           </button>
           {gradePickerOpen && (
             <select
@@ -151,13 +145,12 @@ export default function BoardPage() {
           )}
         </div>
 
-        <div className="px-4 py-2 text-[11px] text-slate-400 border-b border-slate-800 flex items-center justify-between">
-          <span>{status === 'authenticated' ? 'You are signed in.' : 'Sign in required to draw.'}</span>
-          <span className="text-blue-200">All tools live inside the board menu.</span>
+        <div className="px-5 py-2 text-[11px] text-center text-slate-400 border-b border-slate-800">
+          {status === 'authenticated' ? 'Signed in and ready.' : 'Please sign in to draw.'}
         </div>
 
         <div className="flex-1 bg-white text-slate-900 rounded-t-3xl p-3">
-          <div className="h-full rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="h-full rounded-3xl border border-slate-200 shadow-lg overflow-hidden">
             {renderCanvas()}
           </div>
         </div>

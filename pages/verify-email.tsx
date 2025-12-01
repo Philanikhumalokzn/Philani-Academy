@@ -96,9 +96,9 @@ export default function VerifyEmailPage() {
     <>
       <NavArrows backHref="/signup" forwardHref="/auth/signin" />
       <div className="min-h-screen bg-primary flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
+        <div className="max-w-md w-full bg-white text-slate-900 rounded-lg shadow-lg p-8">
           <h1 className="text-2xl font-semibold mb-4 text-center text-primary">Verify your email</h1>
-          <p className="muted mb-6 text-center">{message}</p>
+          <p className="text-sm text-slate-600 mb-6 text-center">{message}</p>
 
           <form className="space-y-4" onSubmit={handleVerify}>
             <div>
@@ -135,7 +135,7 @@ export default function VerifyEmailPage() {
             </button>
           </form>
 
-          <div className="mt-6 space-y-2 text-sm">
+          <div className="mt-6 space-y-2 text-sm text-slate-700">
             <button
               type="button"
               className="btn btn-ghost w-full border-primary text-primary font-medium hover:bg-primary/10 disabled:opacity-60"
@@ -145,10 +145,10 @@ export default function VerifyEmailPage() {
               {resendStatus === 'sending' ? 'Resending…' : 'Resend code'}
             </button>
             {resendMessage && (
-              <p className={resendStatus === 'error' ? 'text-red-600 text-center' : 'muted text-center'}>{resendMessage}</p>
+              <p className={resendStatus === 'error' ? 'text-red-600 text-center' : 'text-slate-500 text-center'}>{resendMessage}</p>
             )}
             {lastOtpEmail && (
-              <p className="text-xs text-center muted">Last verification code attempt sent to <span className="font-medium text-primary">{lastOtpEmail}</span></p>
+              <p className="text-xs text-center text-slate-500">Last verification code attempt sent to <span className="font-medium text-primary">{lastOtpEmail}</span></p>
             )}
           </div>
 

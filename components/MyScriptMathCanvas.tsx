@@ -1760,74 +1760,72 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-            Undo
-          </button>
-          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-            Redo
-          </button>
-          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-            Clear
-          </button>
-          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-            {isConverting ? 'Converting…' : 'Convert to LaTeX'}
-          </button>
+        <div className="canvas-toolbar">
+          <div className="canvas-toolbar__buttons">
+            <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+              Undo
+            </button>
+            <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+              Redo
+            </button>
+            <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+              Clear
+            </button>
+            <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+              {isConverting ? 'Converting…' : 'Convert to LaTeX'}
+            </button>
+          </div>
           {isAdmin && (
-            <button
-              className="btn"
-              type="button"
-              onClick={forcePublishLatex}
-              disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
-            >
-              Publish LaTeX to Students
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
-              type="button"
-              onClick={toggleLatexProjection}
-              disabled={status !== 'ready' || Boolean(fatalError)}
-            >
-              {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId)}
-              disabled={status !== 'ready' || Boolean(fatalError)}
-            >
-              Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
-            </button>
-          )}
-          {isAdmin && selectedClientId !== 'all' && (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => forceClearStudentCanvas(selectedClientId)}
-              disabled={status !== 'ready' || Boolean(fatalError)}
-            >
-              Wipe Selected Student Canvas
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              className="btn"
-              type="button"
-              onClick={allowSelectedClientEditing}
-              disabled={status !== 'ready' || Boolean(fatalError)}
-            >
-              {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
-            </button>
+            <div className="canvas-toolbar__buttons">
+              <button
+                className="btn"
+                type="button"
+                onClick={forcePublishLatex}
+                disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
+              >
+                Publish LaTeX to Students
+              </button>
+              <button
+                className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={toggleLatexProjection}
+                disabled={status !== 'ready' || Boolean(fatalError)}
+              >
+                {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId)}
+                disabled={status !== 'ready' || Boolean(fatalError)}
+              >
+                Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
+              </button>
+              {selectedClientId !== 'all' && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => forceClearStudentCanvas(selectedClientId)}
+                  disabled={status !== 'ready' || Boolean(fatalError)}
+                >
+                  Wipe Selected Student Canvas
+                </button>
+              )}
+              <button
+                className="btn"
+                type="button"
+                onClick={allowSelectedClientEditing}
+                disabled={status !== 'ready' || Boolean(fatalError)}
+              >
+                {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
+              </button>
+            </div>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3 items-center text-xs bg-white border rounded px-3 py-2 shadow-sm">
-          <span className="font-semibold">Canvas orientation</span>
-          <div className="flex gap-2">
+        <div className="orientation-panel">
+          <p className="orientation-panel__label">Canvas orientation</p>
+          <div className="orientation-panel__options">
             <button
               className={`btn ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
               type="button"
@@ -1845,17 +1843,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Portrait
             </button>
           </div>
-          <span className="text-slate-600">
+          <p className="orientation-panel__note">
             {isAdmin
               ? orientationLockedToLandscape
                 ? 'Fullscreen keeps you in landscape for the widest writing surface.'
                 : 'Switch layouts when not projecting fullscreen.'
               : 'Choose the layout that fits your device—this only affects your view.'}
-          </span>
+          </p>
         </div>
 
         {isAdmin && (
-          <div className="flex flex-wrap gap-4 items-center text-xs bg-white border rounded px-3 py-2 shadow-sm">
+          <div className="canvas-settings-panel">
             <label className="flex flex-col gap-1">
               <span className="font-semibold">LaTeX font size</span>
               <input
@@ -1870,7 +1868,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Text alignment</span>
               <select
-                className="border rounded px-2 py-1 text-xs"
+                className="canvas-settings-panel__select"
                 value={latexProjectionOptions.textAlign}
                 onChange={e => updateLatexProjectionOptions({ textAlign: e.target.value as LatexDisplayOptions['textAlign'] })}
               >
@@ -1891,7 +1889,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         )}
 
         {isAdmin && (
-          <div className="flex flex-wrap gap-2 items-center text-xs bg-white border rounded px-3 py-2 shadow-sm">
+          <div className="canvas-settings-panel">
             <button
               className="btn"
               type="button"
@@ -1917,7 +1915,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <span className="font-semibold">
               Your Page: {pageIndex + 1} / {pageRecordsRef.current.length}
             </span>
-            <span className="text-slate-600">
+            <span className="canvas-settings-panel__hint">
               Students See Page {sharedPageIndex + 1}
             </span>
           </div>
@@ -1929,12 +1927,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
         {latexOutput && (
           <div>
-            <p className="text-xs font-semibold uppercase text-slate-500 mb-1">Latest LaTeX export</p>
-            <pre className="text-sm bg-slate-100 border rounded p-3 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
+            <p className="text-xs font-semibold uppercase text-slate-300 mb-1">Latest LaTeX export</p>
+            <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
         {process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
-          <div className="text-[10px] mt-2 p-2 rounded border bg-white shadow-sm space-y-1">
+          <div className="canvas-debug-panel">
             <div className="font-semibold">Debug</div>
             <div>localVersion: {localVersionRef.current}</div>
             <div>appliedVersion: {appliedVersionRef.current}</div>
@@ -1947,12 +1945,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
-        <div className="text-xs mt-2">
+        <div className="canvas-admin-controls">
           {isAdmin && (
             <button
               type="button"
               onClick={toggleBroadcastPause}
-              className="px-2 py-1 rounded border text-xs bg-white"
+              className="canvas-admin-controls__button"
             >
               {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Updates'}
             </button>
@@ -1961,7 +1959,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <button
               type="button"
               onClick={controlState && controlState.controllerId === clientId ? unlockStudentEditing : lockStudentEditing}
-              className="px-2 py-1 rounded border text-xs bg-white ml-2"
+              className="canvas-admin-controls__button"
               disabled={Boolean(fatalError) || status !== 'ready'}
             >
               {controlState && controlState.controllerId === clientId ? 'Unlock Student Editing' : 'Lock Student Editing'}
@@ -1969,7 +1967,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           )}
           {isAdmin && connectedClients.length > 0 && (
             <select
-              className="ml-2 text-xs border rounded px-2 py-1 bg-white"
+              className="canvas-admin-controls__select"
               value={selectedClientId}
               onChange={e => setSelectedClientId(e.target.value)}
             >
@@ -1984,15 +1982,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             </select>
           )}
           {controlState && controlState.controllerId !== ALL_STUDENTS_ID && (
-            <span className="ml-2 text-[10px] text-slate-600 align-middle">
+            <span className="canvas-settings-panel__hint">
               Student editing locked by {controlOwnerLabel}
             </span>
           )}
           {controlState && controlState.controllerId === ALL_STUDENTS_ID && (
-            <span className="ml-2 text-[10px] text-slate-600 align-middle">All students may edit the board.</span>
+            <span className="canvas-settings-panel__hint">All students may edit the board.</span>
           )}
           {!isRealtimeConnected && (
-            <span className="ml-2 text-[10px] text-orange-600">Realtime disconnected — updates will be queued</span>
+            <span className="text-xs text-amber-200">Realtime disconnected — updates will be queued</span>
           )}
         </div>
       </div>

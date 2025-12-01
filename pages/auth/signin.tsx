@@ -97,9 +97,9 @@ export default function SignInPage() {
         <title>Sign in | Philani Academy</title>
       </Head>
       <div className="min-h-screen flex items-center justify-center bg-primary px-4">
-        <div className="max-w-md w-full bg-white shadow-md rounded-lg p-8">
+        <div className="max-w-md w-full bg-white text-slate-900 shadow-md rounded-lg p-8">
           <h1 className="text-2xl font-semibold text-primary mb-3">Sign in</h1>
-          <p className="text-sm muted mb-6">Welcome back! Enter your credentials to access the dashboard.</p>
+          <p className="text-sm text-slate-600 mb-6">Welcome back! Enter your credentials to access the dashboard.</p>
 
           {error && <div className="mb-4 rounded-md bg-red-100 p-3 text-sm text-red-700">{error}</div>}
           {info && <div className="mb-4 rounded-md bg-green-100 p-3 text-sm text-green-700">{info}</div>}
@@ -140,7 +140,7 @@ export default function SignInPage() {
             </button>
           </form>
 
-          <div className="mt-6 space-y-4 text-sm muted">
+          <div className="mt-6 space-y-4 text-sm text-slate-600">
             <p>
               Don&apos;t have an account?{' '}
               <Link href="/signup" className="text-primary hover:underline font-medium">
@@ -168,7 +168,7 @@ export default function SignInPage() {
                 <p className="mt-2 text-sm text-red-600">We could not send the email. Please try again later.</p>
               )}
               {lastOtpEmail && (
-                <p className="mt-1 text-xs muted text-center">Last verification attempt sent to <span className="font-medium text-primary">{lastOtpEmail}</span></p>
+                <p className="mt-1 text-xs text-slate-500 text-center">Last verification attempt sent to <span className="font-medium text-primary">{lastOtpEmail}</span></p>
               )}
             </div>
           </div>

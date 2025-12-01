@@ -56,6 +56,8 @@ type LatexDisplayState = {
   options: LatexDisplayOptions
 }
 
+type CanvasOrientation = 'portrait' | 'landscape'
+
 type PresenceClient = {
   clientId: string
   name?: string
@@ -225,6 +227,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(isAdmin ? 'landscape' : 'portrait')
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -254,6 +257,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
   const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
+  const adminOrientationPreferenceRef = useRef<CanvasOrientation>(isAdmin ? 'landscape' : 'portrait')
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -276,6 +280,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   useEffect(() => {
     sharedPageIndexRef.current = sharedPageIndex
   }, [sharedPageIndex])
+
+  useEffect(() => {
+    try {
+      editorInstanceRef.current?.resize?.()
+    } catch {}
+  }, [canvasOrientation, isFullscreen])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -1588,8 +1598,32 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     setSharedPageIndex(pageIndex)
   }, [forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot])
 
+  const handleOrientationChange = useCallback(
+    (next: CanvasOrientation) => {
+      if (isAdmin && isFullscreen && next !== 'landscape') {
+        return
+      }
+      setCanvasOrientation(curr => (curr === next ? curr : next))
+      if (isAdmin && !isFullscreen) {
+        adminOrientationPreferenceRef.current = next
+      }
+    },
+    [isAdmin, isFullscreen]
+  )
+
   const toggleFullscreen = () => {
-    setIsFullscreen(prev => !prev)
+    const next = !isFullscreen
+    setIsFullscreen(next)
+    if (isAdmin) {
+      if (next) {
+        adminOrientationPreferenceRef.current = canvasOrientation
+        if (canvasOrientation !== 'landscape') {
+          setCanvasOrientation('landscape')
+        }
+      } else if (adminOrientationPreferenceRef.current && adminOrientationPreferenceRef.current !== canvasOrientation) {
+        setCanvasOrientation(adminOrientationPreferenceRef.current)
+      }
+    }
     // Resize editor after layout change
     try {
       editorInstanceRef.current?.resize?.()
@@ -1647,17 +1681,37 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
   )
 
+  const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
+  const editorHostStyle = useMemo<CSSProperties>(() => {
+    if (isFullscreen) {
+      return {
+        width: '100%',
+        height: '100%',
+        pointerEvents: isViewOnly ? 'none' : undefined,
+      }
+    }
+    const landscape = canvasOrientation === 'landscape'
+    const sizing: CSSProperties = landscape
+      ? { minHeight: '384px', maxHeight: '520px', aspectRatio: '16 / 9' }
+      : { minHeight: '480px', maxHeight: '640px', aspectRatio: '3 / 4' }
+    return {
+      width: '100%',
+      ...sizing,
+      pointerEvents: isViewOnly ? 'none' : undefined,
+    }
+  }, [canvasOrientation, isFullscreen, isViewOnly])
+
+  const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
+
   return (
     <div>
       <div className="flex flex-col gap-3">
         <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
           <div
             ref={editorHostRef}
-            className={isFullscreen ? 'w-full h-full' : 'w-full h-[24rem]'}
-            style={{
-              minHeight: isFullscreen ? undefined : '384px',
-              pointerEvents: isViewOnly ? 'none' : undefined,
-            }}
+            className={editorHostClass}
+            style={editorHostStyle}
+            data-orientation={canvasOrientation}
           />
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
@@ -1769,9 +1823,35 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
             </button>
           )}
-          <button className="btn" type="button" onClick={toggleFullscreen}>
-            {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-3 items-center text-xs bg-white border rounded px-3 py-2 shadow-sm">
+          <span className="font-semibold">Canvas orientation</span>
+          <div className="flex gap-2">
+            <button
+              className={`btn ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
+              type="button"
+              onClick={() => handleOrientationChange('landscape')}
+            >
+              Landscape
+            </button>
+            <button
+              className={`btn ${canvasOrientation === 'portrait' ? 'btn-secondary' : ''}`}
+              type="button"
+              onClick={() => handleOrientationChange('portrait')}
+              disabled={orientationLockedToLandscape}
+              title={orientationLockedToLandscape ? 'Portrait view is disabled while the instructor projects fullscreen.' : undefined}
+            >
+              Portrait
+            </button>
+          </div>
+          <span className="text-slate-600">
+            {isAdmin
+              ? orientationLockedToLandscape
+                ? 'Fullscreen keeps you in landscape for the widest writing surface.'
+                : 'Switch layouts when not projecting fullscreen.'
+              : 'Choose the layout that fits your device—this only affects your view.'}
+          </span>
         </div>
 
         {isAdmin && (

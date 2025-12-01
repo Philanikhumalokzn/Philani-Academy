@@ -616,7 +616,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="card space-y-3">
+          <div className="card dashboard-card space-y-3">
             <h2 className="text-lg font-semibold">Grade workspace</h2>
             {status !== 'authenticated' ? (
               <p className="text-sm muted">Sign in to manage a grade workspace.</p>
@@ -659,7 +659,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="card space-y-3">
+          <div className="card dashboard-card space-y-3">
             <h2 className="text-lg font-semibold">Account snapshot</h2>
             <dl className="grid gap-2 text-sm text-white">
               <div>
@@ -683,20 +683,18 @@ export default function Dashboard() {
         </div>
 
         {quickLinks.length > 0 && (
-          <div className="card space-y-3">
+          <div className="card dashboard-card space-y-3">
             <h2 className="text-lg font-semibold">Quick actions</h2>
-            <div className="flex flex-wrap gap-2">
+            <div className="dashboard-quick-actions">
               {quickLinks.map(section => (
                 <button
                   key={section.id}
                   type="button"
                   onClick={() => setActiveSection(section.id)}
-                  className={`px-3 py-2 rounded border text-left text-sm transition focus:outline-none focus:ring-2 ${
-                    activeSection === section.id ? 'border-blue-500 bg-blue-50 focus:ring-blue-500' : 'border-slate-200 hover:border-blue-200 focus:ring-blue-200'
-                  }`}
+                  className={`dashboard-quick-action ${activeSection === section.id ? 'is-active' : ''}`}
                 >
-                  <div className="font-medium text-slate-700">{section.label}</div>
-                  <div className="text-xs text-slate-500">{section.description}</div>
+                  <div className="dashboard-quick-action__label">{section.label}</div>
+                  <div className="dashboard-quick-action__description">{section.description}</div>
                 </button>
               ))}
             </div>
@@ -1290,7 +1288,7 @@ export default function Dashboard() {
             </nav>
 
             <div className="hidden lg:block">
-              <div className="card space-y-2">
+              <div className="card dashboard-card space-y-2">
                 <div className="font-semibold">Account status</div>
                 <div className="text-sm muted">Role: {(session as any)?.user?.role || 'guest'}</div>
                 <div className="text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
@@ -1303,7 +1301,7 @@ export default function Dashboard() {
             {renderSection()}
 
             <div className="lg:hidden">
-              <div className="card space-y-2">
+              <div className="card dashboard-card space-y-2">
                 <div className="font-semibold">Account status</div>
                 <div className="text-sm muted">Role: {(session as any)?.user?.role || 'guest'}</div>
                 <div className="text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>

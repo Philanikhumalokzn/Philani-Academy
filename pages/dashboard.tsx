@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import JitsiRoom from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -8,6 +9,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import NavArrows from '../components/NavArrows'
 import BrandLogo from '../components/BrandLogo'
 
+const CanvasOverlay = dynamic(() => import('../components/CanvasOverlay'), { ssr: false })
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -85,6 +87,7 @@ export default function Dashboard() {
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [materialUploading, setMaterialUploading] = useState(false)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
+  const [isCanvasOverlayOpen, setCanvasOverlayOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeGradeLabel = gradeReady
@@ -107,6 +110,15 @@ export default function Dashboard() {
     if (!gradeReady || !selectedGrade) return null
     return `/api/sessions/grade/${selectedGrade}/token`
   }, [gradeReady, selectedGrade])
+  const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
+  const openCanvasOverlay = () => {
+    if (!canLaunchCanvasOverlay) {
+      alert('Sign in and choose a grade to open the shared canvas overlay.')
+      return
+    }
+    setCanvasOverlayOpen(true)
+  }
+  const closeCanvasOverlay = () => setCanvasOverlayOpen(false)
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const gradeRoomName = useMemo(() => {
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
@@ -114,6 +126,15 @@ export default function Dashboard() {
     const base = `philani-${baseSlug}`
     return appId ? `${appId}/${base}` : base
   }, [gradeSlug])
+  const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
+  const realtimeUserId = useMemo(() => {
+    const candidate = (session as any)?.user?.id as string | undefined
+    if (candidate && typeof candidate === 'string') return candidate
+    if (session?.user?.email) return session.user.email
+    if (session?.user?.name) return session.user.name
+    return 'guest'
+  }, [session])
+  const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
@@ -135,6 +156,12 @@ export default function Dashboard() {
       setActiveSection(availableSections[0].id)
     }
   }, [availableSections, activeSection])
+
+  useEffect(() => {
+    if (!canLaunchCanvasOverlay && isCanvasOverlayOpen) {
+      setCanvasOverlayOpen(false)
+    }
+  }, [canLaunchCanvasOverlay, isCanvasOverlayOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -686,7 +713,6 @@ export default function Dashboard() {
   }
 
   const LiveSection = () => {
-    const canvasPath = selectedGrade ? `/board?grade=${encodeURIComponent(selectedGrade)}` : '/board'
     const canvasLabel = selectedGrade ? `Canvas (${gradeToLabel(selectedGrade)})` : 'Canvas workspace'
 
     return (
@@ -697,9 +723,11 @@ export default function Dashboard() {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => router.push(canvasPath)}
+              onClick={openCanvasOverlay}
+              disabled={!canLaunchCanvasOverlay}
+              title={canLaunchCanvasOverlay ? undefined : 'Sign in and pick a grade to open the canvas.'}
             >
-              {canvasLabel}
+              {canLaunchCanvasOverlay ? canvasLabel : 'Select a grade to open canvas'}
             </button>
           </div>
           <p className="text-xs text-white">Canvas opens on its own page so you get the entire screen for handwriting.</p>
@@ -1214,10 +1242,9 @@ export default function Dashboard() {
     )
   }
 
-  const boardLinkHref = selectedGrade ? `/board?grade=${encodeURIComponent(selectedGrade)}` : '/board'
-
   return (
-    <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white' : 'deep-page'} min-h-screen pb-16`}>
+    <>
+      <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white' : 'deep-page'} min-h-screen pb-16`}>
       {!isMobile && <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />}
       <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
         {isMobile ? (
@@ -1245,12 +1272,14 @@ export default function Dashboard() {
               >
                 Live class
               </button>
-              <Link
-                href={boardLinkHref}
-                className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10"
+              <button
+                type="button"
+                className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                onClick={openCanvasOverlay}
+                disabled={!canLaunchCanvasOverlay}
               >
                 Canvas
-              </Link>
+              </button>
             </div>
             <div className="flex flex-wrap justify-center gap-2 text-[11px] text-blue-100/70">
               <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">Grade: {activeGradeLabel}</span>
@@ -1282,7 +1311,17 @@ export default function Dashboard() {
           {renderSection()}
         </section>
       </div>
-    </main>
+      </main>
+      <CanvasOverlay
+        isOpen={isCanvasOverlayOpen && canLaunchCanvasOverlay}
+        onClose={closeCanvasOverlay}
+        gradeLabel={selectedGrade ? activeGradeLabel : null}
+        roomId={boardRoomId}
+        userId={realtimeUserId}
+        userDisplayName={realtimeDisplayName}
+        isAdmin={isOwnerUser}
+      />
+    </>
   )
 }
 

@@ -146,6 +146,7 @@ type MyScriptMathCanvasProps = {
   userDisplayName?: string
   isAdmin?: boolean
   boardId?: string // optional logical board identifier; if absent, we'll use a shared/global per grade
+  uiMode?: 'default' | 'overlay'
 }
 
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
@@ -200,7 +201,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId }: MyScriptMathCanvasProps) {
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default' }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -228,6 +229,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(isAdmin ? 'landscape' : 'portrait')
+  const isOverlayMode = uiMode === 'overlay'
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -260,6 +262,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
   const adminOrientationPreferenceRef = useRef<CanvasOrientation>(isAdmin ? 'landscape' : 'portrait')
+  const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
+  const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -319,6 +323,53 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (controllerId === ALL_STUDENTS_ID) return true
     return controllerId === clientIdRef.current
   }, [])
+
+  const clearOverlayAutoHide = useCallback(() => {
+    if (overlayHideTimeoutRef.current) {
+      clearTimeout(overlayHideTimeoutRef.current)
+      overlayHideTimeoutRef.current = null
+    }
+  }, [])
+
+  const closeOverlayControls = useCallback(() => {
+    if (!isOverlayMode) return
+    clearOverlayAutoHide()
+    setOverlayControlsVisible(false)
+  }, [clearOverlayAutoHide, isOverlayMode])
+
+  const kickOverlayAutoHide = useCallback(() => {
+    if (!isOverlayMode) return
+    clearOverlayAutoHide()
+    overlayHideTimeoutRef.current = setTimeout(() => {
+      setOverlayControlsVisible(false)
+    }, 6000)
+  }, [clearOverlayAutoHide, isOverlayMode])
+
+  const openOverlayControls = useCallback(() => {
+    if (!isOverlayMode) return
+    setOverlayControlsVisible(true)
+  }, [isOverlayMode])
+
+  useEffect(() => {
+    return () => {
+      clearOverlayAutoHide()
+    }
+  }, [clearOverlayAutoHide])
+
+  useEffect(() => {
+    if (!isOverlayMode || !overlayControlsVisible) return
+    kickOverlayAutoHide()
+  }, [isOverlayMode, overlayControlsVisible, kickOverlayAutoHide])
+
+  const runCanvasAction = useCallback((action: () => void | Promise<void>) => {
+    if (typeof action === 'function') {
+      action()
+    }
+    if (isOverlayMode) {
+      clearOverlayAutoHide()
+      setOverlayControlsVisible(false)
+    }
+  }, [clearOverlayAutoHide, isOverlayMode])
 
   const channelName = useMemo(() => {
     // Force a single shared board across instances unless a specific boardId is provided.
@@ -1757,6 +1808,99 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
+  const renderToolbarBlock = () => (
+    <div className="canvas-toolbar">
+      <div className="canvas-toolbar__buttons">
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(handleUndo)}
+          disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          Undo
+        </button>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(handleRedo)}
+          disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          Redo
+        </button>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(handleClear)}
+          disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          Clear
+        </button>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() => runCanvasAction(handleConvert)}
+          disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          {isConverting ? 'Converting…' : 'Convert to LaTeX'}
+        </button>
+      </div>
+      {isAdmin && (
+        <div className="canvas-toolbar__buttons">
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(forcePublishLatex)}
+            disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
+          >
+            Publish LaTeX to Students
+          </button>
+          <button
+            className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(toggleLatexProjection)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
+          </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId))}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
+          </button>
+          {selectedClientId !== 'all' && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => runCanvasAction(() => forceClearStudentCanvas(selectedClientId))}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+            >
+              Wipe Selected Student Canvas
+            </button>
+          )}
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(allowSelectedClientEditing)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
+          </button>
+          <button
+            className={`btn ${isStudentPublishEnabled ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(toggleStudentPublishing)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div>
       <div className="flex flex-col gap-3">
@@ -1805,116 +1949,79 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               )}
             </div>
           )}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
-          >
-            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          </button>
-        </div>
-
-        <div className="canvas-toolbar">
-          <div className="canvas-toolbar__buttons">
-            <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              Undo
+          {!isOverlayMode && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+            >
+              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             </button>
-            <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              Redo
+          )}
+          {isOverlayMode && (
+            <button
+              type="button"
+              className="canvas-control-toggle"
+              onClick={() => (overlayControlsVisible ? closeOverlayControls() : openOverlayControls())}
+              aria-expanded={overlayControlsVisible}
+            >
+              {overlayControlsVisible ? 'Hide controls' : 'Canvas controls'}
             </button>
-            <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              Clear
-            </button>
-            <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              {isConverting ? 'Converting…' : 'Convert to LaTeX'}
-            </button>
-          </div>
-          {isAdmin && (
-            <div className="canvas-toolbar__buttons">
-              <button
-                className="btn"
-                type="button"
-                onClick={forcePublishLatex}
-                disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
-              >
-                Publish LaTeX to Students
-              </button>
-              <button
-                className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
-                type="button"
-                onClick={toggleLatexProjection}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId)}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
-              </button>
-              {selectedClientId !== 'all' && (
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => forceClearStudentCanvas(selectedClientId)}
-                  disabled={status !== 'ready' || Boolean(fatalError)}
-                >
-                  Wipe Selected Student Canvas
+          )}
+          {isOverlayMode && (
+            <div
+              className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+              style={{ pointerEvents: overlayControlsVisible ? 'auto' : 'none' }}
+              onClick={closeOverlayControls}
+            >
+              <div className="canvas-overlay-controls__panel" onClick={event => {
+                event.stopPropagation()
+                kickOverlayAutoHide()
+              }}>
+                <p className="canvas-overlay-controls__title">Canvas controls</p>
+                {renderToolbarBlock()}
+                <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                  Return to drawing
                 </button>
-              )}
-              <button
-                className="btn"
-                type="button"
-                onClick={allowSelectedClientEditing}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
-              </button>
-              <button
-                className={`btn ${isStudentPublishEnabled ? 'btn-secondary' : ''}`}
-                type="button"
-                onClick={toggleStudentPublishing}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
-              </button>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="orientation-panel">
-          <p className="orientation-panel__label">Canvas orientation</p>
-          <div className="orientation-panel__options">
-            <button
-              className={`btn ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
-              type="button"
-              onClick={() => handleOrientationChange('landscape')}
-            >
-              Landscape
-            </button>
-            <button
-              className={`btn ${canvasOrientation === 'portrait' ? 'btn-secondary' : ''}`}
-              type="button"
-              onClick={() => handleOrientationChange('portrait')}
-              disabled={orientationLockedToLandscape}
-              title={orientationLockedToLandscape ? 'Portrait view is disabled while the instructor projects fullscreen.' : undefined}
-            >
-              Portrait
-            </button>
-          </div>
-          <p className="orientation-panel__note">
-            {isAdmin
-              ? orientationLockedToLandscape
-                ? 'Fullscreen keeps you in landscape for the widest writing surface.'
-                : 'Switch layouts when not projecting fullscreen.'
-              : 'Choose the layout that fits your device—this only affects your view.'}
-          </p>
-        </div>
+        {!isOverlayMode && renderToolbarBlock()}
 
-        {isAdmin && (
+        {!isOverlayMode && (
+          <div className="orientation-panel">
+            <p className="orientation-panel__label">Canvas orientation</p>
+            <div className="orientation-panel__options">
+              <button
+                className={`btn ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={() => handleOrientationChange('landscape')}
+              >
+                Landscape
+              </button>
+              <button
+                className={`btn ${canvasOrientation === 'portrait' ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={() => handleOrientationChange('portrait')}
+                disabled={orientationLockedToLandscape}
+                title={orientationLockedToLandscape ? 'Portrait view is disabled while the instructor projects fullscreen.' : undefined}
+              >
+                Portrait
+              </button>
+            </div>
+            <p className="orientation-panel__note">
+              {isAdmin
+                ? orientationLockedToLandscape
+                  ? 'Fullscreen keeps you in landscape for the widest writing surface.'
+                  : 'Switch layouts when not projecting fullscreen.'
+                : 'Choose the layout that fits your device—this only affects your view.'}
+            </p>
+          </div>
+        )}
+
+        {isAdmin && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <label className="flex flex-col gap-1">
               <span className="font-semibold">LaTeX font size</span>
@@ -1950,7 +2057,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           </div>
         )}
 
-        {isAdmin && (
+        {isAdmin && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <button
               className="btn"
@@ -1983,17 +2090,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           </div>
         )}
 
-        {gradeLabel && (
+        {!isOverlayMode && gradeLabel && (
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
         )}
 
-        {latexOutput && (
+        {!isOverlayMode && latexOutput && (
           <div>
             <p className="text-xs font-semibold uppercase text-white mb-1">Latest LaTeX export</p>
             <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
-        {process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
+        {!isOverlayMode && process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
           <div className="canvas-debug-panel">
             <div className="font-semibold">Debug</div>
             <div>localVersion: {localVersionRef.current}</div>
@@ -2007,7 +2114,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
-        <div className="canvas-admin-controls">
+        {!isOverlayMode && (
+          <div className="canvas-admin-controls">
           {isAdmin && (
             <button
               type="button"
@@ -2057,7 +2165,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {!isRealtimeConnected && (
             <span className="text-xs text-amber-200">Realtime disconnected — updates will be queued</span>
           )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

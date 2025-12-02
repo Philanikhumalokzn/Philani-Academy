@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
@@ -14,6 +14,7 @@ type CanvasOverlayProps = {
 }
 
 export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
+  const controlsHandleRef = useRef<{ open: () => void; close: () => void; toggle: () => void } | null>(null)
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return
     const handleKeydown = (event: KeyboardEvent) => {
@@ -47,9 +48,14 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             />
             <div className="canvas-overlay-shell__badge">{gradeLabel || 'Shared board'}</div>
           </div>
-          <button type="button" className="canvas-overlay-shell__close" onClick={onClose}>
-            Close
-          </button>
+          <div className="canvas-overlay-shell__actions">
+            <button type="button" className="canvas-overlay-shell__controls" onClick={() => controlsHandleRef.current?.toggle()}>
+              Canvas controls
+            </button>
+            <button type="button" className="canvas-overlay-shell__close" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </header>
         <div className="canvas-overlay-shell__canvas">
           <MyScriptMathCanvas
@@ -59,6 +65,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={isAdmin}
+            overlayControlsHandleRef={controlsHandleRef}
           />
         </div>
       </div>

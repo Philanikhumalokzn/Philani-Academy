@@ -567,23 +567,6 @@ td{color:#f8fafc;}
   text-align:center;
 }
 
-.canvas-control-toggle{
-  position:absolute;
-  top:0.65rem;
-  left:0.65rem;
-  padding:0.4rem 0.85rem;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,0.4);
-  background:rgba(4,7,28,0.65);
-  color:#f8fafc;
-  font-size:0.7rem;
-  letter-spacing:0.15em;
-  text-transform:uppercase;
-  backdrop-filter:blur(6px);
-  transition:background 0.2s ease, color 0.2s ease;
-}
-.canvas-control-toggle:hover{background:rgba(255,255,255,0.12);color:#fff;}
-
 .canvas-overlay-controls{
   position:absolute;
   inset:0;
@@ -667,6 +650,21 @@ td{color:#f8fafc;}
   font-size:0.8rem;
   color:#c7d2fe;
 }
+.canvas-overlay-shell__actions{
+  display:flex;
+  align-items:center;
+  gap:0.75rem;
+}
+.canvas-overlay-shell__controls{
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.35);
+  background:transparent;
+  color:#fff;
+  padding:0.45rem 1.1rem;
+  text-transform:uppercase;
+  letter-spacing:0.2em;
+  font-size:0.7rem;
+}
 .canvas-overlay-shell__close{
   border-radius:999px;
   border:1px solid rgba(255,255,255,0.35);
@@ -686,6 +684,7 @@ td{color:#f8fafc;}
 @media (max-width: 768px){
   .canvas-overlay-shell__content{width:96vw;height:94vh;padding:1rem;border-radius:28px;}
   .canvas-overlay-shell__brand{flex-direction:column;align-items:flex-start;gap:0.5rem;}
+  .canvas-overlay-shell__actions{flex-direction:column-reverse;align-items:stretch;gap:0.5rem;}
   .canvas-overlay-controls__panel{padding:1rem;}
 }
 

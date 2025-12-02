@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
 
 declare global {
@@ -62,6 +62,12 @@ type PresenceClient = {
   clientId: string
   name?: string
   isAdmin?: boolean
+}
+
+type OverlayControlsHandle = {
+  open: () => void
+  close: () => void
+  toggle: () => void
 }
 
 type BroadcastOptions = {
@@ -147,6 +153,7 @@ type MyScriptMathCanvasProps = {
   isAdmin?: boolean
   boardId?: string // optional logical board identifier; if absent, we'll use a shared/global per grade
   uiMode?: 'default' | 'overlay'
+  overlayControlsHandleRef?: Ref<OverlayControlsHandle>
 }
 
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
@@ -201,7 +208,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default' }: MyScriptMathCanvasProps) {
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', overlayControlsHandleRef }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -350,6 +357,17 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     setOverlayControlsVisible(true)
   }, [isOverlayMode])
 
+  const toggleOverlayControls = useCallback(() => {
+    if (!isOverlayMode) return
+    setOverlayControlsVisible(prev => {
+      const next = !prev
+      if (!next) {
+        clearOverlayAutoHide()
+      }
+      return next
+    })
+  }, [clearOverlayAutoHide, isOverlayMode])
+
   useEffect(() => {
     return () => {
       clearOverlayAutoHide()
@@ -360,6 +378,22 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!isOverlayMode || !overlayControlsVisible) return
     kickOverlayAutoHide()
   }, [isOverlayMode, overlayControlsVisible, kickOverlayAutoHide])
+
+  useImperativeHandle(
+    overlayControlsHandleRef,
+    () => ({
+      open: () => {
+        openOverlayControls()
+      },
+      close: () => {
+        closeOverlayControls()
+      },
+      toggle: () => {
+        toggleOverlayControls()
+      }
+    }),
+    [closeOverlayControls, openOverlayControls, toggleOverlayControls]
+  )
 
   const runCanvasAction = useCallback((action: () => void | Promise<void>) => {
     if (typeof action === 'function') {
@@ -1956,16 +1990,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
             >
               {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-            </button>
-          )}
-          {isOverlayMode && (
-            <button
-              type="button"
-              className="canvas-control-toggle"
-              onClick={() => (overlayControlsVisible ? closeOverlayControls() : openOverlayControls())}
-              aria-expanded={overlayControlsVisible}
-            >
-              {overlayControlsVisible ? 'Hide controls' : 'Canvas controls'}
             </button>
           )}
           {isOverlayMode && (

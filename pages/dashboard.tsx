@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
+import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -9,7 +10,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import NavArrows from '../components/NavArrows'
 import BrandLogo from '../components/BrandLogo'
 
-const CanvasOverlay = dynamic(() => import('../components/CanvasOverlay'), { ssr: false })
+const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -41,6 +42,19 @@ type LessonMaterial = {
   size?: number | null
   createdAt: string
   createdBy?: string | null
+}
+
+type LiveWindowKind = 'canvas'
+
+type LiveWindowConfig = {
+  id: string
+  kind: LiveWindowKind
+  title: string
+  subtitle?: string
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+  minimized: boolean
+  z: number
 }
 
 export default function Dashboard() {
@@ -87,11 +101,14 @@ export default function Dashboard() {
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [materialUploading, setMaterialUploading] = useState(false)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
-  const [isCanvasOverlayOpen, setCanvasOverlayOpen] = useState(false)
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
+  const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
+  const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const windowZCounterRef = useRef(50)
+  const stageRef = useRef<HTMLDivElement | null>(null)
 
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
@@ -115,14 +132,78 @@ export default function Dashboard() {
   }, [gradeReady, selectedGrade])
   const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
   const canJoinLiveClass = canLaunchCanvasOverlay
-  const openCanvasOverlay = () => {
+  const getNextWindowZ = useCallback(() => {
+    windowZCounterRef.current += 1
+    return windowZCounterRef.current
+  }, [])
+
+  const clampWindowPosition = useCallback((win: LiveWindowConfig, position: { x: number; y: number }) => {
+    if (!stageBounds.width || !stageBounds.height) return position
+    const padding = 12
+    const maxX = Math.max(padding, stageBounds.width - win.size.width - padding)
+    const maxY = Math.max(padding, stageBounds.height - (win.minimized ? 64 : win.size.height) - padding)
+    return {
+      x: Math.min(Math.max(position.x, padding), maxX),
+      y: Math.min(Math.max(position.y, padding), maxY)
+    }
+  }, [stageBounds])
+
+  const focusLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, z: getNextWindowZ() } : win)))
+  }, [getNextWindowZ])
+
+  const closeLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.filter(win => win.id !== id))
+  }, [])
+
+  const toggleMinimizeLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, minimized: !win.minimized, z: getNextWindowZ() } : win)))
+  }, [getNextWindowZ])
+
+  const updateLiveWindowPosition = useCallback((id: string, position: { x: number; y: number }) => {
+    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, position: clampWindowPosition(win, position) } : win)))
+  }, [clampWindowPosition])
+
+  const showCanvasWindow = useCallback(() => {
     if (!canLaunchCanvasOverlay) {
       alert('Sign in and choose a grade to open the shared canvas overlay.')
       return
     }
-    setCanvasOverlayOpen(true)
-  }
-  const closeCanvasOverlay = () => setCanvasOverlayOpen(false)
+    setLiveOverlayDismissed(false)
+    setLiveOverlayOpen(true)
+    const windowId = 'canvas-live-window'
+    setLiveWindows(prev => {
+      const existing = prev.find(win => win.id === windowId)
+      if (existing) {
+        return prev.map(win => win.id === windowId ? { ...win, minimized: false, z: getNextWindowZ() } : win)
+      }
+      const defaultWidth = stageBounds.width ? Math.min(Math.max(stageBounds.width * 0.45, 360), 520) : 420
+      const defaultHeight = stageBounds.height ? Math.min(Math.max(stageBounds.height * 0.6, 320), 520) : 420
+      const nextWindow: LiveWindowConfig = {
+        id: windowId,
+        kind: 'canvas',
+        title: gradeReady ? activeGradeLabel : 'Canvas',
+        subtitle: 'Canvas',
+        position: clampWindowPosition(
+          {
+            id: windowId,
+            kind: 'canvas',
+            title: gradeReady ? activeGradeLabel : 'Canvas',
+            subtitle: 'Canvas',
+            position: { x: 48, y: 48 },
+            size: { width: defaultWidth, height: defaultHeight },
+            minimized: false,
+            z: 0
+          },
+          { x: 48, y: 48 }
+        ),
+        size: { width: defaultWidth, height: defaultHeight },
+        minimized: false,
+        z: getNextWindowZ()
+      }
+      return [...prev, nextWindow]
+    })
+  }, [canLaunchCanvasOverlay, stageBounds.width, stageBounds.height, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
@@ -187,11 +268,6 @@ export default function Dashboard() {
     }
   }, [availableSections, activeSection])
 
-  useEffect(() => {
-    if (!canLaunchCanvasOverlay && isCanvasOverlayOpen) {
-      setCanvasOverlayOpen(false)
-    }
-  }, [canLaunchCanvasOverlay, isCanvasOverlayOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -539,6 +615,24 @@ export default function Dashboard() {
     fetchAnnouncementsForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
 
+  const measureStage = useCallback(() => {
+    if (!stageRef.current) return
+    const rect = stageRef.current.getBoundingClientRect()
+    setStageBounds({ width: rect.width, height: rect.height })
+  }, [])
+
+  useEffect(() => {
+    measureStage()
+    if (typeof window === 'undefined') return
+    window.addEventListener('resize', measureStage)
+    return () => window.removeEventListener('resize', measureStage)
+  }, [measureStage])
+
+  useEffect(() => {
+    if (!liveOverlayOpen) return
+    measureStage()
+  }, [liveOverlayOpen, measureStage])
+
   useEffect(() => {
     setExpandedSessionId(null)
     setMaterials([])
@@ -547,6 +641,33 @@ export default function Dashboard() {
     setMaterialFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [selectedGrade])
+
+  useEffect(() => {
+    setLiveWindows(prev => prev.map(win => (win.kind === 'canvas' ? { ...win, title: gradeReady ? activeGradeLabel : win.title } : win)))
+  }, [gradeReady, activeGradeLabel])
+
+  useEffect(() => {
+    if (canLaunchCanvasOverlay) return
+    setLiveWindows(prev => prev.filter(win => win.kind !== 'canvas'))
+  }, [canLaunchCanvasOverlay])
+
+  useEffect(() => {
+    if (!stageBounds.width || !stageBounds.height) return
+    setLiveWindows(prev => prev.map(win => {
+      const clamped = clampWindowPosition(win, win.position)
+      if (clamped.x === win.position.x && clamped.y === win.position.y) return win
+      return { ...win, position: clamped }
+    }))
+  }, [stageBounds, clampWindowPosition])
+
+  useEffect(() => {
+    if (!liveOverlayOpen) return
+    if (!canLaunchCanvasOverlay) return
+    const hasCanvas = liveWindows.some(win => win.kind === 'canvas')
+    if (!hasCanvas) {
+      showCanvasWindow()
+    }
+  }, [liveOverlayOpen, canLaunchCanvasOverlay, liveWindows, showCanvasWindow])
 
   useEffect(() => {
     if (!gradeReady) return
@@ -772,17 +893,27 @@ export default function Dashboard() {
         <div className="card space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleShowLiveOverlay}
-              disabled={!canJoinLiveClass}
-              title={canJoinLiveClass ? 'Show the full-screen live call overlay.' : 'Sign in and pick a grade to join.'}
-            >
-              {canJoinLiveClass ? 'Open live view' : 'Select a grade to join'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleShowLiveOverlay}
+                disabled={!canJoinLiveClass}
+                title={canJoinLiveClass ? 'Bring the live video back on top.' : 'Sign in and pick a grade to join.'}
+              >
+                {canJoinLiveClass ? 'Open live view' : 'Join class'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={showCanvasWindow}
+                disabled={!canLaunchCanvasOverlay}
+              >
+                Canvas window
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-white">The live view takes over the screen for video and includes a canvas launcher. Close it with the × button to get back to the dashboard.</p>
+          <p className="text-xs text-white">The live view takes over the screen for video, and canvases layer on top as draggable windows.</p>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
             {liveStatusMessage()}
           </div>
@@ -1309,14 +1440,17 @@ export default function Dashboard() {
               <button
                 type="button"
                 className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                onClick={() => setActiveSection('live')}
+                onClick={() => {
+                  setActiveSection('live')
+                  handleShowLiveOverlay()
+                }}
               >
                 Live class
               </button>
               <button
                 type="button"
                 className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                onClick={openCanvasOverlay}
+                onClick={showCanvasWindow}
                 disabled={!canLaunchCanvasOverlay}
               >
                 Canvas
@@ -1356,7 +1490,7 @@ export default function Dashboard() {
       {liveOverlayOpen && (
         <div className="live-call-overlay" role="dialog" aria-modal="true">
           <div className="live-call-overlay__backdrop" />
-          <div className="live-call-overlay__panel">
+          <div className="live-call-overlay__panel" ref={stageRef}>
             <div className="live-call-overlay__top">
               <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
                 ×
@@ -1365,13 +1499,13 @@ export default function Dashboard() {
             <div className="live-call-overlay__canvas">
               <button
                 type="button"
-                onClick={openCanvasOverlay}
+                onClick={showCanvasWindow}
                 disabled={!canLaunchCanvasOverlay}
                 className="live-call-overlay__canvas-button"
               >
                 {overlayCanvasLabel}
               </button>
-              <p>Canvas opens on its own page so you get the entire screen for handwriting.</p>
+              <p>Each canvas opens as a draggable floating window so you can layer handwriting on top of the live video.</p>
             </div>
             <div className="live-call-overlay__toolbar" role="group" aria-label="Live call controls">
               <button type="button" onClick={() => handleLiveControl('mute')} disabled={!liveControls}>
@@ -1409,18 +1543,41 @@ export default function Dashboard() {
                 <p>Other participants may be joining soon.</p>
               </div>
             </div>
+            {liveWindows.length > 0 && (
+              <div className="live-overlay-stage">
+                {liveWindows.map(win => (
+                  <LiveOverlayWindow
+                    key={win.id}
+                    id={win.id}
+                    title={win.title}
+                    subtitle={win.subtitle}
+                    position={win.position}
+                    size={win.size}
+                    minimized={win.minimized}
+                    zIndex={win.z}
+                    bounds={stageBounds}
+                    onFocus={focusLiveWindow}
+                    onClose={closeLiveWindow}
+                    onToggleMinimize={toggleMinimizeLiveWindow}
+                    onPositionChange={updateLiveWindowPosition}
+                  >
+                    {win.kind === 'canvas' && (
+                      <StackedCanvasWindow
+                        gradeLabel={selectedGrade ? activeGradeLabel : null}
+                        roomId={boardRoomId}
+                        userId={realtimeUserId}
+                        userDisplayName={realtimeDisplayName}
+                        isAdmin={isOwnerUser}
+                        isVisible={!win.minimized}
+                      />
+                    )}
+                  </LiveOverlayWindow>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
-      <CanvasOverlay
-        isOpen={isCanvasOverlayOpen && canLaunchCanvasOverlay}
-        onClose={closeCanvasOverlay}
-        gradeLabel={selectedGrade ? activeGradeLabel : null}
-        roomId={boardRoomId}
-        userId={realtimeUserId}
-        userDisplayName={realtimeDisplayName}
-        isAdmin={isOwnerUser}
-      />
     </>
   )
 }

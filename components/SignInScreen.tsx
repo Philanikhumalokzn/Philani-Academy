@@ -207,11 +207,18 @@ type MobileLiveShellProps = {
   session: Session
 }
 
+type MobileShellUser = Session['user'] & {
+  grade?: string
+  role?: string
+  id?: string
+}
+
 function MobileLiveShell({ session }: MobileLiveShellProps) {
   const router = useRouter()
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const gradeValue = normalizeGradeInput(session?.user?.grade as string | undefined)
+  const shellUser = session.user as MobileShellUser
+  const gradeValue = normalizeGradeInput(shellUser?.grade)
   const gradeLabel = gradeValue ? gradeToLabel(gradeValue) : 'Unassigned'
   const gradeSlug = useMemo(() => (gradeValue ? gradeValue.toLowerCase().replace(/_/g, '-') : null), [gradeValue])
   const gradeRoomName = useMemo(() => {
@@ -222,9 +229,9 @@ function MobileLiveShell({ session }: MobileLiveShellProps) {
   }, [gradeSlug])
   const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
   const gradeTokenEndpoint = gradeValue ? `/api/sessions/grade/${gradeValue}/token` : null
-  const displayName = session.user?.name || session.user?.email || 'Participant'
-  const userId = (session.user as any)?.id || session.user?.email || 'guest'
-  const isAdmin = (session.user as any)?.role === 'admin'
+  const displayName = shellUser?.name || shellUser?.email || 'Participant'
+  const userId = shellUser?.id || shellUser?.email || 'guest'
+  const isAdmin = shellUser?.role === 'admin'
   const canLaunchCanvas = Boolean(gradeValue)
 
   return (

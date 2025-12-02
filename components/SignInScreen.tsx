@@ -1,9 +1,15 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { signIn } from 'next-auth/react'
+import { signIn, useSession } from 'next-auth/react'
 import BrandLogo from './BrandLogo'
+import JitsiRoom from './JitsiRoom'
+import { gradeToLabel, normalizeGradeInput } from '../lib/grades'
+import type { Session } from 'next-auth'
+
+const CanvasOverlay = dynamic(() => import('./CanvasOverlay'), { ssr: false })
 
 function normalizeError(error?: string | null) {
   if (!error) return null
@@ -17,6 +23,7 @@ type SignInScreenProps = {
 
 export default function SignInScreen({ title = 'Sign in | Philani Academy' }: SignInScreenProps) {
   const router = useRouter()
+  const { data: session, status } = useSession()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -91,6 +98,17 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
       setError(err?.message || 'Something went wrong. Please try again later.')
     }
   }, [email, router])
+
+  if (status === 'authenticated' && session) {
+    return (
+      <>
+        <Head>
+          <title>Live class | Philani Academy</title>
+        </Head>
+        <MobileLiveShell session={session} />
+      </>
+    )
+  }
 
   return (
     <>
@@ -182,5 +200,189 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
         </div>
       </div>
     </>
+  )
+}
+
+type MobileLiveShellProps = {
+  session: Session
+}
+
+function MobileLiveShell({ session }: MobileLiveShellProps) {
+  const router = useRouter()
+  const [canvasOpen, setCanvasOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const gradeValue = normalizeGradeInput(session?.user?.grade as string | undefined)
+  const gradeLabel = gradeValue ? gradeToLabel(gradeValue) : 'Unassigned'
+  const gradeSlug = useMemo(() => (gradeValue ? gradeValue.toLowerCase().replace(/_/g, '-') : null), [gradeValue])
+  const gradeRoomName = useMemo(() => {
+    const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
+    const baseSlug = gradeSlug ?? 'public-room'
+    const base = `philani-${baseSlug}`
+    return appId ? `${appId}/${base}` : base
+  }, [gradeSlug])
+  const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
+  const gradeTokenEndpoint = gradeValue ? `/api/sessions/grade/${gradeValue}/token` : null
+  const displayName = session.user?.name || session.user?.email || 'Participant'
+  const userId = (session.user as any)?.id || session.user?.email || 'guest'
+  const isAdmin = (session.user as any)?.role === 'admin'
+  const canLaunchCanvas = Boolean(gradeValue)
+
+  return (
+    <div className="mobile-live-shell min-h-screen flex items-center justify-center px-4 py-8 overflow-hidden">
+      <div className="live-shell-card">
+        <header className="live-shell-card__header">
+          <BrandLogo height={48} className="drop-shadow-lg" />
+          <button type="button" className="master-menu-button" onClick={() => setMenuOpen(true)} aria-label="Open master menu">
+            <span />
+            <span />
+            <span />
+          </button>
+        </header>
+        <div className="live-shell-call" role="region" aria-label="Live class">
+          {canLaunchCanvas ? (
+            <JitsiRoom
+              roomName={gradeRoomName}
+              displayName={displayName}
+              sessionId={null}
+              tokenEndpoint={gradeTokenEndpoint}
+              passwordEndpoint={null}
+              isOwner={isAdmin}
+            />
+          ) : (
+            <div className="live-shell-call__placeholder">
+              <p className="text-[13px] uppercase tracking-[0.3em] text-white/60">Awaiting grade</p>
+              <p className="text-white text-lg font-semibold">Ask your instructor to assign a grade before joining the live class.</p>
+            </div>
+          )}
+          {canLaunchCanvas && (
+            <button
+              type="button"
+              className="live-shell-canvas-button"
+              onClick={() => setCanvasOpen(true)}
+            >
+              Canvas
+            </button>
+          )}
+        </div>
+        <footer className="live-shell-card__footer">
+          <div>
+            <p className="live-shell-card__eyebrow">Signed in</p>
+            <p className="live-shell-card__value">{session.user?.email}</p>
+          </div>
+          <div>
+            <p className="live-shell-card__eyebrow">Grade</p>
+            <p className="live-shell-card__value">{gradeLabel}</p>
+          </div>
+          <div>
+            <p className="live-shell-card__eyebrow">Status</p>
+            <p className="live-shell-card__value">{canLaunchCanvas ? 'Ready' : 'Awaiting assignment'}</p>
+          </div>
+        </footer>
+      </div>
+
+      <CanvasOverlay
+        isOpen={canvasOpen && canLaunchCanvas}
+        onClose={() => setCanvasOpen(false)}
+        gradeLabel={gradeLabel}
+        roomId={boardRoomId}
+        userId={userId}
+        userDisplayName={displayName}
+        isAdmin={isAdmin}
+      />
+
+      <MobileMasterMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        session={session}
+        gradeLabel={gradeLabel}
+        onNavigate={(href) => {
+          router.push(href)
+          setMenuOpen(false)
+        }}
+      />
+    </div>
+  )
+}
+
+type MobileMasterMenuProps = {
+  open: boolean
+  onClose: () => void
+  session: Session
+  gradeLabel: string
+  onNavigate: (href: string) => void
+}
+
+function MobileMasterMenu({ open, onClose, session, gradeLabel, onNavigate }: MobileMasterMenuProps) {
+  const menuActions = [
+    { label: 'Announcements', description: 'Communicate updates', href: '/dashboard?section=announcements' },
+    { label: 'Sessions', description: 'Schedule classes & materials', href: '/dashboard?section=sessions' },
+    { label: 'Billing', description: 'Subscription plans', href: '/dashboard?section=billing' },
+    { label: 'Account', description: 'Profile settings', href: '/profile' }
+  ]
+
+  useEffect(() => {
+    if (!open) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div className="master-menu-overlay" role="dialog" aria-modal="true">
+      <div className="master-menu-overlay__backdrop" onClick={onClose} />
+      <div className="master-menu-overlay__panel">
+        <div className="master-menu-overlay__header">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.35em] text-white/70">Master menu</p>
+            <h2 className="text-white text-2xl font-semibold">Your hub</h2>
+          </div>
+          <button type="button" className="master-menu-overlay__close" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <section className="master-menu-section">
+          <p className="master-menu-section__title">Account snapshot</p>
+          <dl className="master-menu-section__grid">
+            <div>
+              <dt>Email</dt>
+              <dd>{session.user?.email}</dd>
+            </div>
+            <div>
+              <dt>Role</dt>
+              <dd>{(session.user as any)?.role || 'student'}</dd>
+            </div>
+            <div>
+              <dt>Grade</dt>
+              <dd>{gradeLabel}</dd>
+            </div>
+          </dl>
+          <div className="master-menu-section__actions">
+            <button type="button" onClick={() => onNavigate('/profile')}>
+              Update profile
+            </button>
+            <button type="button" onClick={() => onNavigate('/subscribe')}>
+              Manage subscription
+            </button>
+          </div>
+        </section>
+
+        <section className="master-menu-section">
+          <p className="master-menu-section__title">Quick actions</p>
+          <div className="master-menu-actions">
+            {menuActions.map(action => (
+              <button key={action.label} type="button" onClick={() => onNavigate(action.href)}>
+                <span className="master-menu-actions__label">{action.label}</span>
+                <span className="master-menu-actions__description">{action.description}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
   )
 }

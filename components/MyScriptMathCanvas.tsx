@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CSSProperties, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderToString } from 'katex'
 
 declare global {
@@ -241,6 +241,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
+  const [canvasControlsVisible, setCanvasControlsVisible] = useState(false)
+  const canvasControlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const canvasToggleTapCountRef = useRef(0)
+  const canvasToggleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1757,6 +1761,70 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
+  const clearCanvasControlsHideTimer = useCallback(() => {
+    if (canvasControlsHideTimerRef.current) {
+      clearTimeout(canvasControlsHideTimerRef.current)
+      canvasControlsHideTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleCanvasControlsHide = useCallback((delay = 6000) => {
+    clearCanvasControlsHideTimer()
+    canvasControlsHideTimerRef.current = setTimeout(() => {
+      setCanvasControlsVisible(false)
+    }, delay)
+  }, [clearCanvasControlsHideTimer])
+
+  const toggleCanvasControls = useCallback((explicit?: boolean) => {
+    setCanvasControlsVisible(prev => {
+      const next = typeof explicit === 'boolean' ? explicit : !prev
+      if (next) {
+        scheduleCanvasControlsHide()
+      } else {
+        clearCanvasControlsHideTimer()
+      }
+      return next
+    })
+  }, [scheduleCanvasControlsHide, clearCanvasControlsHideTimer])
+
+  const handleCanvasControlsToggleTap = useCallback(() => {
+    canvasToggleTapCountRef.current += 1
+    if (canvasToggleResetTimerRef.current) {
+      clearTimeout(canvasToggleResetTimerRef.current)
+    }
+    canvasToggleResetTimerRef.current = setTimeout(() => {
+      canvasToggleTapCountRef.current = 0
+      canvasToggleResetTimerRef.current = null
+    }, 450)
+
+    if (canvasToggleTapCountRef.current >= 3) {
+      canvasToggleTapCountRef.current = 0
+      toggleCanvasControls()
+    }
+  }, [toggleCanvasControls])
+
+  const handleCanvasControlsKeyToggle = useCallback((event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      toggleCanvasControls()
+    }
+  }, [toggleCanvasControls])
+
+  const runOverlayAction = useCallback((action: () => void | Promise<void>, delay = 1800) => async () => {
+    await action()
+    scheduleCanvasControlsHide(delay)
+  }, [scheduleCanvasControlsHide])
+
+  useEffect(() => {
+    return () => {
+      clearCanvasControlsHideTimer()
+      if (canvasToggleResetTimerRef.current) {
+        clearTimeout(canvasToggleResetTimerRef.current)
+        canvasToggleResetTimerRef.current = null
+      }
+    }
+  }, [clearCanvasControlsHideTimer])
+
   return (
     <div>
       <div className="flex flex-col gap-3">
@@ -1769,7 +1837,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           />
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
-              Preparing collaborative canvas…
+              Preparing canvas
             </div>
           )}
           {status === 'error' && fatalError && (
@@ -1789,7 +1857,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           )}
           {isViewOnly && !(!isAdmin && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
-              {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+              View-only — {controlOwnerLabel || 'Instructor'}
             </div>
           )}
           {!isAdmin && latexDisplayState.enabled && (
@@ -1801,195 +1869,230 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                   dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                 />
               ) : (
-                <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                <p className="text-slate-500 text-sm">Waiting for LaTeX</p>
               )}
             </div>
           )}
           <button
             type="button"
-            onClick={toggleFullscreen}
-            className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+            onClick={handleCanvasControlsToggleTap}
+            onKeyDown={handleCanvasControlsKeyToggle}
+            aria-label="Toggle canvas controls"
+            className="absolute top-2 left-2 text-lg leading-none bg-white/85 text-slate-900 px-3 py-1 rounded-full border border-slate-200"
           >
-            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            •••
           </button>
-        </div>
+          {canvasControlsVisible && (
+            <div className="absolute inset-0 flex items-end p-4 pointer-events-none">
+              <div className="w-full rounded-2xl bg-slate-950/85 text-white space-y-4 p-4 sm:p-5 backdrop-blur-2xl pointer-events-auto text-xs sm:text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn btn-secondary text-xs" type="button" onClick={runOverlayAction(handleUndo)} disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+                    Undo
+                  </button>
+                  <button className="btn btn-secondary text-xs" type="button" onClick={runOverlayAction(handleRedo)} disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+                    Redo
+                  </button>
+                  <button className="btn btn-secondary text-xs" type="button" onClick={runOverlayAction(handleClear)} disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+                    Clear
+                  </button>
+                  <button className="btn btn-primary text-xs" type="button" onClick={runOverlayAction(handleConvert)} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
+                    {isConverting ? 'Converting…' : 'Convert'}
+                  </button>
+                  <button className="btn btn-secondary text-xs" type="button" onClick={runOverlayAction(toggleFullscreen)}>
+                    {isFullscreen ? 'Exit Full' : 'Fullscreen'}
+                  </button>
+                </div>
 
-        <div className="canvas-toolbar">
-          <div className="canvas-toolbar__buttons">
-            <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              Undo
-            </button>
-            <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              Redo
-            </button>
-            <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              Clear
-            </button>
-            <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}>
-              {isConverting ? 'Converting…' : 'Convert to LaTeX'}
-            </button>
-          </div>
-          {isAdmin && (
-            <div className="canvas-toolbar__buttons">
-              <button
-                className="btn"
-                type="button"
-                onClick={forcePublishLatex}
-                disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
-              >
-                Publish LaTeX to Students
-              </button>
-              <button
-                className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
-                type="button"
-                onClick={toggleLatexProjection}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId)}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
-              </button>
-              {selectedClientId !== 'all' && (
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => forceClearStudentCanvas(selectedClientId)}
-                  disabled={status !== 'ready' || Boolean(fatalError)}
-                >
-                  Wipe Selected Student Canvas
-                </button>
-              )}
-              <button
-                className="btn"
-                type="button"
-                onClick={allowSelectedClientEditing}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
-              </button>
-              <button
-                className={`btn ${isStudentPublishEnabled ? 'btn-secondary' : ''}`}
-                type="button"
-                onClick={toggleStudentPublishing}
-                disabled={status !== 'ready' || Boolean(fatalError)}
-              >
-                {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
-              </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={`btn text-xs ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
+                    type="button"
+                    onClick={runOverlayAction(() => handleOrientationChange('landscape'))}
+                  >
+                    Landscape
+                  </button>
+                  <button
+                    className={`btn text-xs ${canvasOrientation === 'portrait' ? 'btn-secondary' : ''}`}
+                    type="button"
+                    onClick={runOverlayAction(() => handleOrientationChange('portrait'))}
+                    disabled={orientationLockedToLandscape}
+                  >
+                    Portrait
+                  </button>
+                </div>
+
+                {isAdmin && (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(forcePublishLatex)}
+                        disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
+                      >
+                        Push LaTeX
+                      </button>
+                      <button
+                        className={`btn text-xs ${latexDisplayState.enabled ? 'btn-primary' : 'btn-secondary'}`}
+                        type="button"
+                        onClick={runOverlayAction(toggleLatexProjection)}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
+                      >
+                        {latexDisplayState.enabled ? 'Stop Project' : 'Project LaTeX'}
+                      </button>
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId))}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
+                      >
+                        Sync Canvas
+                      </button>
+                      {selectedClientId !== 'all' && (
+                        <button
+                          className="btn text-xs"
+                          type="button"
+                          onClick={runOverlayAction(() => forceClearStudentCanvas(selectedClientId))}
+                          disabled={status !== 'ready' || Boolean(fatalError)}
+                        >
+                          Wipe Student
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(allowSelectedClientEditing)}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
+                      >
+                        Grant Edit
+                      </button>
+                      <button
+                        className={`btn text-xs ${isStudentPublishEnabled ? 'btn-primary' : 'btn-secondary'}`}
+                        type="button"
+                        onClick={runOverlayAction(toggleStudentPublishing)}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
+                      >
+                        {isStudentPublishEnabled ? 'Students On' : 'Students Off'}
+                      </button>
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(toggleBroadcastPause)}
+                      >
+                        {isBroadcastPaused ? 'Resume Feed' : 'Pause Feed'}
+                      </button>
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(controlState && controlState.controllerId === clientId ? unlockStudentEditing : lockStudentEditing)}
+                        disabled={Boolean(fatalError) || status !== 'ready'}
+                      >
+                        {controlState && controlState.controllerId === clientId ? 'Unlock Board' : 'Lock Board'}
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(() => navigateToPage(pageIndex - 1))}
+                        disabled={pageIndex === 0}
+                      >
+                        Prev Page
+                      </button>
+                      <button
+                        className="btn text-xs"
+                        type="button"
+                        onClick={runOverlayAction(() => navigateToPage(pageIndex + 1))}
+                        disabled={pageIndex >= pageRecordsRef.current.length - 1}
+                      >
+                        Next Page
+                      </button>
+                      <button className="btn text-xs" type="button" onClick={runOverlayAction(addNewPage)}>
+                        New Page
+                      </button>
+                      <button className="btn btn-primary text-xs" type="button" onClick={runOverlayAction(shareCurrentPageWithStudents)}>
+                        Share Page
+                      </button>
+                      <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">
+                        {pageIndex + 1}/{pageRecordsRef.current.length} · Students {sharedPageIndex + 1}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <select
+                        className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white flex-1 min-w-[180px]"
+                        value={selectedClientId}
+                        onChange={e => {
+                          setSelectedClientId(e.target.value)
+                          scheduleCanvasControlsHide(4000)
+                        }}
+                      >
+                        <option value="all">All students</option>
+                        {connectedClients
+                          .filter(c => c.clientId !== clientId)
+                          .map(c => (
+                            <option key={c.clientId} value={c.clientId}>
+                              {c.name || c.clientId}
+                            </option>
+                          ))}
+                      </select>
+                      <div className="flex flex-wrap gap-2 flex-1 min-w-[160px]">
+                        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide">
+                          Font
+                          <input
+                            type="range"
+                            min="0.7"
+                            max="1.6"
+                            step="0.05"
+                            value={latexProjectionOptions.fontScale}
+                            onChange={e => {
+                              updateLatexProjectionOptions({ fontScale: Number(e.target.value) })
+                              scheduleCanvasControlsHide(4000)
+                            }}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide">
+                          Align
+                          <select
+                            className="rounded-lg border border-white/20 bg-white/10 px-2 py-1"
+                            value={latexProjectionOptions.textAlign}
+                            onChange={e => {
+                              updateLatexProjectionOptions({ textAlign: e.target.value as LatexDisplayOptions['textAlign'] })
+                              scheduleCanvasControlsHide(4000)
+                            }}
+                          >
+                            <option value="left">Left</option>
+                            <option value="center">Center</option>
+                            <option value="right">Right</option>
+                          </select>
+                        </label>
+                        <label className="inline-flex items-center gap-2 text-[10px] uppercase tracking-wide">
+                          <input
+                            type="checkbox"
+                            checked={latexProjectionOptions.alignAtEquals}
+                            onChange={e => {
+                              updateLatexProjectionOptions({ alignAtEquals: e.target.checked })
+                              scheduleCanvasControlsHide(4000)
+                            }}
+                          />
+                          Balance “=”
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="orientation-panel">
-          <p className="orientation-panel__label">Canvas orientation</p>
-          <div className="orientation-panel__options">
-            <button
-              className={`btn ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
-              type="button"
-              onClick={() => handleOrientationChange('landscape')}
-            >
-              Landscape
-            </button>
-            <button
-              className={`btn ${canvasOrientation === 'portrait' ? 'btn-secondary' : ''}`}
-              type="button"
-              onClick={() => handleOrientationChange('portrait')}
-              disabled={orientationLockedToLandscape}
-              title={orientationLockedToLandscape ? 'Portrait view is disabled while the instructor projects fullscreen.' : undefined}
-            >
-              Portrait
-            </button>
-          </div>
-          <p className="orientation-panel__note">
-            {isAdmin
-              ? orientationLockedToLandscape
-                ? 'Fullscreen keeps you in landscape for the widest writing surface.'
-                : 'Switch layouts when not projecting fullscreen.'
-              : 'Choose the layout that fits your device—this only affects your view.'}
-          </p>
-        </div>
-
-        {isAdmin && (
-          <div className="canvas-settings-panel">
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold">LaTeX font size</span>
-              <input
-                type="range"
-                min="0.7"
-                max="1.6"
-                step="0.05"
-                value={latexProjectionOptions.fontScale}
-                onChange={e => updateLatexProjectionOptions({ fontScale: Number(e.target.value) })}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold">Text alignment</span>
-              <select
-                className="canvas-settings-panel__select"
-                value={latexProjectionOptions.textAlign}
-                onChange={e => updateLatexProjectionOptions({ textAlign: e.target.value as LatexDisplayOptions['textAlign'] })}
-              >
-                <option value="left">Left</option>
-                <option value="center">Center</option>
-                <option value="right">Right</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={latexProjectionOptions.alignAtEquals}
-                onChange={e => updateLatexProjectionOptions({ alignAtEquals: e.target.checked })}
-              />
-              <span className="font-semibold">Align at “=”</span>
-            </label>
-          </div>
-        )}
-
-        {isAdmin && (
-          <div className="canvas-settings-panel">
-            <button
-              className="btn"
-              type="button"
-              onClick={() => navigateToPage(pageIndex - 1)}
-              disabled={pageIndex === 0}
-            >
-              Previous Page
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => navigateToPage(pageIndex + 1)}
-              disabled={pageIndex >= pageRecordsRef.current.length - 1}
-            >
-              Next Page
-            </button>
-            <button className="btn" type="button" onClick={addNewPage}>
-              New Page
-            </button>
-            <button className="btn btn-primary" type="button" onClick={shareCurrentPageWithStudents}>
-              Show Current Page to Students
-            </button>
-            <span className="font-semibold">
-              Your Page: {pageIndex + 1} / {pageRecordsRef.current.length}
-            </span>
-            <span className="canvas-settings-panel__hint">
-              Students See Page {sharedPageIndex + 1}
-            </span>
-          </div>
-        )}
-
-        {gradeLabel && (
-          <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
-        )}
-
         {latexOutput && (
           <div>
-            <p className="text-xs font-semibold uppercase text-white mb-1">Latest LaTeX export</p>
+            <p className="text-xs font-semibold uppercase text-white mb-1">LaTeX export</p>
             <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
@@ -2007,57 +2110,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
-        <div className="canvas-admin-controls">
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={toggleBroadcastPause}
-              className="canvas-admin-controls__button"
-            >
-              {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Updates'}
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={controlState && controlState.controllerId === clientId ? unlockStudentEditing : lockStudentEditing}
-              className="canvas-admin-controls__button"
-              disabled={Boolean(fatalError) || status !== 'ready'}
-            >
-              {controlState && controlState.controllerId === clientId ? 'Unlock Student Editing' : 'Lock Student Editing'}
-            </button>
-          )}
-          {isAdmin && connectedClients.length > 0 && (
-            <select
-              className="canvas-admin-controls__select"
-              value={selectedClientId}
-              onChange={e => setSelectedClientId(e.target.value)}
-            >
-              <option value="all">All students</option>
-              {connectedClients
-                .filter(c => c.clientId !== clientId)
-                .map(c => (
-                  <option key={c.clientId} value={c.clientId}>
-                    {c.name || c.clientId}
-                  </option>
-                ))}
-            </select>
-          )}
-          {controlState && controlState.controllerId !== ALL_STUDENTS_ID && (
-            <span className="canvas-settings-panel__hint">
-              Student editing locked by {controlOwnerLabel}
-            </span>
-          )}
-          {controlState && controlState.controllerId === ALL_STUDENTS_ID && (
-            <span className="canvas-settings-panel__hint">All students may edit the board.</span>
-          )}
-          <span className="canvas-settings-panel__hint">
-            Student publishing is {isStudentPublishEnabled ? 'enabled' : 'disabled'} by the instructor.
-          </span>
-          {!isRealtimeConnected && (
-            <span className="text-xs text-amber-200">Realtime disconnected — updates will be queued</span>
-          )}
-        </div>
+        {!isRealtimeConnected && (
+          <p className="text-xs text-amber-200">Realtime reconnecting…</p>
+        )}
       </div>
     </div>
   )

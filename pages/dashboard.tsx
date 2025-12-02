@@ -625,7 +625,6 @@ export default function Dashboard() {
               <p className="text-sm muted">Loading grade options...</p>
             ) : isAdmin ? (
               <div className="space-y-3">
-                <p className="text-sm muted">Switch the active grade to manage sessions and announcements.</p>
                 <div className="flex flex-wrap gap-3">
                   {gradeOptions.map(option => (
                     <label
@@ -646,13 +645,10 @@ export default function Dashboard() {
                     </label>
                   ))}
                 </div>
-                <p className="text-xs muted">Learners only see sessions, notes, and announcements for the selected grade.</p>
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-sm muted">
-                  You are currently in the <span className="font-medium text-white">{activeGradeLabel}</span> workspace.
-                </p>
+                <div className="text-sm font-semibold text-white">{activeGradeLabel}</div>
                 {!userGrade && (
                   <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
                 )}
@@ -695,7 +691,6 @@ export default function Dashboard() {
                   className={`dashboard-quick-action ${activeSection === section.id ? 'is-active' : ''}`}
                 >
                   <div className="dashboard-quick-action__label">{section.label}</div>
-                  <div className="dashboard-quick-action__description">{section.description}</div>
                 </button>
               ))}
             </div>
@@ -722,11 +717,10 @@ export default function Dashboard() {
               {canvasLabel}
             </button>
           </div>
-          <p className="text-xs text-white">Canvas opens on its own page so you get the entire screen for handwriting.</p>
           {status !== 'authenticated' ? (
-            <div className="text-sm muted">Please sign in to join the live class.</div>
+            <div className="text-sm muted">Sign in to join.</div>
           ) : !selectedGrade ? (
-            <div className="text-sm muted">Select a grade to join the live class.</div>
+            <div className="text-sm muted">Select a grade first.</div>
           ) : (
             <JitsiRoom
               roomName={gradeRoomName}
@@ -748,7 +742,7 @@ export default function Dashboard() {
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Create announcement</h2>
           {!selectedGrade ? (
-            <div className="text-sm muted">Select a grade before posting an announcement.</div>
+            <div className="text-sm muted">Select a grade to post.</div>
           ) : (
             <form onSubmit={createAnnouncement} className="space-y-2">
               <input
@@ -824,12 +818,11 @@ export default function Dashboard() {
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Create session</h2>
           {!canCreateSession ? (
-            <div className="text-sm muted">You do not have permission to create sessions. Contact an admin to request instructor access.</div>
+            <div className="text-sm muted">No permission to create sessions.</div>
           ) : !selectedGrade ? (
-            <div className="text-sm muted">Select a grade before creating a session.</div>
+            <div className="text-sm muted">Select a grade to continue.</div>
           ) : (
             <form onSubmit={createSession} className="space-y-3">
-              <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
               <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
               <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
               <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />

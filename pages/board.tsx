@@ -99,10 +99,10 @@ export default function BoardPage() {
 
   const renderCanvas = () => {
     if (status !== 'authenticated') {
-      return <div className="text-sm muted">Sign in to launch the collaborative canvas.</div>
+      return <div className="text-sm muted">Sign in to open the canvas.</div>
     }
     if (!selectedGrade) {
-      return <div className="text-sm muted">Choose a grade to open the shared board.</div>
+      return <div className="text-sm muted">Choose a grade to continue.</div>
     }
     return (
       <div className="h-full">
@@ -131,13 +131,10 @@ export default function BoardPage() {
           >
             ← Dashboard
           </button>
-          <p className="text-[11px] uppercase tracking-[0.35em] text-white">Shared board</p>
           <h1 className="text-2xl font-semibold">Maths Canvas</h1>
-          <p className="text-xs text-white">Write, present, and share all in one place.</p>
         </div>
 
         <div className="px-5 py-4 border-b border-slate-800 space-y-3 text-center">
-          <p className="text-[12px] uppercase tracking-[0.2em] text-white">Active grade</p>
           <button
             type="button"
             className="mx-auto inline-flex min-w-[180px] items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 px-5 py-3 text-base font-semibold"
@@ -162,7 +159,7 @@ export default function BoardPage() {
         </div>
 
         <div className="px-5 py-2 text-[11px] text-center text-white border-b border-slate-800">
-          {status === 'authenticated' ? 'Signed in and ready.' : 'Please sign in to draw.'}
+          {status === 'authenticated' ? 'Ready' : 'Sign in to draw'}
         </div>
 
         <div className="flex-1 bg-white text-slate-900 rounded-t-3xl p-3">
@@ -185,9 +182,7 @@ export default function BoardPage() {
           <div className="flex justify-center">
             <BrandLogo height={72} className="drop-shadow-[0_30px_60px_rgba(0,0,0,0.55)]" />
           </div>
-          <p className="text-[12px] uppercase tracking-[0.3em] text-white">Shared board</p>
           <h1 className="text-4xl font-semibold text-white">Maths Canvas</h1>
-          <p className="text-base text-white max-w-2xl mx-auto">One focused space for handwriting, LaTeX projection, and live instruction. Keep the class aligned without distractions.</p>
           <div className="flex flex-wrap justify-center gap-3 text-xs">
             <span className="board-chip">Grade: {activeGradeLabel}</span>
             <span className="board-chip">{status === 'authenticated' ? 'Signed in' : 'Sign in required'}</span>
@@ -195,7 +190,6 @@ export default function BoardPage() {
         </section>
 
         <section className="board-card text-center space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-white">Choose grade</p>
           <select
             className="input mx-auto max-w-sm text-center"
             value={selectedGrade ?? ''}

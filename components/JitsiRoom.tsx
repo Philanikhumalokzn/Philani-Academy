@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 type Props = {
   roomName: string
@@ -31,6 +31,8 @@ export default function JitsiRoom({
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(false)
+  const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -201,27 +203,90 @@ export default function JitsiRoom({
   const resolvedHeight = typeof height === 'number' ? `${height}px` : height || '600px'
   const wrapperClass = className ? `jitsi-room ${className}` : 'jitsi-room'
 
+  const clearControlsHideTimer = useCallback(() => {
+    if (controlsHideTimerRef.current) {
+      clearTimeout(controlsHideTimerRef.current)
+      controlsHideTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleControlsHide = useCallback((delay = 4000) => {
+    clearControlsHideTimer()
+    controlsHideTimerRef.current = setTimeout(() => {
+      setControlsVisible(false)
+    }, delay)
+  }, [clearControlsHideTimer])
+
+  const handleSurfaceTap = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!showControls) return
+    const target = event.target as HTMLElement | null
+    if (target?.dataset?.inlineControl === 'true') {
+      return
+    }
+    setControlsVisible(prev => {
+      const next = !prev
+      if (next) {
+        scheduleControlsHide()
+      } else {
+        clearControlsHideTimer()
+      }
+      return next
+    })
+  }, [showControls, scheduleControlsHide, clearControlsHideTimer])
+
+  const handleControlButton = useCallback(
+    (action: () => void | Promise<void>) => async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation()
+      await action()
+      scheduleControlsHide(1800)
+    },
+    [scheduleControlsHide]
+  )
+
+  useEffect(() => {
+    return () => {
+      clearControlsHideTimer()
+    }
+  }, [clearControlsHideTimer])
+
   return (
     <div className={wrapperClass}>
       {initError && <div className="mb-2 text-sm text-red-600">{initError}</div>}
       {lobbyError && <div className="mb-2 text-sm text-red-600">{lobbyError}</div>}
-      {showControls && (
-        <div className="mb-2 flex gap-2">
-          <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
-          <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
-          <button className="btn btn-danger" onClick={hangup}>Leave</button>
-          {isOwner && (
-            <button
-              className="btn"
-              onClick={toggleLobby}
-              disabled={lobbyBusy}
-            >
-              {lobbyEnabled ? 'Disable lobby' : 'Enable lobby'}
-            </button>
-          )}
-        </div>
-      )}
-      <div ref={containerRef} style={{ width: '100%', height: resolvedHeight }} />
+      <div
+        className="relative"
+        onPointerDownCapture={showControls ? handleSurfaceTap : undefined}
+      >
+        <div ref={containerRef} style={{ width: '100%', height: resolvedHeight }} />
+        {showControls && (
+          <div className={`absolute inset-0 transition-opacity duration-200 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent pointer-events-none" />
+            <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+              <div className="flex flex-wrap gap-2 rounded-full bg-slate-950/80 px-4 py-2 backdrop-blur-lg pointer-events-auto text-sm">
+                <button className="btn btn-secondary text-xs" onClick={handleControlButton(toggleAudio)} data-inline-control="true">
+                  {audioMuted ? 'Unmute' : 'Mute'}
+                </button>
+                <button className="btn btn-secondary text-xs" onClick={handleControlButton(toggleVideo)} data-inline-control="true">
+                  {videoMuted ? 'Video On' : 'Video Off'}
+                </button>
+                <button className="btn btn-danger text-xs" onClick={handleControlButton(hangup)} data-inline-control="true">
+                  Leave
+                </button>
+                {isOwner && (
+                  <button
+                    className="btn btn-secondary text-xs"
+                    onClick={handleControlButton(toggleLobby)}
+                    disabled={lobbyBusy}
+                    data-inline-control="true"
+                  >
+                    {lobbyEnabled ? 'Close Lobby' : 'Open Lobby'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

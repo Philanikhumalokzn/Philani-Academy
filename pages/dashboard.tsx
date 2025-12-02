@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import JitsiRoom from '../components/JitsiRoom'
+import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -88,6 +88,9 @@ export default function Dashboard() {
   const [materialUploading, setMaterialUploading] = useState(false)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [isCanvasOverlayOpen, setCanvasOverlayOpen] = useState(false)
+  const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
+  const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
+  const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeGradeLabel = gradeReady
@@ -111,6 +114,7 @@ export default function Dashboard() {
     return `/api/sessions/grade/${selectedGrade}/token`
   }, [gradeReady, selectedGrade])
   const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
+  const canJoinLiveClass = canLaunchCanvasOverlay
   const openCanvasOverlay = () => {
     if (!canLaunchCanvasOverlay) {
       alert('Sign in and choose a grade to open the shared canvas overlay.')
@@ -119,6 +123,31 @@ export default function Dashboard() {
     setCanvasOverlayOpen(true)
   }
   const closeCanvasOverlay = () => setCanvasOverlayOpen(false)
+  const handleShowLiveOverlay = () => {
+    if (!canJoinLiveClass) return
+    setLiveOverlayDismissed(false)
+    setLiveOverlayOpen(true)
+  }
+  const closeLiveOverlay = () => {
+    setLiveOverlayOpen(false)
+    setLiveOverlayDismissed(true)
+  }
+  const handleLiveControl = (action: 'mute' | 'video' | 'leave') => {
+    if (!liveControls) return
+    if (action === 'mute') {
+      liveControls.toggleAudio()
+      return
+    }
+    if (action === 'video') {
+      liveControls.toggleVideo()
+      return
+    }
+    if (action === 'leave') {
+      liveControls.hangup()
+      setLiveOverlayOpen(false)
+      setLiveOverlayDismissed(true)
+    }
+  }
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const gradeRoomName = useMemo(() => {
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
@@ -127,6 +156,7 @@ export default function Dashboard() {
     return appId ? `${appId}/${base}` : base
   }, [gradeSlug])
   const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
+  const overlayCanvasLabel = selectedGrade ? `Canvas (${gradeToLabel(selectedGrade)})` : 'Canvas workspace'
   const realtimeUserId = useMemo(() => {
     const candidate = (session as any)?.user?.id as string | undefined
     if (candidate && typeof candidate === 'string') return candidate
@@ -520,6 +550,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!gradeReady) return
+    if (liveOverlayDismissed) return
+    if (status === 'authenticated' && normalizedRole !== 'guest') {
+      setLiveOverlayOpen(true)
+    }
+  }, [status, normalizedRole, gradeReady, liveOverlayDismissed])
+
+  useEffect(() => {
+    if (!liveOverlayOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [liveOverlayOpen])
+
+  useEffect(() => {
+    if (!gradeReady) return
     if (newRole === 'admin') {
       setNewGrade('')
     } else if (!newGrade && selectedGrade) {
@@ -713,7 +760,12 @@ export default function Dashboard() {
   }
 
   const LiveSection = () => {
-    const canvasLabel = selectedGrade ? `Canvas (${gradeToLabel(selectedGrade)})` : 'Canvas workspace'
+    const liveStatusMessage = () => {
+      if (status !== 'authenticated') return 'Please sign in to join the live class.'
+      if (!selectedGrade) return 'Select a grade to unlock the live class.'
+      if (liveOverlayDismissed) return 'Reopen the live view any time to jump back into class.'
+      return 'Opening the live view puts the video call on top of the dashboard automatically.'
+    }
 
     return (
       <div className="space-y-6">
@@ -723,28 +775,17 @@ export default function Dashboard() {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={openCanvasOverlay}
-              disabled={!canLaunchCanvasOverlay}
-              title={canLaunchCanvasOverlay ? undefined : 'Sign in and pick a grade to open the canvas.'}
+              onClick={handleShowLiveOverlay}
+              disabled={!canJoinLiveClass}
+              title={canJoinLiveClass ? 'Show the full-screen live call overlay.' : 'Sign in and pick a grade to join.'}
             >
-              {canLaunchCanvasOverlay ? canvasLabel : 'Select a grade to open canvas'}
+              {canJoinLiveClass ? 'Open live view' : 'Select a grade to join'}
             </button>
           </div>
-          <p className="text-xs text-white">Canvas opens on its own page so you get the entire screen for handwriting.</p>
-          {status !== 'authenticated' ? (
-            <div className="text-sm muted">Please sign in to join the live class.</div>
-          ) : !selectedGrade ? (
-            <div className="text-sm muted">Select a grade to join the live class.</div>
-          ) : (
-            <JitsiRoom
-              roomName={gradeRoomName}
-              displayName={session?.user?.name || session?.user?.email}
-              sessionId={null}
-              tokenEndpoint={gradeTokenEndpoint}
-              passwordEndpoint={null}
-              isOwner={isOwnerUser}
-            />
-          )}
+          <p className="text-xs text-white">The live view takes over the screen for video and includes a canvas launcher. Close it with the × button to get back to the dashboard.</p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+            {liveStatusMessage()}
+          </div>
         </div>
       </div>
     )
@@ -1312,6 +1353,65 @@ export default function Dashboard() {
         </section>
       </div>
       </main>
+      {liveOverlayOpen && (
+        <div className="live-call-overlay" role="dialog" aria-modal="true">
+          <div className="live-call-overlay__backdrop" />
+          <div className="live-call-overlay__panel">
+            <div className="live-call-overlay__top">
+              <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
+                ×
+              </button>
+            </div>
+            <div className="live-call-overlay__canvas">
+              <button
+                type="button"
+                onClick={openCanvasOverlay}
+                disabled={!canLaunchCanvasOverlay}
+                className="live-call-overlay__canvas-button"
+              >
+                {overlayCanvasLabel}
+              </button>
+              <p>Canvas opens on its own page so you get the entire screen for handwriting.</p>
+            </div>
+            <div className="live-call-overlay__toolbar" role="group" aria-label="Live call controls">
+              <button type="button" onClick={() => handleLiveControl('mute')} disabled={!liveControls}>
+                Mute
+              </button>
+              <button type="button" onClick={() => handleLiveControl('video')} disabled={!liveControls}>
+                Stop video
+              </button>
+              <button type="button" onClick={() => handleLiveControl('leave')} disabled={!liveControls}>
+                Leave
+              </button>
+            </div>
+            <div className="live-call-overlay__video">
+              {canJoinLiveClass ? (
+                <JitsiRoom
+                  roomName={gradeRoomName}
+                  displayName={session?.user?.name || session?.user?.email}
+                  sessionId={null}
+                  tokenEndpoint={gradeTokenEndpoint}
+                  passwordEndpoint={null}
+                  isOwner={isOwnerUser}
+                  onControlsChange={setLiveControls}
+                />
+              ) : (
+                <div className="live-call-overlay__placeholder">
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Awaiting grade</p>
+                  <p className="text-white text-lg font-semibold text-center">Sign in and pick a grade to unlock the live call.</p>
+                </div>
+              )}
+            </div>
+            <div className="live-call-overlay__status">
+              <span className="live-call-overlay__status-indicator" />
+              <div>
+                <p>Your devices are working properly</p>
+                <p>Other participants may be joining soon.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <CanvasOverlay
         isOpen={isCanvasOverlayOpen && canLaunchCanvasOverlay}
         onClose={closeCanvasOverlay}

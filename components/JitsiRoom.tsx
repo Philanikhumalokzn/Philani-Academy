@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+
+export type JitsiControls = {
+  toggleAudio: () => void
+  toggleVideo: () => void
+  hangup: () => void
+}
 
 type Props = {
   roomName: string
@@ -10,6 +16,7 @@ type Props = {
   height?: number | string
   className?: string
   showControls?: boolean
+  onControlsChange?: (controls: JitsiControls | null) => void
 }
 
 export default function JitsiRoom({
@@ -22,6 +29,7 @@ export default function JitsiRoom({
   height,
   className,
   showControls = true,
+  onControlsChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
@@ -31,6 +39,21 @@ export default function JitsiRoom({
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
+
+  const toggleAudio = useCallback(() => {
+    if (!apiRef.current) return
+    apiRef.current.executeCommand('toggleAudio')
+  }, [])
+
+  const toggleVideo = useCallback(() => {
+    if (!apiRef.current) return
+    apiRef.current.executeCommand('toggleVideo')
+  }, [])
+
+  const hangup = useCallback(() => {
+    if (!apiRef.current) return
+    apiRef.current.executeCommand('hangup')
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -108,6 +131,7 @@ export default function JitsiRoom({
         }
 
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
+        onControlsChange?.({ toggleAudio, toggleVideo, hangup })
 
         // attach listeners safely
         try {
@@ -169,17 +193,15 @@ export default function JitsiRoom({
 
     return () => {
       mounted = false
+      onControlsChange?.(null)
       try { apiRef.current?.dispose() } catch (e) {}
       if (apiRef.current && (apiRef.current as any)._lobbyToggleListener) {
         try { apiRef.current.removeEventListener('lobby.toggle', (apiRef.current as any)._lobbyToggleListener) } catch (e) {}
         delete (apiRef.current as any)._lobbyToggleListener
       }
     }
-  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner])
+  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, toggleAudio, toggleVideo, hangup])
 
-  const toggleAudio = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleAudio') }
-  const toggleVideo = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleVideo') }
-  const hangup = () => { if (!apiRef.current) return; apiRef.current.executeCommand('hangup') }
   const toggleLobby = async () => {
     if (!apiRef.current) return
     setLobbyError(null)

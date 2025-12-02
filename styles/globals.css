@@ -747,6 +747,24 @@ td{color:#f8fafc;}
 .live-window__header-controls{display:flex;gap:0.4rem;}
 .live-window__header-controls button{width:34px;height:34px;border-radius:999px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.12);color:#fff;line-height:1;font-size:0.9rem;}
 .live-window__body{flex:1;min-height:0;padding:0.5rem;}
+.live-window__resize-handle{position:absolute;border:none;background:transparent;padding:0;margin:0;pointer-events:auto;}
+.live-window__resize-handle::after{content:'';display:block;background:rgba(255,255,255,0.35);border-radius:999px;opacity:0.7;}
+.live-window__resize-handle--n{top:-6px;left:50%;transform:translateX(-50%);width:40%;height:12px;cursor:ns-resize;}
+.live-window__resize-handle--n::after{width:100%;height:2px;}
+.live-window__resize-handle--s{bottom:-6px;left:50%;transform:translateX(-50%);width:40%;height:12px;cursor:ns-resize;}
+.live-window__resize-handle--s::after{width:100%;height:2px;}
+.live-window__resize-handle--e{right:-6px;top:50%;transform:translateY(-50%);width:12px;height:40%;cursor:ew-resize;}
+.live-window__resize-handle--e::after{width:2px;height:100%;margin:0 auto;}
+.live-window__resize-handle--w{left:-6px;top:50%;transform:translateY(-50%);width:12px;height:40%;cursor:ew-resize;}
+.live-window__resize-handle--w::after{width:2px;height:100%;margin:0 auto;}
+.live-window__resize-handle--ne{top:-6px;right:-6px;width:16px;height:16px;cursor:nesw-resize;}
+.live-window__resize-handle--ne::after{width:100%;height:100%;border-radius:4px;}
+.live-window__resize-handle--nw{top:-6px;left:-6px;width:16px;height:16px;cursor:nwse-resize;}
+.live-window__resize-handle--nw::after{width:100%;height:100%;border-radius:4px;}
+.live-window__resize-handle--se{bottom:-6px;right:-6px;width:16px;height:16px;cursor:nwse-resize;}
+.live-window__resize-handle--se::after{width:100%;height:100%;border-radius:4px;}
+.live-window__resize-handle--sw{bottom:-6px;left:-6px;width:16px;height:16px;cursor:nesw-resize;}
+.live-window__resize-handle--sw::after{width:100%;height:100%;border-radius:4px;}
 .live-canvas-window{width:100%;height:100%;display:flex;flex-direction:column;gap:0.5rem;}
 .live-canvas-window__header{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.25rem 0.5rem;}
 .live-canvas-window__brand{display:flex;align-items:center;gap:0.5rem;}

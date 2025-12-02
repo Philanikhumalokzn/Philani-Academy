@@ -110,6 +110,15 @@ export default function Dashboard() {
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
 
+  const overlayBounds = useMemo(() => {
+    const fallbackWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
+    const fallbackHeight = typeof window === 'undefined' ? 768 : window.innerHeight
+    return {
+      width: stageBounds.width || fallbackWidth,
+      height: stageBounds.height || fallbackHeight
+    }
+  }, [stageBounds.width, stageBounds.height])
+
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
@@ -138,15 +147,16 @@ export default function Dashboard() {
   }, [])
 
   const clampWindowPosition = useCallback((win: LiveWindowConfig, position: { x: number; y: number }) => {
-    if (!stageBounds.width || !stageBounds.height) return position
     const padding = 12
-    const maxX = Math.max(padding, stageBounds.width - win.size.width - padding)
-    const maxY = Math.max(padding, stageBounds.height - (win.minimized ? 64 : win.size.height) - padding)
+    const widthBase = Math.max(overlayBounds.width, win.size.width + padding * 2)
+    const heightBase = Math.max(overlayBounds.height, (win.minimized ? 64 : win.size.height) + padding * 2)
+    const maxX = Math.max(padding, widthBase - win.size.width - padding)
+    const maxY = Math.max(padding, heightBase - (win.minimized ? 64 : win.size.height) - padding)
     return {
       x: Math.min(Math.max(position.x, padding), maxX),
       y: Math.min(Math.max(position.y, padding), maxY)
     }
-  }, [stageBounds])
+  }, [overlayBounds.height, overlayBounds.width])
 
   const focusLiveWindow = useCallback((id: string) => {
     setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, z: getNextWindowZ() } : win)))
@@ -157,12 +167,21 @@ export default function Dashboard() {
   }, [])
 
   const toggleMinimizeLiveWindow = useCallback((id: string) => {
-    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, minimized: !win.minimized, z: getNextWindowZ() } : win)))
-  }, [getNextWindowZ])
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      const nextMin = !win.minimized
+      const clampedPosition = clampWindowPosition({ ...win, minimized: nextMin }, win.position)
+      return { ...win, minimized: nextMin, position: clampedPosition, z: getNextWindowZ() }
+    }))
+  }, [clampWindowPosition, getNextWindowZ])
 
   const updateLiveWindowPosition = useCallback((id: string, position: { x: number; y: number }) => {
     setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, position: clampWindowPosition(win, position) } : win)))
   }, [clampWindowPosition])
+
+  const resizeLiveWindow = useCallback((id: string, payload: { width: number; height: number; position: { x: number; y: number } }) => {
+    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, size: { width: payload.width, height: payload.height }, position: payload.position } : win)))
+  }, [])
 
   const showCanvasWindow = useCallback(() => {
     if (!canLaunchCanvasOverlay) {
@@ -177,33 +196,24 @@ export default function Dashboard() {
       if (existing) {
         return prev.map(win => win.id === windowId ? { ...win, minimized: false, z: getNextWindowZ() } : win)
       }
-      const defaultWidth = stageBounds.width ? Math.min(Math.max(stageBounds.width * 0.45, 360), 520) : 420
-      const defaultHeight = stageBounds.height ? Math.min(Math.max(stageBounds.height * 0.6, 320), 520) : 420
-      const nextWindow: LiveWindowConfig = {
+      const stageWidth = overlayBounds.width
+      const stageHeight = overlayBounds.height
+      const defaultWidth = Math.max(stageWidth - 48, 360)
+      const defaultHeight = Math.max(stageHeight - 120, 320)
+      const baseWindow: LiveWindowConfig = {
         id: windowId,
         kind: 'canvas',
         title: gradeReady ? activeGradeLabel : 'Canvas',
         subtitle: 'Canvas',
-        position: clampWindowPosition(
-          {
-            id: windowId,
-            kind: 'canvas',
-            title: gradeReady ? activeGradeLabel : 'Canvas',
-            subtitle: 'Canvas',
-            position: { x: 48, y: 48 },
-            size: { width: defaultWidth, height: defaultHeight },
-            minimized: false,
-            z: 0
-          },
-          { x: 48, y: 48 }
-        ),
+        position: { x: 24, y: 24 },
         size: { width: defaultWidth, height: defaultHeight },
         minimized: false,
         z: getNextWindowZ()
       }
-      return [...prev, nextWindow]
+      const clampedPosition = clampWindowPosition(baseWindow, baseWindow.position)
+      return [...prev, { ...baseWindow, position: clampedPosition }]
     })
-  }, [canLaunchCanvasOverlay, stageBounds.width, stageBounds.height, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
+  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
@@ -652,13 +662,12 @@ export default function Dashboard() {
   }, [canLaunchCanvasOverlay])
 
   useEffect(() => {
-    if (!stageBounds.width || !stageBounds.height) return
     setLiveWindows(prev => prev.map(win => {
       const clamped = clampWindowPosition(win, win.position)
       if (clamped.x === win.position.x && clamped.y === win.position.y) return win
       return { ...win, position: clamped }
     }))
-  }, [stageBounds, clampWindowPosition])
+  }, [overlayBounds, clampWindowPosition])
 
   useEffect(() => {
     if (!liveOverlayOpen) return
@@ -1555,11 +1564,14 @@ export default function Dashboard() {
                     size={win.size}
                     minimized={win.minimized}
                     zIndex={win.z}
-                    bounds={stageBounds}
+                    bounds={overlayBounds}
+                    minSize={{ width: 360, height: 320 }}
+                    isResizable
                     onFocus={focusLiveWindow}
                     onClose={closeLiveWindow}
                     onToggleMinimize={toggleMinimizeLiveWindow}
                     onPositionChange={updateLiveWindowPosition}
+                    onResize={resizeLiveWindow}
                   >
                     {win.kind === 'canvas' && (
                       <StackedCanvasWindow

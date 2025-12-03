@@ -1634,20 +1634,9 @@ export default function Dashboard() {
                 onClick={showCanvasWindow}
                 disabled={!canLaunchCanvasOverlay}
                 className="live-call-overlay__canvas-button"
+                style={{ marginLeft: 'auto', marginRight: 'auto' }}
               >
                 {overlayCanvasLabel}
-              </button>
-              <p>Each canvas opens as a draggable floating window so you can layer handwriting on top of the live video.</p>
-            </div>
-            <div className="live-call-overlay__toolbar" role="group" aria-label="Live call controls">
-              <button type="button" onClick={() => handleLiveControl('mute')} disabled={!liveControls}>
-                Mute
-              </button>
-              <button type="button" onClick={() => handleLiveControl('video')} disabled={!liveControls}>
-                Stop video
-              </button>
-              <button type="button" onClick={() => handleLiveControl('leave')} disabled={!liveControls}>
-                Leave
               </button>
             </div>
             <div className="live-call-overlay__video">
@@ -1667,6 +1656,17 @@ export default function Dashboard() {
                   <p className="text-white text-lg font-semibold text-center">Sign in and pick a grade to unlock the live call.</p>
                 </div>
               )}
+            </div>
+            <div className="live-call-overlay__toolbar" role="group" aria-label="Live call controls">
+              <button type="button" onClick={() => handleLiveControl('mute')} disabled={!liveControls}>
+                Mute
+              </button>
+              <button type="button" onClick={() => handleLiveControl('video')} disabled={!liveControls}>
+                Stop video
+              </button>
+              <button type="button" onClick={() => handleLiveControl('leave')} disabled={!liveControls}>
+                Leave
+              </button>
             </div>
             <div className="live-call-overlay__status">
               <span className="live-call-overlay__status-indicator" />

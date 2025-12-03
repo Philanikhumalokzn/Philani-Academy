@@ -618,6 +618,7 @@ td{color:#f8fafc;}
   text-transform:uppercase;
   letter-spacing:0.25em;
 }
+.canvas-overlay-controls button{cursor:pointer;}
 
 .canvas-overlay-shell{
   position:fixed;

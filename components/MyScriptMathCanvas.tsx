@@ -1822,13 +1822,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
   )
 
+  const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
       return {
         width: '100%',
         height: '100%',
-        pointerEvents: isViewOnly ? 'none' : undefined,
+        pointerEvents: disableCanvasInput ? 'none' : undefined,
+        cursor: disableCanvasInput ? 'default' : undefined,
       }
     }
     const landscape = canvasOrientation === 'landscape'
@@ -1838,9 +1840,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     return {
       width: '100%',
       ...sizing,
-      pointerEvents: isViewOnly ? 'none' : undefined,
+      pointerEvents: disableCanvasInput ? 'none' : undefined,
+      cursor: disableCanvasInput ? 'default' : undefined,
     }
-  }, [canvasOrientation, isFullscreen, isViewOnly])
+  }, [canvasOrientation, disableCanvasInput, isFullscreen])
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -1997,7 +2000,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           {isOverlayMode && (
             <div
               className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
-              style={{ pointerEvents: overlayControlsVisible ? 'auto' : 'none' }}
+              style={{
+                pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+                cursor: overlayControlsVisible ? 'default' : undefined,
+              }}
               onClick={closeOverlayControls}
             >
               <div className="canvas-overlay-controls__panel" onClick={event => {

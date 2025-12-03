@@ -1522,71 +1522,101 @@ export default function Dashboard() {
       {!isMobile && <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />}
       <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
         {isMobile ? (
-          <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-4">
-            <div className="flex justify-center">
-              <BrandLogo height={68} className="drop-shadow-[0_15px_35px_rgba(5,10,35,0.7)]" />
-            </div>
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.35em] text-blue-200">Dashboard</p>
-              <h1 className="text-3xl font-semibold">Stay ready for class</h1>
-              <p className="text-sm text-blue-100/80">Manage your grade workspace, join live sessions, and launch the canvas without leaving this hub.</p>
-            </div>
-            <div className="text-xs text-blue-100/70">
-              {session ? (
-                <>Signed in as <span className="font-semibold">{session.user?.email}</span></>
-              ) : (
-                'Sign in to unlock every tool.'
-              )}
-            </div>
-            <div className="flex flex-wrap justify-center gap-3">
-              <button
-                type="button"
-                className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                onClick={() => {
-                  setActiveSection('live')
-                  handleShowLiveOverlay()
-                }}
-              >
-                Live class
-              </button>
-              <button
-                type="button"
-                className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                onClick={showCanvasWindow}
-                disabled={!canLaunchCanvasOverlay}
-              >
-                Canvas
-              </button>
-            </div>
-            <div className="flex flex-wrap justify-center gap-2 text-[11px] text-blue-100/70">
-              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">Grade: {activeGradeLabel}</span>
-              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">Role: {(session as any)?.user?.role || 'guest'}</span>
-            </div>
-          </section>
-        ) : (
-          <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <BrandLogo height={56} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-              <div>
-                <h1 className="text-3xl font-bold">Dashboard</h1>
-                <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+          <>
+            <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-5">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-20 h-20 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
+                  {learnerAvatarUrl ? (
+                    <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{learnerInitials}</span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xl font-semibold">{learnerName}</p>
+                  <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
+                </div>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {session ? (
-                <div className="text-sm muted">Signed in as <span className="font-medium text-white">{session.user?.email}</span></div>
-              ) : (
-                <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
-              )}
-            </div>
-          </header>
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                  onClick={() => {
+                    setActiveSection('live')
+                    handleShowLiveOverlay()
+                  }}
+                >
+                  Live class
+                </button>
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                  onClick={showCanvasWindow}
+                  disabled={!canLaunchCanvasOverlay}
+                >
+                  Canvas
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              {(['announcements', 'sessions'] as const).map(panel => {
+                const isOpen = mobilePanels[panel]
+                const label = panel === 'announcements' ? 'Announcements' : 'Sessions'
+                return (
+                  <div key={panel} className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleMobilePanel(panel)}
+                      className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 ${
+                        isOpen
+                          ? 'bg-white text-[#04123b] border-white focus:ring-white/40 shadow-lg'
+                          : 'bg-white/10 border-white/20 text-white focus:ring-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{label}</span>
+                        <span>{isOpen ? '−' : '+'}</span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+                        {panel === 'announcements' ? <AnnouncementsSection /> : <SessionsSection />}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </section>
+
+            {renderOverviewCards({ hideGradeWorkspace: true })}
+          </>
+        ) : (
+          <>
+            <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <BrandLogo height={56} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+                <div>
+                  <h1 className="text-3xl font-bold">Dashboard</h1>
+                  <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {session ? (
+                  <div className="text-sm muted">Signed in as <span className="font-medium text-white">{session.user?.email}</span></div>
+                ) : (
+                  <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
+                )}
+              </div>
+            </header>
+
+            <SectionNav />
+
+            <section className="min-w-0 space-y-6">
+              {renderSection()}
+            </section>
+          </>
         )}
-
-        <SectionNav />
-
-        <section className="min-w-0 space-y-6">
-          {renderSection()}
-        </section>
       </div>
       </main>
       {liveOverlayOpen && (

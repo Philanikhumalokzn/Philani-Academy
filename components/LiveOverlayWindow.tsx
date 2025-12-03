@@ -4,6 +4,9 @@ type Point = { x: number; y: number }
 
 type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
+const HORIZONTAL_PADDING = 0
+const VERTICAL_PADDING = 12
+
 type LiveOverlayWindowProps = {
   id: string
   title: string
@@ -15,9 +18,11 @@ type LiveOverlayWindowProps = {
   bounds: { width: number; height: number }
   minSize?: { width: number; height: number }
   isResizable?: boolean
+  isFullscreen?: boolean
   onFocus: (id: string) => void
   onClose: (id: string) => void
   onToggleMinimize: (id: string) => void
+  onRequestFullscreen?: (id: string) => void
   onPositionChange: (id: string, position: Point) => void
   onResize?: (id: string, payload: { width: number; height: number; position: Point }) => void
   children: ReactNode
@@ -34,9 +39,11 @@ export default function LiveOverlayWindow({
   bounds,
   minSize,
   isResizable = true,
+  isFullscreen = false,
   onFocus,
   onClose,
   onToggleMinimize,
+  onRequestFullscreen,
   onPositionChange,
   onResize,
   children
@@ -54,14 +61,13 @@ export default function LiveOverlayWindow({
 
   const clampPosition = useCallback(
     (candidate: Point): Point => {
-      const padding = 12
-      const widthBase = Math.max(bounds.width, size.width + padding * 2)
-      const heightBase = Math.max(bounds.height, (minimized ? 64 : size.height) + padding * 2)
-      const maxX = Math.max(padding, widthBase - size.width - padding)
-      const maxY = Math.max(padding, heightBase - (minimized ? 64 : size.height) - padding)
+      const widthBase = Math.max(bounds.width, size.width + HORIZONTAL_PADDING * 2)
+      const heightBase = Math.max(bounds.height, (minimized ? 64 : size.height) + VERTICAL_PADDING * 2)
+      const maxX = Math.max(HORIZONTAL_PADDING, widthBase - size.width - HORIZONTAL_PADDING)
+      const maxY = Math.max(VERTICAL_PADDING, heightBase - (minimized ? 64 : size.height) - VERTICAL_PADDING)
       return {
-        x: Math.min(Math.max(candidate.x, padding), maxX),
-        y: Math.min(Math.max(candidate.y, padding), maxY)
+        x: Math.min(Math.max(candidate.x, HORIZONTAL_PADDING), maxX),
+        y: Math.min(Math.max(candidate.y, VERTICAL_PADDING), maxY)
       }
     },
     [bounds.height, bounds.width, minimized, size.height, size.width]
@@ -91,6 +97,7 @@ export default function LiveOverlayWindow({
 
   const handleDragStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isFullscreen) return
       if (event.button !== 0) return
       event.preventDefault()
       onFocus(id)
@@ -108,20 +115,19 @@ export default function LiveOverlayWindow({
 
   const clampRect = useCallback(
     (rect: { left: number; top: number; width: number; height: number }) => {
-      const padding = 12
       const minWidth = minSize?.width ?? 360
       const minHeight = minSize?.height ?? 300
-      const widthBase = Math.max(bounds.width, minWidth + padding * 2)
-      const heightBase = Math.max(bounds.height, minHeight + padding * 2)
+      const widthBase = Math.max(bounds.width, minWidth + HORIZONTAL_PADDING * 2)
+      const heightBase = Math.max(bounds.height, minHeight + VERTICAL_PADDING * 2)
       let nextWidth = Math.max(minWidth, rect.width)
       let nextHeight = Math.max(minHeight, rect.height)
       let nextLeft = rect.left
       let nextTop = rect.top
 
-      nextLeft = Math.min(Math.max(nextLeft, padding), widthBase - nextWidth - padding)
-      nextTop = Math.min(Math.max(nextTop, padding), heightBase - nextHeight - padding)
-      nextWidth = Math.min(nextWidth, widthBase - nextLeft - padding)
-      nextHeight = Math.min(nextHeight, heightBase - nextTop - padding)
+      nextLeft = Math.min(Math.max(nextLeft, HORIZONTAL_PADDING), widthBase - nextWidth - HORIZONTAL_PADDING)
+      nextTop = Math.min(Math.max(nextTop, VERTICAL_PADDING), heightBase - nextHeight - VERTICAL_PADDING)
+      nextWidth = Math.min(nextWidth, widthBase - nextLeft - HORIZONTAL_PADDING)
+      nextHeight = Math.min(nextHeight, heightBase - nextTop - VERTICAL_PADDING)
 
       return { left: nextLeft, top: nextTop, width: nextWidth, height: nextHeight }
     },
@@ -176,7 +182,7 @@ export default function LiveOverlayWindow({
 
   const handleResizeStart = useCallback(
     (direction: ResizeDirection, event: React.PointerEvent<HTMLButtonElement | HTMLDivElement>) => {
-      if (!isResizable || minimized) return
+      if (!isResizable || minimized || isFullscreen) return
       if (!onResize) return
       event.preventDefault()
       event.stopPropagation()
@@ -211,7 +217,7 @@ export default function LiveOverlayWindow({
 
   return (
     <div
-      className={`live-window${minimized ? ' live-window--minimized' : ''}`}
+      className={`live-window${minimized ? ' live-window--minimized' : ''}${isFullscreen ? ' live-window--fullscreen' : ''}`}
       style={{
         left: position.x,
         top: position.y,
@@ -221,7 +227,17 @@ export default function LiveOverlayWindow({
       }}
       onPointerDown={() => onFocus(id)}
     >
-      <div className="live-window__header" onPointerDown={handleDragStart}>
+      <div
+        className="live-window__header"
+        style={{ cursor: isFullscreen ? 'default' : 'grab' }}
+        onPointerDown={event => {
+          if (isFullscreen) {
+            onFocus(id)
+            return
+          }
+          handleDragStart(event)
+        }}
+      >
         <div>
           {subtitle && <p className="live-window__eyebrow">{subtitle}</p>}
           <p className="live-window__title">{title}</p>
@@ -238,6 +254,19 @@ export default function LiveOverlayWindow({
           >
             {minimized ? '▢' : '—'}
           </button>
+          {onRequestFullscreen && (
+            <button
+              type="button"
+              onPointerDown={event => event.stopPropagation()}
+              onClick={event => {
+                event.stopPropagation()
+                onRequestFullscreen(id)
+              }}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fill stage'}
+            >
+              {isFullscreen ? '⤡' : '⤢'}
+            </button>
+          )}
           <button
             type="button"
             onPointerDown={event => event.stopPropagation()}
@@ -261,7 +290,7 @@ export default function LiveOverlayWindow({
       >
         {children}
       </div>
-      {isResizable && !minimized && onResize && (
+      {isResizable && !minimized && !isFullscreen && onResize && (
         <>
           {['n','s','e','w','ne','nw','se','sw'].map(direction => (
             <button

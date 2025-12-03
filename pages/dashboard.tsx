@@ -11,6 +11,8 @@ import NavArrows from '../components/NavArrows'
 import BrandLogo from '../components/BrandLogo'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
+const WINDOW_PADDING_X = 0
+const WINDOW_PADDING_Y = 12
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -46,6 +48,11 @@ type LessonMaterial = {
 
 type LiveWindowKind = 'canvas'
 
+type WindowSnapshot = {
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+}
+
 type LiveWindowConfig = {
   id: string
   kind: LiveWindowKind
@@ -55,6 +62,8 @@ type LiveWindowConfig = {
   size: { width: number; height: number }
   minimized: boolean
   z: number
+  mode: 'windowed' | 'fullscreen'
+  windowedSnapshot: WindowSnapshot | null
 }
 
 export default function Dashboard() {
@@ -105,6 +114,7 @@ export default function Dashboard() {
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
+  const [canvasWindowDismissed, setCanvasWindowDismissed] = useState(false)
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const windowZCounterRef = useRef(50)
@@ -147,14 +157,13 @@ export default function Dashboard() {
   }, [])
 
   const clampWindowPosition = useCallback((win: LiveWindowConfig, position: { x: number; y: number }) => {
-    const padding = 12
-    const widthBase = Math.max(overlayBounds.width, win.size.width + padding * 2)
-    const heightBase = Math.max(overlayBounds.height, (win.minimized ? 64 : win.size.height) + padding * 2)
-    const maxX = Math.max(padding, widthBase - win.size.width - padding)
-    const maxY = Math.max(padding, heightBase - (win.minimized ? 64 : win.size.height) - padding)
+    const widthBase = Math.max(overlayBounds.width, win.size.width + WINDOW_PADDING_X * 2)
+    const heightBase = Math.max(overlayBounds.height, (win.minimized ? 64 : win.size.height) + WINDOW_PADDING_Y * 2)
+    const maxX = Math.max(WINDOW_PADDING_X, widthBase - win.size.width - WINDOW_PADDING_X)
+    const maxY = Math.max(WINDOW_PADDING_Y, heightBase - (win.minimized ? 64 : win.size.height) - WINDOW_PADDING_Y)
     return {
-      x: Math.min(Math.max(position.x, padding), maxX),
-      y: Math.min(Math.max(position.y, padding), maxY)
+      x: Math.min(Math.max(position.x, WINDOW_PADDING_X), maxX),
+      y: Math.min(Math.max(position.y, WINDOW_PADDING_Y), maxY)
     }
   }, [overlayBounds.height, overlayBounds.width])
 
@@ -163,12 +172,19 @@ export default function Dashboard() {
   }, [getNextWindowZ])
 
   const closeLiveWindow = useCallback((id: string) => {
-    setLiveWindows(prev => prev.filter(win => win.id !== id))
+    setLiveWindows(prev => {
+      const target = prev.find(win => win.id === id)
+      if (target?.kind === 'canvas') {
+        setCanvasWindowDismissed(true)
+      }
+      return prev.filter(win => win.id !== id)
+    })
   }, [])
 
   const toggleMinimizeLiveWindow = useCallback((id: string) => {
     setLiveWindows(prev => prev.map(win => {
       if (win.id !== id) return win
+      if (win.mode === 'fullscreen') return win
       const nextMin = !win.minimized
       const clampedPosition = clampWindowPosition({ ...win, minimized: nextMin }, win.position)
       return { ...win, minimized: nextMin, position: clampedPosition, z: getNextWindowZ() }
@@ -176,12 +192,54 @@ export default function Dashboard() {
   }, [clampWindowPosition, getNextWindowZ])
 
   const updateLiveWindowPosition = useCallback((id: string, position: { x: number; y: number }) => {
-    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, position: clampWindowPosition(win, position) } : win)))
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'fullscreen') return win
+      return { ...win, position: clampWindowPosition(win, position) }
+    }))
   }, [clampWindowPosition])
 
   const resizeLiveWindow = useCallback((id: string, payload: { width: number; height: number; position: { x: number; y: number } }) => {
-    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, size: { width: payload.width, height: payload.height }, position: payload.position } : win)))
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'fullscreen') return win
+      return { ...win, size: { width: payload.width, height: payload.height }, position: payload.position }
+    }))
   }, [])
+
+  const toggleFullscreenLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'windowed') {
+        const snapshot = { position: win.position, size: win.size }
+        return {
+          ...win,
+          minimized: false,
+          mode: 'fullscreen',
+          windowedSnapshot: snapshot,
+          position: { x: 0, y: 0 },
+          size: { width: overlayBounds.width, height: overlayBounds.height },
+          z: getNextWindowZ()
+        }
+      }
+      const fallbackSnapshot = win.windowedSnapshot ?? {
+        position: { x: WINDOW_PADDING_X, y: WINDOW_PADDING_Y },
+        size: {
+          width: Math.max(Math.round(overlayBounds.width * 0.65), 420),
+          height: Math.max(Math.round(overlayBounds.height * 0.6), 320)
+        }
+      }
+      const restoredPosition = clampWindowPosition({ ...win, minimized: false, size: fallbackSnapshot.size }, fallbackSnapshot.position)
+      return {
+        ...win,
+        mode: 'windowed',
+        windowedSnapshot: null,
+        position: restoredPosition,
+        size: fallbackSnapshot.size,
+        z: getNextWindowZ()
+      }
+    }))
+  }, [overlayBounds.height, overlayBounds.width, clampWindowPosition, getNextWindowZ])
 
   const showCanvasWindow = useCallback(() => {
     if (!canLaunchCanvasOverlay) {
@@ -190,25 +248,32 @@ export default function Dashboard() {
     }
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
+    setCanvasWindowDismissed(false)
     const windowId = 'canvas-live-window'
     setLiveWindows(prev => {
       const existing = prev.find(win => win.id === windowId)
       if (existing) {
         return prev.map(win => win.id === windowId ? { ...win, minimized: false, z: getNextWindowZ() } : win)
       }
-      const stageWidth = overlayBounds.width
-      const stageHeight = overlayBounds.height
-      const defaultWidth = Math.max(stageWidth - 48, 360)
-      const defaultHeight = Math.max(stageHeight - 120, 320)
+      const stageWidth = overlayBounds.width || (typeof window !== 'undefined' ? window.innerWidth : 1024)
+      const stageHeight = overlayBounds.height || (typeof window !== 'undefined' ? window.innerHeight : 768)
+      const defaultWidth = Math.min(Math.max(Math.round(stageWidth * 0.72), 520), stageWidth)
+      const defaultHeight = Math.min(Math.max(Math.round(stageHeight * 0.68), 360), stageHeight)
+      const startingPosition = {
+        x: Math.max((stageWidth - defaultWidth) / 2, WINDOW_PADDING_X),
+        y: Math.max((stageHeight - defaultHeight) / 3, WINDOW_PADDING_Y)
+      }
       const baseWindow: LiveWindowConfig = {
         id: windowId,
         kind: 'canvas',
         title: gradeReady ? activeGradeLabel : 'Canvas',
         subtitle: 'Canvas',
-        position: { x: 24, y: 24 },
+        position: startingPosition,
         size: { width: defaultWidth, height: defaultHeight },
         minimized: false,
-        z: getNextWindowZ()
+        z: getNextWindowZ(),
+        mode: 'windowed',
+        windowedSnapshot: null
       }
       const clampedPosition = clampWindowPosition(baseWindow, baseWindow.position)
       return [...prev, { ...baseWindow, position: clampedPosition }]
@@ -218,10 +283,12 @@ export default function Dashboard() {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
+    setCanvasWindowDismissed(false)
   }
   const closeLiveOverlay = () => {
     setLiveOverlayOpen(false)
     setLiveOverlayDismissed(true)
+    setCanvasWindowDismissed(false)
   }
   const handleLiveControl = (action: 'mute' | 'video' | 'leave') => {
     if (!liveControls) return
@@ -237,6 +304,7 @@ export default function Dashboard() {
       liveControls.hangup()
       setLiveOverlayOpen(false)
       setLiveOverlayDismissed(true)
+      setCanvasWindowDismissed(false)
     }
   }
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
@@ -659,10 +727,17 @@ export default function Dashboard() {
   useEffect(() => {
     if (canLaunchCanvasOverlay) return
     setLiveWindows(prev => prev.filter(win => win.kind !== 'canvas'))
+    setCanvasWindowDismissed(false)
   }, [canLaunchCanvasOverlay])
 
   useEffect(() => {
     setLiveWindows(prev => prev.map(win => {
+      if (win.mode === 'fullscreen') {
+        const nextSize = { width: overlayBounds.width, height: overlayBounds.height }
+        const isSameSize = win.size.width === nextSize.width && win.size.height === nextSize.height
+        if (isSameSize && win.position.x === 0 && win.position.y === 0) return win
+        return { ...win, size: nextSize, position: { x: 0, y: 0 } }
+      }
       const clamped = clampWindowPosition(win, win.position)
       if (clamped.x === win.position.x && clamped.y === win.position.y) return win
       return { ...win, position: clamped }
@@ -672,11 +747,12 @@ export default function Dashboard() {
   useEffect(() => {
     if (!liveOverlayOpen) return
     if (!canLaunchCanvasOverlay) return
+    if (canvasWindowDismissed) return
     const hasCanvas = liveWindows.some(win => win.kind === 'canvas')
     if (!hasCanvas) {
       showCanvasWindow()
     }
-  }, [liveOverlayOpen, canLaunchCanvasOverlay, liveWindows, showCanvasWindow])
+  }, [liveOverlayOpen, canLaunchCanvasOverlay, canvasWindowDismissed, liveWindows, showCanvasWindow])
 
   useEffect(() => {
     if (!gradeReady) return
@@ -1567,9 +1643,11 @@ export default function Dashboard() {
                     bounds={overlayBounds}
                     minSize={{ width: 360, height: 320 }}
                     isResizable
+                    isFullscreen={win.mode === 'fullscreen'}
                     onFocus={focusLiveWindow}
                     onClose={closeLiveWindow}
                     onToggleMinimize={toggleMinimizeLiveWindow}
+                    onRequestFullscreen={toggleFullscreenLiveWindow}
                     onPositionChange={updateLiveWindowPosition}
                     onResize={resizeLiveWindow}
                   >

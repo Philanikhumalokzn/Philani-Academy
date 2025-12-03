@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
-import NavArrows from '../components/NavArrows'
 import BrandLogo from '../components/BrandLogo'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
@@ -1519,7 +1518,6 @@ export default function Dashboard() {
   return (
     <>
       <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white' : 'deep-page'} min-h-screen pb-16`}>
-      {!isMobile && <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />}
       <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
         {isMobile ? (
           <>

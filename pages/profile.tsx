@@ -269,11 +269,6 @@ export default function ProfilePage() {
         <section className="hero flex-col gap-5">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />
-            <div className="flex flex-wrap gap-2 text-xs">
-              <span className="board-chip">Grade: {gradeLabel}</span>
-              <span className="board-chip">{popiConsent ? 'POPIA consent active' : 'Consent required'}</span>
-              <span className="board-chip">{loading ? 'Syncing profile' : 'Profile updated'}</span>
-            </div>
           </div>
           <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

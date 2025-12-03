@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
 
+type CanvasOrientation = 'portrait' | 'landscape'
+
 type Props = {
   gradeLabel?: string | null
   roomId: string
@@ -9,6 +11,7 @@ type Props = {
   userDisplayName?: string
   isAdmin?: boolean
   isVisible: boolean
+  defaultOrientation?: CanvasOrientation
 }
 
 type OverlayControlsHandle = {
@@ -17,7 +20,7 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDisplayName, isAdmin, isVisible }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait' }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
 
   useEffect(() => {
@@ -47,6 +50,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDi
           userId={userId}
           userDisplayName={userDisplayName}
           isAdmin={isAdmin}
+          defaultOrientation={defaultOrientation}
           overlayControlsHandleRef={controlsHandleRef}
         />
       </div>

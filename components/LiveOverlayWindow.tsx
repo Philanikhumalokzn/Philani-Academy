@@ -110,7 +110,7 @@ export default function LiveOverlayWindow({
         window.addEventListener('pointerup', stopDragging)
       }
     },
-    [handlePointerMove, id, onFocus, position.x, position.y, stopDragging]
+    [handlePointerMove, id, isFullscreen, onFocus, position.x, position.y, stopDragging]
   )
 
   const clampRect = useCallback(
@@ -251,6 +251,7 @@ export default function LiveOverlayWindow({
               onToggleMinimize(id)
             }}
             aria-label={minimized ? 'Restore window' : 'Minimize window'}
+            disabled={isFullscreen}
           >
             {minimized ? '▢' : '—'}
           </button>

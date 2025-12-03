@@ -114,7 +114,6 @@ export default function Dashboard() {
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
-  const [canvasWindowDismissed, setCanvasWindowDismissed] = useState(false)
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const windowZCounterRef = useRef(50)
@@ -157,6 +156,9 @@ export default function Dashboard() {
   }, [])
 
   const clampWindowPosition = useCallback((win: LiveWindowConfig, position: { x: number; y: number }) => {
+    if (win.mode === 'fullscreen') {
+      return { x: 0, y: 0 }
+    }
     const widthBase = Math.max(overlayBounds.width, win.size.width + WINDOW_PADDING_X * 2)
     const heightBase = Math.max(overlayBounds.height, (win.minimized ? 64 : win.size.height) + WINDOW_PADDING_Y * 2)
     const maxX = Math.max(WINDOW_PADDING_X, widthBase - win.size.width - WINDOW_PADDING_X)
@@ -172,13 +174,7 @@ export default function Dashboard() {
   }, [getNextWindowZ])
 
   const closeLiveWindow = useCallback((id: string) => {
-    setLiveWindows(prev => {
-      const target = prev.find(win => win.id === id)
-      if (target?.kind === 'canvas') {
-        setCanvasWindowDismissed(true)
-      }
-      return prev.filter(win => win.id !== id)
-    })
+    setLiveWindows(prev => prev.filter(win => win.id !== id))
   }, [])
 
   const toggleMinimizeLiveWindow = useCallback((id: string) => {
@@ -248,7 +244,6 @@ export default function Dashboard() {
     }
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
-    setCanvasWindowDismissed(false)
     const windowId = 'canvas-live-window'
     setLiveWindows(prev => {
       const existing = prev.find(win => win.id === windowId)
@@ -257,38 +252,35 @@ export default function Dashboard() {
       }
       const stageWidth = overlayBounds.width || (typeof window !== 'undefined' ? window.innerWidth : 1024)
       const stageHeight = overlayBounds.height || (typeof window !== 'undefined' ? window.innerHeight : 768)
-      const defaultWidth = Math.min(Math.max(Math.round(stageWidth * 0.72), 520), stageWidth)
-      const defaultHeight = Math.min(Math.max(Math.round(stageHeight * 0.68), 360), stageHeight)
-      const startingPosition = {
-        x: Math.max((stageWidth - defaultWidth) / 2, WINDOW_PADDING_X),
-        y: Math.max((stageHeight - defaultHeight) / 3, WINDOW_PADDING_Y)
+      const windowedWidth = Math.max(Math.round(stageWidth * 0.65), 420)
+      const windowedHeight = Math.max(Math.round(stageHeight * 0.6), 320)
+      const windowedPosition = {
+        x: Math.max((stageWidth - windowedWidth) / 2, WINDOW_PADDING_X),
+        y: Math.max((stageHeight - windowedHeight) / 2, WINDOW_PADDING_Y)
       }
       const baseWindow: LiveWindowConfig = {
         id: windowId,
         kind: 'canvas',
         title: gradeReady ? activeGradeLabel : 'Canvas',
         subtitle: 'Canvas',
-        position: startingPosition,
-        size: { width: defaultWidth, height: defaultHeight },
+        position: { x: 0, y: 0 },
+        size: { width: stageWidth, height: stageHeight },
         minimized: false,
         z: getNextWindowZ(),
-        mode: 'windowed',
-        windowedSnapshot: null
+        mode: 'fullscreen',
+        windowedSnapshot: { position: windowedPosition, size: { width: windowedWidth, height: windowedHeight } }
       }
-      const clampedPosition = clampWindowPosition(baseWindow, baseWindow.position)
-      return [...prev, { ...baseWindow, position: clampedPosition }]
+      return [...prev, baseWindow]
     })
   }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
-    setCanvasWindowDismissed(false)
   }
   const closeLiveOverlay = () => {
     setLiveOverlayOpen(false)
     setLiveOverlayDismissed(true)
-    setCanvasWindowDismissed(false)
   }
   const handleLiveControl = (action: 'mute' | 'video' | 'leave') => {
     if (!liveControls) return
@@ -304,7 +296,6 @@ export default function Dashboard() {
       liveControls.hangup()
       setLiveOverlayOpen(false)
       setLiveOverlayDismissed(true)
-      setCanvasWindowDismissed(false)
     }
   }
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
@@ -727,7 +718,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (canLaunchCanvasOverlay) return
     setLiveWindows(prev => prev.filter(win => win.kind !== 'canvas'))
-    setCanvasWindowDismissed(false)
   }, [canLaunchCanvasOverlay])
 
   useEffect(() => {
@@ -744,15 +734,6 @@ export default function Dashboard() {
     }))
   }, [overlayBounds, clampWindowPosition])
 
-  useEffect(() => {
-    if (!liveOverlayOpen) return
-    if (!canLaunchCanvasOverlay) return
-    if (canvasWindowDismissed) return
-    const hasCanvas = liveWindows.some(win => win.kind === 'canvas')
-    if (!hasCanvas) {
-      showCanvasWindow()
-    }
-  }, [liveOverlayOpen, canLaunchCanvasOverlay, canvasWindowDismissed, liveWindows, showCanvasWindow])
 
   useEffect(() => {
     if (!gradeReady) return
@@ -1659,6 +1640,7 @@ export default function Dashboard() {
                         userDisplayName={realtimeDisplayName}
                         isAdmin={isOwnerUser}
                         isVisible={!win.minimized}
+                        defaultOrientation="portrait"
                       />
                     )}
                   </LiveOverlayWindow>

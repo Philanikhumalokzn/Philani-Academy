@@ -153,6 +153,7 @@ type MyScriptMathCanvasProps = {
   isAdmin?: boolean
   boardId?: string // optional logical board identifier; if absent, we'll use a shared/global per grade
   uiMode?: 'default' | 'overlay'
+  defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
 }
 
@@ -208,7 +209,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', overlayControlsHandleRef }: MyScriptMathCanvasProps) {
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -235,7 +236,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(isAdmin ? 'landscape' : 'portrait')
+  const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
+  const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
@@ -268,7 +270,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
   const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
-  const adminOrientationPreferenceRef = useRef<CanvasOrientation>(isAdmin ? 'landscape' : 'portrait')
+  const adminOrientationPreferenceRef = useRef<CanvasOrientation>(initialOrientation)
   const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
   const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 

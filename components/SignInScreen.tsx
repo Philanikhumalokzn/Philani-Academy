@@ -12,6 +12,7 @@ function normalizeError(error?: string | null) {
 }
 
 type SignInScreenProps = {
+  
   title?: string
 }
 

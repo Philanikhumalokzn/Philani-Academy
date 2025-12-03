@@ -114,6 +114,7 @@ export default function Dashboard() {
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
+  const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const windowZCounterRef = useRef(50)
@@ -131,6 +132,21 @@ export default function Dashboard() {
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
+  const learnerName = session?.user?.name || session?.user?.email || 'Guest learner'
+  const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
+  const learnerInitials = useMemo(() => {
+    if (learnerName) {
+      const parts = learnerName.trim().split(/\s+/).filter(Boolean)
+      const letters = parts.slice(0, 2).map(part => part[0]?.toUpperCase() ?? '')
+      const joined = letters.join('')
+      if (joined) return joined
+    }
+    if (session?.user?.email) {
+      return session.user.email.slice(0, 2).toUpperCase()
+    }
+    return 'PA'
+  }, [learnerName, session?.user?.email])
+  const learnerGradeText = status === 'authenticated' ? activeGradeLabel : 'Grade pending'
   const userRole = (session as any)?.user?.role as SectionRole | undefined
   const normalizedRole: SectionRole = userRole ?? 'guest'
   const isAdmin = normalizedRole === 'admin'
@@ -201,6 +217,10 @@ export default function Dashboard() {
       if (win.mode === 'fullscreen') return win
       return { ...win, size: { width: payload.width, height: payload.height }, position: payload.position }
     }))
+  }, [])
+
+  const toggleMobilePanel = useCallback((panel: 'announcements' | 'sessions') => {
+    setMobilePanels(prev => ({ ...prev, [panel]: !prev[panel] }))
   }, [])
 
   const toggleFullscreenLiveWindow = useCallback((id: string) => {
@@ -872,79 +892,95 @@ export default function Dashboard() {
     }
   }
 
-  const OverviewSection = () => {
+  const renderGradeWorkspaceCard = () => (
+    <div className="card dashboard-card space-y-3">
+      <h2 className="text-lg font-semibold">Grade workspace</h2>
+      {status !== 'authenticated' ? (
+        <p className="text-sm muted">Sign in to manage a grade workspace.</p>
+      ) : !gradeReady ? (
+        <p className="text-sm muted">Loading grade options...</p>
+      ) : isAdmin ? (
+        <div className="space-y-3">
+          <p className="text-sm muted">Switch the active grade to manage sessions and announcements.</p>
+          <div className="flex flex-wrap gap-3">
+            {gradeOptions.map(option => (
+              <label
+                key={option.value}
+                className={`px-3 py-2 rounded border text-sm cursor-pointer transition ${
+                  selectedGrade === option.value ? 'border-blue-500 bg-blue-50 font-semibold' : 'border-slate-200 hover:border-blue-200'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="active-grade"
+                  value={option.value}
+                  checked={selectedGrade === option.value}
+                  onChange={() => updateGradeSelection(option.value)}
+                  className="sr-only"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs muted">Learners only see sessions, notes, and announcements for the selected grade.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm muted">
+            You are currently in the <span className="font-medium text-white">{activeGradeLabel}</span> workspace.
+          </p>
+          {!userGrade && (
+            <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  const renderAccountSnapshotCard = () => (
+    <div className="card dashboard-card space-y-3">
+      <h2 className="text-lg font-semibold">Account snapshot</h2>
+      <dl className="grid gap-2 text-sm text-white">
+        <div>
+          <dt className="font-medium text-white">Email</dt>
+          <dd>{session?.user?.email || 'Not signed in'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-white">Role</dt>
+          <dd className="capitalize">{userRole || 'guest'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-white">Grade</dt>
+          <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
+        </div>
+      </dl>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
+        <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
+      </div>
+    </div>
+  )
+
+  const renderOverviewCards = (options?: { hideGradeWorkspace?: boolean }) => {
+    const showGradeWorkspace = !options?.hideGradeWorkspace
+    if (!showGradeWorkspace) {
+      return (
+        <div className="space-y-6">
+          {renderAccountSnapshotCard()}
+        </div>
+      )
+    }
     return (
       <div className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="card dashboard-card space-y-3">
-            <h2 className="text-lg font-semibold">Grade workspace</h2>
-            {status !== 'authenticated' ? (
-              <p className="text-sm muted">Sign in to manage a grade workspace.</p>
-            ) : !gradeReady ? (
-              <p className="text-sm muted">Loading grade options...</p>
-            ) : isAdmin ? (
-              <div className="space-y-3">
-                <p className="text-sm muted">Switch the active grade to manage sessions and announcements.</p>
-                <div className="flex flex-wrap gap-3">
-                  {gradeOptions.map(option => (
-                    <label
-                      key={option.value}
-                      className={`px-3 py-2 rounded border text-sm cursor-pointer transition ${
-                        selectedGrade === option.value ? 'border-blue-500 bg-blue-50 font-semibold' : 'border-slate-200 hover:border-blue-200'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="active-grade"
-                        value={option.value}
-                        checked={selectedGrade === option.value}
-                        onChange={() => updateGradeSelection(option.value)}
-                        className="sr-only"
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs muted">Learners only see sessions, notes, and announcements for the selected grade.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm muted">
-                  You are currently in the <span className="font-medium text-white">{activeGradeLabel}</span> workspace.
-                </p>
-                {!userGrade && (
-                  <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="card dashboard-card space-y-3">
-            <h2 className="text-lg font-semibold">Account snapshot</h2>
-            <dl className="grid gap-2 text-sm text-white">
-              <div>
-                <dt className="font-medium text-white">Email</dt>
-                <dd>{session?.user?.email || 'Not signed in'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-white">Role</dt>
-                <dd className="capitalize">{userRole || 'guest'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-white">Grade</dt>
-                <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
-              </div>
-            </dl>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
-              <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
-            </div>
-          </div>
+          {renderGradeWorkspaceCard()}
+          {renderAccountSnapshotCard()}
         </div>
-
       </div>
     )
   }
+
+  const OverviewSection = () => renderOverviewCards()
 
   const LiveSection = () => {
     const liveStatusMessage = () => {

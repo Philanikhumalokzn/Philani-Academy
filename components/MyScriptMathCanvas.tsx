@@ -236,6 +236,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
@@ -273,6 +274,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const adminOrientationPreferenceRef = useRef<CanvasOrientation>(initialOrientation)
   const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
   const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasAutoFullscreenedMobileRef = useRef(false)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -305,6 +307,27 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       editorInstanceRef.current?.resize?.()
     } catch {}
   }, [canvasOrientation, isFullscreen])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mql = window.matchMedia('(max-width: 768px)')
+    const update = () => setIsMobileViewport(mql.matches)
+    update()
+    mql.addEventListener('change', update)
+    return () => mql.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      hasAutoFullscreenedMobileRef.current = false
+      return
+    }
+    if (hasAutoFullscreenedMobileRef.current) return
+    setCanvasOrientation('portrait')
+    adminOrientationPreferenceRef.current = 'portrait'
+    setIsFullscreen(true)
+    hasAutoFullscreenedMobileRef.current = true
+  }, [isMobileViewport])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -1899,7 +1922,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const handleOrientationChange = useCallback(
     (next: CanvasOrientation) => {
-      if (isAdmin && isFullscreen && next !== 'landscape') {
+      if (isAdmin && isFullscreen && next !== 'landscape' && !isMobileViewport) {
         return
       }
       setCanvasOrientation(curr => (curr === next ? curr : next))
@@ -1907,7 +1930,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         adminOrientationPreferenceRef.current = next
       }
     },
-    [isAdmin, isFullscreen]
+    [isAdmin, isFullscreen, isMobileViewport]
   )
 
   const toggleFullscreen = () => {
@@ -1916,8 +1939,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (isAdmin) {
       if (next) {
         adminOrientationPreferenceRef.current = canvasOrientation
-        if (canvasOrientation !== 'landscape') {
+        if (!isMobileViewport && canvasOrientation !== 'landscape') {
           setCanvasOrientation('landscape')
+        }
+        if (isMobileViewport && canvasOrientation !== 'portrait') {
+          setCanvasOrientation('portrait')
         }
       } else if (adminOrientationPreferenceRef.current && adminOrientationPreferenceRef.current !== canvasOrientation) {
         setCanvasOrientation(adminOrientationPreferenceRef.current)
@@ -2003,7 +2029,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }, [canvasOrientation, disableCanvasInput, isFullscreen])
 
-  const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
+  const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen && !isMobileViewport)
+
+  const canvasContainerClass = isFullscreen
+    ? 'fixed inset-0 z-50 bg-white relative overflow-hidden'
+    : 'border rounded bg-white relative overflow-hidden'
 
   const renderToolbarBlock = () => (
     <div className="canvas-toolbar">
@@ -2115,7 +2145,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   return (
     <div>
       <div className="flex flex-col gap-3">
-        <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+        <div className={canvasContainerClass}>
           <div
             ref={editorHostRef}
             className={editorHostClass}

@@ -72,19 +72,35 @@ function loadIinkRuntime(): Promise<void> {
     })
 
   scriptPromise = (async () => {
-    await loadScript(SCRIPT_ID, SCRIPT_URL)
+    let lastError: unknown = null
+
+    const tryLoad = async (id: string, src: string) => {
+      try {
+        await loadScript(id, src)
+        return true
+      } catch (err) {
+        lastError = err
+        document.getElementById(id)?.remove()
+        return false
+      }
+    }
+
+    const primaryOk = await tryLoad(SCRIPT_ID, SCRIPT_URL)
 
     if (!window.iink?.Editor?.load) {
       console.warn('Primary MyScript CDN did not expose the expected API, retrying pinned fallback.')
-      await loadScript(`${SCRIPT_ID}-fallback`, SCRIPT_FALLBACK_URL)
+      await tryLoad(`${SCRIPT_ID}-fallback`, SCRIPT_FALLBACK_URL)
     }
 
     if (!window.iink?.Editor?.load) {
       console.warn('Pinned fallback did not expose the expected API, retrying secondary CDN.')
-      await loadScript(`${SCRIPT_ID}-secondary`, SCRIPT_SECONDARY_URL)
+      await tryLoad(`${SCRIPT_ID}-secondary`, SCRIPT_SECONDARY_URL)
     }
 
     if (!window.iink?.Editor?.load) {
+      if (lastError instanceof Error) {
+        throw lastError
+      }
       throw new Error('MyScript iink runtime did not expose the expected API.')
     }
   })()

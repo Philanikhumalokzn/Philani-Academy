@@ -1771,6 +1771,28 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const clearAllStudentCanvases = useCallback(async () => {
+    if (!isAdmin) return
+    await disableStudentPublishingAndTakeControl()
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    const targets = connectedClients.filter(c => c.clientId !== clientIdRef.current)
+    for (const target of targets) {
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'wipe',
+          targetClientId: target.clientId,
+          ts,
+        })
+      } catch (err) {
+        console.warn('Failed to wipe student canvas', err)
+      }
+    }
+  }, [connectedClients, disableStudentPublishingAndTakeControl, isAdmin, userDisplayName])
+
   const navigateToPage = useCallback(
     async (targetIndex: number) => {
       if (!isAdmin) return
@@ -1987,6 +2009,14 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Wipe Selected Student Canvas
             </button>
           )}
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(clearAllStudentCanvases)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            Wipe All Student Canvases
+          </button>
           <button
             className="btn"
             type="button"

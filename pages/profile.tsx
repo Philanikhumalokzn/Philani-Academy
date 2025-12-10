@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { gradeToLabel } from '../lib/grades'
@@ -63,14 +63,73 @@ export default function ProfilePage() {
   const [popiConsent, setPopiConsent] = useState(true)
   const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
   const gradeLabel = useMemo(() => {
     if (!profile?.grade) return 'Unassigned'
     return gradeToLabel(profile.grade)
   }, [profile?.grade])
+
+  const displayName = useMemo(() => {
+    if (firstName || lastName) return `${firstName} ${lastName}`.trim()
+    return profile?.name || session?.user?.name || session?.user?.email || 'Learner'
+  }, [firstName, lastName, profile?.name, session?.user?.email, session?.user?.name])
+
+  const avatarInitials = useMemo(() => {
+    const source = displayName || ''
+    const letters = source
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part[0]?.toUpperCase() ?? '')
+    const fallback = session?.user?.email?.slice(0, 2).toUpperCase() || 'PA'
+    return letters.join('') || fallback
+  }, [displayName, session?.user?.email])
+
+  const handleAvatarButtonClick = () => {
+    setAvatarUploadError(null)
+    if (uploadingAvatar) return
+    avatarInputRef.current?.click()
+  }
+
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setAvatarUploadError('Please choose an image file.')
+      return
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setAvatarUploadError('Please keep images under 4 MB.')
+      return
+    }
+    setUploadingAvatar(true)
+    setAvatarUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        body: formData
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.message || 'Failed to upload avatar')
+      }
+      setAvatar(payload.url)
+      setProfile(prev => (prev ? { ...prev, avatar: payload.url } : prev))
+    } catch (err: any) {
+      setAvatarUploadError(err?.message || 'Unable to upload avatar right now')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   useEffect(() => {
     fetchProfile()
@@ -205,12 +264,62 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <NavArrows backHref="/dashboard" forwardHref={undefined} />
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">My profile</h1>
+    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <section className="hero flex-col gap-5">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <NavArrows backHref="/dashboard" forwardHref={undefined} />
+          </div>
+          <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={handleAvatarButtonClick}
+                  className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden"
+                  aria-label="Update profile photo"
+                  disabled={uploadingAvatar}
+                >
+                  {avatar ? (
+                    <img src={avatar} alt="Profile avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <span>{avatarInitials}</span>
+                  )}
+                  <span className="sr-only">Upload new avatar</span>
+                  <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]">
+                    Edit
+                  </span>
+                </button>
+                <div>
+                  <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Account control</p>
+                  <h1 className="text-3xl font-semibold md:text-4xl">My profile</h1>
+                  <p className="text-sm text-blue-100/80">{displayName}</p>
+                </div>
+              </div>
+              <div className="flex flex-col items-center gap-2 text-xs text-blue-100/80">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleAvatarButtonClick}
+                  disabled={uploadingAvatar}
+                >
+                  {uploadingAvatar ? 'Uploading…' : avatar ? 'Change photo' : 'Add photo'}
+                </button>
+                <span>Tap the photo to upload</span>
+              </div>
+            </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={handleAvatarFileChange}
+            />
+            {avatarUploadError && <p className="text-xs text-red-400">{avatarUploadError}</p>}
+          </div>
+        </section>
         {loading ? (
-          <div>Loading…</div>
+          <div className="card p-6 text-center text-sm text-white">Loading…</div>
         ) : (
           <div className="space-y-6">
             <section className="card p-6 space-y-4">
@@ -335,17 +444,6 @@ export default function ProfilePage() {
                 {consentTimestamp && (
                   <p className="text-xs muted">Last consent recorded: {new Date(consentTimestamp).toLocaleString()}</p>
                 )}
-                <div>
-                  <label className="block text-sm font-medium">Avatar URL (optional)</label>
-                  <input className="input" value={avatar} onChange={e => setAvatar(e.target.value)} placeholder="https://…" />
-                  <div className="mt-2">
-                    {avatar ? (
-                      <img src={avatar} alt="avatar" style={{ width: 64, height: 64, borderRadius: 8 }} />
-                    ) : (
-                      <span className="muted text-sm">No avatar on file</span>
-                    )}
-                  </div>
-                </div>
               </div>
             </section>
 

@@ -41,10 +41,13 @@ export default async function handler(
   try {
     const tokenRequest = await rest.auth.createTokenRequest({
       clientId,
+      // Capability covers all myscript channels; extendable if we later namespace by grade
       capability: JSON.stringify({
         'myscript:*': ['publish', 'subscribe', 'presence'],
       }),
+      // 1h TTL; if near expiry clients should reauth proactively (component heartbeat handles)
       ttl: 60 * 60 * 1000,
+      timestamp: Date.now(),
     })
     res.status(200).json(tokenRequest)
   } catch (error) {

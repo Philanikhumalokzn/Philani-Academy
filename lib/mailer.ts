@@ -2,6 +2,26 @@ import { Resend } from 'resend'
 
 const DEFAULT_FROM = process.env.MAIL_FROM_ADDRESS || process.env.MAIL_FROM || 'Philani Academy <no-reply@philaniacademy.org>'
 
+function resolveBaseUrl() {
+  const explicit = process.env.EMAIL_BRAND_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL
+  if (explicit) return explicit.trim().replace(/\/$/, '')
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`.trim().replace(/\/$/, '')
+  }
+  return 'https://philaniacademy.org'
+}
+
+const SITE_BASE_URL = resolveBaseUrl()
+
+export function getSiteBaseUrl() {
+  return SITE_BASE_URL
+}
+
+export function getPublicAssetUrl(path: string) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${SITE_BASE_URL}${normalizedPath}`
+}
+
 let resendClient: any = null
 function getResendClient() {
   if (resendClient) return resendClient

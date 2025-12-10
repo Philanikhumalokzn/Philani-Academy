@@ -1,4 +1,5 @@
 import '../styles/globals.css'
+import 'katex/dist/katex.min.css'
 import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'
@@ -11,6 +12,9 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <title>Philani Academy</title>
         <meta name="description" content="Philani Academy — online sessions and learning for your community." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="icon" href="/philani-logo.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/philani-logo.png" />
+        <meta name="theme-color" content="#000000" />
 
         {/* Open Graph */}
         <meta property="og:title" content="Philani Academy" />
@@ -23,8 +27,10 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <meta name="twitter:title" content="Philani Academy" />
         <meta name="twitter:description" content="Philani Academy — online sessions and learning for your community." />
       </Head>
-      <NavBar />
-      <Component {...pageProps} />
+      <div className="app-shell">
+        <NavBar />
+        <Component {...pageProps} />
+      </div>
     </SessionProvider>
   )
 }

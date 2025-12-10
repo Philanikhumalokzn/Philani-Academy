@@ -1,10 +1,16 @@
-import { useEffect } from 'react'
-import { useRouter } from 'next/router'
+import SignInScreen from '../components/SignInScreen'
+import { getSession } from 'next-auth/react'
 
 export default function Home() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace('/dashboard');
-  }, [router]);
-  return null;
+  return <SignInScreen />
+}
+
+export async function getServerSideProps(context: any) {
+  const session = await getSession(context)
+  if (session) {
+    return {
+      redirect: { destination: '/dashboard', permanent: false }
+    }
+  }
+  return { props: {} }
 }

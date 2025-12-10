@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import JitsiRoom from '../components/JitsiRoom'
+import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
+import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
-import NavArrows from '../components/NavArrows'
+import BrandLogo from '../components/BrandLogo'
 
+const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
+const WINDOW_PADDING_X = 0
+const WINDOW_PADDING_Y = 12
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -41,7 +45,25 @@ type LessonMaterial = {
   createdBy?: string | null
 }
 
-const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
+type LiveWindowKind = 'canvas'
+
+type WindowSnapshot = {
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+}
+
+type LiveWindowConfig = {
+  id: string
+  kind: LiveWindowKind
+  title: string
+  subtitle?: string
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+  minimized: boolean
+  z: number
+  mode: 'windowed' | 'fullscreen'
+  windowedSnapshot: WindowSnapshot | null
+}
 
 export default function Dashboard() {
   const router = useRouter()
@@ -49,6 +71,7 @@ export default function Dashboard() {
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
@@ -86,11 +109,43 @@ export default function Dashboard() {
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [materialUploading, setMaterialUploading] = useState(false)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
+  const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
+  const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
+  const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
+  const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
+  const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
+  const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const windowZCounterRef = useRef(50)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+
+  const overlayBounds = useMemo(() => {
+    const fallbackWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
+    const fallbackHeight = typeof window === 'undefined' ? 768 : window.innerHeight
+    return {
+      width: stageBounds.width || fallbackWidth,
+      height: stageBounds.height || fallbackHeight
+    }
+  }, [stageBounds.width, stageBounds.height])
 
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
+  const learnerName = session?.user?.name || session?.user?.email || 'Guest learner'
+  const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
+  const learnerInitials = useMemo(() => {
+    if (learnerName) {
+      const parts = learnerName.trim().split(/\s+/).filter(Boolean)
+      const letters = parts.slice(0, 2).map(part => part[0]?.toUpperCase() ?? '')
+      const joined = letters.join('')
+      if (joined) return joined
+    }
+    if (session?.user?.email) {
+      return session.user.email.slice(0, 2).toUpperCase()
+    }
+    return 'PA'
+  }, [learnerName, session?.user?.email])
+  const learnerGradeText = status === 'authenticated' ? activeGradeLabel : 'Grade pending'
   const userRole = (session as any)?.user?.role as SectionRole | undefined
   const normalizedRole: SectionRole = userRole ?? 'guest'
   const isAdmin = normalizedRole === 'admin'
@@ -108,6 +163,160 @@ export default function Dashboard() {
     if (!gradeReady || !selectedGrade) return null
     return `/api/sessions/grade/${selectedGrade}/token`
   }, [gradeReady, selectedGrade])
+  const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
+  const canJoinLiveClass = canLaunchCanvasOverlay
+  const getNextWindowZ = useCallback(() => {
+    windowZCounterRef.current += 1
+    return windowZCounterRef.current
+  }, [])
+
+  const clampWindowPosition = useCallback((win: LiveWindowConfig, position: { x: number; y: number }) => {
+    if (win.mode === 'fullscreen') {
+      return { x: 0, y: 0 }
+    }
+    const widthBase = Math.max(overlayBounds.width, win.size.width + WINDOW_PADDING_X * 2)
+    const heightBase = Math.max(overlayBounds.height, (win.minimized ? 64 : win.size.height) + WINDOW_PADDING_Y * 2)
+    const maxX = Math.max(WINDOW_PADDING_X, widthBase - win.size.width - WINDOW_PADDING_X)
+    const maxY = Math.max(WINDOW_PADDING_Y, heightBase - (win.minimized ? 64 : win.size.height) - WINDOW_PADDING_Y)
+    return {
+      x: Math.min(Math.max(position.x, WINDOW_PADDING_X), maxX),
+      y: Math.min(Math.max(position.y, WINDOW_PADDING_Y), maxY)
+    }
+  }, [overlayBounds.height, overlayBounds.width])
+
+  const focusLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.map(win => (win.id === id ? { ...win, z: getNextWindowZ() } : win)))
+  }, [getNextWindowZ])
+
+  const closeLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.filter(win => win.id !== id))
+  }, [])
+
+  const toggleMinimizeLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'fullscreen') return win
+      const nextMin = !win.minimized
+      const clampedPosition = clampWindowPosition({ ...win, minimized: nextMin }, win.position)
+      return { ...win, minimized: nextMin, position: clampedPosition, z: getNextWindowZ() }
+    }))
+  }, [clampWindowPosition, getNextWindowZ])
+
+  const updateLiveWindowPosition = useCallback((id: string, position: { x: number; y: number }) => {
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'fullscreen') return win
+      return { ...win, position: clampWindowPosition(win, position) }
+    }))
+  }, [clampWindowPosition])
+
+  const resizeLiveWindow = useCallback((id: string, payload: { width: number; height: number; position: { x: number; y: number } }) => {
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'fullscreen') return win
+      return { ...win, size: { width: payload.width, height: payload.height }, position: payload.position }
+    }))
+  }, [])
+
+  const toggleMobilePanel = useCallback((panel: 'announcements' | 'sessions') => {
+    setMobilePanels(prev => ({ ...prev, [panel]: !prev[panel] }))
+  }, [])
+
+  const toggleFullscreenLiveWindow = useCallback((id: string) => {
+    setLiveWindows(prev => prev.map(win => {
+      if (win.id !== id) return win
+      if (win.mode === 'windowed') {
+        const snapshot = { position: win.position, size: win.size }
+        return {
+          ...win,
+          minimized: false,
+          mode: 'fullscreen',
+          windowedSnapshot: snapshot,
+          position: { x: 0, y: 0 },
+          size: { width: overlayBounds.width, height: overlayBounds.height },
+          z: getNextWindowZ()
+        }
+      }
+      const fallbackSnapshot = win.windowedSnapshot ?? {
+        position: { x: WINDOW_PADDING_X, y: WINDOW_PADDING_Y },
+        size: {
+          width: Math.max(Math.round(overlayBounds.width * 0.65), 420),
+          height: Math.max(Math.round(overlayBounds.height * 0.6), 320)
+        }
+      }
+      const restoredPosition = clampWindowPosition({ ...win, minimized: false, size: fallbackSnapshot.size }, fallbackSnapshot.position)
+      return {
+        ...win,
+        mode: 'windowed',
+        windowedSnapshot: null,
+        position: restoredPosition,
+        size: fallbackSnapshot.size,
+        z: getNextWindowZ()
+      }
+    }))
+  }, [overlayBounds.height, overlayBounds.width, clampWindowPosition, getNextWindowZ])
+
+  const showCanvasWindow = useCallback(() => {
+    if (!canLaunchCanvasOverlay) {
+      alert('Sign in and choose a grade to open the shared canvas overlay.')
+      return
+    }
+    setLiveOverlayDismissed(false)
+    setLiveOverlayOpen(true)
+    const windowId = 'canvas-live-window'
+    setLiveWindows(prev => {
+      const existing = prev.find(win => win.id === windowId)
+      if (existing) {
+        return prev.map(win => win.id === windowId ? { ...win, minimized: false, z: getNextWindowZ() } : win)
+      }
+      const stageWidth = overlayBounds.width || (typeof window !== 'undefined' ? window.innerWidth : 1024)
+      const stageHeight = overlayBounds.height || (typeof window !== 'undefined' ? window.innerHeight : 768)
+      const windowedWidth = Math.max(Math.round(stageWidth * 0.65), 420)
+      const windowedHeight = Math.max(Math.round(stageHeight * 0.6), 320)
+      const windowedPosition = {
+        x: Math.max((stageWidth - windowedWidth) / 2, WINDOW_PADDING_X),
+        y: Math.max((stageHeight - windowedHeight) / 2, WINDOW_PADDING_Y)
+      }
+      const baseWindow: LiveWindowConfig = {
+        id: windowId,
+        kind: 'canvas',
+        title: gradeReady ? activeGradeLabel : 'Canvas',
+        subtitle: 'Canvas',
+        position: { x: 0, y: 0 },
+        size: { width: stageWidth, height: stageHeight },
+        minimized: false,
+        z: getNextWindowZ(),
+        mode: 'fullscreen',
+        windowedSnapshot: { position: windowedPosition, size: { width: windowedWidth, height: windowedHeight } }
+      }
+      return [...prev, baseWindow]
+    })
+  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
+  const handleShowLiveOverlay = () => {
+    if (!canJoinLiveClass) return
+    setLiveOverlayDismissed(false)
+    setLiveOverlayOpen(true)
+  }
+  const closeLiveOverlay = () => {
+    setLiveOverlayOpen(false)
+    setLiveOverlayDismissed(true)
+  }
+  const handleLiveControl = (action: 'mute' | 'video' | 'leave') => {
+    if (!liveControls) return
+    if (action === 'mute') {
+      liveControls.toggleAudio()
+      return
+    }
+    if (action === 'video') {
+      liveControls.toggleVideo()
+      return
+    }
+    if (action === 'leave') {
+      liveControls.hangup()
+      setLiveOverlayOpen(false)
+      setLiveOverlayDismissed(true)
+    }
+  }
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const gradeRoomName = useMemo(() => {
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
@@ -116,6 +325,15 @@ export default function Dashboard() {
     return appId ? `${appId}/${base}` : base
   }, [gradeSlug])
   const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
+  const overlayCanvasLabel = selectedGrade ? `Canvas (${gradeToLabel(selectedGrade)})` : 'Canvas workspace'
+  const realtimeUserId = useMemo(() => {
+    const candidate = (session as any)?.user?.id as string | undefined
+    if (candidate && typeof candidate === 'string') return candidate
+    if (session?.user?.email) return session.user.email
+    if (session?.user?.name) return session.user.name
+    return 'guest'
+  }, [session])
+  const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
@@ -126,14 +344,6 @@ export default function Dashboard() {
     if (value.startsWith('27') && value.length === 11) return `0${value.slice(2)}`
     return value
   }
-  const realtimeUserId = useMemo(() => {
-    const candidate = (session as any)?.user?.id as string | undefined
-    if (candidate && typeof candidate === 'string') return candidate
-    if (session?.user?.email) return session.user.email
-    if (session?.user?.name) return session.user.name
-    return 'guest'
-  }, [session])
-  const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
   const availableSections = useMemo(
     () => DASHBOARD_SECTIONS.filter(section => (section.roles as ReadonlyArray<SectionRole>).includes(normalizedRole)),
     [normalizedRole]
@@ -145,6 +355,17 @@ export default function Dashboard() {
       setActiveSection(availableSections[0].id)
     }
   }, [availableSections, activeSection])
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateViewport = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
 
   const updateGradeSelection = (grade: GradeValue) => {
     if (selectedGrade === grade) return
@@ -482,6 +703,24 @@ export default function Dashboard() {
     fetchAnnouncementsForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
 
+  const measureStage = useCallback(() => {
+    if (!stageRef.current) return
+    const rect = stageRef.current.getBoundingClientRect()
+    setStageBounds({ width: rect.width, height: rect.height })
+  }, [])
+
+  useEffect(() => {
+    measureStage()
+    if (typeof window === 'undefined') return
+    window.addEventListener('resize', measureStage)
+    return () => window.removeEventListener('resize', measureStage)
+  }, [measureStage])
+
+  useEffect(() => {
+    if (!liveOverlayOpen) return
+    measureStage()
+  }, [liveOverlayOpen, measureStage])
+
   useEffect(() => {
     setExpandedSessionId(null)
     setMaterials([])
@@ -490,6 +729,47 @@ export default function Dashboard() {
     setMaterialFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [selectedGrade])
+
+  useEffect(() => {
+    setLiveWindows(prev => prev.map(win => (win.kind === 'canvas' ? { ...win, title: gradeReady ? activeGradeLabel : win.title } : win)))
+  }, [gradeReady, activeGradeLabel])
+
+  useEffect(() => {
+    if (canLaunchCanvasOverlay) return
+    setLiveWindows(prev => prev.filter(win => win.kind !== 'canvas'))
+  }, [canLaunchCanvasOverlay])
+
+  useEffect(() => {
+    setLiveWindows(prev => prev.map(win => {
+      if (win.mode === 'fullscreen') {
+        const nextSize = { width: overlayBounds.width, height: overlayBounds.height }
+        const isSameSize = win.size.width === nextSize.width && win.size.height === nextSize.height
+        if (isSameSize && win.position.x === 0 && win.position.y === 0) return win
+        return { ...win, size: nextSize, position: { x: 0, y: 0 } }
+      }
+      const clamped = clampWindowPosition(win, win.position)
+      if (clamped.x === win.position.x && clamped.y === win.position.y) return win
+      return { ...win, position: clamped }
+    }))
+  }, [overlayBounds, clampWindowPosition])
+
+
+  useEffect(() => {
+    if (!gradeReady) return
+    if (liveOverlayDismissed) return
+    if (status === 'authenticated' && normalizedRole !== 'guest') {
+      setLiveOverlayOpen(true)
+    }
+  }, [status, normalizedRole, gradeReady, liveOverlayDismissed])
+
+  useEffect(() => {
+    if (!liveOverlayOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [liveOverlayOpen])
 
   useEffect(() => {
     if (!gradeReady) return
@@ -611,139 +891,137 @@ export default function Dashboard() {
     }
   }
 
-  const OverviewSection = () => {
-    const quickLinks = availableSections.filter(section => section.id !== 'overview')
+  const renderGradeWorkspaceCard = () => (
+    <div className="card dashboard-card space-y-3">
+      <h2 className="text-lg font-semibold">Grade workspace</h2>
+      {status !== 'authenticated' ? (
+        <p className="text-sm muted">Sign in to manage a grade workspace.</p>
+      ) : !gradeReady ? (
+        <p className="text-sm muted">Loading grade options...</p>
+      ) : isAdmin ? (
+        <div className="space-y-3">
+          <p className="text-sm muted">Switch the active grade to manage sessions and announcements.</p>
+          <div className="flex flex-wrap gap-3">
+            {gradeOptions.map(option => (
+              <label
+                key={option.value}
+                className={`px-3 py-2 rounded border text-sm cursor-pointer transition ${
+                  selectedGrade === option.value ? 'border-blue-500 bg-blue-50 font-semibold' : 'border-slate-200 hover:border-blue-200'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="active-grade"
+                  value={option.value}
+                  checked={selectedGrade === option.value}
+                  onChange={() => updateGradeSelection(option.value)}
+                  className="sr-only"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs muted">Learners only see sessions, notes, and announcements for the selected grade.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm muted">
+            You are currently in the <span className="font-medium text-white">{activeGradeLabel}</span> workspace.
+          </p>
+          {!userGrade && (
+            <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
 
+  const renderAccountSnapshotCard = () => (
+    <div className="card dashboard-card space-y-3">
+      <h2 className="text-lg font-semibold">Account snapshot</h2>
+      <dl className="grid gap-2 text-sm text-white">
+        <div>
+          <dt className="font-medium text-white">Email</dt>
+          <dd>{session?.user?.email || 'Not signed in'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-white">Role</dt>
+          <dd className="capitalize">{userRole || 'guest'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-white">Grade</dt>
+          <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
+        </div>
+      </dl>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
+        <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
+      </div>
+    </div>
+  )
+
+  const renderOverviewCards = (options?: { hideGradeWorkspace?: boolean }) => {
+    const showGradeWorkspace = !options?.hideGradeWorkspace
+    if (!showGradeWorkspace) {
+      return (
+        <div className="space-y-6">
+          {renderAccountSnapshotCard()}
+        </div>
+      )
+    }
     return (
       <div className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold">Grade workspace</h2>
-            {status !== 'authenticated' ? (
-              <p className="text-sm muted">Sign in to manage a grade workspace.</p>
-            ) : !gradeReady ? (
-              <p className="text-sm muted">Loading grade options...</p>
-            ) : isAdmin ? (
-              <div className="space-y-3">
-                <p className="text-sm muted">Switch the active grade to manage sessions and announcements.</p>
-                <div className="flex flex-wrap gap-3">
-                  {gradeOptions.map(option => (
-                    <label
-                      key={option.value}
-                      className={`px-3 py-2 rounded border text-sm cursor-pointer transition ${
-                        selectedGrade === option.value ? 'border-blue-500 bg-blue-50 font-semibold' : 'border-slate-200 hover:border-blue-200'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="active-grade"
-                        value={option.value}
-                        checked={selectedGrade === option.value}
-                        onChange={() => updateGradeSelection(option.value)}
-                        className="sr-only"
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs muted">Learners only see sessions, notes, and announcements for the selected grade.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm muted">
-                  You are currently in the <span className="font-medium text-slate-700">{activeGradeLabel}</span> workspace.
-                </p>
-                {!userGrade && (
-                  <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold">Account snapshot</h2>
-            <dl className="grid gap-2 text-sm text-slate-600">
-              <div>
-                <dt className="font-medium text-slate-700">Email</dt>
-                <dd>{session?.user?.email || 'Not signed in'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-700">Role</dt>
-                <dd className="capitalize">{userRole || 'guest'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-700">Grade</dt>
-                <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
-              </div>
-            </dl>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
-              <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
-            </div>
-          </div>
+          {renderGradeWorkspaceCard()}
+          {renderAccountSnapshotCard()}
         </div>
-
-        {quickLinks.length > 0 && (
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold">Quick actions</h2>
-            <div className="flex flex-wrap gap-2">
-              {quickLinks.map(section => (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setActiveSection(section.id)}
-                  className={`px-3 py-2 rounded border text-left text-sm transition focus:outline-none focus:ring-2 ${
-                    activeSection === section.id ? 'border-blue-500 bg-blue-50 focus:ring-blue-500' : 'border-slate-200 hover:border-blue-200 focus:ring-blue-200'
-                  }`}
-                >
-                  <div className="font-medium text-slate-700">{section.label}</div>
-                  <div className="text-xs text-slate-500">{section.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     )
   }
 
-  const LiveSection = () => (
-    <div className="space-y-6">
-      <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
-        {status !== 'authenticated' ? (
-          <div className="text-sm muted">Please sign in to join the live class.</div>
-        ) : !selectedGrade ? (
-          <div className="text-sm muted">Select a grade to join the live class.</div>
-        ) : (
-          <JitsiRoom
-            roomName={gradeRoomName}
-            displayName={session?.user?.name || session?.user?.email}
-            sessionId={null}
-            tokenEndpoint={gradeTokenEndpoint}
-            passwordEndpoint={null}
-            isOwner={isOwnerUser}
-          />
-        )}
-      </div>
+  const OverviewSection = () => renderOverviewCards()
 
-      <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Collaborative maths board — {activeGradeLabel}</h2>
-        {status !== 'authenticated' ? (
-          <div className="text-sm muted">Please sign in to launch the maths board.</div>
-        ) : !selectedGrade ? (
-          <div className="text-sm muted">Select a grade to open the shared board.</div>
-        ) : (
-          <MyScriptMathCanvas
-            gradeLabel={activeGradeLabel}
-            roomId={boardRoomId}
-            userId={realtimeUserId}
-            userDisplayName={realtimeDisplayName}
-          />
-        )}
+  const LiveSection = () => {
+    const liveStatusMessage = () => {
+      if (status !== 'authenticated') return 'Please sign in to join the live class.'
+      if (!selectedGrade) return 'Select a grade to unlock the live class.'
+      if (liveOverlayDismissed) return 'Reopen the live view any time to jump back into class.'
+      return 'Opening the live view puts the video call on top of the dashboard automatically.'
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleShowLiveOverlay}
+                disabled={!canJoinLiveClass}
+                title={canJoinLiveClass ? 'Bring the live video back on top.' : 'Sign in and pick a grade to join.'}
+              >
+                {canJoinLiveClass ? 'Open live view' : 'Join class'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={showCanvasWindow}
+                disabled={!canLaunchCanvasOverlay}
+              >
+                Canvas window
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-white">The live view takes over the screen for video, and canvases layer on top as draggable windows.</p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+            {liveStatusMessage()}
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const AnnouncementsSection = () => (
     <div className="space-y-6">
@@ -1188,84 +1466,255 @@ export default function Dashboard() {
     }
   }
 
-  return (
-    <main className="min-h-screen bg-slate-50 pb-16">
-      <NavArrows backHref="/api/auth/signin" forwardHref={undefined} />
-      <div className="max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {session ? (
-              <div className="text-sm muted">Signed in as <span className="font-medium text-slate-700">{session.user?.email}</span></div>
-            ) : (
-              <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
-            )}
-          </div>
-        </header>
+  const SectionNav = () => {
+    if (availableSections.length <= 1) return null
 
-        <div className="flex flex-col lg:flex-row gap-6">
-          <aside className="lg:w-64 shrink-0 space-y-4">
-            <nav className="space-y-4">
-              <div className="hidden lg:grid gap-2">
-                {availableSections.map(section => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setActiveSection(section.id)}
-                    className={`text-left px-4 py-3 rounded-lg border transition focus:outline-none focus:ring-2 ${
-                      activeSection === section.id ? 'border-blue-500 bg-white shadow-sm focus:ring-blue-500' : 'border-transparent bg-white/70 hover:bg-white focus:ring-blue-200'
-                    }`}
-                  >
-                    <div className="font-medium text-slate-700">{section.label}</div>
-                    <div className="text-xs text-slate-500">{section.description}</div>
-                  </button>
-                ))}
-              </div>
+    return (
+      <div className="space-y-3">
+        <div className="hidden lg:grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
+          {availableSections.map(section => {
+            const isActive = activeSection === section.id
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setActiveSection(section.id)}
+                className={`rounded-2xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 ${
+                  isActive
+                    ? 'border-blue-500 bg-white text-slate-900 shadow-lg focus:ring-blue-200'
+                    : 'border-white/10 bg-white/5 text-white/80 hover:border-white/30 focus:ring-white/10'
+                }`}
+              >
+                <div className="text-sm font-semibold tracking-wide uppercase">{section.label}</div>
+                <div className="text-xs opacity-70">{section.description}</div>
+              </button>
+            )
+          })}
+        </div>
 
-              <div className="flex lg:hidden gap-2 overflow-x-auto pb-2">
-                {availableSections.map(section => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setActiveSection(section.id)}
-                    className={`flex-1 min-w-[160px] px-3 py-2 rounded-full border text-sm transition focus:outline-none focus:ring-2 ${
-                      activeSection === section.id ? 'border-blue-500 bg-blue-50 focus:ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200 focus:ring-blue-200'
-                    }`}
-                  >
-                    {section.label}
-                  </button>
-                ))}
-              </div>
-            </nav>
-
-            <div className="hidden lg:block">
-              <div className="card space-y-2">
-                <div className="font-semibold">Account status</div>
-                <div className="text-sm muted">Role: {(session as any)?.user?.role || 'guest'}</div>
-                <div className="text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
-                <Link href="/subscribe" className="btn btn-primary w-full">Manage subscription</Link>
-              </div>
-            </div>
-          </aside>
-
-          <section className="flex-1 min-w-0 space-y-6">
-            {renderSection()}
-
-            <div className="lg:hidden">
-              <div className="card space-y-2">
-                <div className="font-semibold">Account status</div>
-                <div className="text-sm muted">Role: {(session as any)?.user?.role || 'guest'}</div>
-                <div className="text-sm muted">Grade: {status === 'authenticated' ? accountGradeLabel : 'N/A'}</div>
-                <Link href="/subscribe" className="btn btn-primary w-full">Manage subscription</Link>
-              </div>
-            </div>
-          </section>
+        <div className="lg:hidden grid grid-cols-2 gap-3">
+          {availableSections.map(section => {
+            const isActive = activeSection === section.id
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setActiveSection(section.id)}
+                className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 ${
+                  isActive
+                    ? 'bg-white text-[#04123b] border-white focus:ring-white/40 shadow-lg'
+                    : 'bg-white/10 border-white/20 text-white focus:ring-white/20'
+                }`}
+              >
+                {section.label}
+              </button>
+            )
+          })}
         </div>
       </div>
-    </main>
+    )
+  }
+
+  return (
+    <>
+      <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white' : 'deep-page'} min-h-screen pb-16`}>
+      <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
+        {isMobile ? (
+          <>
+            <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-5">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-20 h-20 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
+                  {learnerAvatarUrl ? (
+                    <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{learnerInitials}</span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xl font-semibold">{learnerName}</p>
+                  <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                  onClick={() => {
+                    setActiveSection('live')
+                    handleShowLiveOverlay()
+                  }}
+                >
+                  Live class
+                </button>
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                  onClick={showCanvasWindow}
+                  disabled={!canLaunchCanvasOverlay}
+                >
+                  Canvas
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              {(['announcements', 'sessions'] as const).map(panel => {
+                const isOpen = mobilePanels[panel]
+                const label = panel === 'announcements' ? 'Announcements' : 'Sessions'
+                return (
+                  <div key={panel} className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleMobilePanel(panel)}
+                      className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 ${
+                        isOpen
+                          ? 'bg-white text-[#04123b] border-white focus:ring-white/40 shadow-lg'
+                          : 'bg-white/10 border-white/20 text-white focus:ring-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{label}</span>
+                        <span>{isOpen ? '−' : '+'}</span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+                        {panel === 'announcements' ? <AnnouncementsSection /> : <SessionsSection />}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </section>
+
+            {renderOverviewCards({ hideGradeWorkspace: true })}
+          </>
+        ) : (
+          <>
+            <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <BrandLogo height={56} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+                <div>
+                  <h1 className="text-3xl font-bold">Dashboard</h1>
+                  <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {session ? (
+                  <div className="text-sm muted">Signed in as <span className="font-medium text-white">{session.user?.email}</span></div>
+                ) : (
+                  <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
+                )}
+              </div>
+            </header>
+
+            <SectionNav />
+
+            <section className="min-w-0 space-y-6">
+              {renderSection()}
+            </section>
+          </>
+        )}
+      </div>
+      </main>
+      {liveOverlayOpen && (
+        <div className="live-call-overlay" role="dialog" aria-modal="true">
+          <div className="live-call-overlay__backdrop" />
+          <div className="live-call-overlay__panel" ref={stageRef}>
+            <div className="live-call-overlay__top">
+              <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
+                ×
+              </button>
+            </div>
+            <div className="live-call-overlay__canvas">
+              <button
+                type="button"
+                onClick={showCanvasWindow}
+                disabled={!canLaunchCanvasOverlay}
+                className="live-call-overlay__canvas-button"
+                style={{ marginLeft: 'auto', marginRight: 'auto' }}
+              >
+                {overlayCanvasLabel}
+              </button>
+            </div>
+            <div className="live-call-overlay__video">
+              {canJoinLiveClass ? (
+                <JitsiRoom
+                  roomName={gradeRoomName}
+                  displayName={session?.user?.name || session?.user?.email}
+                  sessionId={null}
+                  tokenEndpoint={gradeTokenEndpoint}
+                  passwordEndpoint={null}
+                  isOwner={isOwnerUser}
+                  onControlsChange={setLiveControls}
+                />
+              ) : (
+                <div className="live-call-overlay__placeholder">
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Awaiting grade</p>
+                  <p className="text-white text-lg font-semibold text-center">Sign in and pick a grade to unlock the live call.</p>
+                </div>
+              )}
+            </div>
+            <div className="live-call-overlay__toolbar" role="group" aria-label="Live call controls">
+              <button type="button" onClick={() => handleLiveControl('mute')} disabled={!liveControls}>
+                Mute
+              </button>
+              <button type="button" onClick={() => handleLiveControl('video')} disabled={!liveControls}>
+                Stop video
+              </button>
+              <button type="button" onClick={() => handleLiveControl('leave')} disabled={!liveControls}>
+                Leave
+              </button>
+            </div>
+            <div className="live-call-overlay__status">
+              <span className="live-call-overlay__status-indicator" />
+              <div>
+                <p>Your devices are working properly</p>
+                <p>Other participants may be joining soon.</p>
+              </div>
+            </div>
+            {liveWindows.length > 0 && (
+              <div className="live-overlay-stage">
+                {liveWindows.map(win => (
+                  <LiveOverlayWindow
+                    key={win.id}
+                    id={win.id}
+                    title={win.title}
+                    subtitle={win.subtitle}
+                    position={win.position}
+                    size={win.size}
+                    minimized={win.minimized}
+                    zIndex={win.z}
+                    bounds={overlayBounds}
+                    minSize={{ width: 360, height: 320 }}
+                    isResizable
+                    isFullscreen={win.mode === 'fullscreen'}
+                    onFocus={focusLiveWindow}
+                    onClose={closeLiveWindow}
+                    onToggleMinimize={toggleMinimizeLiveWindow}
+                    onRequestFullscreen={toggleFullscreenLiveWindow}
+                    onPositionChange={updateLiveWindowPosition}
+                    onResize={resizeLiveWindow}
+                  >
+                    {win.kind === 'canvas' && (
+                      <StackedCanvasWindow
+                        gradeLabel={selectedGrade ? activeGradeLabel : null}
+                        roomId={boardRoomId}
+                        userId={realtimeUserId}
+                        userDisplayName={realtimeDisplayName}
+                        isAdmin={isOwnerUser}
+                        isVisible={!win.minimized}
+                        defaultOrientation="portrait"
+                      />
+                    )}
+                  </LiveOverlayWindow>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

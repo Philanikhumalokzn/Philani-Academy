@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import NavArrows from '../components/NavArrows'
+
 const privacyItems = [
   {
     title: 'Identity information',
@@ -29,12 +31,37 @@ const privacyItems = [
 
 export default function PrivacyNotice() {
   return (
-    <main className="min-h-screen p-8 bg-slate-50">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <header>
-          <h1 className="text-3xl font-bold mb-2">Privacy Notice</h1>
-          <p className="text-sm text-slate-600">Updated 22 November 2025</p>
-        </header>
+    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
+      <div className="mx-auto max-w-4xl space-y-8">
+        <section className="hero flex-col gap-6">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <NavArrows backHref="/dashboard" forwardHref="/subscribe" />
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="board-chip">Updated 22 Nov 2025</span>
+              <span className="board-chip">POPIA compliant</span>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Privacy notice</p>
+            <h1 className="text-3xl font-semibold md:text-4xl">How we protect learner information</h1>
+            <p className="text-sm text-white md:text-base">
+              This page mirrors the deep-blue hero treatment everywhere else, so you always know you&apos;re still inside Philani Academy when reviewing your data rights.
+            </p>
+          </div>
+        </section>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+            <p className="text-xs uppercase tracking-[0.25em] text-blue-200">Contact</p>
+            <p className="mt-2 font-semibold text-white">support@philaniacademy.org</p>
+            <p className="text-white">Use this address for POPIA requests, updates, or withdrawal of consent.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+            <p className="text-xs uppercase tracking-[0.25em] text-blue-200">Actions</p>
+            <p className="mt-2 font-semibold text-white">Visit your <Link className="text-blue-200 underline" href="/profile">profile</Link></p>
+            <p className="text-white">Update details anytime to keep examination records accurate.</p>
+          </div>
+        </div>
 
         <section className="card p-6 space-y-4">
           <p>
@@ -43,7 +70,7 @@ export default function PrivacyNotice() {
           </p>
           <p>
             By creating an account or updating your profile you consent to the processing of the categories of personal information described below.
-            You can withdraw consent or request corrections at any time by contacting <a className="text-blue-600" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.
+            You can withdraw consent or request corrections at any time by contacting <a className="text-blue-200" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.
           </p>
         </section>
 
@@ -65,9 +92,13 @@ export default function PrivacyNotice() {
           <p>You may request access, corrections or deletion by emailing <a className="text-blue-600" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.</p>
         </section>
 
-        <footer className="text-sm text-slate-600 space-y-1">
-          <p>Need to adjust your information? Visit your <Link className="text-blue-600" href="/profile">profile</Link> at any time.</p>
-          <p>Questions or POPIA requests? Email <a className="text-blue-600" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.</p>
+  <footer className="space-y-1 text-sm text-white">
+          <p>
+            Need to adjust your information? Visit your <Link className="text-blue-200" href="/profile">profile</Link> at any time.
+          </p>
+          <p>
+            Questions or POPIA requests? Email <a className="text-blue-200" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.
+          </p>
         </footer>
       </div>
     </main>

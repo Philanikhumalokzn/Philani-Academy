@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
+import { renderToString } from 'katex'
 
 declare global {
   interface Window {
@@ -18,11 +19,13 @@ type SnapshotPayload = {
   jiix?: string | null
   version: number
   snapshotId: string
+  baseSymbolCount?: number
 }
 
 type SnapshotRecord = {
   snapshot: SnapshotPayload
   ts: number
+  reason: 'update' | 'clear'
 }
 
 type SnapshotMessage = {
@@ -32,6 +35,39 @@ type SnapshotMessage = {
   ts?: number
   reason?: 'update' | 'clear'
   originClientId?: string
+  targetClientId?: string
+}
+
+type ControlState = {
+  controllerId: string
+  controllerName?: string
+  ts: number
+} | null
+
+type LatexDisplayOptions = {
+  fontScale: number
+  textAlign: 'left' | 'center' | 'right'
+  alignAtEquals: boolean
+}
+
+type LatexDisplayState = {
+  enabled: boolean
+  latex: string
+  options: LatexDisplayOptions
+}
+
+type CanvasOrientation = 'portrait' | 'landscape'
+
+type PresenceClient = {
+  clientId: string
+  name?: string
+  isAdmin?: boolean
+}
+
+type OverlayControlsHandle = {
+  open: () => void
+  close: () => void
+  toggle: () => void
 }
 
 type BroadcastOptions = {
@@ -41,6 +77,8 @@ type BroadcastOptions = {
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
+const DEFAULT_BROADCAST_DEBOUNCE_MS = 60
+const ALL_STUDENTS_ID = '__all__'
 
 let scriptPromise: Promise<void> | null = null
 
@@ -112,21 +150,66 @@ type MyScriptMathCanvasProps = {
   roomId: string
   userId: string
   userDisplayName?: string
+  isAdmin?: boolean
+  boardId?: string // optional logical board identifier; if absent, we'll use a shared/global per grade
+  uiMode?: 'default' | 'overlay'
+  defaultOrientation?: CanvasOrientation
+  overlayControlsHandleRef?: Ref<OverlayControlsHandle>
 }
 
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
+const getBroadcastDebounce = () => {
+  const parsed = Number(process.env.NEXT_PUBLIC_MYSCRIPT_BROADCAST_DEBOUNCE_MS)
+  if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 500) {
+    return parsed
+  }
+  return DEFAULT_BROADCAST_DEBOUNCE_MS
+}
+
+const countSymbols = (source: any): number => {
+  if (!source) return 0
+  if (Array.isArray(source)) return source.length
+  if (Array.isArray(source?.events)) return source.events.length
+  return 0
+}
+
+const nextAnimationFrame = () =>
+  typeof window === 'undefined'
+    ? new Promise<void>(resolve => setTimeout(resolve, 16))
+    : new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
-  const hasSymbols = Array.isArray(snapshot.symbols) && snapshot.symbols.length > 0
+  const symCount = countSymbols(snapshot.symbols)
+  const hasSymbols = symCount > 0
   const hasLatex = Boolean(snapshot.latex)
   const hasJiix = Boolean(snapshot.jiix)
   return !hasSymbols && !hasLatex && !hasJiix
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName }: MyScriptMathCanvasProps) {
+const DEFAULT_LATEX_OPTIONS: LatexDisplayOptions = {
+  fontScale: 1,
+  textAlign: 'center',
+  alignAtEquals: false,
+}
+
+const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisplayOptions => {
+  if (!options) return { ...DEFAULT_LATEX_OPTIONS }
+  const fontScaleRaw = Number(options.fontScale)
+  const fontScale = Number.isFinite(fontScaleRaw) ? Math.min(2, Math.max(0.5, fontScaleRaw)) : DEFAULT_LATEX_OPTIONS.fontScale
+  const textAlign = options.textAlign === 'left' || options.textAlign === 'right' ? options.textAlign : 'center'
+  const alignAtEquals = Boolean(options.alignAtEquals)
+  return {
+    fontScale,
+    textAlign,
+    alignAtEquals,
+  }
+}
+
+export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef }: MyScriptMathCanvasProps) {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -136,20 +219,60 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const localVersionRef = useRef(0)
   const appliedVersionRef = useRef(0)
   const lastSymbolCountRef = useRef(0)
+  const lastBroadcastBaseCountRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
   const appliedSnapshotIdsRef = useRef<Set<string>>(new Set())
+  const lastGlobalUpdateTsRef = useRef(0)
   const [status, setStatus] = useState<CanvasStatus>('idle')
-  const [error, setError] = useState<string | null>(null)
+  const [fatalError, setFatalError] = useState<string | null>(null)
+  const [transientError, setTransientError] = useState<string | null>(null)
   const [latexOutput, setLatexOutput] = useState('')
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
+  const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
+  const isOverlayMode = uiMode === 'overlay'
+  // Broadcaster role removed: all clients can publish.
+  const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
+  const [selectedClientId, setSelectedClientId] = useState<string>('all')
+  const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
+  const isBroadcastPausedRef = useRef(false)
+  const [isStudentPublishEnabled, setIsStudentPublishEnabled] = useState(false)
+  const isStudentPublishEnabledRef = useRef(false)
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
+  const [controlState, setControlState] = useState<ControlState>(null)
+  const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
+  const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const [pageIndex, setPageIndex] = useState(0)
+  const [sharedPageIndex, setSharedPageIndex] = useState(0)
+  const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
+  const reconnectAttemptsRef = useRef(0)
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // (Unused now; kept for potential future periodic sync)
+  const realtimeRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRemoteSnapshotsRef = useRef<Array<{ message: SnapshotMessage; receivedTs?: number }>>([])
+  const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
+  const remoteProcessingRef = useRef(false)
+  const controlStateRef = useRef<ControlState>(null)
+  const lockedOutRef = useRef(!isAdmin)
+  const hasExclusiveControlRef = useRef(false)
+  const lastControlBroadcastTsRef = useRef(0)
+  const lastLatexBroadcastTsRef = useRef(0)
+  const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
+  const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
+  const sharedPageIndexRef = useRef(0)
+  const forcedConvertDepthRef = useRef(0)
+  const adminOrientationPreferenceRef = useRef<CanvasOrientation>(initialOrientation)
+  const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
+  const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clientId = useMemo(() => {
     const base = userId ? sanitizeIdentifier(userId) : 'guest'
@@ -161,10 +284,139 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     clientIdRef.current = clientId
   }, [clientId])
 
+  useEffect(() => {
+    latexDisplayStateRef.current = latexDisplayState
+  }, [latexDisplayState])
+
+  useEffect(() => {
+    latexProjectionOptionsRef.current = latexProjectionOptions
+  }, [latexProjectionOptions])
+
+  useEffect(() => {
+    isStudentPublishEnabledRef.current = isStudentPublishEnabled
+  }, [isStudentPublishEnabled])
+
+  useEffect(() => {
+    sharedPageIndexRef.current = sharedPageIndex
+  }, [sharedPageIndex])
+
+  useEffect(() => {
+    try {
+      editorInstanceRef.current?.resize?.()
+    } catch {}
+  }, [canvasOrientation, isFullscreen])
+
+  const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
+
+  const updateControlState = useCallback(
+    (next: ControlState) => {
+      controlStateRef.current = next
+      const controllerId = next?.controllerId
+      const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
+      hasExclusiveControlRef.current = isExclusiveController
+      const hasWriteAccess = Boolean(isAdmin) || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+      const lockedOut = !hasWriteAccess
+      lockedOutRef.current = lockedOut
+      if (lockedOut) {
+        pendingPublishQueueRef.current = []
+      }
+      setControlState(next)
+    },
+    [isAdmin]
+  )
+
+  const studentCanPublish = useCallback(() => {
+    if (!isStudentPublishEnabledRef.current) return false
+    const controllerId = controlStateRef.current?.controllerId
+    if (!controllerId) return false
+    if (controllerId === ALL_STUDENTS_ID) return true
+    return controllerId === clientIdRef.current
+  }, [])
+
+  const clearOverlayAutoHide = useCallback(() => {
+    if (overlayHideTimeoutRef.current) {
+      clearTimeout(overlayHideTimeoutRef.current)
+      overlayHideTimeoutRef.current = null
+    }
+  }, [])
+
+  const closeOverlayControls = useCallback(() => {
+    if (!isOverlayMode) return
+    clearOverlayAutoHide()
+    setOverlayControlsVisible(false)
+  }, [clearOverlayAutoHide, isOverlayMode])
+
+  const kickOverlayAutoHide = useCallback(() => {
+    if (!isOverlayMode) return
+    clearOverlayAutoHide()
+    overlayHideTimeoutRef.current = setTimeout(() => {
+      setOverlayControlsVisible(false)
+    }, 6000)
+  }, [clearOverlayAutoHide, isOverlayMode])
+
+  const openOverlayControls = useCallback(() => {
+    if (!isOverlayMode) return
+    setOverlayControlsVisible(true)
+  }, [isOverlayMode])
+
+  const toggleOverlayControls = useCallback(() => {
+    if (!isOverlayMode) return
+    setOverlayControlsVisible(prev => {
+      const next = !prev
+      if (!next) {
+        clearOverlayAutoHide()
+      }
+      return next
+    })
+  }, [clearOverlayAutoHide, isOverlayMode])
+
+  useEffect(() => {
+    return () => {
+      clearOverlayAutoHide()
+    }
+  }, [clearOverlayAutoHide])
+
+  useEffect(() => {
+    if (!isOverlayMode || !overlayControlsVisible) return
+    kickOverlayAutoHide()
+  }, [isOverlayMode, overlayControlsVisible, kickOverlayAutoHide])
+
+  useImperativeHandle(
+    overlayControlsHandleRef,
+    () => ({
+      open: () => {
+        openOverlayControls()
+      },
+      close: () => {
+        closeOverlayControls()
+      },
+      toggle: () => {
+        toggleOverlayControls()
+      }
+    }),
+    [closeOverlayControls, openOverlayControls, toggleOverlayControls]
+  )
+
+  const runCanvasAction = useCallback((action: () => void | Promise<void>) => {
+    if (typeof action === 'function') {
+      action()
+    }
+    if (isOverlayMode) {
+      clearOverlayAutoHide()
+      setOverlayControlsVisible(false)
+    }
+  }, [clearOverlayAutoHide, isOverlayMode])
+
   const channelName = useMemo(() => {
-    const safeRoom = roomId ? sanitizeIdentifier(roomId).toLowerCase() : 'default'
-    return `myscript:${safeRoom || 'default'}`
-  }, [roomId])
+    // Force a single shared board across instances unless a specific boardId is provided.
+    // Prefer per-grade board scoping if gradeLabel is present.
+    const base = boardId
+      ? sanitizeIdentifier(boardId).toLowerCase()
+      : gradeLabel
+      ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
+      : 'shared'
+    return `myscript:${base}`
+  }, [boardId, gradeLabel])
 
   const collectEditorSnapshot = useCallback((incrementVersion: boolean): SnapshotPayload | null => {
     const editor = editorInstanceRef.current
@@ -172,13 +424,15 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
     const model = editor.model ?? {}
     let symbols: any[] | null = null
-    if (model.symbols) {
-      try {
-        symbols = JSON.parse(JSON.stringify(model.symbols))
-      } catch (err) {
-        console.warn('Unable to serialize MyScript symbols', err)
-        symbols = null
+    try {
+      const raw = (model as any).symbols
+      const src = Array.isArray(raw) ? raw : (Array.isArray(raw?.events) ? raw.events : null)
+      if (src) {
+        symbols = JSON.parse(JSON.stringify(src))
       }
+    } catch (err) {
+      console.warn('Unable to serialize MyScript symbols', err)
+      symbols = null
     }
 
     const exports = model.exports ?? {}
@@ -196,37 +450,123 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     return snapshot
   }, [])
 
+  const captureFullSnapshot = useCallback((): SnapshotPayload | null => {
+    const snapshot = collectEditorSnapshot(false)
+    if (!snapshot) return null
+    return { ...snapshot, baseSymbolCount: -1 }
+  }, [collectEditorSnapshot])
+
+  const applyPageSnapshot = useCallback(
+    async (snapshot: SnapshotPayload | null) => {
+      const editor = editorInstanceRef.current
+      if (!editor) return
+      suppressBroadcastUntilTsRef.current = Date.now() + 800
+      await nextAnimationFrame()
+      editor.clear()
+      if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+      const symbolsArray = snapshot?.symbols
+      if (symbolsArray && countSymbols(symbolsArray) > 0) {
+        await nextAnimationFrame()
+        const points = Array.isArray(symbolsArray)
+          ? symbolsArray
+          : Array.isArray((symbolsArray as any)?.events)
+          ? (symbolsArray as any).events
+          : []
+        if (points.length) {
+          await editor.importPointEvents(points)
+          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+        }
+        if (snapshot?.latex) {
+          setLatexOutput(snapshot.latex)
+        }
+      } else {
+        setLatexOutput('')
+      }
+      const count = countSymbols(symbolsArray)
+      lastSymbolCountRef.current = count
+      lastBroadcastBaseCountRef.current = count
+    },
+    []
+  )
+
+  const persistCurrentPageSnapshot = useCallback(() => {
+    const currentSnapshot = captureFullSnapshot()
+    pageRecordsRef.current[pageIndex] = {
+      snapshot: currentSnapshot && !isSnapshotEmpty(currentSnapshot) ? currentSnapshot : null,
+    }
+  }, [captureFullSnapshot, pageIndex])
+
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
+      const canPublish = isAdmin || studentCanPublish()
+      if (!canPublish) {
+        return
+      }
+      if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
+        return
+      }
       if (isApplyingRemoteRef.current) return
+      // Pause overrides everything except forced clears
+  if (lockedOutRef.current) return
+  if (isBroadcastPausedRef.current && !options?.force) return
       const channel = channelRef.current
       if (!channel) return
+      const reason: 'update' | 'clear' = options?.reason ?? 'update'
+      // If disconnected, queue snapshot for later instead of attempting publish now
+      if (!isRealtimeConnected) {
+        const queuedSnapshot = collectEditorSnapshot(true)
+        if (queuedSnapshot) {
+          const previousCount = lastSymbolCountRef.current
+          const currentCount = countSymbols(queuedSnapshot.symbols)
+          lastSymbolCountRef.current = currentCount
+          const baseCount = reason === 'clear' ? previousCount : lastBroadcastBaseCountRef.current
+          const snapshotForQueue: SnapshotPayload = { ...queuedSnapshot, baseSymbolCount: baseCount }
+          const isErase = previousCount > 0 && currentCount === 0
+          if (reason === 'clear' || isErase || !isSnapshotEmpty(snapshotForQueue)) {
+            pendingPublishQueueRef.current.push({ snapshot: snapshotForQueue, ts: Date.now(), reason })
+          }
+          const canonicalSnapshot: SnapshotPayload = { ...queuedSnapshot, baseSymbolCount: -1 }
+          latestSnapshotRef.current = { snapshot: canonicalSnapshot, ts: Date.now(), reason }
+          lastBroadcastBaseCountRef.current = currentCount
+        }
+        return
+      }
       const snapshot = collectEditorSnapshot(true)
       if (!snapshot) return
       // Allow broadcasting empty snapshot if it represents an actual erase (previous symbol count > 0)
       const previousCount = lastSymbolCountRef.current
-      const currentCount = snapshot.symbols ? snapshot.symbols.length : 0
+      const currentCount = countSymbols(snapshot.symbols)
+      lastSymbolCountRef.current = currentCount
       const isErase = previousCount > 0 && currentCount === 0
-      if (isSnapshotEmpty(snapshot) && !options?.force && !isErase) {
+      const baseCount = reason === 'clear' ? previousCount : lastBroadcastBaseCountRef.current
+      const snapshotForPublish: SnapshotPayload = { ...snapshot, baseSymbolCount: baseCount }
+      if (isSnapshotEmpty(snapshotForPublish) && !options?.force && !isErase) {
         return
       }
 
-      const record: SnapshotRecord = { snapshot, ts: Date.now() }
+      const canonicalSnapshot: SnapshotPayload = { ...snapshot, baseSymbolCount: -1 }
+      const record: SnapshotRecord = { snapshot: snapshotForPublish, ts: Date.now(), reason }
 
-      latestSnapshotRef.current = record
+      latestSnapshotRef.current = { snapshot: canonicalSnapshot, ts: record.ts, reason }
+      lastBroadcastBaseCountRef.current = currentCount
 
       const publish = async () => {
+        if (!isRealtimeConnected) {
+          pendingPublishQueueRef.current.push(record)
+          return
+        }
         try {
           await channel.publish('stroke', {
             clientId: clientIdRef.current,
             author: userDisplayName,
             snapshot: record.snapshot,
             ts: record.ts,
-            reason: options?.reason ?? 'update',
+            reason: record.reason,
             originClientId: clientIdRef.current,
           })
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
+          pendingPublishQueueRef.current.push(record)
         }
       }
 
@@ -245,72 +585,145 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       pendingBroadcastRef.current = setTimeout(() => {
         pendingBroadcastRef.current = null
         publish()
-      }, 180)
+      }, broadcastDebounceMs)
     },
-    [collectEditorSnapshot, userDisplayName]
+    [broadcastDebounceMs, collectEditorSnapshot, userDisplayName, isAdmin, pageIndex, studentCanPublish]
   )
 
-  const applySnapshot = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
+  const publishLatexDisplayState = useCallback(
+    async (enabled: boolean, latex: string, options?: LatexDisplayOptions) => {
+      if (!isAdmin) return
+      const channel = channelRef.current
+      if (!channel) return
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'latex-display',
+          enabled,
+          latex,
+          options: options ?? latexProjectionOptionsRef.current,
+          ts: Date.now(),
+        })
+      } catch (err) {
+        console.warn('Failed to broadcast LaTeX display state', err)
+      }
+    },
+    [isAdmin, userDisplayName]
+  )
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!latexDisplayStateRef.current.enabled) return
+    const trimmed = (latexOutput || '').trim()
+    if (trimmed === latexDisplayStateRef.current.latex) return
+    setLatexDisplayState(curr => (curr.enabled ? { ...curr, latex: trimmed } : curr))
+    publishLatexDisplayState(true, trimmed, latexProjectionOptionsRef.current)
+  }, [latexOutput, isAdmin, publishLatexDisplayState])
+
+  const applySnapshotCore = useCallback(async (message: SnapshotMessage, receivedTs?: number) => {
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
     if (!snapshot) return
-    const incomingSymbolCount = snapshot.symbols ? snapshot.symbols.length : 0
-    const previousCount = lastSymbolCountRef.current
-    // Skip redundant empty updates when both sides already empty.
-    if (incomingSymbolCount === 0 && previousCount === 0 && reason !== 'clear') {
+    const targetClientId = message?.targetClientId
+    if (targetClientId && targetClientId !== clientIdRef.current) {
       return
     }
+    const msgTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? (message.ts as number) : Date.now()
+    const symbolsArray: any[] = Array.isArray(snapshot.symbols)
+      ? snapshot.symbols
+      : Array.isArray((snapshot.symbols as any)?.events)
+      ? (snapshot.symbols as any).events
+      : []
+    const incomingSymbolCount = symbolsArray.length
+    const previousCount = lastSymbolCountRef.current
+    const baseCountRaw = typeof snapshot.baseSymbolCount === 'number' ? snapshot.baseSymbolCount : null
+    const hasBaseMetadata = baseCountRaw !== null
+    const isFullSnapshot = typeof baseCountRaw === 'number' && baseCountRaw < 0
+    const baseCount = isFullSnapshot ? 0 : (baseCountRaw ?? undefined)
+    const isNewer = msgTs >= lastGlobalUpdateTsRef.current
+
+    if (!isNewer && reason !== 'clear') {
+      return
+    }
+
     // Idempotency & origin checks
     if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) return
-    if (message.originClientId && message.originClientId === clientIdRef.current) return
+  if (message.originClientId && message.originClientId === clientIdRef.current && !targetClientId) return
     const editor = editorInstanceRef.current
     if (!editor) return
-    // Ignore stale versions
-    if (snapshot.version <= appliedVersionRef.current) return
+
+    const rebuildFromSnapshot = async (count: number) => {
+      try {
+        await nextAnimationFrame()
+        editor.clear()
+        if (count > 0) {
+          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          await nextAnimationFrame()
+          await editor.importPointEvents(symbolsArray)
+          if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+        } else {
+          setLatexOutput('')
+        }
+        lastSymbolCountRef.current = count
+        lastBroadcastBaseCountRef.current = count
+        return true
+      } catch (err) {
+        console.error('Failed to rebuild from snapshot', err)
+        return false
+      }
+    }
+
+    const applyDelta = async (startIndex: number) => {
+      const delta = symbolsArray.slice(startIndex)
+      if (!delta.length) return false
+      try {
+        await nextAnimationFrame()
+        await editor.importPointEvents(delta)
+        if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+        lastSymbolCountRef.current = previousCount + delta.length
+        lastBroadcastBaseCountRef.current = lastSymbolCountRef.current
+        return true
+      } catch (err) {
+        console.warn('Delta import failed; attempting full rebuild', err)
+        return rebuildFromSnapshot(incomingSymbolCount)
+      }
+    }
 
     isApplyingRemoteRef.current = true
     try {
+      let applied = false
       if (reason === 'clear') {
         editor.clear()
         if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-      } else if (incomingSymbolCount < previousCount) {
-        // Remote performed an erase/undo sequence. Rebuild from full snapshot (including empty).
-        editor.clear()
-        if (incomingSymbolCount > 0 && snapshot.symbols) {
-          try {
-            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-            await editor.importPointEvents(snapshot.symbols)
-            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          } catch (e) {
-            console.error('Failed to rebuild after shrink', e)
-          }
+        setLatexOutput('')
+        lastSymbolCountRef.current = 0
+        lastBroadcastBaseCountRef.current = 0
+        applied = true
+      } else if (isFullSnapshot) {
+        applied = await rebuildFromSnapshot(incomingSymbolCount)
+      } else if (hasBaseMetadata && typeof baseCount === 'number') {
+        if (incomingSymbolCount < baseCount || baseCount > previousCount) {
+          applied = await rebuildFromSnapshot(incomingSymbolCount)
         } else {
-          // Fully empty after erase
-          setLatexOutput('')
+          applied = await applyDelta(baseCount)
         }
-      } else if (snapshot.symbols && snapshot.symbols.length && incomingSymbolCount > previousCount) {
-        // Import only new tail delta
-        const delta = snapshot.symbols.slice(previousCount)
-        if (delta.length) {
-          try {
-            await editor.importPointEvents(delta)
-            if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          } catch (e) {
-            console.warn('Delta import failed; attempting full import', e)
-            try {
-              editor.clear()
-              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-              await editor.importPointEvents(snapshot.symbols)
-              if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-            } catch (e2) {
-              console.error('Full import failed', e2)
-            }
-          }
+      } else {
+        // Fallback for legacy payloads without base metadata
+        if (incomingSymbolCount === 0 && previousCount === 0) {
+          return
+        }
+        if (incomingSymbolCount < previousCount) {
+          applied = await rebuildFromSnapshot(incomingSymbolCount)
+        } else if (incomingSymbolCount > previousCount) {
+          applied = await applyDelta(previousCount)
         }
       }
 
-      // Tracking
-  lastSymbolCountRef.current = incomingSymbolCount
+      if (!applied) {
+        return
+      }
+
       appliedVersionRef.current = snapshot.version
       lastAppliedRemoteVersionRef.current = snapshot.version
       suppressBroadcastUntilTsRef.current = Date.now() + 500
@@ -321,16 +734,88 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           appliedSnapshotIdsRef.current.delete(iter.next().value as string)
         }
       }
-
-      setLatexOutput(snapshot.latex ?? '')
+      const canonical = captureFullSnapshot()
+      if (canonical) {
+        latestSnapshotRef.current = { snapshot: canonical, ts: msgTs, reason }
+      }
+      if (isNewer || reason === 'clear') {
+        lastGlobalUpdateTsRef.current = Math.max(lastGlobalUpdateTsRef.current, msgTs)
+      }
     } catch (err) {
       console.error('Failed to apply remote snapshot', err)
     } finally {
       isApplyingRemoteRef.current = false
       setIsConverting(false)
-      latestSnapshotRef.current = { snapshot, ts: Date.now() }
     }
-  }, [])
+  }, [captureFullSnapshot])
+
+  const scheduleRemoteProcessing = useCallback(() => {
+    if (remoteProcessingRef.current) {
+      return
+    }
+    const processNext = () => {
+      const task = pendingRemoteSnapshotsRef.current.shift()
+      if (!task) {
+        remoteProcessingRef.current = false
+        remoteFrameHandleRef.current = null
+        return
+      }
+      applySnapshotCore(task.message, task.receivedTs)
+        .catch(err => {
+          console.error('Remote snapshot application failed', err)
+        })
+        .finally(() => {
+          if (pendingRemoteSnapshotsRef.current.length) {
+            if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+              remoteFrameHandleRef.current = setTimeout(processNext, 16)
+            } else {
+              remoteFrameHandleRef.current = window.requestAnimationFrame(() => processNext())
+            }
+          } else {
+            remoteProcessingRef.current = false
+            remoteFrameHandleRef.current = null
+          }
+        })
+    }
+
+    remoteProcessingRef.current = true
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      remoteFrameHandleRef.current = setTimeout(processNext, 0)
+    } else {
+      remoteFrameHandleRef.current = window.requestAnimationFrame(() => processNext())
+    }
+  }, [applySnapshotCore])
+
+  const enqueueSnapshot = useCallback(
+    (message: SnapshotMessage, receivedTs?: number) => {
+      pendingRemoteSnapshotsRef.current.push({ message, receivedTs })
+      scheduleRemoteProcessing()
+    },
+    [scheduleRemoteProcessing]
+  )
+
+  const enforceAuthoritativeSnapshot = useCallback(() => {
+    if (isAdmin) {
+      return
+    }
+    const record = latestSnapshotRef.current
+    if (!record || !record.snapshot) {
+      const editor = editorInstanceRef.current
+      editor?.clear?.()
+      return
+    }
+    applySnapshotCore(
+      {
+        snapshot: record.snapshot,
+        reason: record.reason ?? 'update',
+        ts: record.ts,
+        originClientId: '__authority__',
+      },
+      Date.now()
+    ).catch(err => {
+      console.warn('Failed to enforce authoritative snapshot', err)
+    })
+  }, [applySnapshotCore, isAdmin])
 
   useEffect(() => {
     let cancelled = false
@@ -346,13 +831,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     const websocketHost = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_HOST || 'cloud.myscript.com'
 
     if (!appKey || !hmacKey) {
-      setStatus('error')
-      setError(missingKeyMessage)
+  setStatus('error')
+  setFatalError(missingKeyMessage)
       return
     }
 
     setStatus('loading')
-    setError(null)
+  setFatalError(null)
 
     let resizeHandler: (() => void) | null = null
     const listeners: Array<{ type: string; handler: (event: any) => void }> = []
@@ -401,40 +886,61 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           if (now < suppressBroadcastUntilTsRef.current) {
             return
           }
-          // Collect snapshot with version increment only if not from remote apply.
-          const snapshot = collectEditorSnapshot(true)
+          if (!isAdmin) {
+            const controllerId = controlStateRef.current?.controllerId
+            const hasPermission = controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+            if (!hasPermission) {
+              enforceAuthoritativeSnapshot()
+              return
+            }
+          }
+          const isSharedPage = pageIndex === sharedPageIndexRef.current
+          const canSend = isAdmin && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
           // Update local symbol count tracking for accurate delta math for remote peers.
-          if (snapshot.symbols) {
-            lastSymbolCountRef.current = snapshot.symbols.length
+          lastSymbolCountRef.current = countSymbols(snapshot.symbols)
+          if (canSend) {
+            broadcastSnapshot(false)
           }
-          broadcastSnapshot(false)
 
-          // Debounce a lightweight export request (not convert) so JIIX/LaTeX stay updated without heavy operations.
-          if (pendingExportRef.current) {
-            clearTimeout(pendingExportRef.current)
-            pendingExportRef.current = null
-          }
-          pendingExportRef.current = setTimeout(() => {
-            try {
-              if (typeof (editor as any)?.export === 'function') {
-                ;(editor as any).export(['application/x-latex', 'application/vnd.myscript.jiix'])
-              }
-            } catch {}
-          }, 300)
+          // Removed auto-export on change to prevent cumulative/garbage LaTeX updates.
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
-          broadcastSnapshot(true)
+          const isSharedPage = pageIndex === sharedPageIndexRef.current
+          const canSend = isAdmin && isSharedPage && !isBroadcastPausedRef.current
+          if (forcedConvertDepthRef.current > 0) {
+            forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+            return
+          }
+          if (canSend) {
+            broadcastSnapshot(true)
+          }
         }
         const handleError = (evt: any) => {
-          const message = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
-          setError(message)
-          setStatus('error')
+          const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
+          const lower = String(raw).toLowerCase()
+          const isSessionTooLong = /session too long/.test(lower)
+          const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
+          const isSymbolsUndefined = /cannot read properties of undefined.*symbols/i.test(raw)
+          const fatal = isSessionTooLong || isAuthMissing
+
+          if (fatal) {
+            setFatalError(raw)
+            setStatus('error')
+            return
+          }
+          // Transient: keep canvas usable
+          setTransientError(raw)
+          // Auto-clear transient after 6s
+          setTimeout(() => {
+            setTransientError(curr => (curr === raw ? null : curr))
+          }, 6000)
         }
 
         listeners.push({ type: 'changed', handler: handleChanged })
@@ -453,7 +959,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       .catch(err => {
         if (cancelled) return
         console.error('MyScript initialization failed', err)
-        setError(err instanceof Error ? err.message : String(err))
+        setFatalError(err instanceof Error ? err.message : String(err))
         setStatus('error')
       })
 
@@ -501,6 +1007,18 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     let disposed = false
     let channel: any = null
     let realtime: any = null
+    const scheduleRealtimeRetry = () => {
+      if (disposed) return
+      if (realtimeRetryTimeoutRef.current) return
+      const attempt = reconnectAttemptsRef.current || 1
+      const delay = Math.min(30000, 2000 * attempt)
+      realtimeRetryTimeoutRef.current = setTimeout(() => {
+        realtimeRetryTimeoutRef.current = null
+        if (!disposed) {
+          setupRealtime()
+        }
+      }, delay)
+    }
 
     const setupRealtime = async () => {
       try {
@@ -508,13 +1026,57 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         realtime = new Ably.Realtime.Promise({
           authUrl: `/api/realtime/ably-token?clientId=${encodeURIComponent(clientIdRef.current)}`,
           autoConnect: true,
+          closeOnUnload: false,
+          transports: ['web_socket', 'xhr_streaming', 'xhr_polling'],
         })
 
-        realtimeRef.current = realtime
+  realtimeRef.current = realtime
 
         await new Promise<void>((resolve, reject) => {
-          realtime.connection.once('connected', () => resolve())
-          realtime.connection.once('failed', err => reject(err))
+          realtime.connection.once('connected', () => {
+            setIsRealtimeConnected(true)
+            resolve()
+          })
+          realtime.connection.once('failed', err => {
+            setIsRealtimeConnected(false)
+            reject(err)
+          })
+        })
+        // Connection state tracking & reauth with attempt counter
+        realtime.connection.on('state', async (stateChange: any) => {
+          const state = stateChange?.current
+          const connected = state === 'connected'
+          setIsRealtimeConnected(connected)
+          if (isAdmin && connected && pendingPublishQueueRef.current.length && channelRef.current) {
+            const toSend = [...pendingPublishQueueRef.current]
+            pendingPublishQueueRef.current = []
+            for (const rec of toSend) {
+              try {
+                await channelRef.current.publish('stroke', {
+                  clientId: clientIdRef.current,
+                  author: userDisplayName,
+                  snapshot: rec.snapshot,
+                  ts: rec.ts,
+                  reason: rec.reason,
+                  originClientId: clientIdRef.current,
+                })
+                lastBroadcastBaseCountRef.current = countSymbols(rec.snapshot.symbols)
+              } catch (e) {
+                console.warn('Retry publish failed', e)
+                pendingPublishQueueRef.current.push(rec)
+              }
+            }
+            reconnectAttemptsRef.current = 0
+          }
+          if (!connected && (state === 'closed' || state === 'failed')) {
+            try {
+              reconnectAttemptsRef.current += 1
+              await realtime.auth.authorize({ force: true })
+              realtime.connect()
+            } catch (reauthErr) {
+              console.warn('Reauth attempt failed', reauthErr)
+            }
+          }
         })
 
         if (disposed) return
@@ -523,26 +1085,33 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         channelRef.current = channel
         await channel.attach()
 
-        const handleStroke = async (message: any) => {
+        const handleStroke = (message: any) => {
+          if (!isAdmin && latexDisplayStateRef.current.enabled) {
+            return
+          }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
+          enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
-        const handleSyncState = async (message: any) => {
+        const handleSyncState = (message: any) => {
+          if (!isAdmin && latexDisplayStateRef.current.enabled) {
+            return
+          }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          await applySnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
+          enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
+          if (!isAdmin) return
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
               return latestSnapshotRef.current
             }
-            const freshSnapshot = collectEditorSnapshot(false)
+            const freshSnapshot = captureFullSnapshot()
             if (!freshSnapshot) {
               return null
             }
@@ -552,8 +1121,11 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             const record: SnapshotRecord = {
               snapshot: freshSnapshot,
               ts: Date.now(),
+              reason: 'update',
             }
             latestSnapshotRef.current = record
+            // Mark our local publish as the latest global update
+            lastGlobalUpdateTsRef.current = record.ts
             return record
           })()
 
@@ -564,32 +1136,148 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               author: userDisplayName,
               snapshot: existingRecord.snapshot,
               ts: existingRecord.ts,
-              reason: 'update',
+              reason: existingRecord.reason ?? 'update',
+              originClientId: clientIdRef.current,
             })
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
           }
         }
 
+        const handleControlMessage = (message: any) => {
+          const data = message?.data as {
+            clientId?: string
+            locked?: boolean
+            controllerId?: string
+            controllerName?: string
+            ts?: number
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast'
+            targetClientId?: string
+            snapshot?: SnapshotPayload | null
+            enabled?: boolean
+            latex?: string
+            options?: Partial<LatexDisplayOptions>
+          }
+          if (data?.action === 'student-broadcast') {
+            const enabled = Boolean(data.enabled)
+            setIsStudentPublishEnabled(enabled)
+            isStudentPublishEnabledRef.current = enabled
+            return
+          }
+          if (data?.action === 'convert') {
+            if (isAdmin) return
+            if (isBroadcastPausedRef.current) return
+            if (!editor) return
+            forcedConvertDepthRef.current += 1
+            setIsConverting(true)
+            editor.convert()
+            return
+          }
+          if (data?.action === 'latex-display') {
+            const enabled = Boolean(data.enabled)
+            const latex = typeof data.latex === 'string' ? data.latex : ''
+            const options = sanitizeLatexOptions(data.options)
+            setLatexDisplayState({ enabled, latex, options })
+            if (!isAdmin) {
+              setLatexProjectionOptions(options)
+            }
+            if (!isAdmin) {
+              if (enabled) {
+                try {
+                  editor.clear()
+                  lastSymbolCountRef.current = 0
+                  lastBroadcastBaseCountRef.current = 0
+                } catch {}
+              } else if (channel) {
+                channel
+                  .publish('sync-request', {
+                    clientId: clientIdRef.current,
+                    author: userDisplayName,
+                    ts: Date.now(),
+                  })
+                  .catch(err => console.warn('Failed to request sync after exiting LaTeX display mode', err))
+              }
+            }
+            return
+          }
+          if (data?.action === 'force-resync') {
+            if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
+            const snapshot = data.snapshot
+            if (snapshot) {
+              enqueueSnapshot(
+                {
+                  clientId: data.clientId || '__controller__',
+                  snapshot,
+                  ts: data.ts ?? Date.now(),
+                  reason: 'update',
+                  originClientId: data.clientId || '__controller__',
+                  targetClientId: data.targetClientId,
+                },
+                typeof message?.timestamp === 'number' ? message.timestamp : undefined
+              )
+            } else {
+              enforceAuthoritativeSnapshot()
+            }
+            return
+          }
+          if (data?.action === 'wipe') {
+            if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
+            editor.clear()
+            lastSymbolCountRef.current = 0
+            lastBroadcastBaseCountRef.current = 0
+            setLatexOutput('')
+            return
+          }
+          if (typeof data?.locked !== 'boolean') return
+          const controlTs = data?.ts ?? Date.now()
+          if (data.locked) {
+            if (!data.controllerId) return
+            updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: controlTs })
+            return
+          }
+          if (!data.controllerId || data.controllerId === ALL_STUDENTS_ID) {
+            updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: data.controllerName || 'All Students', ts: controlTs })
+          } else {
+            updateControlState(null)
+          }
+        }
+
+        const handleLatexMessage = (message: any) => {
+          const data = message?.data as { latex?: string; ts?: number; clientId?: string }
+          const latex = typeof data?.latex === 'string' ? data.latex : ''
+          if (!latex) return
+          const msgTs = typeof message?.timestamp === 'number' ? message.timestamp : data?.ts ?? Date.now()
+          if (msgTs < lastLatexBroadcastTsRef.current) return
+          lastLatexBroadcastTsRef.current = msgTs
+          setLatexOutput(latex)
+        }
+
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
-        channel.subscribe('sync-request', handleSyncRequest)
+  channel.subscribe('sync-request', handleSyncRequest)
+        channel.subscribe('control', handleControlMessage)
+  channel.subscribe('latex', handleLatexMessage)
+        // Removed control channel subscription.
 
-        const snapshot = collectEditorSnapshot(true)
+        const snapshot = captureFullSnapshot()
         // Publish initial state if there are existing symbols.
-        if (snapshot && snapshot.symbols && snapshot.symbols.length) {
+        if (snapshot && !isSnapshotEmpty(snapshot)) {
           const record: SnapshotRecord = {
             snapshot,
             ts: Date.now(),
+            reason: 'update',
           }
           latestSnapshotRef.current = record
-          await channel.publish('stroke', {
-            clientId: clientIdRef.current,
-            author: userDisplayName,
-            snapshot: record.snapshot,
-            ts: record.ts,
-            reason: 'update',
-          })
+          lastBroadcastBaseCountRef.current = countSymbols(snapshot.symbols)
+          if (isAdmin) {
+            await channel.publish('stroke', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              snapshot: record.snapshot,
+              ts: record.ts,
+              reason: record.reason,
+            })
+          }
         }
 
         await channel.publish('sync-request', {
@@ -597,10 +1285,114 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           author: userDisplayName,
           ts: Date.now(),
         })
+
+        // Presence tracking (simplified; no broadcaster election)
+        try {
+          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin) })
+          const members = await channel.presence.get()
+          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
+          channel.presence.subscribe(async (presenceMsg: any) => {
+            try {
+              const list = await channel.presence.get()
+              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
+              // When someone new enters, proactively push current snapshot (any client may respond)
+              if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current && isAdmin) {
+                const rec = latestSnapshotRef.current ?? (() => {
+                  const snap = collectEditorSnapshot(false)
+                  return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null
+                })()
+                if (rec && rec.snapshot && !isSnapshotEmpty(rec.snapshot)) {
+                  await channel.publish('stroke', {
+                    clientId: clientIdRef.current,
+                    author: userDisplayName,
+                    snapshot: rec.snapshot,
+                    ts: rec.ts,
+                    reason: rec.reason,
+                    originClientId: clientIdRef.current,
+                  })
+                }
+                if (latexDisplayStateRef.current.enabled) {
+                  const latex = latexDisplayStateRef.current.latex || (latexOutput || '').trim()
+                  try {
+                    await channel.publish('control', {
+                      clientId: clientIdRef.current,
+                      author: userDisplayName,
+                      action: 'latex-display',
+                      enabled: true,
+                      latex,
+                      ts: Date.now(),
+                    })
+                  } catch (err) {
+                    console.warn('Failed to rebroadcast latex display state', err)
+                  }
+                }
+                if (isStudentPublishEnabledRef.current) {
+                  try {
+                    await channel.publish('control', {
+                      clientId: clientIdRef.current,
+                      author: userDisplayName,
+                      action: 'student-broadcast',
+                      enabled: true,
+                      ts: Date.now(),
+                    })
+                  } catch (err) {
+                    console.warn('Failed to rebroadcast student publish state', err)
+                  }
+                }
+                if (isAdmin && hasExclusiveControlRef.current) {
+                  const now = Date.now()
+                  if (now - lastControlBroadcastTsRef.current > 1500) {
+                    await channel.publish('control', {
+                      clientId: clientIdRef.current,
+                      author: userDisplayName,
+                      locked: true,
+                      controllerId: clientIdRef.current,
+                      controllerName: userDisplayName,
+                      ts: now,
+                    })
+                    lastControlBroadcastTsRef.current = now
+                  }
+                }
+              }
+              const action = presenceMsg?.action
+              if ((action === 'leave' || action === 'absent' || action === 'timeout') && controlStateRef.current?.controllerId === presenceMsg?.clientId) {
+                updateControlState(null)
+              }
+            } catch {}
+          })
+          // No election required.
+        } catch (e) {
+          console.warn('Presence tracking failed', e)
+        }
+
+        // No default broadcaster assignment.
+
+        // Heartbeat reconnection loop
+        heartbeatIntervalRef.current = setInterval(async () => {
+          if (realtime.connection.state === 'connected') return
+          // Backoff logic: attempt more aggressively for first 5 tries, then every second heartbeat
+          const attempts = reconnectAttemptsRef.current
+          const shouldAttempt = attempts < 5 || attempts % 2 === 0
+          if (!shouldAttempt) return
+          try {
+            reconnectAttemptsRef.current += 1
+            await realtime.auth.authorize({ force: true })
+            realtime.connect()
+          } catch (hbErr) {
+            // Silent; debug shows attempts
+          }
+        }, 10000)
+
+        // Removed periodic reconcile tied to broadcaster role.
       } catch (err) {
         console.error('Failed to initialise Ably realtime collaboration', err)
         if (!disposed) {
-          setError('Realtime collaboration is currently unavailable. Please retry later.')
+          const message = 'Realtime collaboration is temporarily unavailable. Retrying…'
+          setTransientError(message)
+          setTimeout(() => {
+            setTransientError(curr => (curr === message ? null : curr))
+          }, 6000)
+          scheduleRealtimeRetry()
         }
       }
     }
@@ -612,6 +1404,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       try {
         channelRef.current = null
         if (channel) {
+          if (isAdmin && hasExclusiveControlRef.current) {
+            const ts = Date.now()
+            channel
+              .publish('control', {
+                clientId: clientIdRef.current,
+                author: userDisplayName,
+                locked: false,
+                controllerId: clientIdRef.current,
+                controllerName: userDisplayName,
+                ts,
+              })
+              .catch(() => {})
+          }
           channel.unsubscribe()
           channel.detach?.()
         }
@@ -622,43 +1427,518 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         console.warn('Error while tearing down Ably connection', err)
       } finally {
         realtimeRef.current = null
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current)
+          heartbeatIntervalRef.current = null
+        }
+        if (reconcileIntervalRef.current) {
+          clearInterval(reconcileIntervalRef.current)
+          reconcileIntervalRef.current = null
+        }
+        if (realtimeRetryTimeoutRef.current) {
+          clearTimeout(realtimeRetryTimeoutRef.current)
+          realtimeRetryTimeoutRef.current = null
+        }
+        if (remoteFrameHandleRef.current !== null) {
+          if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function' && typeof remoteFrameHandleRef.current === 'number') {
+            window.cancelAnimationFrame(remoteFrameHandleRef.current)
+          } else {
+            clearTimeout(remoteFrameHandleRef.current as ReturnType<typeof setTimeout>)
+          }
+          remoteFrameHandleRef.current = null
+        }
+        pendingRemoteSnapshotsRef.current = []
+        remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshot, collectEditorSnapshot, channelName, status, userDisplayName])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName])
 
   const handleClear = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
     lastSymbolCountRef.current = 0
-    broadcastSnapshot(true, { force: true, reason: 'clear' })
+    lastBroadcastBaseCountRef.current = 0
+    if (pageIndex === sharedPageIndexRef.current) {
+      broadcastSnapshot(true, { force: true, reason: 'clear' })
+    }
   }
 
   const handleUndo = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     editorInstanceRef.current.undo()
     broadcastSnapshot(false)
   }
 
   const handleRedo = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     editorInstanceRef.current.redo()
     broadcastSnapshot(false)
   }
 
   const handleConvert = () => {
     if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
+    if (isAdmin && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
+      const channel = channelRef.current
+      if (channel) {
+        channel
+          .publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'convert',
+            ts: Date.now(),
+          })
+          .catch(err => console.warn('Failed to broadcast convert command', err))
+      }
+    }
   }
 
+  // Removed broadcaster handlers and state.
+
+  const toggleBroadcastPause = () => {
+    if (!isAdmin) return
+    setIsBroadcastPaused(prev => {
+      const next = !prev
+      isBroadcastPausedRef.current = next
+      return next
+    })
+  }
+
+  const toggleStudentPublishing = async () => {
+    if (!isAdmin) return
+    const next = !isStudentPublishEnabledRef.current
+    setIsStudentPublishEnabled(next)
+    isStudentPublishEnabledRef.current = next
+    const channel = channelRef.current
+    if (!channel) return
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'student-broadcast',
+        enabled: next,
+        ts: Date.now(),
+      })
+    } catch (err) {
+      console.warn('Failed to toggle student publishing', err)
+    }
+  }
+
+  const lockStudentEditing = async () => {
+    if (!isAdmin) return
+    if (controlStateRef.current && controlStateRef.current.controllerId === clientIdRef.current) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: true,
+        controllerId: clientIdRef.current,
+        controllerName: userDisplayName,
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState({ controllerId: clientIdRef.current, controllerName: userDisplayName, ts })
+    } catch (err) {
+      console.warn('Failed to request exclusive control', err)
+    }
+  }
+
+  const unlockStudentEditing = async () => {
+    if (!isAdmin) return
+    if (!controlStateRef.current || controlStateRef.current.controllerId !== clientIdRef.current) return
+    const channel = channelRef.current
+    if (!channel) {
+      updateControlState(null)
+      return
+    }
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: false,
+        controllerId: ALL_STUDENTS_ID,
+        controllerName: 'All Students',
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts })
+    } catch (err) {
+      console.warn('Failed to release exclusive control', err)
+      updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts })
+    }
+  }
+
+  const allowSelectedClientEditing = async () => {
+    if (!isAdmin) return
+    const targetId = selectedClientId
+    if (!targetId) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    const isAll = targetId === 'all'
+    const targetRecord = connectedClients.find(c => c.clientId === targetId)
+    const controllerId = isAll ? ALL_STUDENTS_ID : targetId
+    const controllerName = isAll ? 'All Students' : targetRecord?.name || targetId
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: !isAll,
+        controllerId,
+        controllerName,
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState({ controllerId, controllerName, ts })
+    } catch (err) {
+      console.warn('Failed to grant selected client editing rights', err)
+    }
+  }
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (status !== 'ready') return
+    if (!channelRef.current) return
+    if (controlState?.controllerId === clientId) return
+    if (controlState?.controllerId === ALL_STUDENTS_ID) return
+    lockStudentEditing()
+  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing])
+
+  const forcePublishLatex = async () => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const latex = (latexOutput || '').trim()
+    if (!latex) return
+    const ts = Date.now()
+    try {
+      await channel.publish('latex', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        latex,
+        ts,
+      })
+      lastLatexBroadcastTsRef.current = ts
+    } catch (err) {
+      console.warn('Failed to broadcast LaTeX', err)
+    }
+  }
+
+  const toggleLatexProjection = async () => {
+    if (!isAdmin) return
+    const nextEnabled = !latexDisplayStateRef.current.enabled
+    const latex = nextEnabled ? (latexOutput || '').trim() : ''
+    const options = latexProjectionOptionsRef.current
+    setLatexDisplayState({ enabled: nextEnabled, latex, options })
+    await publishLatexDisplayState(nextEnabled, latex, options)
+  }
+
+  const updateLatexProjectionOptions = useCallback(
+    (partial: Partial<LatexDisplayOptions>) => {
+      setLatexProjectionOptions(prev => {
+        const next = sanitizeLatexOptions({ ...prev, ...partial })
+        if (latexDisplayStateRef.current.enabled) {
+          setLatexDisplayState(curr => (curr.enabled ? { ...curr, options: next } : curr))
+          publishLatexDisplayState(true, latexDisplayStateRef.current.latex, next)
+        }
+        return next
+      })
+    },
+    [publishLatexDisplayState]
+  )
+
+  const forcePublishCanvas = async (targetClientId?: string) => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const snapshot = captureFullSnapshot()
+    if (!snapshot || isSnapshotEmpty(snapshot)) return
+    const ts = Date.now()
+    try {
+      await channel.publish('stroke', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        snapshot: { ...snapshot, baseSymbolCount: -1 },
+        ts,
+        reason: 'update',
+        originClientId: clientIdRef.current,
+        targetClientId,
+      })
+      latestSnapshotRef.current = { snapshot, ts, reason: 'update' }
+      lastGlobalUpdateTsRef.current = ts
+      if (!targetClientId) {
+        setSharedPageIndex(pageIndex)
+      }
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'force-resync',
+        snapshot: { ...snapshot, baseSymbolCount: -1 },
+        targetClientId,
+        ts,
+      })
+    } catch (err) {
+      console.warn('Failed to publish canvas snapshot', err)
+    }
+  }
+
+  const forceClearStudentCanvas = async (targetClientId: string) => {
+    if (!isAdmin || !targetClientId) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'wipe',
+        targetClientId,
+        ts,
+      })
+    } catch (err) {
+      console.warn('Failed to send wipe command', err)
+    }
+  }
+
+  const navigateToPage = useCallback(
+    async (targetIndex: number) => {
+      if (!isAdmin) return
+      if (targetIndex === pageIndex) return
+      if (targetIndex < 0 || targetIndex >= pageRecordsRef.current.length) return
+      persistCurrentPageSnapshot()
+      const snapshot = pageRecordsRef.current[targetIndex]?.snapshot ?? null
+      await applyPageSnapshot(snapshot)
+      setPageIndex(targetIndex)
+    },
+    [applyPageSnapshot, isAdmin, pageIndex, persistCurrentPageSnapshot]
+  )
+
+  const addNewPage = useCallback(async () => {
+    if (!isAdmin) return
+    persistCurrentPageSnapshot()
+    pageRecordsRef.current.push({ snapshot: null })
+    const targetIndex = pageRecordsRef.current.length - 1
+    await applyPageSnapshot(null)
+    setPageIndex(targetIndex)
+  }, [applyPageSnapshot, isAdmin, persistCurrentPageSnapshot])
+
+  const shareCurrentPageWithStudents = useCallback(async () => {
+    if (!isAdmin) return
+    persistCurrentPageSnapshot()
+    await forcePublishCanvas()
+    setSharedPageIndex(pageIndex)
+  }, [forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot])
+
+  const handleOrientationChange = useCallback(
+    (next: CanvasOrientation) => {
+      if (isAdmin && isFullscreen && next !== 'landscape') {
+        return
+      }
+      setCanvasOrientation(curr => (curr === next ? curr : next))
+      if (isAdmin && !isFullscreen) {
+        adminOrientationPreferenceRef.current = next
+      }
+    },
+    [isAdmin, isFullscreen]
+  )
+
   const toggleFullscreen = () => {
-    setIsFullscreen(prev => !prev)
+    const next = !isFullscreen
+    setIsFullscreen(next)
+    if (isAdmin) {
+      if (next) {
+        adminOrientationPreferenceRef.current = canvasOrientation
+        if (canvasOrientation !== 'landscape') {
+          setCanvasOrientation('landscape')
+        }
+      } else if (adminOrientationPreferenceRef.current && adminOrientationPreferenceRef.current !== canvasOrientation) {
+        setCanvasOrientation(adminOrientationPreferenceRef.current)
+      }
+    }
     // Resize editor after layout change
     try {
       editorInstanceRef.current?.resize?.()
     } catch {}
   }
+
+  const hasWriteAccess = Boolean(isAdmin) || Boolean(
+    controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
+  )
+  const isViewOnly = !hasWriteAccess
+  const controlOwnerLabel = (() => {
+    if (controlState) {
+      if (controlState.controllerId === ALL_STUDENTS_ID) {
+        return 'Everyone'
+      }
+      if (controlState.controllerId === clientId) {
+        return 'You'
+      }
+      return controlState.controllerName || 'Instructor'
+    }
+    return 'Instructor'
+  })()
+  const latexProjectionMarkup = useMemo(() => {
+    if (!latexDisplayState.latex) return ''
+    let latexString = latexDisplayState.latex
+    if (latexDisplayState.options.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
+      const lines = latexString.split(/\\\\/g).map(line => line.trim()).filter(Boolean)
+      if (lines.length) {
+        const processed = lines.map(line => {
+          const equalsIndex = line.indexOf('=')
+          if (equalsIndex === -1) return line
+          const left = line.slice(0, equalsIndex).trim()
+          const right = line.slice(equalsIndex + 1).trim()
+          return `${left} &= ${right}`
+        })
+        latexString = `\\begin{aligned}${processed.join(' \\ ')}\\end{aligned}`
+      }
+    }
+    try {
+      return renderToString(latexString, {
+        throwOnError: false,
+        displayMode: true,
+      })
+    } catch (err) {
+      console.warn('Failed to render LaTeX overlay', err)
+      return ''
+    }
+  }, [latexDisplayState.latex, latexDisplayState.options.alignAtEquals])
+
+  const latexOverlayStyle = useMemo<CSSProperties>(
+    () => ({
+      fontSize: `${latexDisplayState.options.fontScale}rem`,
+      textAlign: latexDisplayState.options.textAlign,
+    }),
+    [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
+  )
+
+  const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
+  const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
+  const editorHostStyle = useMemo<CSSProperties>(() => {
+    if (isFullscreen) {
+      return {
+        width: '100%',
+        height: '100%',
+        pointerEvents: disableCanvasInput ? 'none' : undefined,
+        cursor: disableCanvasInput ? 'default' : undefined,
+      }
+    }
+    const landscape = canvasOrientation === 'landscape'
+    const sizing: CSSProperties = landscape
+      ? { minHeight: '384px', maxHeight: '520px', aspectRatio: '16 / 9' }
+      : { minHeight: '480px', maxHeight: '640px', aspectRatio: '3 / 4' }
+    return {
+      width: '100%',
+      ...sizing,
+      pointerEvents: disableCanvasInput ? 'none' : undefined,
+      cursor: disableCanvasInput ? 'default' : undefined,
+    }
+  }, [canvasOrientation, disableCanvasInput, isFullscreen])
+
+  const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
+
+  const renderToolbarBlock = () => (
+    <div className="canvas-toolbar">
+      <div className="canvas-toolbar__buttons">
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(handleUndo)}
+          disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          Undo
+        </button>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(handleRedo)}
+          disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          Redo
+        </button>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(handleClear)}
+          disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          Clear
+        </button>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() => runCanvasAction(handleConvert)}
+          disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}
+        >
+          {isConverting ? 'Converting…' : 'Convert to LaTeX'}
+        </button>
+      </div>
+      {isAdmin && (
+        <div className="canvas-toolbar__buttons">
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(forcePublishLatex)}
+            disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
+          >
+            Publish LaTeX to Students
+          </button>
+          <button
+            className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(toggleLatexProjection)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
+          </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId))}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}
+          </button>
+          {selectedClientId !== 'all' && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => runCanvasAction(() => forceClearStudentCanvas(selectedClientId))}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+            >
+              Wipe Selected Student Canvas
+            </button>
+          )}
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(allowSelectedClientEditing)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {selectedClientId === 'all' ? 'Allow All Students to Edit' : 'Allow Selected Student to Edit'}
+          </button>
+          <button
+            className={`btn ${isStudentPublishEnabled ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(toggleStudentPublishing)}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div>
@@ -666,17 +1946,23 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
           <div
             ref={editorHostRef}
-            className={isFullscreen ? 'w-full h-full' : 'w-full h-[24rem]'}
-            style={{ minHeight: isFullscreen ? undefined : '384px' }}
+            className={editorHostClass}
+            style={editorHostStyle}
+            data-orientation={canvasOrientation}
           />
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
               Preparing collaborative canvas…
             </div>
           )}
-          {status === 'error' && error && (
+          {status === 'error' && fatalError && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
-              {error}
+              {fatalError}
+            </div>
+          )}
+          {transientError && status === 'ready' && (
+            <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
+              {transientError}
             </div>
           )}
           {status === 'ready' && (
@@ -684,45 +1970,170 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Ready
             </div>
           )}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
-          >
-            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          </button>
+          {isViewOnly && !(!isAdmin && latexDisplayState.enabled) && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
+              {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+            </div>
+          )}
+          {!isAdmin && latexDisplayState.enabled && (
+            <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
+              {latexProjectionMarkup ? (
+                <div
+                  className="text-slate-900 leading-relaxed max-w-3xl"
+                  style={latexOverlayStyle}
+                  dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                />
+              ) : (
+                <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+              )}
+            </div>
+          )}
+          {!isOverlayMode && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+            >
+              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            </button>
+          )}
+          {isOverlayMode && (
+            <div
+              className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+              style={{
+                pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+                cursor: overlayControlsVisible ? 'default' : undefined,
+              }}
+              onClick={closeOverlayControls}
+            >
+              <div className="canvas-overlay-controls__panel" onClick={event => {
+                event.stopPropagation()
+                kickOverlayAutoHide()
+              }}>
+                <p className="canvas-overlay-controls__title">Canvas controls</p>
+                {renderToolbarBlock()}
+                <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                  Return to drawing
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button className="btn" type="button" onClick={handleUndo} disabled={!canUndo || status !== 'ready'}>
-            Undo
-          </button>
-          <button className="btn" type="button" onClick={handleRedo} disabled={!canRedo || status !== 'ready'}>
-            Redo
-          </button>
-          <button className="btn" type="button" onClick={handleClear} disabled={!canClear || status !== 'ready'}>
-            Clear
-          </button>
-          <button className="btn btn-primary" type="button" onClick={handleConvert} disabled={status !== 'ready'}>
-            {isConverting ? 'Converting…' : 'Convert to LaTeX'}
-          </button>
-          <button className="btn" type="button" onClick={toggleFullscreen}>
-            {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </button>
-        </div>
+        {!isOverlayMode && renderToolbarBlock()}
 
-        {gradeLabel && (
+        {!isOverlayMode && (
+          <div className="orientation-panel">
+            <p className="orientation-panel__label">Canvas orientation</p>
+            <div className="orientation-panel__options">
+              <button
+                className={`btn ${canvasOrientation === 'landscape' ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={() => handleOrientationChange('landscape')}
+              >
+                Landscape
+              </button>
+              <button
+                className={`btn ${canvasOrientation === 'portrait' ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={() => handleOrientationChange('portrait')}
+                disabled={orientationLockedToLandscape}
+                title={orientationLockedToLandscape ? 'Portrait view is disabled while the instructor projects fullscreen.' : undefined}
+              >
+                Portrait
+              </button>
+            </div>
+            <p className="orientation-panel__note">
+              {isAdmin
+                ? orientationLockedToLandscape
+                  ? 'Fullscreen keeps you in landscape for the widest writing surface.'
+                  : 'Switch layouts when not projecting fullscreen.'
+                : 'Choose the layout that fits your device—this only affects your view.'}
+            </p>
+          </div>
+        )}
+
+        {isAdmin && !isOverlayMode && (
+          <div className="canvas-settings-panel">
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold">LaTeX font size</span>
+              <input
+                type="range"
+                min="0.7"
+                max="1.6"
+                step="0.05"
+                value={latexProjectionOptions.fontScale}
+                onChange={e => updateLatexProjectionOptions({ fontScale: Number(e.target.value) })}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold">Text alignment</span>
+              <select
+                className="canvas-settings-panel__select"
+                value={latexProjectionOptions.textAlign}
+                onChange={e => updateLatexProjectionOptions({ textAlign: e.target.value as LatexDisplayOptions['textAlign'] })}
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={latexProjectionOptions.alignAtEquals}
+                onChange={e => updateLatexProjectionOptions({ alignAtEquals: e.target.checked })}
+              />
+              <span className="font-semibold">Align at “=”</span>
+            </label>
+          </div>
+        )}
+
+        {isAdmin && !isOverlayMode && (
+          <div className="canvas-settings-panel">
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigateToPage(pageIndex - 1)}
+              disabled={pageIndex === 0}
+            >
+              Previous Page
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigateToPage(pageIndex + 1)}
+              disabled={pageIndex >= pageRecordsRef.current.length - 1}
+            >
+              Next Page
+            </button>
+            <button className="btn" type="button" onClick={addNewPage}>
+              New Page
+            </button>
+            <button className="btn btn-primary" type="button" onClick={shareCurrentPageWithStudents}>
+              Show Current Page to Students
+            </button>
+            <span className="font-semibold">
+              Your Page: {pageIndex + 1} / {pageRecordsRef.current.length}
+            </span>
+            <span className="canvas-settings-panel__hint">
+              Students See Page {sharedPageIndex + 1}
+            </span>
+          </div>
+        )}
+
+        {!isOverlayMode && gradeLabel && (
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
         )}
 
-        {latexOutput && (
+        {!isOverlayMode && latexOutput && (
           <div>
-            <p className="text-xs font-semibold uppercase text-slate-500 mb-1">Latest LaTeX export</p>
-            <pre className="text-sm bg-slate-100 border rounded p-3 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
+            <p className="text-xs font-semibold uppercase text-white mb-1">Latest LaTeX export</p>
+            <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
-        {process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
-          <div className="text-[10px] mt-2 p-2 rounded border bg-white shadow-sm space-y-1">
+        {!isOverlayMode && process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
+          <div className="canvas-debug-panel">
             <div className="font-semibold">Debug</div>
             <div>localVersion: {localVersionRef.current}</div>
             <div>appliedVersion: {appliedVersionRef.current}</div>
@@ -730,6 +2141,62 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             <div>symbolCount: {lastSymbolCountRef.current}</div>
             <div>suppressUntil: {suppressBroadcastUntilTsRef.current}</div>
             <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
+            <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
+            <div>queueLen: {pendingPublishQueueRef.current.length}</div>
+            <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
+          </div>
+        )}
+        {!isOverlayMode && (
+          <div className="canvas-admin-controls">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={toggleBroadcastPause}
+              className="canvas-admin-controls__button"
+            >
+              {isBroadcastPaused ? 'Resume Broadcast' : 'Pause Updates'}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={controlState && controlState.controllerId === clientId ? unlockStudentEditing : lockStudentEditing}
+              className="canvas-admin-controls__button"
+              disabled={Boolean(fatalError) || status !== 'ready'}
+            >
+              {controlState && controlState.controllerId === clientId ? 'Unlock Student Editing' : 'Lock Student Editing'}
+            </button>
+          )}
+          {isAdmin && connectedClients.length > 0 && (
+            <select
+              className="canvas-admin-controls__select"
+              value={selectedClientId}
+              onChange={e => setSelectedClientId(e.target.value)}
+            >
+              <option value="all">All students</option>
+              {connectedClients
+                .filter(c => c.clientId !== clientId)
+                .map(c => (
+                  <option key={c.clientId} value={c.clientId}>
+                    {c.name || c.clientId}
+                  </option>
+                ))}
+            </select>
+          )}
+          {controlState && controlState.controllerId !== ALL_STUDENTS_ID && (
+            <span className="canvas-settings-panel__hint">
+              Student editing locked by {controlOwnerLabel}
+            </span>
+          )}
+          {controlState && controlState.controllerId === ALL_STUDENTS_ID && (
+            <span className="canvas-settings-panel__hint">All students may edit the board.</span>
+          )}
+          <span className="canvas-settings-panel__hint">
+            Student publishing is {isStudentPublishEnabled ? 'enabled' : 'disabled'} by the instructor.
+          </span>
+          {!isRealtimeConnected && (
+            <span className="text-xs text-amber-200">Realtime disconnected — updates will be queued</span>
+          )}
           </div>
         )}
       </div>

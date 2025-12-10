@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import prisma from './prisma'
-import { sendEmail } from './mailer'
+import { sendEmail, getPublicAssetUrl } from './mailer'
 
 const EMAIL_KIND = 'EMAIL'
 const DEFAULT_EMAIL_CODE_TTL = 1000 * 60 * 10 // 10 minutes
@@ -60,17 +60,36 @@ export async function issueEmailVerification(userId: string, email: string) {
 
   const subject = 'Philani Academy verification code'
   const text = `Hello,\n\nYour Philani Academy verification code is ${code}.\nThe code expires in ${Math.round(getEmailVerificationTtl() / 60000)} minutes.\n\nIf you did not request this, ignore this email.\n\n— Philani Academy`
+  const logoUrl = getPublicAssetUrl('/philani-logo.png')
   const html = `
-    <p>Hello,</p>
-    <p>Your Philani Academy verification code is:</p>
-    <p style="margin: 24px 0; text-align: center;">
-      <span style="display: inline-block; padding: 12px 24px; background: #1D4ED8; color: #ffffff; border-radius: 8px; font-size: 24px; letter-spacing: 6px; font-weight: 600;">
-        ${code}
-      </span>
-    </p>
-    <p>The code expires in ${Math.round(getEmailVerificationTtl() / 60000)} minutes.</p>
-    <p>If you did not request this, you can safely ignore the email.</p>
-    <p style="margin-top: 24px;">— Philani Academy</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#040b1d;padding:32px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="560" style="background:#ffffff;border-radius:24px;padding:32px; font-family: 'Inter', Arial, sans-serif; color:#0f172a;">
+            <tr>
+              <td align="center" style="padding-bottom:12px;">
+                <img src="${logoUrl}" alt="Philani Academy" height="60" style="display:inline-block;height:60px;width:auto;" />
+              </td>
+            </tr>
+            <tr>
+              <td style="text-align:center;">
+                <p style="text-transform:uppercase;letter-spacing:0.35em;font-size:11px;margin:0;color:#475569;">Verification</p>
+                <h1 style="margin:12px 0 0;font-size:26px;color:#0f172a;">Hello!</h1>
+                <p style="margin:12px 0 24px;font-size:15px;color:#334155;">Use the code below to finish signing in to Philani Academy.</p>
+                <div style="display:inline-block;padding:16px 28px;border-radius:16px;background:#1d4ed8;color:#ffffff;font-size:28px;letter-spacing:8px;font-weight:700;">
+                  ${code}
+                </div>
+                <p style="margin:24px 0 0;font-size:14px;color:#475569;">This code expires in ${Math.round(getEmailVerificationTtl() / 60000)} minutes.</p>
+                <p style="margin:12px 0 0;font-size:14px;color:#475569;">Ignore this email if you didn't try to sign in.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding-top:32px;text-align:center;font-size:12px;color:#94a3b8;">— Philani Academy</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   `
 
   await sendEmail({ to: email, subject, text, html })

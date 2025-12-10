@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+
+export type JitsiControls = {
+  toggleAudio: () => void
+  toggleVideo: () => void
+  hangup: () => void
+}
 
 type Props = {
   roomName: string
@@ -7,9 +13,24 @@ type Props = {
   isOwner?: boolean
   tokenEndpoint?: string | null
   passwordEndpoint?: string | null
+  height?: number | string
+  className?: string
+  showControls?: boolean
+  onControlsChange?: (controls: JitsiControls | null) => void
 }
 
-export default function JitsiRoom({ roomName: initialRoomName, displayName, sessionId, tokenEndpoint, passwordEndpoint, isOwner }: Props) {
+export default function JitsiRoom({
+  roomName: initialRoomName,
+  displayName,
+  sessionId,
+  tokenEndpoint,
+  passwordEndpoint,
+  isOwner,
+  height,
+  className,
+  showControls = true,
+  onControlsChange,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(false)
@@ -18,6 +39,21 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
+
+  const toggleAudio = useCallback(() => {
+    if (!apiRef.current) return
+    apiRef.current.executeCommand('toggleAudio')
+  }, [])
+
+  const toggleVideo = useCallback(() => {
+    if (!apiRef.current) return
+    apiRef.current.executeCommand('toggleVideo')
+  }, [])
+
+  const hangup = useCallback(() => {
+    if (!apiRef.current) return
+    apiRef.current.executeCommand('hangup')
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -95,6 +131,7 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
         }
 
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
+        onControlsChange?.({ toggleAudio, toggleVideo, hangup })
 
         // attach listeners safely
         try {
@@ -156,17 +193,15 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
 
     return () => {
       mounted = false
+      onControlsChange?.(null)
       try { apiRef.current?.dispose() } catch (e) {}
       if (apiRef.current && (apiRef.current as any)._lobbyToggleListener) {
         try { apiRef.current.removeEventListener('lobby.toggle', (apiRef.current as any)._lobbyToggleListener) } catch (e) {}
         delete (apiRef.current as any)._lobbyToggleListener
       }
     }
-  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner])
+  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, toggleAudio, toggleVideo, hangup])
 
-  const toggleAudio = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleAudio') }
-  const toggleVideo = () => { if (!apiRef.current) return; apiRef.current.executeCommand('toggleVideo') }
-  const hangup = () => { if (!apiRef.current) return; apiRef.current.executeCommand('hangup') }
   const toggleLobby = async () => {
     if (!apiRef.current) return
     setLobbyError(null)
@@ -185,25 +220,30 @@ export default function JitsiRoom({ roomName: initialRoomName, displayName, sess
     }
   }
 
+  const resolvedHeight = typeof height === 'number' ? `${height}px` : height || '600px'
+  const wrapperClass = className ? `jitsi-room ${className}` : 'jitsi-room'
+
   return (
-    <div className="jitsi-room">
+    <div className={wrapperClass}>
       {initError && <div className="mb-2 text-sm text-red-600">{initError}</div>}
       {lobbyError && <div className="mb-2 text-sm text-red-600">{lobbyError}</div>}
-      <div className="mb-2 flex gap-2">
-        <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
-        <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
-        <button className="btn btn-danger" onClick={hangup}>Leave</button>
-        {isOwner && (
-          <button
-            className="btn"
-            onClick={toggleLobby}
-            disabled={lobbyBusy}
-          >
-            {lobbyEnabled ? 'Disable lobby' : 'Enable lobby'}
-          </button>
-        )}
-      </div>
-      <div ref={containerRef} style={{ width: '100%', height: 600 }} />
+      {showControls && (
+        <div className="mb-2 flex gap-2">
+          <button className="btn" onClick={toggleAudio}>{audioMuted ? 'Unmute' : 'Mute'}</button>
+          <button className="btn" onClick={toggleVideo}>{videoMuted ? 'Start video' : 'Stop video'}</button>
+          <button className="btn btn-danger" onClick={hangup}>Leave</button>
+          {isOwner && (
+            <button
+              className="btn"
+              onClick={toggleLobby}
+              disabled={lobbyBusy}
+            >
+              {lobbyEnabled ? 'Disable lobby' : 'Enable lobby'}
+            </button>
+          )}
+        </div>
+      )}
+      <div ref={containerRef} style={{ width: '100%', height: resolvedHeight }} />
     </div>
   )
 }

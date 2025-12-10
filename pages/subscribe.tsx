@@ -1,6 +1,11 @@
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 
+import NavArrows from '../components/NavArrows'
+
 type Plan = { id: string; name: string; amount: number; currency: string; active?: boolean }
+
+const formatAmount = (amount: number, currency?: string) => `${(amount / 100).toFixed(2)} ${(currency || 'zar').toUpperCase()}`
 
 export default function Subscribe() {
   const [loading, setLoading] = useState(false)
@@ -68,34 +73,77 @@ export default function Subscribe() {
   }, [selectedPlanId])
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white shadow p-8 rounded">
-        <h2 className="text-xl font-bold mb-4">Subscribe to Philani Academy</h2>
-        {plans.length > 0 ? (
-          <>
-            <div className="mb-4">
-              {plans.map(p => (
-                <label key={p.id} className="block mb-2">
-                  <input
-                    type="radio"
-                    name="plan"
-                    value={p.id}
-                    checked={selectedPlanId === p.id}
-                    onChange={() => setSelectedPlanId(p.id)}
-                    className="mr-2"
-                  />
-                  {p.name} - {(p.amount / 100).toFixed(2)} {(p.currency || 'zar').toUpperCase()} {p.active ? '(active)' : ''}
-                </label>
-              ))}
+    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
+      <div className="mx-auto w-full max-w-4xl space-y-8">
+        <section className="hero flex-col gap-6">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <NavArrows backHref="/dashboard" forwardHref={undefined} />
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="board-chip">PayFast secure checkout</span>
+              <span className="board-chip">ZAR billing</span>
             </div>
-            <button onClick={startCheckout} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded w-full">
-              {loading ? 'Preparing…' : 'Subscribe with PayFast'}
-            </button>
-            {statusMessage && <p className="mt-3 text-sm text-slate-600">{statusMessage}</p>}
-          </>
-        ) : (
-          <p>No subscription plans available. Contact admin.</p>
-        )}
+          </div>
+          <div className="space-y-3">
+            <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Subscriptions</p>
+            <h1 className="text-3xl font-semibold md:text-4xl">Choose your Philani Academy plan</h1>
+            <p className="text-sm text-white md:text-base">
+              Plans stay light, mobile-first, and aligned with the no-scroll classrooms. Select the plan that matches your grade bundle, then we hand you off to a POPIA-ready PayFast form.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-sm text-white">
+            Need to update billing details first? Visit your <Link className="text-blue-200 underline" href="/profile">profile</Link> or read the <Link className="text-blue-200 underline" href="/privacy">privacy notice</Link>.
+          </div>
+        </section>
+
+        <section className="card p-6 space-y-5">
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold">Pick a plan to activate</h2>
+            <p className="text-sm text-white">
+              Active plans appear first. We surface the same cards learners see in the dashboard so everything feels consistent.
+            </p>
+          </div>
+
+          {plans.length > 0 ? (
+            <div className="space-y-4">
+              <div className="space-y-3">
+                {plans.map(plan => (
+                  <label
+                    key={plan.id}
+                    className={`flex flex-col gap-1 rounded-2xl border px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${
+                      selectedPlanId === plan.id
+                        ? 'border-blue-400 bg-white/10 shadow-lg'
+                        : 'border-white/10 hover:border-white/30'
+                    }`}
+                  >
+                    <div>
+                      <p className="text-base font-semibold text-white">{plan.name}</p>
+                      <p className="text-sm text-white">
+                        {formatAmount(plan.amount, plan.currency)} {plan.active ? '• Currently active' : ''}
+                      </p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="plan"
+                      value={plan.id}
+                      checked={selectedPlanId === plan.id}
+                      onChange={() => setSelectedPlanId(plan.id)}
+                      className="h-5 w-5 accent-blue-500"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <button onClick={startCheckout} disabled={loading} className="btn btn-primary w-full">
+                {loading ? 'Preparing PayFast…' : 'Subscribe with PayFast'}
+              </button>
+              {statusMessage && <p className="text-sm text-amber-200">{statusMessage}</p>}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+              No subscription plans are published yet. Ping an admin so they can flip one live from the dashboard.
+            </div>
+          )}
+        </section>
       </div>
     </main>
   )

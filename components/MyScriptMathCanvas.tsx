@@ -1,87 +1,20 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
 
+const SCRIPT_ID = 'myscript-iink-script'
+const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-js/dist/iink.min.js'
+let scriptPromise: Promise<void> | null = null
+
 declare global {
   interface Window {
     iink?: {
-        {!useStackedStudentLayout && (
-          <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-            <div
-              ref={editorHostRef}
-              className={editorHostClass}
-              style={editorHostStyle}
-              data-orientation={canvasOrientation}
-            />
-            {(status === 'loading' || status === 'idle') && (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
-                Preparing collaborative canvas…
-              </div>
-            )}
-            {status === 'error' && fatalError && (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
-                {fatalError}
-              </div>
-            )}
-            {transientError && status === 'ready' && (
-              <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
-                {transientError}
-              </div>
-            )}
-            {status === 'ready' && (
-              <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
-                Ready
-              </div>
-            )}
-            {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
-              <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
-                {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
-              </div>
-            )}
-            {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
-              <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
-                {latexProjectionMarkup ? (
-                  <div
-                    className="text-slate-900 leading-relaxed max-w-3xl"
-                    style={latexOverlayStyle}
-                    dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
-                  />
-                ) : (
-                  <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
-                )}
-              </div>
-            )}
-            {!isOverlayMode && (
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
-              >
-                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              </button>
-            )}
-            {isOverlayMode && (
-              <div
-                className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
-                style={{
-                  pointerEvents: overlayControlsVisible ? 'auto' : 'none',
-                  cursor: overlayControlsVisible ? 'default' : undefined,
-                }}
-                onClick={closeOverlayControls}
-              >
-                <div className="canvas-overlay-controls__panel" onClick={event => {
-                  event.stopPropagation()
-                  kickOverlayAutoHide()
-                }}>
-                  <p className="canvas-overlay-controls__title">Canvas controls</p>
-                  {renderToolbarBlock()}
-                  <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
-                    Return to drawing
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+      Editor: {
+        load: (element: HTMLElement, editorType: string, options?: unknown) => Promise<any>
+      }
+    }
+  }
+}
+
 function loadIinkRuntime(): Promise<void> {
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('MyScript iink runtime can only load in a browser context.'))
@@ -145,8 +78,69 @@ function loadIinkRuntime(): Promise<void> {
   return scriptPromise ?? Promise.resolve()
 }
 
-// Named export for modules expecting a non-default import
-export { MyScriptMathCanvas }
+type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+type SnapshotPayload = {
+  symbols: any[] | null
+  latex?: string
+  jiix?: string | null
+  version: number
+  snapshotId: string
+  baseSymbolCount?: number
+}
+
+type SnapshotRecord = {
+  snapshot: SnapshotPayload
+  ts: number
+  reason: 'update' | 'clear'
+}
+
+type SnapshotMessage = {
+  clientId?: string
+  author?: string
+  snapshot?: SnapshotPayload | null
+  ts?: number
+  reason?: 'update' | 'clear'
+  originClientId?: string
+  targetClientId?: string
+}
+
+type ControlState = {
+  controllerId: string
+  controllerName?: string
+  ts: number
+} | null
+
+type LatexDisplayOptions = {
+  fontScale: number
+  textAlign: 'left' | 'center' | 'right'
+  alignAtEquals: boolean
+}
+
+type LatexDisplayState = {
+  enabled: boolean
+  latex: string
+  options: LatexDisplayOptions
+}
+
+type CanvasOrientation = 'portrait' | 'landscape'
+
+type PresenceClient = {
+  clientId: string
+  name?: string
+  isAdmin?: boolean
+}
+
+type OverlayControlsHandle = {
+  open: () => void
+  close: () => void
+  toggle: () => void
+}
+
+type BroadcastOptions = {
+  force?: boolean
+  reason?: 'update' | 'clear'
+}
 
 type MyScriptMathCanvasProps = {
   gradeLabel?: string
@@ -154,12 +148,14 @@ type MyScriptMathCanvasProps = {
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
-  boardId?: string // optional logical board identifier; if absent, we'll use a shared/global per grade
+  boardId?: string
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
 }
 
+const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
+const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
@@ -212,7 +208,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef }: MyScriptMathCanvasProps) {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -281,9 +277,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const adminOrientationPreferenceRef = useRef<CanvasOrientation>(initialOrientation)
   const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
   const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   const clientId = useMemo(() => {
-    const base = userId ? sanitizeIdentifier(userId) : 'guest'
+    const base = sanitizeIdentifier(userId || 'anonymous')
     const randomSuffix = Math.random().toString(36).slice(2, 8)
     return `${base}-${randomSuffix}`
   }, [userId])
@@ -2353,6 +2348,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             </div>
           )}
         </div>
+        )}
 
         {!isOverlayMode && renderToolbarBlock()}
 
@@ -2537,3 +2533,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     </div>
   )
 }
+
+export default MyScriptMathCanvas
+export { MyScriptMathCanvas }

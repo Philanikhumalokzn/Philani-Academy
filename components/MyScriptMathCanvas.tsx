@@ -1742,9 +1742,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const publishAdminCanvasToAll = useCallback(async () => {
     if (!isAdmin) return
-    await disableStudentPublishingAndTakeControl()
     await forcePublishCanvas()
-  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, isAdmin])
+  }, [forcePublishCanvas, isAdmin])
 
   const publishAdminLatexAndCanvasToAll = useCallback(async () => {
     if (!isAdmin) return

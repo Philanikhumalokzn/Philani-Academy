@@ -1773,9 +1773,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const clearAllStudentCanvases = useCallback(async () => {
     if (!isAdmin) return
-    await disableStudentPublishingAndTakeControl()
     const channel = channelRef.current
     if (!channel) return
+    const wasStudentPublishEnabled = isStudentPublishEnabledRef.current
+    const previousControl = controlStateRef.current
+
+    await disableStudentPublishingAndTakeControl()
+
     const ts = Date.now()
     const targets = connectedClients.filter(c => c.clientId !== clientIdRef.current)
     for (const target of targets) {
@@ -1791,7 +1795,43 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         console.warn('Failed to wipe student canvas', err)
       }
     }
-  }, [connectedClients, disableStudentPublishingAndTakeControl, isAdmin, userDisplayName])
+
+    // Restore publishing / control state after the one-time wipe
+    const tsRestore = Date.now()
+    const restoreControllerId = wasStudentPublishEnabled ? ALL_STUDENTS_ID : (previousControl?.controllerId ?? ALL_STUDENTS_ID)
+    const restoreControllerName = wasStudentPublishEnabled ? 'All Students' : (previousControl?.controllerName ?? 'All Students')
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: restoreControllerId !== ALL_STUDENTS_ID,
+        controllerId: restoreControllerId,
+        controllerName: restoreControllerName,
+        ts: tsRestore,
+      })
+      updateControlState({ controllerId: restoreControllerId, controllerName: restoreControllerName, ts: tsRestore })
+    } catch (err) {
+      console.warn('Failed to restore control state after wipe', err)
+    }
+
+    if (wasStudentPublishEnabled) {
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'student-broadcast',
+          enabled: true,
+          controllerId: ALL_STUDENTS_ID,
+          controllerName: 'All Students',
+          ts: tsRestore + 1,
+        })
+        setIsStudentPublishEnabled(true)
+        isStudentPublishEnabledRef.current = true
+      } catch (err) {
+        console.warn('Failed to re-enable student publishing after wipe', err)
+      }
+    }
+  }, [connectedClients, disableStudentPublishingAndTakeControl, isAdmin, updateControlState, userDisplayName])
 
   const navigateToPage = useCallback(
     async (targetIndex: number) => {

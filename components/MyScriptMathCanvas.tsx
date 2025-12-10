@@ -895,7 +895,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             }
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = isAdmin && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -913,7 +913,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           setLatexOutput(typeof latex === 'string' ? latex : '')
           setIsConverting(false)
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = isAdmin && isSharedPage && !isBroadcastPausedRef.current
+          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           if (forcedConvertDepthRef.current > 0) {
             forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
             return

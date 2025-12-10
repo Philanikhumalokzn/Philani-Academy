@@ -294,6 +294,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
+  const [studentViewScale, setStudentViewScale] = useState(0.9)
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
@@ -312,6 +313,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
+  const studentViewportRef = useRef<HTMLDivElement | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -2107,6 +2109,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
+  // On mount or layout change, pick a conservative default scale for student stacked view so full content is visible on small screens.
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+    const width = viewport.clientWidth || 1
+    const baseHeight = width * (4 / 5)
+    const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
+    const fitScale = Math.max(0.65, Math.min(1, availableHeight / baseHeight))
+    setStudentViewScale(fitScale)
+  }, [useStackedStudentLayout, studentSplitRatio])
+
+  const studentScaleControl = useMemo(() => {
+    if (!useStackedStudentLayout) return null
+    const clampScale = (value: number) => Math.min(1.6, Math.max(0.6, value))
+    const step = 0.1
+    const handleAdjust = (delta: number) => setStudentViewScale(curr => clampScale(curr + delta))
+    const handleFit = () => {
+      const viewport = studentViewportRef.current
+      if (!viewport) return
+      const width = viewport.clientWidth || 1
+      const baseHeight = width * (4 / 5)
+      const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
+      const fitScale = clampScale(availableHeight / baseHeight)
+      setStudentViewScale(fitScale)
+    }
+    return { handleAdjust, handleFit, clampScale }
+  }, [useStackedStudentLayout])
+
   const renderToolbarBlock = () => (
     <div className="canvas-toolbar">
       <div className="canvas-toolbar__buttons">
@@ -2279,14 +2310,55 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
             </div>
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
-              <p className="text-xs font-semibold text-slate-700 mb-2">Handwritten strokes</p>
-              <div className="border rounded bg-white relative overflow-hidden h-full">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-700">Handwritten strokes</p>
+                {studentScaleControl && (
+                  <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                    <button
+                      type="button"
+                      className="px-2 py-1 border rounded"
+                      onClick={() => studentScaleControl.handleAdjust(-0.1)}
+                    >
+                      -
+                    </button>
+                    <span className="px-1 w-12 text-center">{(studentViewScale * 100).toFixed(0)}%</span>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border rounded"
+                      onClick={() => studentScaleControl.handleAdjust(0.1)}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border rounded"
+                      onClick={studentScaleControl.handleFit}
+                    >
+                      Fit
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div
+                ref={studentViewportRef}
+                className="border rounded bg-white relative h-full overflow-auto"
+                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+              >
                 <div
-                  ref={editorHostRef}
-                  className={editorHostClass}
-                  style={{ ...editorHostStyle, height: '100%' }}
-                  data-orientation={canvasOrientation}
-                />
+                  style={{
+                    transform: `scale(${studentViewScale})`,
+                    transformOrigin: 'top left',
+                    width: `${100 / studentViewScale}%`,
+                    height: `${100 / studentViewScale}%`,
+                  }}
+                >
+                  <div
+                    ref={editorHostRef}
+                    className={editorHostClass}
+                    style={{ ...editorHostStyle, height: '100%' }}
+                    data-orientation={canvasOrientation}
+                  />
+                </div>
                 {(status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
                     Preparing collaborative canvas…

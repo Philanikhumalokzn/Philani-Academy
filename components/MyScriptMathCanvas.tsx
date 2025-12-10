@@ -250,6 +250,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [controlState, setControlState] = useState<ControlState>(null)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
@@ -267,6 +268,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const studentStackRef = useRef<HTMLDivElement | null>(null)
+  const splitDragActiveRef = useRef(false)
+  const splitDragStartYRef = useRef(0)
+  const splitStartRatioRef = useRef(0.55)
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
   const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
@@ -305,6 +310,33 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       editorInstanceRef.current?.resize?.()
     } catch {}
   }, [canvasOrientation, isFullscreen])
+
+  // Student split drag listeners
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!splitDragActiveRef.current) return
+      const stackEl = studentStackRef.current
+      if (!stackEl) return
+      const rect = stackEl.getBoundingClientRect()
+      const delta = event.clientY - splitDragStartYRef.current
+      const nextRatio = splitStartRatioRef.current + delta / Math.max(rect.height, 1)
+      const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
+      setStudentSplitRatio(clamped)
+    }
+
+    const handlePointerUp = () => {
+      if (!splitDragActiveRef.current) return
+      splitDragActiveRef.current = false
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -1996,9 +2028,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (useStackedStudentLayout) {
       return {
         width: '100%',
-        minHeight: '280px',
-        maxHeight: '420px',
-        aspectRatio: '4 / 5',
+        height: '100%',
+        minHeight: '220px',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }
@@ -2128,34 +2159,122 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     <div>
       <div className="flex flex-col gap-3">
         {useStackedStudentLayout && (
-          <div className="border rounded bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-800">Instructor LaTeX</p>
-              <span className={`text-xs ${latexDisplayState.enabled ? 'text-green-700' : 'text-slate-500'}`}>
-                {latexDisplayState.enabled ? 'Live' : 'Not broadcasting'}
-              </span>
+          <div
+            ref={studentStackRef}
+            className="border rounded bg-white p-0 shadow-sm flex flex-col"
+            style={{
+              minHeight: '520px',
+              height: '80vh',
+              maxHeight: 'calc(100vh - 140px)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              className="flex flex-col"
+              style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
+            >
+              <div className="flex items-center justify-between gap-3 px-4 pt-4">
+                <p className="text-sm font-semibold text-slate-800">Instructor LaTeX</p>
+                <span className={`text-xs ${latexDisplayState.enabled ? 'text-green-700' : 'text-slate-500'}`}>
+                  {latexDisplayState.enabled ? 'Live' : 'Not broadcasting'}
+                </span>
+              </div>
+              <div className="mt-2 px-4 pb-2 flex-1 min-h-[140px]">
+                <div className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">
+                  {latexDisplayState.enabled ? (
+                    latexProjectionMarkup ? (
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={latexOverlayStyle}
+                        dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                      />
+                    ) : (
+                      <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                    )
+                  ) : (
+                    <p className="text-slate-500 text-sm">Instructor has not enabled LaTeX display.</p>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="mt-3 min-h-[160px] bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">
-              {latexDisplayState.enabled ? (
-                latexProjectionMarkup ? (
-                  <div
-                    className="text-slate-900 leading-relaxed"
-                    style={latexOverlayStyle}
-                    dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
-                  />
-                ) : (
-                  <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
-                )
-              ) : (
-                <p className="text-slate-500 text-sm">Instructor has not enabled LaTeX display.</p>
-              )}
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              className="flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
+              onPointerDown={event => {
+                splitDragActiveRef.current = true
+                splitDragStartYRef.current = event.clientY
+                splitStartRatioRef.current = studentSplitRatio
+                document.body.style.userSelect = 'none'
+              }}
+            >
+              <div className="w-full h-0.5 bg-slate-200 relative">
+                <div className="absolute left-1/2 -translate-x-1/2 w-12 h-1.5 bg-slate-400 rounded-full" />
+              </div>
+            </div>
+            <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
+              <p className="text-xs font-semibold text-slate-700 mb-2">Handwritten strokes</p>
+              <div className="border rounded bg-white relative overflow-hidden h-full">
+                <div
+                  ref={editorHostRef}
+                  className={editorHostClass}
+                  style={{ ...editorHostStyle, height: '100%' }}
+                  data-orientation={canvasOrientation}
+                />
+                {(status === 'loading' || status === 'idle') && (
+                  <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
+                    Preparing collaborative canvas…
+                  </div>
+                )}
+                {status === 'error' && fatalError && (
+                  <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
+                    {fatalError}
+                  </div>
+                )}
+                {transientError && status === 'ready' && (
+                  <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
+                    {transientError}
+                  </div>
+                )}
+                {status === 'ready' && (
+                  <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
+                    Ready
+                  </div>
+                )}
+                {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+                  <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
+                    {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+                  </div>
+                )}
+                {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
+                  <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
+                    {latexProjectionMarkup ? (
+                      <div
+                        className="text-slate-900 leading-relaxed max-w-3xl"
+                        style={latexOverlayStyle}
+                        dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                      />
+                    ) : (
+                      <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                    )}
+                  </div>
+                )}
+                {!isOverlayMode && (
+                  <button
+                    type="button"
+                    onClick={toggleFullscreen}
+                    className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+                  >
+                    {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
-        {useStackedStudentLayout && (
-          <p className="text-xs font-semibold text-slate-700">Handwritten strokes</p>
-        )}
-        <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+
+        {!useStackedStudentLayout && (
+          <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
           <div
             ref={editorHostRef}
             className={editorHostClass}

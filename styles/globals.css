@@ -703,10 +703,7 @@ td{color:#f8fafc;}
 }
 
 @media (max-width: 768px){
-  .canvas-overlay-shell{align-items:stretch;justify-content:stretch;}
-  .canvas-overlay-shell__content{width:100vw;height:100vh;padding:0;border-radius:0;border:none;box-shadow:none;}
-  .canvas-overlay-shell__header{padding:0.85rem 1rem;background:rgba(2,6,24,0.9);position:sticky;top:0;z-index:1;}
-  .canvas-overlay-shell__canvas{border-radius:0;}
+  .canvas-overlay-shell__content{width:96vw;height:94vh;padding:1rem;border-radius:28px;}
   .canvas-overlay-shell__brand{flex-direction:column;align-items:flex-start;gap:0.5rem;}
   .canvas-overlay-shell__actions{flex-direction:column-reverse;align-items:stretch;gap:0.5rem;}
   .canvas-overlay-controls__panel{padding:1rem;}

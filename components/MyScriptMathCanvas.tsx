@@ -1162,6 +1162,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             const enabled = Boolean(data.enabled)
             setIsStudentPublishEnabled(enabled)
             isStudentPublishEnabledRef.current = enabled
+            if (enabled) {
+              const ts = data?.ts ?? Date.now()
+              const controllerId = data.controllerId || ALL_STUDENTS_ID
+              const controllerName = data.controllerName || 'All Students'
+              updateControlState({ controllerId, controllerName, ts })
+            }
             return
           }
           if (data?.action === 'convert') {
@@ -1333,6 +1339,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
                       author: userDisplayName,
                       action: 'student-broadcast',
                       enabled: true,
+                      controllerId: ALL_STUDENTS_ID,
+                      controllerName: 'All Students',
                       ts: Date.now(),
                     })
                   } catch (err) {
@@ -1517,14 +1525,20 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     isStudentPublishEnabledRef.current = next
     const channel = channelRef.current
     if (!channel) return
+    const ts = Date.now()
     try {
       await channel.publish('control', {
         clientId: clientIdRef.current,
         author: userDisplayName,
         action: 'student-broadcast',
         enabled: next,
-        ts: Date.now(),
+        controllerId: next ? ALL_STUDENTS_ID : controlStateRef.current?.controllerId,
+        controllerName: next ? 'All Students' : controlStateRef.current?.controllerName,
+        ts,
       })
+      if (next) {
+        updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts })
+      }
     } catch (err) {
       console.warn('Failed to toggle student publishing', err)
     }

@@ -210,6 +210,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
 }
 
 export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef }: MyScriptMathCanvasProps) {
+  const initialMobile = typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -235,9 +236,9 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isMobileViewport, setIsMobileViewport] = useState(false)
-  const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
+  const [isFullscreen, setIsFullscreen] = useState(initialMobile)
+  const [isMobileViewport, setIsMobileViewport] = useState(initialMobile)
+  const initialOrientation: CanvasOrientation = defaultOrientation || (initialMobile ? 'portrait' : isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
   // Broadcaster role removed: all clients can publish.

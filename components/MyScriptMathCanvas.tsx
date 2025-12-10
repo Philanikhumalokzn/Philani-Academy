@@ -1796,10 +1796,35 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       }
     }
 
+    // Clear any projected LaTeX on student screens
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'latex-display',
+        enabled: false,
+        latex: '',
+        ts: ts + 1,
+      })
+    } catch (err) {
+      console.warn('Failed to clear latex display for students', err)
+    }
+
+    // Republish admin canvas as authoritative snapshot so students settle on the latest state
+    try {
+      await forcePublishCanvas()
+    } catch (err) {
+      console.warn('Failed to republish admin canvas after wipe', err)
+    }
+
     // Restore publishing / control state after the one-time wipe
     const tsRestore = Date.now()
-    const restoreControllerId = wasStudentPublishEnabled ? ALL_STUDENTS_ID : (previousControl?.controllerId ?? ALL_STUDENTS_ID)
-    const restoreControllerName = wasStudentPublishEnabled ? 'All Students' : (previousControl?.controllerName ?? 'All Students')
+    const restoreControllerId = wasStudentPublishEnabled
+      ? ALL_STUDENTS_ID
+      : (previousControl?.controllerId ?? ALL_STUDENTS_ID)
+    const restoreControllerName = wasStudentPublishEnabled
+      ? 'All Students'
+      : (previousControl?.controllerName ?? 'All Students')
     try {
       await channel.publish('control', {
         clientId: clientIdRef.current,

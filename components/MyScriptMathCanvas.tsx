@@ -3,6 +3,8 @@ import { renderToString } from 'katex'
 
 const SCRIPT_ID = 'myscript-iink-script'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-js/dist/iink.min.js'
+const SCRIPT_FALLBACK_URL = 'https://cdn.jsdelivr.net/npm/iink-js@1.3.1/dist/iink.min.js'
+const SCRIPT_SECONDARY_URL = 'https://unpkg.com/iink-js@1.3.1/dist/iink.min.js'
 let scriptPromise: Promise<void> | null = null
 
 declare global {
@@ -28,45 +30,64 @@ function loadIinkRuntime(): Promise<void> {
     return scriptPromise
   }
 
-  scriptPromise = new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null
+  const loadScript = (id: string, src: string) =>
+    new Promise<void>((resolve, reject) => {
+      const existing = document.getElementById(id) as HTMLScriptElement | null
 
-    const handleLoad = () => {
-      resolve()
-    }
-
-    const handleError = () => {
-      console.error('Failed to load MyScript iink script')
-      reject(new Error('Failed to load the MyScript iink runtime.'))
-    }
-
-    if (existing) {
-      if (existing.getAttribute('data-loaded') === 'true') {
+      const handleLoad = () => {
         resolve()
+      }
+
+      const handleError = () => {
+        console.error('Failed to load MyScript iink script from', src)
+        reject(new Error('Failed to load the MyScript iink runtime.'))
+      }
+
+      if (existing) {
+        if (existing.getAttribute('data-loaded') === 'true') {
+          resolve()
+          return
+        }
+        existing.addEventListener('load', handleLoad, { once: true })
+        existing.addEventListener('error', handleError, { once: true })
         return
       }
-      existing.addEventListener('load', handleLoad, { once: true })
-      existing.addEventListener('error', handleError, { once: true })
-      return
+
+      const script = document.createElement('script')
+      script.id = id
+      script.src = src
+      script.async = true
+      script.defer = true
+      script.crossOrigin = 'anonymous'
+      script.addEventListener(
+        'load',
+        () => {
+          script.setAttribute('data-loaded', 'true')
+          resolve()
+        },
+        { once: true }
+      )
+      script.addEventListener('error', handleError, { once: true })
+      document.head.appendChild(script)
+    })
+
+  scriptPromise = (async () => {
+    await loadScript(SCRIPT_ID, SCRIPT_URL)
+
+    if (!window.iink?.Editor?.load) {
+      console.warn('Primary MyScript CDN did not expose the expected API, retrying pinned fallback.')
+      await loadScript(`${SCRIPT_ID}-fallback`, SCRIPT_FALLBACK_URL)
     }
 
-    const script = document.createElement('script')
-    script.id = SCRIPT_ID
-    script.src = SCRIPT_URL
-    script.async = true
-    script.defer = true
-    script.crossOrigin = 'anonymous'
-    script.addEventListener(
-      'load',
-      () => {
-        script.setAttribute('data-loaded', 'true')
-        resolve()
-      },
-      { once: true }
-    )
-    script.addEventListener('error', handleError, { once: true })
-    document.head.appendChild(script)
-  })
+    if (!window.iink?.Editor?.load) {
+      console.warn('Pinned fallback did not expose the expected API, retrying secondary CDN.')
+      await loadScript(`${SCRIPT_ID}-secondary`, SCRIPT_SECONDARY_URL)
+    }
+
+    if (!window.iink?.Editor?.load) {
+      throw new Error('MyScript iink runtime did not expose the expected API.')
+    }
+  })()
     .catch(err => {
       scriptPromise = null
       throw err

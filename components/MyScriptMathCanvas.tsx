@@ -1,10 +1,10 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
 
-const SCRIPT_ID = 'myscript-iink-script'
-const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-js/dist/iink.min.js'
-const SCRIPT_FALLBACK_URL = 'https://cdn.jsdelivr.net/npm/iink-js@1.3.1/dist/iink.min.js'
-const SCRIPT_SECONDARY_URL = 'https://unpkg.com/iink-js@1.3.1/dist/iink.min.js'
+const SCRIPT_ID = 'myscript-iink-ts-loader'
+const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
+const SCRIPT_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.js'
+const SCRIPT_SECONDARY_URL = 'https://cdn.jsdelivr.net/npm/iink-js@1.3.1/dist/iink.min.js'
 let scriptPromise: Promise<void> | null = null
 
 declare global {
@@ -22,8 +22,16 @@ function loadIinkRuntime(): Promise<void> {
     return Promise.reject(new Error('MyScript iink runtime can only load in a browser context.'))
   }
 
-  if (window.iink) {
+  const hasValidRuntime = () => Boolean(window.iink?.Editor?.load)
+
+  if (hasValidRuntime()) {
     return Promise.resolve()
+  }
+
+  if (window.iink && !hasValidRuntime()) {
+    try {
+      ;(window as any).iink = undefined
+    } catch {}
   }
 
   if (scriptPromise) {
@@ -44,13 +52,11 @@ function loadIinkRuntime(): Promise<void> {
       }
 
       if (existing) {
-        if (existing.getAttribute('data-loaded') === 'true') {
+        if (existing.getAttribute('data-loaded') === 'true' && hasValidRuntime()) {
           resolve()
           return
         }
-        existing.addEventListener('load', handleLoad, { once: true })
-        existing.addEventListener('error', handleError, { once: true })
-        return
+        existing.remove()
       }
 
       const script = document.createElement('script')

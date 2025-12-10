@@ -1682,19 +1682,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
-  const publishAdminCanvasToAll = useCallback(async () => {
-    if (!isAdmin) return
-    await disableStudentPublishingAndTakeControl()
-    await forcePublishCanvas()
-  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, isAdmin])
-
-  const publishAdminLatexAndCanvasToAll = useCallback(async () => {
-    if (!isAdmin) return
-    await disableStudentPublishingAndTakeControl()
-    await forcePublishLatex()
-    await forcePublishCanvas()
-  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, forcePublishLatex, isAdmin])
-
   const toggleLatexProjection = async () => {
     if (!isAdmin) return
     const nextEnabled = !latexDisplayStateRef.current.enabled
@@ -1752,6 +1739,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       console.warn('Failed to publish canvas snapshot', err)
     }
   }
+
+  const publishAdminCanvasToAll = useCallback(async () => {
+    if (!isAdmin) return
+    await disableStudentPublishingAndTakeControl()
+    await forcePublishCanvas()
+  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, isAdmin])
+
+  const publishAdminLatexAndCanvasToAll = useCallback(async () => {
+    if (!isAdmin) return
+    await disableStudentPublishingAndTakeControl()
+    await forcePublishLatex()
+    await forcePublishCanvas()
+  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, forcePublishLatex, isAdmin])
 
   const forceClearStudentCanvas = async (targetClientId: string) => {
     if (!isAdmin || !targetClientId) return

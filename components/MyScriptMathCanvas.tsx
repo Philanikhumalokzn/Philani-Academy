@@ -1104,7 +1104,6 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         }
 
         const handleSyncRequest = async (message: any) => {
-          if (!isAdmin) return
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
           const existingRecord = (() => {
@@ -1301,8 +1300,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
             try {
               const list = await channel.presence.get()
               setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
-              // When someone new enters, proactively push current snapshot (any client may respond)
-              if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current && isAdmin) {
+              // When someone new enters, proactively push current snapshot and states from any client with data.
+              if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {
                   const snap = collectEditorSnapshot(false)
                   return snap ? { snapshot: snap, ts: Date.now(), reason: 'update' as const } : null

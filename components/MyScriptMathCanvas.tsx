@@ -145,6 +145,9 @@ function loadIinkRuntime(): Promise<void> {
   return scriptPromise ?? Promise.resolve()
 }
 
+// Named export for modules expecting a non-default import
+export { MyScriptMathCanvas }
+
 type MyScriptMathCanvasProps = {
   gradeLabel?: string
   roomId: string

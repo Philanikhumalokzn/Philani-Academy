@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import MyScriptMathCanvas from './MyScriptMathCanvas'
+import { MyScriptMathCanvas } from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
 
 type CanvasOverlayProps = {

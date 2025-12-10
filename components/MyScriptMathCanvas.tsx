@@ -1774,10 +1774,26 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     if (!isAdmin) return
     const channel = channelRef.current
     if (!channel) return
-    const wasStudentPublishEnabled = isStudentPublishEnabledRef.current
-    const previousControl = controlStateRef.current
 
-    await disableStudentPublishingAndTakeControl()
+    // Snapshot current publishing state to restore after the wipe
+    const wasStudentPublishEnabled = isStudentPublishEnabledRef.current
+
+    // Temporarily disable student publishing to avoid bounce-back during wipes
+    isStudentPublishEnabledRef.current = false
+    setIsStudentPublishEnabled(false)
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'student-broadcast',
+        enabled: false,
+        controllerId: clientIdRef.current,
+        controllerName: userDisplayName,
+        ts: Date.now(),
+      })
+    } catch (err) {
+      console.warn('Failed to disable student publishing before wipe', err)
+    }
 
     const ts = Date.now()
     const targets = connectedClients.filter(c => c.clientId !== clientIdRef.current)
@@ -1816,26 +1832,20 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       console.warn('Failed to republish admin canvas after wipe', err)
     }
 
-    // Restore publishing / control state after the one-time wipe
+    // Restore control to all students (unlock) and optionally re-enable student publishing
     const tsRestore = Date.now()
-    const restoreControllerId = wasStudentPublishEnabled
-      ? ALL_STUDENTS_ID
-      : (previousControl?.controllerId ?? ALL_STUDENTS_ID)
-    const restoreControllerName = wasStudentPublishEnabled
-      ? 'All Students'
-      : (previousControl?.controllerName ?? 'All Students')
     try {
       await channel.publish('control', {
         clientId: clientIdRef.current,
         author: userDisplayName,
-        locked: restoreControllerId !== ALL_STUDENTS_ID,
-        controllerId: restoreControllerId,
-        controllerName: restoreControllerName,
+        locked: false,
+        controllerId: ALL_STUDENTS_ID,
+        controllerName: 'All Students',
         ts: tsRestore,
       })
-      updateControlState({ controllerId: restoreControllerId, controllerName: restoreControllerName, ts: tsRestore })
+      updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts: tsRestore })
     } catch (err) {
-      console.warn('Failed to restore control state after wipe', err)
+      console.warn('Failed to unlock after wipe', err)
     }
 
     if (wasStudentPublishEnabled) {
@@ -1855,7 +1865,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
         console.warn('Failed to re-enable student publishing after wipe', err)
       }
     }
-  }, [connectedClients, disableStudentPublishingAndTakeControl, isAdmin, updateControlState, userDisplayName])
+  }, [connectedClients, forcePublishCanvas, isAdmin, updateControlState, userDisplayName])
 
   const navigateToPage = useCallback(
     async (targetIndex: number) => {

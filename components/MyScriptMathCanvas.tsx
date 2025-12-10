@@ -1742,8 +1742,27 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
 
   const publishAdminCanvasToAll = useCallback(async () => {
     if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+
+    const ts = Date.now()
+    const targets = connectedClients.filter(c => c.clientId !== clientIdRef.current)
+    for (const target of targets) {
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'wipe',
+          targetClientId: target.clientId,
+          ts,
+        })
+      } catch (err) {
+        console.warn('Failed to wipe student canvas before publish', err)
+      }
+    }
+
     await forcePublishCanvas()
-  }, [forcePublishCanvas, isAdmin])
+  }, [connectedClients, forcePublishCanvas, isAdmin, userDisplayName])
 
   const publishAdminLatexAndCanvasToAll = useCallback(async () => {
     if (!isAdmin) return

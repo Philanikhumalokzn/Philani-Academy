@@ -293,6 +293,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
+  const studentSplitRatioRef = useRef(0.55)
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
@@ -311,9 +312,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
+  const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
   const splitStartRatioRef = useRef(0.55)
+  const splitDragPointerIdRef = useRef<number | null>(null)
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
   const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
@@ -339,6 +342,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [latexProjectionOptions])
 
   useEffect(() => {
+    studentSplitRatioRef.current = studentSplitRatio
+  }, [studentSplitRatio])
+
+  useEffect(() => {
     isStudentPublishEnabledRef.current = isStudentPublishEnabled
   }, [isStudentPublishEnabled])
 
@@ -358,16 +365,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!splitDragActiveRef.current) return
       const stackEl = studentStackRef.current
       if (!stackEl) return
+      event.preventDefault()
       const rect = stackEl.getBoundingClientRect()
       const delta = event.clientY - splitDragStartYRef.current
       const nextRatio = splitStartRatioRef.current + delta / Math.max(rect.height, 1)
       const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
       setStudentSplitRatio(clamped)
+      studentSplitRatioRef.current = clamped
     }
 
     const handlePointerUp = () => {
       if (!splitDragActiveRef.current) return
       splitDragActiveRef.current = false
+      const handle = splitHandleRef.current
+      const pointerId = splitDragPointerIdRef.current
+      if (handle && pointerId !== null) {
+        try {
+          handle.releasePointerCapture(pointerId)
+        } catch {}
+      }
+      splitDragPointerIdRef.current = null
+      splitStartRatioRef.current = studentSplitRatioRef.current
       document.body.style.userSelect = ''
     }
 
@@ -2241,11 +2259,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <div
               role="separator"
               aria-orientation="horizontal"
+              ref={splitHandleRef}
               className="flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
+              style={{ touchAction: 'none' }}
               onPointerDown={event => {
+                event.preventDefault()
                 splitDragActiveRef.current = true
                 splitDragStartYRef.current = event.clientY
-                splitStartRatioRef.current = studentSplitRatio
+                splitStartRatioRef.current = studentSplitRatioRef.current
+                splitDragPointerIdRef.current = event.pointerId
+                try {
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                } catch {}
                 document.body.style.userSelect = 'none'
               }}
             >

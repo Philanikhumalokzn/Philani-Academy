@@ -4,84 +4,84 @@ import { renderToString } from 'katex'
 declare global {
   interface Window {
     iink?: {
-      Editor: {
-        load: (element: HTMLElement, editorType: string, options?: unknown) => Promise<any>
-      }
-    }
-  }
-}
-
-type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
-
-type SnapshotPayload = {
-  symbols: any[] | null
-  latex?: string
-  jiix?: string | null
-  version: number
-  snapshotId: string
-  baseSymbolCount?: number
-}
-
-type SnapshotRecord = {
-  snapshot: SnapshotPayload
-  ts: number
-  reason: 'update' | 'clear'
-}
-
-type SnapshotMessage = {
-  clientId?: string
-  author?: string
-  snapshot?: SnapshotPayload | null
-  ts?: number
-  reason?: 'update' | 'clear'
-  originClientId?: string
-  targetClientId?: string
-}
-
-type ControlState = {
-  controllerId: string
-  controllerName?: string
-  ts: number
-} | null
-
-type LatexDisplayOptions = {
-  fontScale: number
-  textAlign: 'left' | 'center' | 'right'
-  alignAtEquals: boolean
-}
-
-type LatexDisplayState = {
-  enabled: boolean
-  latex: string
-  options: LatexDisplayOptions
-}
-
-type CanvasOrientation = 'portrait' | 'landscape'
-
-type PresenceClient = {
-  clientId: string
-  name?: string
-  isAdmin?: boolean
-}
-
-type OverlayControlsHandle = {
-  open: () => void
-  close: () => void
-  toggle: () => void
-}
-
-type BroadcastOptions = {
-  force?: boolean
-  reason?: 'update' | 'clear'
-}
-
-const SCRIPT_ID = 'myscript-iink-ts-loader'
-const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
-const DEFAULT_BROADCAST_DEBOUNCE_MS = 60
-const ALL_STUDENTS_ID = '__all__'
-
-let scriptPromise: Promise<void> | null = null
-
+        {!useStackedStudentLayout && (
+          <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+            <div
+              ref={editorHostRef}
+              className={editorHostClass}
+              style={editorHostStyle}
+              data-orientation={canvasOrientation}
+            />
+            {(status === 'loading' || status === 'idle') && (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
+                Preparing collaborative canvas…
+              </div>
+            )}
+            {status === 'error' && fatalError && (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
+                {fatalError}
+              </div>
+            )}
+            {transientError && status === 'ready' && (
+              <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
+                {transientError}
+              </div>
+            )}
+            {status === 'ready' && (
+              <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
+                Ready
+              </div>
+            )}
+            {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+              <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
+                {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+              </div>
+            )}
+            {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
+              <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
+                {latexProjectionMarkup ? (
+                  <div
+                    className="text-slate-900 leading-relaxed max-w-3xl"
+                    style={latexOverlayStyle}
+                    dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                  />
+                ) : (
+                  <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                )}
+              </div>
+            )}
+            {!isOverlayMode && (
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+              >
+                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              </button>
+            )}
+            {isOverlayMode && (
+              <div
+                className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+                style={{
+                  pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+                  cursor: overlayControlsVisible ? 'default' : undefined,
+                }}
+                onClick={closeOverlayControls}
+              >
+                <div className="canvas-overlay-controls__panel" onClick={event => {
+                  event.stopPropagation()
+                  kickOverlayAutoHide()
+                }}>
+                  <p className="canvas-overlay-controls__title">Canvas controls</p>
+                  {renderToolbarBlock()}
+                  <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                    Return to drawing
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 function loadIinkRuntime(): Promise<void> {
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('MyScript iink runtime can only load in a browser context.'))

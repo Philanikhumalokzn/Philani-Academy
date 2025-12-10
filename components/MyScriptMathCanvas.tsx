@@ -1543,6 +1543,41 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const disableStudentPublishingAndTakeControl = useCallback(async () => {
+    if (!isAdmin) return
+    setIsStudentPublishEnabled(false)
+    isStudentPublishEnabledRef.current = false
+    const channel = channelRef.current
+    const ts = Date.now()
+    try {
+      await channel?.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'student-broadcast',
+        enabled: false,
+        controllerId: clientIdRef.current,
+        controllerName: userDisplayName,
+        ts,
+      })
+    } catch (err) {
+      console.warn('Failed to disable student publishing', err)
+    }
+    updateControlState({ controllerId: clientIdRef.current, controllerName: userDisplayName, ts })
+    try {
+      await channel?.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: true,
+        controllerId: clientIdRef.current,
+        controllerName: userDisplayName,
+        ts: ts + 1,
+      })
+      lastControlBroadcastTsRef.current = ts + 1
+    } catch (err) {
+      console.warn('Failed to lock board for admin takeover', err)
+    }
+  }, [isAdmin, updateControlState, userDisplayName])
+
   const lockStudentEditing = async () => {
     if (!isAdmin) return
     if (controlStateRef.current && controlStateRef.current.controllerId === clientIdRef.current) return
@@ -1647,6 +1682,19 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     }
   }
 
+  const publishAdminCanvasToAll = useCallback(async () => {
+    if (!isAdmin) return
+    await disableStudentPublishingAndTakeControl()
+    await forcePublishCanvas()
+  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, isAdmin])
+
+  const publishAdminLatexAndCanvasToAll = useCallback(async () => {
+    if (!isAdmin) return
+    await disableStudentPublishingAndTakeControl()
+    await forcePublishLatex()
+    await forcePublishCanvas()
+  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, forcePublishLatex, isAdmin])
+
   const toggleLatexProjection = async () => {
     if (!isAdmin) return
     const nextEnabled = !latexDisplayStateRef.current.enabled
@@ -1748,9 +1796,10 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   const shareCurrentPageWithStudents = useCallback(async () => {
     if (!isAdmin) return
     persistCurrentPageSnapshot()
+    await disableStudentPublishingAndTakeControl()
     await forcePublishCanvas()
     setSharedPageIndex(pageIndex)
-  }, [forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot])
+  }, [disableStudentPublishingAndTakeControl, forcePublishCanvas, isAdmin, pageIndex, persistCurrentPageSnapshot])
 
   const handleOrientationChange = useCallback(
     (next: CanvasOrientation) => {
@@ -1901,7 +1950,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           <button
             className="btn"
             type="button"
-            onClick={() => runCanvasAction(forcePublishLatex)}
+            onClick={() => runCanvasAction(publishAdminLatexAndCanvasToAll)}
             disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
           >
             Publish LaTeX to Students
@@ -1917,7 +1966,13 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
           <button
             className="btn"
             type="button"
-            onClick={() => runCanvasAction(() => forcePublishCanvas(selectedClientId === 'all' ? undefined : selectedClientId))}
+            onClick={() => runCanvasAction(() => {
+              if (selectedClientId === 'all') {
+                publishAdminCanvasToAll()
+              } else {
+                forcePublishCanvas(selectedClientId)
+              }
+            })}
             disabled={status !== 'ready' || Boolean(fatalError)}
           >
             Publish Canvas to {selectedClientId === 'all' ? 'All Students' : 'Student'}

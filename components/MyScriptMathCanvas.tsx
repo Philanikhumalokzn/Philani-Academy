@@ -1980,6 +1980,8 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
     [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
   )
 
+  const isStudentView = !isAdmin
+  const useStackedStudentLayout = isStudentView
   const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
@@ -1987,6 +1989,16 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       return {
         width: '100%',
         height: '100%',
+        pointerEvents: disableCanvasInput ? 'none' : undefined,
+        cursor: disableCanvasInput ? 'default' : undefined,
+      }
+    }
+    if (useStackedStudentLayout) {
+      return {
+        width: '100%',
+        minHeight: '280px',
+        maxHeight: '420px',
+        aspectRatio: '4 / 5',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }
@@ -2001,7 +2013,7 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
       pointerEvents: disableCanvasInput ? 'none' : undefined,
       cursor: disableCanvasInput ? 'default' : undefined,
     }
-  }, [canvasOrientation, disableCanvasInput, isFullscreen])
+  }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -2115,6 +2127,34 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
   return (
     <div>
       <div className="flex flex-col gap-3">
+        {useStackedStudentLayout && (
+          <div className="border rounded bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-800">Instructor LaTeX</p>
+              <span className={`text-xs ${latexDisplayState.enabled ? 'text-green-700' : 'text-slate-500'}`}>
+                {latexDisplayState.enabled ? 'Live' : 'Not broadcasting'}
+              </span>
+            </div>
+            <div className="mt-3 min-h-[160px] bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">
+              {latexDisplayState.enabled ? (
+                latexProjectionMarkup ? (
+                  <div
+                    className="text-slate-900 leading-relaxed"
+                    style={latexOverlayStyle}
+                    dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                  />
+                ) : (
+                  <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                )
+              ) : (
+                <p className="text-slate-500 text-sm">Instructor has not enabled LaTeX display.</p>
+              )}
+            </div>
+          </div>
+        )}
+        {useStackedStudentLayout && (
+          <p className="text-xs font-semibold text-slate-700">Handwritten strokes</p>
+        )}
         <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
           <div
             ref={editorHostRef}
@@ -2142,12 +2182,12 @@ export default function MyScriptMathCanvas({ gradeLabel, roomId, userId, userDis
               Ready
             </div>
           )}
-          {isViewOnly && !(!isAdmin && latexDisplayState.enabled) && (
+          {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
               {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
             </div>
           )}
-          {!isAdmin && latexDisplayState.enabled && (
+          {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
             <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
               {latexProjectionMarkup ? (
                 <div

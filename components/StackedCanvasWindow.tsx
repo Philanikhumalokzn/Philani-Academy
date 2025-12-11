@@ -7,6 +7,7 @@ type CanvasOrientation = 'portrait' | 'landscape'
 type Props = {
   gradeLabel?: string | null
   roomId: string
+  boardId?: string
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
@@ -20,8 +21,20 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait' }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait' }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
+
+  const triggerOverlayControls = () => {
+    const handle = controlsHandleRef.current
+    if (!handle) return
+    if (handle.open) {
+      handle.open()
+      return
+    }
+    if (handle.toggle) {
+      handle.toggle()
+    }
+  }
 
   useEffect(() => {
     if (!isVisible || typeof window === 'undefined') return
@@ -41,7 +54,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDi
         <button
           type="button"
           className="live-canvas-window__controls live-canvas-window__controls--icon"
-          onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
+          onClick={triggerOverlayControls}
           aria-label="Open canvas controls"
         >
           <span aria-hidden="true">⚙</span>
@@ -51,7 +64,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDi
         <button
           type="button"
           className="live-canvas-window__floating-gear"
-          onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
+          onClick={triggerOverlayControls}
           aria-label="Open canvas controls"
         >
           <span aria-hidden="true">⚙</span>
@@ -60,6 +73,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDi
           uiMode="overlay"
           gradeLabel={gradeLabel || undefined}
           roomId={roomId}
+          boardId={boardId}
           userId={userId}
           userDisplayName={userDisplayName}
           isAdmin={isAdmin}

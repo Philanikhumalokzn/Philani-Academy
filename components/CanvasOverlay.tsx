@@ -8,13 +8,26 @@ type CanvasOverlayProps = {
   onClose: () => void
   gradeLabel?: string | null
   roomId: string
+  boardId?: string
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
 }
 
-export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
+export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
   const controlsHandleRef = useRef<{ open: () => void; close: () => void; toggle: () => void } | null>(null)
+
+  const triggerOverlayControls = () => {
+    const handle = controlsHandleRef.current
+    if (!handle) return
+    if (handle.open) {
+      handle.open()
+      return
+    }
+    if (handle.toggle) {
+      handle.toggle()
+    }
+  }
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return
     const handleKeydown = (event: KeyboardEvent) => {
@@ -52,7 +65,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             <button
               type="button"
               className="canvas-overlay-shell__controls canvas-overlay-shell__controls--icon"
-              onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
+              onClick={triggerOverlayControls}
               aria-label="Open canvas controls"
             >
               <span aria-hidden="true">⚙</span>
@@ -66,7 +79,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
           <button
             type="button"
             className="canvas-overlay-shell__floating-gear"
-            onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
+            onClick={triggerOverlayControls}
             aria-label="Open canvas controls"
           >
             <span aria-hidden="true">⚙</span>
@@ -83,6 +96,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             uiMode="overlay"
             gradeLabel={gradeLabel || undefined}
             roomId={roomId}
+            boardId={boardId}
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={isAdmin}

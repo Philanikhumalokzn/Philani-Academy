@@ -90,6 +90,7 @@ export default function Dashboard() {
   const [startsAt, setStartsAt] = useState('')
   const [minStartsAt, setMinStartsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
@@ -177,9 +178,11 @@ export default function Dashboard() {
   }
   const gradeTokenEndpoint = useMemo(() => {
     if (!gradeReady || !selectedGrade) return null
+    if (activeSessionId) return `/api/sessions/${activeSessionId}/token`
     return `/api/sessions/grade/${selectedGrade}/token`
-  }, [gradeReady, selectedGrade])
-  const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
+  }, [activeSessionId, gradeReady, selectedGrade])
+  const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId) || null, [sessions, activeSessionId])
+  const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade) && Boolean(activeSessionId)
   const canJoinLiveClass = canLaunchCanvasOverlay
   const getNextWindowZ = useCallback(() => {
     windowZCounterRef.current += 1
@@ -274,7 +277,7 @@ export default function Dashboard() {
 
   const showCanvasWindow = useCallback(() => {
     if (!canLaunchCanvasOverlay) {
-      alert('Sign in and choose a grade to open the shared canvas overlay.')
+      alert('Sign in, choose a grade, and select a session to open the shared canvas.')
       return
     }
     setLiveOverlayDismissed(false)
@@ -296,8 +299,8 @@ export default function Dashboard() {
       const baseWindow: LiveWindowConfig = {
         id: windowId,
         kind: 'canvas',
-        title: gradeReady ? activeGradeLabel : 'Canvas',
-        subtitle: 'Canvas',
+        title: activeSession?.title || (gradeReady ? activeGradeLabel : 'Canvas'),
+        subtitle: activeSession?.title || 'Canvas',
         position: { x: 0, y: 0 },
         size: { width: stageWidth, height: stageHeight },
         minimized: false,
@@ -307,7 +310,7 @@ export default function Dashboard() {
       }
       return [...prev, baseWindow]
     })
-  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
+  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, activeSession?.title, clampWindowPosition, getNextWindowZ])
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
@@ -335,13 +338,21 @@ export default function Dashboard() {
   }
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const gradeRoomName = useMemo(() => {
+    if (activeSessionId) return `session-${activeSessionId}`
     const appId = process.env.NEXT_PUBLIC_JAAS_APP_ID || ''
     const baseSlug = gradeSlug ?? 'public-room'
     const base = `philani-${baseSlug}`
     return appId ? `${appId}/${base}` : base
-  }, [gradeSlug])
-  const boardRoomId = useMemo(() => (gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'), [gradeSlug])
-  const overlayCanvasLabel = selectedGrade ? `Canvas (${gradeToLabel(selectedGrade)})` : 'Canvas workspace'
+  }, [activeSessionId, gradeSlug])
+  const boardRoomId = useMemo(() => {
+    if (activeSessionId) return `myscript-session-${activeSessionId}`
+    return gradeSlug ? `myscript-grade-${gradeSlug}` : 'myscript-grade-public'
+  }, [activeSessionId, gradeSlug])
+  const overlayCanvasLabel = activeSessionId
+    ? `Canvas (${sessions.find(s => s.id === activeSessionId)?.title || 'Session'})`
+    : selectedGrade
+    ? `Canvas (${gradeToLabel(selectedGrade)})`
+    : 'Canvas workspace'
   const realtimeUserId = useMemo(() => {
     const candidate = (session as any)?.user?.id as string | undefined
     if (candidate && typeof candidate === 'string') return candidate
@@ -452,6 +463,11 @@ export default function Dashboard() {
       if (res.ok) {
         const data = await res.json()
         setSessions(data)
+        setActiveSessionId(prev => {
+          if (prev && Array.isArray(data) && data.some((s: any) => s.id === prev)) return prev
+          if (Array.isArray(data) && data.length > 0) return data[0].id as string
+          return null
+        })
         setSessionsError(null)
       } else {
         const data = await res.json().catch(() => ({}))
@@ -766,6 +782,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setExpandedSessionId(null)
+    setActiveSessionId(null)
     setMaterials([])
     setMaterialsError(null)
     setMaterialTitle('')
@@ -774,8 +791,12 @@ export default function Dashboard() {
   }, [selectedGrade])
 
   useEffect(() => {
-    setLiveWindows(prev => prev.map(win => (win.kind === 'canvas' ? { ...win, title: gradeReady ? activeGradeLabel : win.title } : win)))
-  }, [gradeReady, activeGradeLabel])
+    setLiveWindows(prev => prev.map(win => {
+      if (win.kind !== 'canvas') return win
+      const nextTitle = activeSession?.title || (gradeReady ? activeGradeLabel : win.title)
+      return { ...win, title: nextTitle }
+    }))
+  }, [activeSession?.title, activeGradeLabel, gradeReady])
 
   useEffect(() => {
     if (canLaunchCanvasOverlay) return
@@ -1028,6 +1049,7 @@ export default function Dashboard() {
     const liveStatusMessage = () => {
       if (status !== 'authenticated') return 'Please sign in to join the live class.'
       if (!selectedGrade) return 'Select a grade to unlock the live class.'
+      if (!activeSessionId) return 'Pick an active session to link the canvas and live call.'
       if (liveOverlayDismissed) return 'Reopen the live view any time to jump back into class.'
       return 'Opening the live view puts the video call on top of the dashboard automatically.'
     }
@@ -1056,6 +1078,23 @@ export default function Dashboard() {
                 Canvas window
               </button>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold">Active session:</span>
+            <select
+              className="input min-w-[240px]"
+              value={activeSessionId ?? ''}
+              onChange={e => setActiveSessionId(e.target.value || null)}
+              disabled={sessions.length === 0}
+            >
+              <option value="">{sessions.length === 0 ? 'No sessions for this grade' : 'Select a session'}</option>
+              {sessions.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.title} — {new Date(s.startsAt).toLocaleString()}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs muted">Canvas and live call are scoped to this session.</span>
           </div>
           <p className="text-xs text-white">The live view takes over the screen for video, and canvases layer on top as draggable windows.</p>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
@@ -1751,7 +1790,7 @@ export default function Dashboard() {
                 <JitsiRoom
                   roomName={gradeRoomName}
                   displayName={session?.user?.name || session?.user?.email}
-                  sessionId={null}
+                  sessionId={activeSessionId}
                   tokenEndpoint={gradeTokenEndpoint}
                   passwordEndpoint={null}
                   isOwner={isOwnerUser}
@@ -1809,6 +1848,7 @@ export default function Dashboard() {
                       <StackedCanvasWindow
                         gradeLabel={selectedGrade ? activeGradeLabel : null}
                         roomId={boardRoomId}
+                        boardId={activeSessionId || undefined}
                         userId={realtimeUserId}
                         userDisplayName={realtimeDisplayName}
                         isAdmin={isOwnerUser}

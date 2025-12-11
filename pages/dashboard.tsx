@@ -45,6 +45,19 @@ type LessonMaterial = {
   createdBy?: string | null
 }
 
+type LatexSave = {
+  id: string
+  sessionKey: string
+  userId?: string | null
+  userEmail?: string | null
+  title: string
+  latex: string
+  shared: boolean
+  filename?: string | null
+  url?: string | null
+  createdAt: string
+}
+
 type LiveWindowKind = 'canvas'
 
 type WindowSnapshot = {
@@ -108,6 +121,9 @@ export default function Dashboard() {
   const [materialTitle, setMaterialTitle] = useState('')
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [materialUploading, setMaterialUploading] = useState(false)
+  const [latexSaves, setLatexSaves] = useState<{ shared: LatexSave[]; mine: LatexSave[] }>({ shared: [], mine: [] })
+  const [latexSavesLoading, setLatexSavesLoading] = useState(false)
+  const [latexSavesError, setLatexSavesError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
@@ -510,6 +526,30 @@ export default function Dashboard() {
     }
   }
 
+  async function fetchLatexSaves(sessionId: string) {
+    setLatexSavesError(null)
+    setLatexSavesLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/latex-saves`, { credentials: 'same-origin' })
+      if (res.ok) {
+        const data = await res.json()
+        const shared = Array.isArray(data?.shared) ? data.shared : []
+        const mine = Array.isArray(data?.mine) ? data.mine : []
+        setLatexSaves({ shared, mine })
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setLatexSavesError(data?.message || `Failed to load LaTeX saves (${res.status})`)
+        setLatexSaves({ shared: [], mine: [] })
+      }
+    } catch (err) {
+      console.error('fetchLatexSaves error', err)
+      setLatexSavesError(err instanceof Error ? err.message : 'Network error')
+      setLatexSaves({ shared: [], mine: [] })
+    } finally {
+      setLatexSavesLoading(false)
+    }
+  }
+
   function resetMaterialForm() {
     setMaterialTitle('')
     setMaterialFile(null)
@@ -531,6 +571,8 @@ export default function Dashboard() {
       setMaterials([])
       setMaterialsError(null)
       resetMaterialForm()
+      setLatexSaves({ shared: [], mine: [] })
+      setLatexSavesError(null)
       return
     }
     setExpandedSessionId(sessionId)
@@ -538,6 +580,7 @@ export default function Dashboard() {
     setMaterialsError(null)
     resetMaterialForm()
     fetchMaterials(sessionId)
+    fetchLatexSaves(sessionId)
   }
 
   async function uploadMaterial(e: React.FormEvent) {
@@ -1202,6 +1245,72 @@ export default function Dashboard() {
                           ))}
                         </ul>
                       )}
+
+                      <div className="pt-3 border-t space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-sm">LaTeX saves</p>
+                          <button
+                            type="button"
+                            className="btn btn-ghost text-xs"
+                            onClick={() => fetchLatexSaves(s.id)}
+                            disabled={latexSavesLoading}
+                          >
+                            {latexSavesLoading ? 'Refreshing…' : 'Refresh'}
+                          </button>
+                        </div>
+                        {latexSavesError ? (
+                          <div className="text-sm text-red-600">{latexSavesError}</div>
+                        ) : latexSavesLoading ? (
+                          <div className="text-sm muted">Loading saved LaTeX…</div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div>
+                              <p className="text-xs uppercase tracking-wide muted mb-1">Class saves</p>
+                              {latexSaves.shared.length === 0 ? (
+                                <div className="text-sm muted">No class saves yet.</div>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {latexSaves.shared.map(save => (
+                                    <li key={save.id} className="flex items-center justify-between gap-3 p-2 border rounded">
+                                      <div>
+                                        <div className="font-medium text-sm">{save.title}</div>
+                                        <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
+                                      </div>
+                                      {save.url && (
+                                        <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
+                                          Download
+                                        </a>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-wide muted mb-1">My saves</p>
+                              {latexSaves.mine.length === 0 ? (
+                                <div className="text-sm muted">No personal saves yet.</div>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {latexSaves.mine.map(save => (
+                                    <li key={save.id} className="flex items-center justify-between gap-3 p-2 border rounded">
+                                      <div>
+                                        <div className="font-medium text-sm">{save.title}</div>
+                                        <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
+                                      </div>
+                                      {save.url && (
+                                        <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
+                                          Download
+                                        </a>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </li>

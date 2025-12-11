@@ -2744,6 +2744,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
         )}
 
+        {!isOverlayMode && isAdmin && (
+          <div className="flex items-center gap-2 text-xs mb-1">
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={() => saveLatexSnapshot({ shared: true })}
+              disabled={isSavingLatex}
+            >
+              {isSavingLatex ? 'Saving…' : 'Save class LaTeX'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              onClick={fetchLatexSaves}
+              disabled={isSavingLatex}
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              onClick={() => handleLoadSavedLatex('shared')}
+              disabled={!latestSharedLatex}
+            >
+              Load class save
+            </button>
+            {latexSaveError && <span className="text-red-600">{latexSaveError}</span>}
+          </div>
+        )}
+
         {!isOverlayMode && latexOutput && (
           <div>
             <p className="text-xs font-semibold uppercase text-white mb-1">Latest LaTeX export</p>

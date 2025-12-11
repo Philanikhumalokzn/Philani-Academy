@@ -78,7 +78,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const safeSession = sanitizeSegment(sessionKey)
     const scopeFolder = willShare ? 'shared' : sanitizeSegment(userId || 'participant')
     const filename = `${Date.now()}_${sanitizeSegment(saveTitle)}.tex`
-    const relativePath = path.posix.join('latex', safeSession, scopeFolder, filename)
+    const relativePath = path.posix.join('sessions', safeSession, 'latex', scopeFolder, filename)
 
     try {
       const stored = await saveToStorage(relativePath, latex)

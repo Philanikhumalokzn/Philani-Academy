@@ -2366,13 +2366,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               className="flex flex-col"
               style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
             >
-              <div className="flex items-center justify-between gap-3 px-4 pt-4">
-                <p className="text-sm font-semibold text-slate-800">Instructor LaTeX</p>
-                <span className={`text-xs ${latexDisplayState.enabled ? 'text-green-700' : 'text-slate-500'}`}>
-                  {latexDisplayState.enabled ? 'Live' : 'Not broadcasting'}
-                </span>
-              </div>
-              <div className="px-4 pt-2 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+              <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                 {isAdmin ? (
                   <button
                     type="button"
@@ -2458,8 +2452,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
             </div>
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-slate-700">Handwritten strokes</p>
+              <div className="flex items-center justify-end mb-2">
                 {studentScaleControl && (
                   <div className="flex items-center gap-1 text-[11px] text-slate-600">
                     <button
@@ -2480,7 +2473,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     <button
                       type="button"
                       className="px-2 py-1 border rounded"
-                      onClick={studentScaleControl.handleFit}
+                      onClick={() => studentScaleControl.handleFit()}
                     >
                       Fit
                     </button>

@@ -49,6 +49,14 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             <div className="canvas-overlay-shell__badge">{gradeLabel || 'Shared board'}</div>
           </div>
           <div className="canvas-overlay-shell__actions">
+            <button
+              type="button"
+              className="canvas-overlay-shell__controls canvas-overlay-shell__controls--icon"
+              onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
+              aria-label="Open canvas controls"
+            >
+              <span aria-hidden="true">⚙</span>
+            </button>
             <button type="button" className="canvas-overlay-shell__close" onClick={onClose}>
               Close
             </button>
@@ -58,7 +66,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
           <button
             type="button"
             className="canvas-overlay-shell__floating-gear"
-            onClick={() => controlsHandleRef.current?.toggle()}
+            onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
             aria-label="Open canvas controls"
           >
             <span aria-hidden="true">⚙</span>

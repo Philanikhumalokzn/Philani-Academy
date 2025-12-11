@@ -38,12 +38,20 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDi
           <BrandLogo height={32} label className="text-white" labelClassName="text-white/60 tracking-[0.3em] uppercase text-[10px]" />
           <span className="live-canvas-window__badge">{gradeLabel || 'Shared board'}</span>
         </div>
+        <button
+          type="button"
+          className="live-canvas-window__controls live-canvas-window__controls--icon"
+          onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
+          aria-label="Open canvas controls"
+        >
+          <span aria-hidden="true">⚙</span>
+        </button>
       </div>
       <div className="live-canvas-window__body">
         <button
           type="button"
           className="live-canvas-window__floating-gear"
-          onClick={() => controlsHandleRef.current?.toggle()}
+          onClick={() => controlsHandleRef.current?.open?.() ?? controlsHandleRef.current?.toggle?.()}
           aria-label="Open canvas controls"
         >
           <span aria-hidden="true">⚙</span>

@@ -87,6 +87,23 @@ model LessonMaterial {
   createdAt   DateTime @default(now())
 }
 
+model LatexSave {
+  id         String   @id @default(cuid())
+  sessionKey String
+  userId     String?
+  userEmail  String?
+  title      String
+  latex      String
+  shared     Boolean  @default(false)
+  filename   String?
+  url        String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sessionKey])
+  @@index([sessionKey, userId])
+}
+
 model SubscriptionPlan {
   id            String   @id @default(cuid())
   name          String

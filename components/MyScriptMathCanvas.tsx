@@ -295,6 +295,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
+  const [latestSharedLatex, setLatestSharedLatex] = useState<string | null>(null)
+  const [latestPersonalLatex, setLatestPersonalLatex] = useState<string | null>(null)
+  const [isSavingLatex, setIsSavingLatex] = useState(false)
+  const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
@@ -319,6 +323,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const splitDragStartYRef = useRef(0)
   const splitStartRatioRef = useRef(0.55)
   const splitDragPointerIdRef = useRef<number | null>(null)
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedHashRef = useRef<string | null>(null)
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
   const sharedPageIndexRef = useRef(0)
   const forcedConvertDepthRef = useRef(0)
@@ -2109,6 +2115,103 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
+  const sessionKey = roomId
+
+  const applyLoadedLatex = useCallback((latexValue: string | null) => {
+    if (!latexValue) return
+    setLatexDisplayState(curr => ({ ...curr, enabled: true, latex: latexValue }))
+  }, [])
+
+  const fetchLatexSaves = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves`)
+      if (!res.ok) return
+      const data = await res.json()
+      const latestShared = Array.isArray(data?.shared) && data.shared.length > 0 ? data.shared[0] : null
+      const latestMine = Array.isArray(data?.mine) && data.mine.length > 0 ? data.mine[0] : null
+      setLatestSharedLatex(latestShared?.latex || null)
+      setLatestPersonalLatex(latestMine?.latex || null)
+    } catch (err) {
+      console.warn('Failed to fetch saved LaTeX', err)
+    }
+  }, [sessionKey])
+
+  const saveLatexSnapshot = useCallback(
+    async (options?: { shared?: boolean; auto?: boolean }) => {
+      const isAuto = Boolean(options?.auto)
+      const latexValue = (latexDisplayStateRef.current.latex || latexOutput || '').trim()
+      if (!latexValue) return
+      const sharedFlag = options?.shared ?? isAdmin
+      const hash = `${sharedFlag ? 'shared' : 'mine'}::${latexValue}`
+      if (isAuto && lastSavedHashRef.current === hash) return
+
+      if (!isAuto) {
+        setIsSavingLatex(true)
+        setLatexSaveError(null)
+      }
+
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latex: latexValue, shared: sharedFlag }),
+        })
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null)
+          const message = errorData?.message || 'Failed to save LaTeX'
+          throw new Error(typeof message === 'string' ? message : 'Failed to save LaTeX')
+        }
+        const payload = await res.json()
+        if (payload?.shared) {
+          setLatestSharedLatex(payload.latex || latexValue)
+        } else {
+          setLatestPersonalLatex(payload.latex || latexValue)
+        }
+        lastSavedHashRef.current = hash
+      } catch (err: any) {
+        const message = err?.message || 'Failed to save LaTeX'
+        if (!isAuto) setLatexSaveError(message)
+        console.warn('Save LaTeX error', err)
+      } finally {
+        if (!isAuto) setIsSavingLatex(false)
+      }
+    },
+    [isAdmin, latexOutput, sessionKey]
+  )
+
+  useEffect(() => {
+    fetchLatexSaves()
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current)
+      }
+    }
+  }, [fetchLatexSaves])
+
+  useEffect(() => {
+    const latexValue = (latexDisplayState.latex || latexOutput || '').trim()
+    if (!latexValue) return
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current)
+    }
+    autosaveTimeoutRef.current = setTimeout(() => {
+      saveLatexSnapshot({ shared: isAdmin, auto: true })
+    }, 2500)
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current)
+      }
+    }
+  }, [isAdmin, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
+
+  const handleLoadSavedLatex = useCallback(
+    (scope: 'shared' | 'mine') => {
+      const value = scope === 'shared' ? latestSharedLatex : latestPersonalLatex
+      applyLoadedLatex(value || null)
+    },
+    [applyLoadedLatex, latestPersonalLatex, latestSharedLatex]
+  )
+
   // On mount or layout change, pick a conservative default scale for student stacked view so full content is visible on small screens.
   useEffect(() => {
     if (!useStackedStudentLayout) return
@@ -2268,6 +2371,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <span className={`text-xs ${latexDisplayState.enabled ? 'text-green-700' : 'text-slate-500'}`}>
                   {latexDisplayState.enabled ? 'Live' : 'Not broadcasting'}
                 </span>
+              </div>
+              <div className="px-4 pt-2 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className="px-2 py-1 border rounded"
+                    onClick={() => saveLatexSnapshot({ shared: true })}
+                    disabled={isSavingLatex}
+                  >
+                    {isSavingLatex ? 'Saving…' : 'Save for class'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="px-2 py-1 border rounded"
+                    onClick={() => saveLatexSnapshot({ shared: false })}
+                    disabled={isSavingLatex}
+                  >
+                    {isSavingLatex ? 'Saving…' : 'Save my copy'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="px-2 py-1 border rounded"
+                  onClick={() => handleLoadSavedLatex('shared')}
+                  disabled={!latestSharedLatex}
+                >
+                  Load class
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 border rounded"
+                  onClick={() => handleLoadSavedLatex('mine')}
+                  disabled={!latestPersonalLatex}
+                >
+                  Load my save
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 border rounded"
+                  onClick={fetchLatexSaves}
+                >
+                  Refresh
+                </button>
+                {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
               </div>
               <div className="mt-2 px-4 pb-2 flex-1 min-h-[140px]">
                 <div className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">

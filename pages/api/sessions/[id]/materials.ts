@@ -97,7 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const finalTitle = (providedTitle || uploadedFile.originalFilename || 'Lesson material').toString().trim()
 
       const safeFilename = sanitizeFilename(uploadedFile.originalFilename)
-      const relativePath = path.posix.join('materials', sessionRecord.id, safeFilename).replace(/\\/g, '/')
+      const relativePath = path.posix.join('sessions', sessionRecord.id, 'materials', safeFilename).replace(/\\/g, '/')
       const blobToken = process.env.BLOB_READ_WRITE_TOKEN
 
       let storedFilename = relativePath
@@ -120,7 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(500).json({ message: blobErr?.message || 'Failed to upload to blob storage' })
         }
       } else {
-        const materialsDir = path.join(process.cwd(), 'public', 'materials', sessionRecord.id)
+        const materialsDir = path.join(process.cwd(), 'public', 'sessions', sessionRecord.id, 'materials')
         await fs.mkdir(materialsDir, { recursive: true })
         const destinationPath = path.join(materialsDir, safeFilename)
         await fs.copyFile(uploadedFile.filepath, destinationPath)

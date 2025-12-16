@@ -128,6 +128,7 @@ export default function Dashboard() {
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
   const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
@@ -272,11 +273,18 @@ export default function Dashboard() {
     }))
   }, [overlayBounds.height, overlayBounds.width, clampWindowPosition, getNextWindowZ])
 
-  const showCanvasWindow = useCallback(() => {
+  const showCanvasWindow = useCallback((sessionId?: string | null) => {
     if (!canLaunchCanvasOverlay) {
       alert('Sign in and choose a grade to open the shared canvas overlay.')
       return
     }
+    const nextSessionId = sessionId ?? activeSessionId
+    if (!nextSessionId) {
+      alert('Select a session before opening the canvas so your work is saved to the correct session.')
+      return
+    }
+    if (nextSessionId !== activeSessionId) setActiveSessionId(nextSessionId)
+
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
     const windowId = 'canvas-live-window'
@@ -307,7 +315,30 @@ export default function Dashboard() {
       }
       return [...prev, baseWindow]
     })
-  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
+  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ, activeSessionId])
+
+  const openLiveForSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId)
+    setLiveOverlayDismissed(false)
+    setLiveOverlayOpen(true)
+  }, [])
+
+  const startLiveForSession = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/present`, {
+        method: 'POST',
+        credentials: 'same-origin'
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        alert(data?.message || `Failed to start session (${res.status})`)
+        return
+      }
+      openLiveForSession(sessionId)
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    }
+  }, [openLiveForSession])
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
@@ -575,6 +606,7 @@ export default function Dashboard() {
       setLatexSavesError(null)
       return
     }
+    setActiveSessionId(sessionId)
     setExpandedSessionId(sessionId)
     setMaterials([])
     setMaterialsError(null)
@@ -740,6 +772,12 @@ export default function Dashboard() {
     if (!gradeReady || !selectedGrade) return
     fetchSessionsForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
+
+  useEffect(() => {
+    if (activeSessionId) return
+    if (!sessions || sessions.length === 0) return
+    setActiveSessionId(sessions[0].id)
+  }, [sessions, activeSessionId])
 
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return
@@ -1050,7 +1088,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={showCanvasWindow}
+                onClick={() => showCanvasWindow(activeSessionId)}
                 disabled={!canLaunchCanvasOverlay}
               >
                 Canvas window
@@ -1180,7 +1218,31 @@ export default function Dashboard() {
                       <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Join</a>
+                      {canCreateSession && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => startLiveForSession(s.id)}
+                        >
+                          Start class
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => openLiveForSession(s.id)}
+                      >
+                        Open class
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => showCanvasWindow(s.id)}
+                        disabled={!canLaunchCanvasOverlay}
+                      >
+                        Canvas
+                      </button>
+                      <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-ghost">Link</a>
                       <button
                         type="button"
                         className="btn"
@@ -1658,7 +1720,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                  onClick={showCanvasWindow}
+                  onClick={() => showCanvasWindow(activeSessionId)}
                   disabled={!canLaunchCanvasOverlay}
                 >
                   Canvas
@@ -1734,7 +1796,7 @@ export default function Dashboard() {
               <div className="live-call-overlay__floating-actions">
                 <button
                   type="button"
-                  onClick={showCanvasWindow}
+                  onClick={() => showCanvasWindow(activeSessionId)}
                   disabled={!canLaunchCanvasOverlay}
                   className="live-call-overlay__canvas-toggle"
                   aria-label="Open canvas"
@@ -1745,20 +1807,20 @@ export default function Dashboard() {
                   ×
                 </button>
               </div>
-              {canJoinLiveClass ? (
+              {canJoinLiveClass && activeSessionId ? (
                 <JitsiRoom
                   roomName={gradeRoomName}
                   displayName={session?.user?.name || session?.user?.email}
-                  sessionId={null}
-                  tokenEndpoint={gradeTokenEndpoint}
+                  sessionId={activeSessionId}
+                  tokenEndpoint={null}
                   passwordEndpoint={null}
                   isOwner={isOwnerUser}
                   onControlsChange={setLiveControls}
                 />
               ) : (
                 <div className="live-call-overlay__placeholder">
-                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Awaiting grade</p>
-                  <p className="text-white text-lg font-semibold text-center">Sign in and pick a grade to unlock the live call.</p>
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
+                  <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
                 </div>
               )}
             </div>
@@ -1788,7 +1850,8 @@ export default function Dashboard() {
                     {win.kind === 'canvas' && (
                       <StackedCanvasWindow
                         gradeLabel={selectedGrade ? activeGradeLabel : null}
-                        roomId={boardRoomId}
+                        roomId={activeSessionId ?? boardRoomId}
+                        boardId={activeSessionId ?? boardRoomId}
                         userId={realtimeUserId}
                         userDisplayName={realtimeDisplayName}
                         isAdmin={isOwnerUser}

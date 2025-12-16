@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../../lib/prisma'
 import { getToken } from 'next-auth/jwt'
+import { normalizeGradeInput } from '../../../../lib/grades'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -10,9 +11,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
+  const role = (token as any)?.role as string | undefined
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
-  if (!ownerEmail) return res.status(500).json({ message: 'Owner email not configured' })
-  if ((token as any).email !== ownerEmail) return res.status(403).json({ message: 'Forbidden' })
+  const isOwner = ownerEmail && (token as any).email === ownerEmail
+
+  const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) }, select: { grade: true } })
+  if (!rec) return res.status(404).json({ message: 'Session not found' })
+
+  const sessionGrade = normalizeGradeInput((rec as any)?.grade as string | undefined)
+  const userGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  const isAdmin = role === 'admin'
+  const isTeacher = role === 'teacher'
+  const teacherAllowed = Boolean(isTeacher && sessionGrade && userGrade && sessionGrade === userGrade)
+
+  if (!isOwner && !isAdmin && !teacherAllowed) {
+    return res.status(403).json({ message: 'Forbidden' })
+  }
 
   try {
     await prisma.sessionRecord.update({ where: { id: String(id) }, data: { jitsiActive: true } as any })

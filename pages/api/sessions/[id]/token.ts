@@ -5,9 +5,9 @@ import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
 import jwt from 'jsonwebtoken'
 
-// This endpoint will prefer RS256 signing (using JAAS_PRIVATE_KEY + JAAS_KEY_ID)
-// if provided, otherwise it falls back to the existing HS256 behavior for
-// compatibility.
+// Session-scoped JaaS token, aligned with the grade token logic. Prefers RS256
+// (JAAS_PRIVATE_KEY + JAAS_KEY_ID + JAAS_APP_ID) and falls back to HS256 using
+// JITSI_JAAS_* credentials.
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
@@ -42,27 +42,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const roomSegment = `philani-${String(id)}-${h}`
 
   const now = Math.floor(Date.now() / 1000)
-  // Match the HTML tool defaults closely: TTL defaults to 7200s (2h)
   const ttl = parseInt(process.env.JITSI_JAAS_EXP_SECS || '7200', 10)
   const exp = now + ttl
 
-  // If JAAS private key + key id + app id are present, sign RS256 using the
-  // provided key. Otherwise fall back to HS256 using the existing api secret.
   const jaasPriv = process.env.JAAS_PRIVATE_KEY || ''
   const jaasKid = process.env.JAAS_KEY_ID || ''
-  const jaasApp = process.env.JAAS_APP_ID || ''
+  const jaasApp = process.env.JAAS_APP_ID || process.env.JITSI_JAAS_APP_ID || ''
 
+  const role = (authToken as any)?.role
+  const isAdmin = role === 'admin'
+  const isTeacher = role === 'teacher'
+  const isModerator = Boolean(isOwner || isAdmin || isTeacher)
+
+  // RS256 path (matches grade token structure)
   if (jaasPriv && jaasKid && jaasApp) {
-    // RS256 path using the exact payload shape from the JaaS HTML signer (meticulously mirrored)
     try {
-      const privateKey = jaasPriv.replace(/\\n/g, '\n')
+      const privateKey = jaasPriv.replace(/\n/g, '\n')
 
-      // Determine moderator: admin role or owner email
-      const role = (authToken as any)?.role
-      const isAdmin = role === 'admin'
-      const moderator = Boolean(isOwner || isAdmin)
-
-      // Features and user block copied from the provided client tool (with safe defaults)
       const features = {
         livestreaming: true,
         'file-upload': true,
@@ -71,20 +67,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         transcription: true,
         'list-visitors': false,
         recording: true,
-        flip: false
+        flip: false,
+        'lobby-mode': 'enabled'
       }
 
       const user = {
         'hidden-from-recorder': false,
-        moderator,
-        name: (authToken as any)?.name || (authToken as any)?.email || 'User',
-        id: (authToken as any)?.sub || (authToken as any)?.email || 'user',
+        moderator: isModerator,
+        name: (authToken as any)?.name || (authToken as any)?.email || (isModerator ? 'Instructor' : 'Learner'),
+        id: (authToken as any)?.sub || (authToken as any)?.email || (isModerator ? 'instructor' : 'learner'),
         avatar: '',
         email: (authToken as any)?.email || ''
       }
-
-      // For learners (non-owner/non-admin), lock token to a single room; for admins/owner, allow all rooms
-      const roomClaim = moderator ? '*' : roomSegment
 
       const payload: any = {
         aud: 'jitsi',
@@ -94,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         nbf: now - 5,
         sub: jaasApp,
         context: { features, user },
-        room: roomClaim
+        room: roomSegment
       }
 
       const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', keyid: jaasKid })
@@ -106,14 +100,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  // Fallback HS256 path (existing behavior)
+  // HS256 fallback (legacy JaaS API key/secret)
   const appId = process.env.JITSI_JAAS_APP_ID || ''
   const apiKey = process.env.JITSI_JAAS_API_KEY || ''
   const apiSecret = process.env.JITSI_JAAS_API_SECRET || ''
   if (!appId || !apiKey || !apiSecret) return res.status(500).json({ message: 'JaaS credentials not configured' })
 
   const header = { alg: 'HS256', typ: 'JWT' }
-  const payload = { aud: appId, iss: apiKey || appId, sub: apiKey, room: roomSegment, exp }
+  const payload = {
+    aud: appId,
+    iss: apiKey || appId,
+    sub: apiKey,
+    room: roomSegment,
+    exp,
+    context: { features: { 'lobby-mode': 'enabled' } }
+  }
   const b64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const unsigned = `${b64(header)}.${b64(payload)}`
   const signature = crypto.createHmac('sha256', apiSecret).update(unsigned).digest('base64url')

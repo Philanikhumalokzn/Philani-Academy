@@ -166,6 +166,8 @@ type LatexDisplayState = {
   options: LatexDisplayOptions
 }
 
+type BoardSkin = 'black' | 'white' | 'green'
+
 type CanvasOrientation = 'portrait' | 'landscape'
 
 type PresenceClient = {
@@ -195,6 +197,7 @@ type MyScriptMathCanvasProps = {
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
+  onOverlayChromeVisibilityChange?: (visible: boolean) => void
 }
 
 const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
@@ -251,7 +254,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -284,6 +287,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isCompactViewport, setIsCompactViewport] = useState(false)
   const [stackedLatexControlsVisible, setStackedLatexControlsVisible] = useState(false)
   const stackedLatexHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [boardSkin, setBoardSkin] = useState<BoardSkin>('black')
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -358,6 +362,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const KEY = 'pa-board-skin'
+    const readSkin = () => {
+      const raw = window.localStorage.getItem(KEY)
+      const skin: BoardSkin = raw === 'white' || raw === 'green' || raw === 'black' ? raw : 'black'
+      setBoardSkin(skin)
+      if (!raw) {
+        try {
+          window.localStorage.setItem(KEY, skin)
+        } catch {}
+      }
+    }
+    readSkin()
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== KEY) return
+      readSkin()
+    }
+    const handleCustom = () => readSkin()
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener('pa-board-skin-change', handleCustom as any)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('pa-board-skin-change', handleCustom as any)
+    }
+  }, [])
+
+  useEffect(() => {
     clientIdRef.current = clientId
   }, [clientId])
 
@@ -388,8 +419,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     clearStackedLatexAutoHide()
     stackedLatexHideTimeoutRef.current = setTimeout(() => {
       setStackedLatexControlsVisible(false)
-    }, 3500)
+    }, 1500)
   }, [clearStackedLatexAutoHide, isCompactViewport, isOverlayMode])
+
+  useEffect(() => {
+    if (!onOverlayChromeVisibilityChange) return
+    if (!isOverlayMode && !isCompactViewport) return
+    onOverlayChromeVisibilityChange(stackedLatexControlsVisible)
+  }, [isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange, stackedLatexControlsVisible])
 
   useEffect(() => {
     return () => {
@@ -2130,7 +2167,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isStudentView = !isAdmin
   const useStackedStudentLayout = isStudentView
   const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
-  const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
+  const editorHostClass = `${isFullscreen ? 'w-full h-full' : 'w-full'} myscript-editor-host myscript-editor-host--${boardSkin}`
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
       return {
@@ -2402,11 +2439,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         {useStackedStudentLayout && (
           <div
             ref={studentStackRef}
-            className="border rounded bg-white p-0 shadow-sm flex flex-col"
+            className={`border rounded p-0 shadow-sm flex flex-col ${boardSkin === 'white' ? 'bg-white' : boardSkin === 'green' ? 'bg-emerald-950 text-white border-emerald-900' : 'bg-slate-950 text-white border-slate-800'}`}
             style={{
-              minHeight: '520px',
-              height: '80vh',
-              maxHeight: 'calc(100vh - 140px)',
+              minHeight: isOverlayMode ? '100%' : '520px',
+              height: isOverlayMode ? '100%' : '80vh',
+              maxHeight: isOverlayMode ? '100%' : 'calc(100vh - 140px)',
               overflow: 'hidden',
             }}
           >
@@ -2463,7 +2500,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               )}
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
+                  className={`h-full border rounded-lg p-3 overflow-auto relative ${boardSkin === 'white' ? 'bg-slate-50 border-slate-200' : boardSkin === 'green' ? 'bg-emerald-950/60 border-emerald-900 text-white' : 'bg-slate-950/70 border-slate-800 text-white'}`}
                   onPointerDown={() => {
                     revealStackedLatexControls()
                   }}
@@ -2543,7 +2580,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
                     )
                   ) : (
-                    <p className="text-slate-500 text-sm">Instructor has not enabled LaTeX display.</p>
+                    <div className="h-full w-full flex items-center justify-center text-center">
+                      <p className={`${boardSkin === 'white' ? 'text-slate-500' : 'text-white/70'} text-sm`}>
+                        Instructor has not enabled LaTeX display.
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -2601,7 +2642,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
               <div
                 ref={studentViewportRef}
-                className="border rounded bg-white relative h-full overflow-auto"
+                className={`border rounded relative h-full overflow-auto ${boardSkin === 'white' ? 'bg-white' : boardSkin === 'green' ? 'bg-emerald-950 border-emerald-900' : 'bg-slate-950 border-slate-800'}`}
                 style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
               >
                 <div
@@ -2665,6 +2706,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   >
                     {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                   </button>
+                )}
+
+                {isOverlayMode && (
+                  <div
+                    className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+                    style={{
+                      pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+                      cursor: overlayControlsVisible ? 'default' : undefined,
+                    }}
+                    onClick={closeOverlayControls}
+                  >
+                    <div
+                      className="canvas-overlay-controls__panel"
+                      onClick={event => {
+                        event.stopPropagation()
+                        kickOverlayAutoHide()
+                      }}
+                    >
+                      <p className="canvas-overlay-controls__title">Canvas controls</p>
+                      {renderToolbarBlock()}
+                      <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                        Return to drawing
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

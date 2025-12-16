@@ -69,6 +69,7 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const [boardSkin, setBoardSkin] = useState<'black' | 'white' | 'green'>('black')
 
   const gradeLabel = useMemo(() => {
     if (!profile?.grade) return 'Unassigned'
@@ -134,6 +135,28 @@ export default function ProfilePage() {
   useEffect(() => {
     fetchProfile()
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const KEY = 'pa-board-skin'
+    try {
+      const raw = window.localStorage.getItem(KEY)
+      const skin = raw === 'white' || raw === 'green' || raw === 'black' ? raw : 'black'
+      setBoardSkin(skin)
+      if (!raw) {
+        window.localStorage.setItem(KEY, skin)
+      }
+    } catch {}
+  }, [])
+
+  const updateBoardSkin = (next: 'black' | 'white' | 'green') => {
+    setBoardSkin(next)
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem('pa-board-skin', next)
+    } catch {}
+    window.dispatchEvent(new Event('pa-board-skin-change'))
+  }
 
   async function fetchProfile() {
     setLoading(true)
@@ -434,6 +457,33 @@ export default function ProfilePage() {
             <section className="card p-6 space-y-4">
               <h2 className="text-xl font-semibold">Compliance & preferences</h2>
               <div className="space-y-3">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Board skin</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`btn ${boardSkin === 'black' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => updateBoardSkin('black')}
+                    >
+                      Black
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${boardSkin === 'green' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => updateBoardSkin('green')}
+                    >
+                      Green
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${boardSkin === 'white' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => updateBoardSkin('white')}
+                    >
+                      White
+                    </button>
+                  </div>
+                  <p className="text-xs muted">Applies to the handwriting board across the site.</p>
+                </div>
                 <label className="flex items-start space-x-2 text-sm">
                   <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} disabled />
                   <span>

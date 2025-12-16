@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
 
@@ -13,6 +13,7 @@ type Props = {
   isAdmin?: boolean
   isVisible: boolean
   defaultOrientation?: CanvasOrientation
+  onOverlayChromeVisibilityChange?: (visible: boolean) => void
 }
 
 type OverlayControlsHandle = {
@@ -21,8 +22,9 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait' }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
+  const [chromeVisible, setChromeVisible] = useState(false)
 
   const triggerOverlayControls = () => {
     const handle = controlsHandleRef.current
@@ -63,7 +65,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
       <div className="live-canvas-window__body">
         <button
           type="button"
-          className="live-canvas-window__floating-gear"
+          className={`live-canvas-window__floating-gear ${chromeVisible ? 'is-visible' : ''}`}
           onClick={triggerOverlayControls}
           aria-label="Open canvas controls"
         >
@@ -79,6 +81,10 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           isAdmin={isAdmin}
           defaultOrientation={defaultOrientation}
           overlayControlsHandleRef={controlsHandleRef}
+          onOverlayChromeVisibilityChange={visible => {
+            setChromeVisible(visible)
+            onOverlayChromeVisibilityChange?.(visible)
+          }}
         />
       </div>
     </div>

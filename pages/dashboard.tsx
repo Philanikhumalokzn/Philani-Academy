@@ -127,6 +127,7 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
+  const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
@@ -1840,7 +1841,11 @@ export default function Dashboard() {
       </div>
       </main>
       {liveOverlayOpen && (
-        <div className="live-call-overlay" role="dialog" aria-modal="true">
+        <div
+          className={`live-call-overlay${liveWindows.some(win => win.kind === 'canvas' && !win.minimized) ? ' live-call-overlay--canvas-open' : ''}${liveOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}`}
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="live-call-overlay__backdrop" />
           <div className="live-call-overlay__panel" ref={stageRef}>
             <div className="live-call-overlay__video">
@@ -1908,6 +1913,7 @@ export default function Dashboard() {
                         isAdmin={isOwnerUser}
                         isVisible={!win.minimized}
                         defaultOrientation="portrait"
+                        onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
                       />
                     )}
                   </LiveOverlayWindow>

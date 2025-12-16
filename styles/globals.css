@@ -768,6 +768,18 @@ td{color:#f8fafc;}
   font-size:0.8rem;
   color:#c7d2fe;
 }
+
+/* Board skin (handwriting canvas) */
+.myscript-editor-host{background:#fff;}
+.myscript-editor-host--black canvas,
+.myscript-editor-host--black svg{filter:invert(1) hue-rotate(180deg);}
+
+.myscript-editor-host--green{background:#052e16;}
+.myscript-editor-host--green canvas,
+.myscript-editor-host--green svg{filter:invert(1) hue-rotate(180deg);mix-blend-mode:screen;}
+
+.myscript-editor-host--white canvas,
+.myscript-editor-host--white svg{filter:none;mix-blend-mode:normal;}
 .canvas-overlay-shell__close{
   border-radius:999px;
   border:1px solid rgba(255,255,255,0.35);
@@ -956,6 +968,8 @@ td{color:#f8fafc;}
   .live-call-overlay__panel{width:100vw;height:100svh;padding:0;border-radius:0;border:none;}
   .live-call-overlay__video{border-radius:0;box-shadow:none;}
   .live-call-overlay__floating-actions{top:10px;right:10px;gap:0.5rem;}
+  .live-call-overlay--canvas-open:not(.live-call-overlay--chrome-visible) .live-call-overlay__floating-actions{opacity:0;pointer-events:none;}
+  .live-call-overlay--canvas-open.live-call-overlay--chrome-visible .live-call-overlay__floating-actions{opacity:1;pointer-events:auto;}
   .live-call-overlay__canvas-toggle{
     border:1px solid rgba(255,255,255,0.18);
     background:rgba(255,255,255,0.06);
@@ -966,7 +980,8 @@ td{color:#f8fafc;}
   .live-call-overlay__close{width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);font-size:1.35rem;}
   .live-call-overlay__toolbar{flex-wrap:wrap;gap:0.75rem;font-size:0.85rem;}
   .live-canvas-window__header{display:none;}
-  .live-canvas-window__floating-gear{display:inline-flex;}
+  .live-canvas-window__floating-gear{display:none;}
+  .live-canvas-window__floating-gear.is-visible{display:inline-flex;}
   .live-canvas-window__body{border-radius:0;}
 
   .live-canvas-window__floating-gear{
@@ -976,7 +991,6 @@ td{color:#f8fafc;}
     border:1px solid rgba(15,23,42,0.2);
     background:rgba(255,255,255,0.7);
     text-shadow:none;
-    display:inline-flex;
     align-items:center;
     justify-content:center;
   }

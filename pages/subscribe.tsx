@@ -73,8 +73,8 @@ export default function Subscribe() {
   }, [selectedPlanId])
 
   return (
-    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
-      <div className="mx-auto w-full max-w-4xl space-y-8">
+    <main className="deep-page min-h-screen px-4 py-6 md:py-12 overflow-x-hidden">
+      <div className="mx-auto w-full max-w-4xl space-y-6 md:space-y-8">
         <section className="hero flex-col gap-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />
@@ -95,7 +95,7 @@ export default function Subscribe() {
           </div>
         </section>
 
-        <section className="card p-6 space-y-5">
+        <section className="card p-5 md:p-6 space-y-5">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">Pick a plan to activate</h2>
             <p className="text-sm text-white">

@@ -89,10 +89,10 @@ export default function PrivacyNotice() {
           <h2 className="text-xl font-semibold">How we protect your information</h2>
           <p>Personal information is stored in our secured hosted database. Access is limited to authorised staff who require it to support learners.</p>
           <p>We retain learner information only while providing educational services and for the minimum period required by law or accreditation bodies.</p>
-          <p>You may request access, corrections or deletion by emailing <a className="text-blue-600" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.</p>
+          <p>You may request access, corrections or deletion by emailing <a className="text-blue-200 underline" href="mailto:support@philaniacademy.org">support@philaniacademy.org</a>.</p>
         </section>
 
-  <footer className="space-y-1 text-sm text-white">
+        <footer className="space-y-1 text-sm text-white">
           <p>
             Need to adjust your information? Visit your <Link className="text-blue-200" href="/profile">profile</Link> at any time.
           </p>

@@ -264,8 +264,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
-      <div className="mx-auto max-w-5xl space-y-8">
+    <main className="deep-page min-h-screen px-4 py-6 md:py-12 overflow-x-hidden">
+      <div className="mx-auto max-w-5xl space-y-6 md:space-y-8">
         <section className="hero flex-col gap-5">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />
@@ -438,7 +438,7 @@ export default function ProfilePage() {
                   <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} disabled />
                   <span>
                     I consent to the processing of my personal information in line with the{' '}
-                    <Link className="text-blue-600" href="/privacy">POPIA-compliant Privacy Policy</Link>.
+                    <Link className="text-blue-200 underline" href="/privacy">POPIA-compliant Privacy Policy</Link>.
                   </span>
                 </label>
                 {consentTimestamp && (
@@ -449,11 +449,11 @@ export default function ProfilePage() {
 
             {error && <div className="text-sm text-red-600">{error}</div>}
 
-            <div className="flex items-center gap-3">
-              <button className="btn btn-primary" onClick={saveProfile} disabled={saving}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button className="btn btn-primary w-full sm:w-auto" onClick={saveProfile} disabled={saving}>
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
-              <button className="btn btn-ghost" onClick={fetchProfile} disabled={saving}>Reset</button>
+              <button className="btn btn-ghost w-full sm:w-auto" onClick={fetchProfile} disabled={saving}>Reset</button>
             </div>
 
             <section className="card p-6 space-y-3">

@@ -3,7 +3,6 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import NavArrows from '../components/NavArrows'
 import BrandLogo from '../components/BrandLogo'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 
@@ -117,39 +116,31 @@ export default function BoardPage() {
     )
   }
 
-  if (isMobile) {
-    return (
-      <div className="flex h-screen flex-col bg-slate-900 text-white">
-        <div className="px-5 pt-6 pb-4 space-y-3 border-b border-slate-800 text-center">
-          <div className="flex justify-center">
-            <BrandLogo height={60} className="drop-shadow-[0_18px_40px_rgba(2,6,20,0.7)]" />
-          </div>
-          <button
-            type="button"
-            className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/30 px-4 py-1 text-sm text-blue-100"
-            onClick={() => router.push('/dashboard')}
-          >
-            ← Dashboard
-          </button>
-          <p className="text-[11px] uppercase tracking-[0.35em] text-white">Shared board</p>
-          <h1 className="text-2xl font-semibold">Maths Canvas</h1>
-          <p className="text-xs text-white">Write, present, and share all in one place.</p>
+  return (
+    <div className="board-fullscreen">
+      <div className="board-fullscreen__topbar">
+        <Link href="/dashboard" className="board-fullscreen__back" aria-label="Back to dashboard">
+          ←
+        </Link>
+        <div className="board-fullscreen__brand">
+          <BrandLogo height={isMobile ? 28 : 34} className="opacity-90" />
         </div>
-
-        <div className="px-5 py-4 border-b border-slate-800 space-y-3 text-center">
-          <p className="text-[12px] uppercase tracking-[0.2em] text-white">Active grade</p>
-          <button
-            type="button"
-            className="mx-auto inline-flex min-w-[180px] items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 px-5 py-3 text-base font-semibold"
-            onClick={() => setGradePickerOpen(prev => !prev)}
-          >
-            {activeGradeLabel}
-          </button>
-          {gradePickerOpen && (
+        <div className="board-fullscreen__controls">
+          {isMobile ? (
+            <button
+              type="button"
+              className="board-fullscreen__grade"
+              onClick={() => setGradePickerOpen(prev => !prev)}
+              aria-label="Choose grade"
+            >
+              {activeGradeLabel}
+            </button>
+          ) : (
             <select
-              className="input w-full text-slate-900"
+              className="input board-fullscreen__select"
               value={selectedGrade ?? ''}
               onChange={e => handleGradeChange(e.target.value)}
+              aria-label="Choose grade"
             >
               <option value="">Select a grade</option>
               {gradeOptions.map(option => (
@@ -160,46 +151,15 @@ export default function BoardPage() {
             </select>
           )}
         </div>
-
-        <div className="px-5 py-2 text-[11px] text-center text-white border-b border-slate-800">
-          {status === 'authenticated' ? 'Signed in and ready.' : 'Please sign in to draw.'}
-        </div>
-
-        <div className="flex-1 bg-white text-slate-900 rounded-t-3xl p-3">
-          <div className="h-full rounded-3xl border border-slate-200 shadow-lg overflow-hidden">
-            {renderCanvas()}
-          </div>
-        </div>
       </div>
-    )
-  }
 
-  return (
-    <div className="board-page min-h-screen">
-      <div className="board-page__inner mx-auto px-4 sm:px-6 lg:px-0 py-10 space-y-8">
-        <section className="board-page__hero text-center space-y-4">
-          <div className="flex items-center justify-between">
-            <NavArrows backHref="/dashboard" forwardHref={undefined} />
-            <Link href="/dashboard" className="btn btn-ghost text-sm">Back to dashboard</Link>
-          </div>
-          <div className="flex justify-center">
-            <BrandLogo height={72} className="drop-shadow-[0_30px_60px_rgba(0,0,0,0.55)]" />
-          </div>
-          <p className="text-[12px] uppercase tracking-[0.3em] text-white">Shared board</p>
-          <h1 className="text-4xl font-semibold text-white">Maths Canvas</h1>
-          <p className="text-base text-white max-w-2xl mx-auto">One focused space for handwriting, LaTeX projection, and live instruction. Keep the class aligned without distractions.</p>
-          <div className="flex flex-wrap justify-center gap-3 text-xs">
-            <span className="board-chip">Grade: {activeGradeLabel}</span>
-            <span className="board-chip">{status === 'authenticated' ? 'Signed in' : 'Sign in required'}</span>
-          </div>
-        </section>
-
-        <section className="board-card text-center space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-white">Choose grade</p>
+      {isMobile && gradePickerOpen && (
+        <div className="board-fullscreen__picker">
           <select
-            className="input mx-auto max-w-sm text-center"
+            className="input w-full"
             value={selectedGrade ?? ''}
             onChange={e => handleGradeChange(e.target.value)}
+            aria-label="Select a grade"
           >
             <option value="">Select a grade</option>
             {gradeOptions.map(option => (
@@ -208,23 +168,21 @@ export default function BoardPage() {
               </option>
             ))}
           </select>
-        </section>
+        </div>
+      )}
 
-        <section className="board-card board-card--canvas">
-          <div className="canvas-stage" ref={canvasStageRef}>
-            {renderCanvas()}
-            {status === 'authenticated' && !isMobile && selectedGrade && (
-              <FloatingJitsiWindow
-                roomName={gradeRoomName}
-                displayName={realtimeDisplayName}
-                tokenEndpoint={gradeTokenEndpoint}
-                isOwner={isOwnerUser}
-                gradeLabel={activeGradeLabel}
-                boundsRef={canvasStageRef}
-              />
-            )}
-          </div>
-        </section>
+      <div className="board-fullscreen__stage" ref={canvasStageRef}>
+        {renderCanvas()}
+        {status === 'authenticated' && !isMobile && selectedGrade && (
+          <FloatingJitsiWindow
+            roomName={gradeRoomName}
+            displayName={realtimeDisplayName}
+            tokenEndpoint={gradeTokenEndpoint}
+            isOwner={isOwnerUser}
+            gradeLabel={activeGradeLabel}
+            boundsRef={canvasStageRef}
+          />
+        )}
       </div>
     </div>
   )

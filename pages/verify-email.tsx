@@ -93,12 +93,18 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <>
-      <NavArrows backHref="/signup" forwardHref="/auth/signin" />
-      <div className="min-h-screen bg-primary flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white text-slate-900 rounded-lg shadow-lg p-8">
-          <h1 className="text-2xl font-semibold mb-4 text-center text-primary">Verify your email</h1>
-          <p className="text-sm text-slate-600 mb-6 text-center">{message}</p>
+    <main className="deep-page min-h-screen flex items-center justify-center px-4 py-12">
+      <div className="max-w-md w-full bg-white text-slate-900 shadow-md rounded-3xl p-8">
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <NavArrows backHref="/signup" forwardHref="/auth/signin" />
+          <button type="button" className="text-sm text-primary hover:underline font-medium" onClick={() => router.push('/auth/signin')}>Sign in</button>
+        </div>
+
+        <div className="space-y-2 mb-6 text-center">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Philani Academy</p>
+          <h1 className="text-3xl font-semibold text-slate-900">Verify email</h1>
+          <p className="text-sm text-slate-600">{message}</p>
+        </div>
 
           <form className="space-y-4" onSubmit={handleVerify}>
             <div>
@@ -153,20 +159,15 @@ export default function VerifyEmailPage() {
           </div>
 
           {status === 'success' && (
-            <button
-              type="button"
-              className="mt-6 w-full py-3 bg-green-600 text-white font-medium rounded-md hover:bg-green-700"
-              onClick={() => router.push('/auth/signin')}
-            >
-              Continue to sign in
+            <button type="button" className="btn btn-primary w-full mt-6" onClick={() => router.push('/auth/signin')}>
+              Continue
             </button>
           )}
 
           {status === 'error' && (
             <p className="mt-6 text-center text-sm text-red-600">Still stuck? Contact support for help.</p>
           )}
-        </div>
       </div>
-    </>
+    </main>
   )
 }

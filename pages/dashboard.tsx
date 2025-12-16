@@ -1212,46 +1212,97 @@ export default function Dashboard() {
             <ul className="space-y-3">
               {sessions.map(s => (
                 <li key={s.id} className="p-3 border rounded">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{s.title}</div>
-                      <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {canCreateSession && (
+                  {isMobile ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <div className="font-medium leading-snug break-words">{s.title}</div>
+                        <div className="text-xs muted">{new Date(s.startsAt).toLocaleString()}</div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {canCreateSession && (
+                          <button
+                            type="button"
+                            className="btn btn-primary w-full justify-center"
+                            onClick={() => startLiveForSession(s.id)}
+                          >
+                            Start class
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className="btn btn-primary"
-                          onClick={() => startLiveForSession(s.id)}
+                          className={`btn w-full justify-center ${canCreateSession ? '' : 'btn-primary'}`}
+                          onClick={() => openLiveForSession(s.id)}
                         >
-                          Start class
+                          Open class
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => openLiveForSession(s.id)}
-                      >
-                        Open class
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => showCanvasWindow(s.id)}
-                        disabled={!canLaunchCanvasOverlay}
-                      >
-                        Canvas
-                      </button>
-                      <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-ghost">Link</a>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => toggleMaterialsForSession(s.id)}
-                      >
-                        {expandedSessionId === s.id ? 'Hide materials' : 'View materials'}
-                      </button>
+                        <button
+                          type="button"
+                          className="btn w-full justify-center"
+                          onClick={() => showCanvasWindow(s.id)}
+                          disabled={!canLaunchCanvasOverlay}
+                        >
+                          Canvas
+                        </button>
+                        <button
+                          type="button"
+                          className="btn w-full justify-center"
+                          onClick={() => toggleMaterialsForSession(s.id)}
+                        >
+                          {expandedSessionId === s.id ? 'Hide materials' : 'Materials'}
+                        </button>
+                        <a
+                          href={s.joinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`btn btn-ghost w-full justify-center ${canCreateSession ? 'col-span-2' : ''}`}
+                        >
+                          Link
+                        </a>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{s.title}</div>
+                        <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {canCreateSession && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => startLiveForSession(s.id)}
+                          >
+                            Start class
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => openLiveForSession(s.id)}
+                        >
+                          Open class
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => showCanvasWindow(s.id)}
+                          disabled={!canLaunchCanvasOverlay}
+                        >
+                          Canvas
+                        </button>
+                        <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-ghost">Link</a>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => toggleMaterialsForSession(s.id)}
+                        >
+                          {expandedSessionId === s.id ? 'Hide materials' : 'View materials'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {expandedSessionId === s.id && (
                     <div className="mt-3 border-t pt-3 space-y-3">
                       {canUploadMaterials && (
@@ -1688,7 +1739,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white' : 'deep-page'} min-h-screen pb-16`}>
+      <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white overflow-x-hidden' : 'deep-page'} min-h-screen pb-16`}>
       <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
         {isMobile ? (
           <>

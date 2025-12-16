@@ -34,6 +34,14 @@ body{
   background-attachment: fixed;
 }
 
+@media (max-width: 768px) {
+  body{overflow-x:hidden;}
+  .mobile-dashboard-theme .btn{
+    padding:0.55rem 0.95rem;
+    font-size:0.9rem;
+  }
+}
+
 /* Common containers */
 .container-card{
   background: linear-gradient(150deg, rgba(10,16,32,0.95), rgba(5,9,22,0.9));

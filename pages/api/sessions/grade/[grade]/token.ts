@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import { GradeValue, normalizeGradeInput } from '../../../../../lib/grades'
+import prisma from '../../../../../lib/prisma'
 
 function buildRoomSegment(grade: GradeValue, secret: string) {
   const baseKey = `grade-${grade}`
@@ -31,10 +32,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const isAdmin = role === 'admin'
   const isTeacher = role === 'teacher'
   const isStudent = role === 'student'
-  const userGrade = normalizeGradeInput((authToken as any)?.grade as string | undefined)
+  let userGrade = normalizeGradeInput((authToken as any)?.grade as string | undefined)
 
-  if ((isStudent || isTeacher) && userGrade !== normalizedGrade) {
-    return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+  if (!userGrade && (isStudent || isTeacher)) {
+    try {
+      const userId = (authToken as any)?.sub as string | undefined
+      const userEmail = (authToken as any)?.email as string | undefined
+      const dbUser = userId
+        ? await prisma.user.findUnique({ where: { id: userId }, select: { grade: true } })
+        : userEmail
+        ? await prisma.user.findUnique({ where: { email: userEmail }, select: { grade: true } })
+        : null
+      userGrade = normalizeGradeInput((dbUser as any)?.grade as string | undefined)
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  if (isStudent || isTeacher) {
+    if (!userGrade) return res.status(403).json({ message: 'Forbidden: learner grade missing' })
+    if (userGrade !== normalizedGrade) return res.status(403).json({ message: 'Forbidden: grade mismatch' })
   }
 
   if (!isAdmin && !isOwner && !isTeacher && !isStudent) {

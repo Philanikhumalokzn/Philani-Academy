@@ -16,12 +16,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const sessionGrade = normalizeGradeInput((rec as any).grade as string | undefined)
   const role = (token as any)?.role as string | undefined
-  const userGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+  let userGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  if (!userGrade && (role === 'student' || role === 'teacher')) {
+    try {
+      const userId = (token as any)?.sub as string | undefined
+      const userEmail = (token as any)?.email as string | undefined
+      const dbUser = userId
+        ? await prisma.user.findUnique({ where: { id: userId }, select: { grade: true } })
+        : userEmail
+        ? await prisma.user.findUnique({ where: { email: userEmail }, select: { grade: true } })
+        : null
+      userGrade = normalizeGradeInput((dbUser as any)?.grade as string | undefined)
+    } catch (err) {
+      // ignore
+    }
+  }
 
   if (role === 'student' || role === 'teacher') {
-    if (!sessionGrade || !userGrade || sessionGrade !== userGrade) {
-      return res.status(403).json({ message: 'Forbidden: grade mismatch' })
-    }
+    if (!sessionGrade) return res.status(403).json({ message: 'Forbidden: session grade missing' })
+    if (!userGrade) return res.status(403).json({ message: 'Forbidden: learner grade missing' })
+    if (sessionGrade !== userGrade) return res.status(403).json({ message: 'Forbidden: grade mismatch' })
   }
 
   const jitsiActive = (rec as any)?.jitsiActive ?? false

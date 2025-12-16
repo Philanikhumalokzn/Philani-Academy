@@ -1600,17 +1600,17 @@ export default function Dashboard() {
   const renderSection = () => {
     switch (activeSection) {
       case 'live':
-        return <LiveSection />
+        return LiveSection()
       case 'announcements':
-        return <AnnouncementsSection />
+        return AnnouncementsSection()
       case 'sessions':
-        return <SessionsSection />
+        return SessionsSection()
       case 'users':
-        return <UsersSection />
+        return UsersSection()
       case 'billing':
-        return <BillingSection />
+        return BillingSection()
       default:
-        return <OverviewSection />
+        return OverviewSection()
     }
   }
 

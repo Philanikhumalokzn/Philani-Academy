@@ -7,7 +7,6 @@ type CanvasOrientation = 'portrait' | 'landscape'
 type Props = {
   gradeLabel?: string | null
   roomId: string
-  boardId?: string
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
@@ -21,7 +20,7 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait' }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait' }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
 
   const triggerOverlayControls = () => {
@@ -73,7 +72,6 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           uiMode="overlay"
           gradeLabel={gradeLabel || undefined}
           roomId={roomId}
-          boardId={boardId}
           userId={userId}
           userDisplayName={userDisplayName}
           isAdmin={isAdmin}

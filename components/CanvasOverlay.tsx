@@ -8,13 +8,12 @@ type CanvasOverlayProps = {
   onClose: () => void
   gradeLabel?: string | null
   roomId: string
-  boardId?: string
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
 }
 
-export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
+export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
   const controlsHandleRef = useRef<{ open: () => void; close: () => void; toggle: () => void } | null>(null)
 
   const triggerOverlayControls = () => {
@@ -96,7 +95,6 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, boa
             uiMode="overlay"
             gradeLabel={gradeLabel || undefined}
             roomId={roomId}
-            boardId={boardId}
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={isAdmin}

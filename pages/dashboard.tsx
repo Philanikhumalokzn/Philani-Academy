@@ -136,6 +136,8 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const materialsRequestIdRef = useRef(0)
+  const latexSavesRequestIdRef = useRef(0)
 
   const overlayBounds = useMemo(() => {
     const fallbackWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
@@ -533,15 +535,18 @@ export default function Dashboard() {
   }
 
   async function fetchMaterials(sessionId: string) {
+    const requestId = ++materialsRequestIdRef.current
     setMaterialsError(null)
     setMaterialsLoading(true)
     try {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/materials`, { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json()
+        if (materialsRequestIdRef.current !== requestId) return
         setMaterials(Array.isArray(data) ? data : [])
       } else {
         const data = await res.json().catch(() => ({}))
+        if (materialsRequestIdRef.current !== requestId) return
         if (res.status === 401) {
           setMaterialsError('Please sign in to view lesson materials.')
         } else {
@@ -551,14 +556,16 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error('fetchMaterials error', err)
+      if (materialsRequestIdRef.current !== requestId) return
       setMaterialsError(err instanceof Error ? err.message : 'Network error')
       setMaterials([])
     } finally {
-      setMaterialsLoading(false)
+      if (materialsRequestIdRef.current === requestId) setMaterialsLoading(false)
     }
   }
 
   async function fetchLatexSaves(sessionId: string) {
+    const requestId = ++latexSavesRequestIdRef.current
     setLatexSavesError(null)
     setLatexSavesLoading(true)
     try {
@@ -567,18 +574,21 @@ export default function Dashboard() {
         const data = await res.json()
         const shared = Array.isArray(data?.shared) ? data.shared : []
         const mine = Array.isArray(data?.mine) ? data.mine : []
+        if (latexSavesRequestIdRef.current !== requestId) return
         setLatexSaves({ shared, mine })
       } else {
         const data = await res.json().catch(() => ({}))
+        if (latexSavesRequestIdRef.current !== requestId) return
         setLatexSavesError(data?.message || `Failed to load LaTeX saves (${res.status})`)
         setLatexSaves({ shared: [], mine: [] })
       }
     } catch (err) {
       console.error('fetchLatexSaves error', err)
+      if (latexSavesRequestIdRef.current !== requestId) return
       setLatexSavesError(err instanceof Error ? err.message : 'Network error')
       setLatexSaves({ shared: [], mine: [] })
     } finally {
-      setLatexSavesLoading(false)
+      if (latexSavesRequestIdRef.current === requestId) setLatexSavesLoading(false)
     }
   }
 

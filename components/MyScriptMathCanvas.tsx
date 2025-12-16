@@ -416,42 +416,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }, [canvasOrientation, isFullscreen])
 
-  // Student split drag listeners
-  useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!splitDragActiveRef.current) return
-      const stackEl = studentStackRef.current
-      if (!stackEl) return
-      event.preventDefault()
-      const rect = stackEl.getBoundingClientRect()
-      const delta = event.clientY - splitDragStartYRef.current
-      const nextRatio = splitStartRatioRef.current + delta / Math.max(rect.height, 1)
-      const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
-      setStudentSplitRatio(clamped)
-      studentSplitRatioRef.current = clamped
-    }
+  const handleSplitPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!splitDragActiveRef.current) return
+    const stackEl = studentStackRef.current
+    if (!stackEl) return
+    event.preventDefault()
+    const rect = stackEl.getBoundingClientRect()
+    const delta = event.clientY - splitDragStartYRef.current
+    const nextRatio = splitStartRatioRef.current + delta / Math.max(rect.height, 1)
+    const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
+    setStudentSplitRatio(clamped)
+    studentSplitRatioRef.current = clamped
+  }, [])
 
-    const handlePointerUp = () => {
-      if (!splitDragActiveRef.current) return
-      splitDragActiveRef.current = false
-      const handle = splitHandleRef.current
-      const pointerId = splitDragPointerIdRef.current
-      if (handle && pointerId !== null) {
-        try {
-          handle.releasePointerCapture(pointerId)
-        } catch {}
-      }
-      splitDragPointerIdRef.current = null
-      splitStartRatioRef.current = studentSplitRatioRef.current
-      document.body.style.userSelect = ''
+  const stopSplitDrag = useCallback(() => {
+    if (!splitDragActiveRef.current) return
+    splitDragActiveRef.current = false
+    const handle = splitHandleRef.current
+    const pointerId = splitDragPointerIdRef.current
+    if (handle && pointerId !== null) {
+      try {
+        handle.releasePointerCapture(pointerId)
+      } catch {}
     }
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
+    splitDragPointerIdRef.current = null
+    splitStartRatioRef.current = studentSplitRatioRef.current
+    document.body.style.userSelect = ''
   }, [])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
@@ -2398,13 +2388,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 
   return (
-    <div>
-      <div className="flex flex-col gap-3">
+    <div className={isOverlayMode ? 'h-full' : undefined}>
+      <div className={`flex flex-col gap-3${isOverlayMode ? ' h-full min-h-0' : ''}`}>
         {useStackedStudentLayout && (
           <div
             ref={studentStackRef}
             className="border rounded bg-white p-0 shadow-sm flex flex-col"
             style={{
+              flex: isOverlayMode ? 1 : undefined,
               minHeight: isOverlayMode ? '100%' : '520px',
               height: isOverlayMode ? '100%' : '80vh',
               maxHeight: isOverlayMode ? '100%' : 'calc(100vh - 140px)',
@@ -2559,6 +2550,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               ref={splitHandleRef}
               className="flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
               style={{ touchAction: 'none' }}
+              onPointerMove={handleSplitPointerMove}
+              onPointerUp={event => {
+                event.preventDefault()
+                stopSplitDrag()
+              }}
+              onPointerCancel={event => {
+                event.preventDefault()
+                stopSplitDrag()
+              }}
               onPointerDown={event => {
                 event.preventDefault()
                 splitDragActiveRef.current = true

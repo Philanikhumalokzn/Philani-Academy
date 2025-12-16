@@ -1888,6 +1888,11 @@ export default function Dashboard() {
                     id={win.id}
                     title={win.title}
                     subtitle={win.subtitle}
+                    className={
+                      win.kind === 'canvas'
+                        ? `live-window--canvas${liveOverlayChromeVisible ? ' live-window--chrome-visible' : ''}`
+                        : undefined
+                    }
                     position={win.position}
                     size={win.size}
                     minimized={win.minimized}

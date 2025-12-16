@@ -11,6 +11,7 @@ type LiveOverlayWindowProps = {
   id: string
   title: string
   subtitle?: string
+  className?: string
   position: Point
   size: { width: number; height: number }
   minimized: boolean
@@ -32,6 +33,7 @@ export default function LiveOverlayWindow({
   id,
   title,
   subtitle,
+  className,
   position,
   size,
   minimized,
@@ -217,7 +219,7 @@ export default function LiveOverlayWindow({
 
   return (
     <div
-      className={`live-window${minimized ? ' live-window--minimized' : ''}${isFullscreen ? ' live-window--fullscreen' : ''}`}
+      className={`live-window${minimized ? ' live-window--minimized' : ''}${isFullscreen ? ' live-window--fullscreen' : ''}${className ? ` ${className}` : ''}`}
       style={{
         left: position.x,
         top: position.y,

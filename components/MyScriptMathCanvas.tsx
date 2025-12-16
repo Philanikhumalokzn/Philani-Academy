@@ -4,7 +4,6 @@ import { renderToString } from 'katex'
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 const SCRIPT_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.js'
-const SCRIPT_SECONDARY_URL = 'https://cdn.jsdelivr.net/npm/iink-js@1.3.1/dist/iink.min.js'
 let scriptPromise: Promise<void> | null = null
 
 declare global {
@@ -96,11 +95,6 @@ function loadIinkRuntime(): Promise<void> {
     if (!window.iink?.Editor?.load) {
       console.warn('Primary MyScript CDN did not expose the expected API, retrying pinned fallback.')
       await tryLoad(`${SCRIPT_ID}-fallback`, SCRIPT_FALLBACK_URL)
-    }
-
-    if (!window.iink?.Editor?.load) {
-      console.warn('Pinned fallback did not expose the expected API, retrying secondary CDN.')
-      await tryLoad(`${SCRIPT_ID}-secondary`, SCRIPT_SECONDARY_URL)
     }
 
     if (!window.iink?.Editor?.load) {
@@ -389,7 +383,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     clearStackedLatexAutoHide()
     stackedLatexHideTimeoutRef.current = setTimeout(() => {
       setStackedLatexControlsVisible(false)
-    }, 3500)
+    }, 1500)
   }, [clearStackedLatexAutoHide, isCompactViewport, isOverlayMode])
 
   useEffect(() => {
@@ -982,7 +976,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const appKey = process.env.NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY
     const hmacKey = process.env.NEXT_PUBLIC_MYSCRIPT_HMAC_KEY
     const scheme = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_SCHEME || 'https'
-    const websocketHost = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_HOST || 'cloud.myscript.com'
+    const websocketHost = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_HOST || 'webdemoapi.myscript.com'
 
     if (!appKey || !hmacKey) {
   setStatus('error')
@@ -1023,7 +1017,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           },
         }
 
-        const editor = await window.iink.Editor.load(host, 'INTERACTIVEINKSSR', options)
+        const editor = await window.iink.Editor.load(host, 'MATH', options)
         if (cancelled) {
           editor.destroy?.()
           return
@@ -2547,10 +2541,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                       />
                     ) : (
-                      <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                      <div className="w-full h-full flex items-center justify-center">
+                        <p className="text-slate-500 text-sm text-center">Waiting for instructor LaTeX…</p>
+                      </div>
                     )
                   ) : (
-                    <p className="text-slate-500 text-sm">Instructor has not enabled LaTeX display.</p>
+                    <div className="w-full h-full flex items-center justify-center">
+                      <p className="text-slate-500 text-sm text-center">Instructor has not enabled LaTeX display.</p>
+                    </div>
                   )}
                 </div>
               </div>

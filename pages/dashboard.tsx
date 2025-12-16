@@ -1179,7 +1179,7 @@ export default function Dashboard() {
     </div>
   )
 
-  const SessionsSection = () => {
+  const renderSessionsSection = () => {
     const canCreateSession = Boolean(session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher'))
 
     return (
@@ -1679,7 +1679,7 @@ export default function Dashboard() {
       case 'announcements':
         return <AnnouncementsSection />
       case 'sessions':
-        return <SessionsSection />
+        return renderSessionsSection()
       case 'users':
         return <UsersSection />
       case 'billing':
@@ -1802,7 +1802,7 @@ export default function Dashboard() {
                     </button>
                     {isOpen && (
                       <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
-                        {panel === 'announcements' ? <AnnouncementsSection /> : <SessionsSection />}
+                        {panel === 'announcements' ? <AnnouncementsSection /> : renderSessionsSection()}
                       </div>
                     )}
                   </div>
@@ -1912,7 +1912,7 @@ export default function Dashboard() {
                       <StackedCanvasWindow
                         gradeLabel={selectedGrade ? activeGradeLabel : null}
                         roomId={activeSessionId ?? boardRoomId}
-                        boardId={activeSessionId ?? boardRoomId}
+                        boardId={activeSessionId ?? undefined}
                         userId={realtimeUserId}
                         userDisplayName={realtimeDisplayName}
                         isAdmin={isOwnerUser}

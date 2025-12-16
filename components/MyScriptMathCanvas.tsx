@@ -2154,7 +2154,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
-  const sessionKey = roomId
+  // Persist LaTeX strictly against the scheduled session id.
+  // We only persist when a real session id is provided (boardId).
+  const sessionKey = boardId
+  const canPersistLatex = Boolean(sessionKey)
 
   const applyLoadedLatex = useCallback((latexValue: string | null) => {
     if (!latexValue) return
@@ -2162,6 +2165,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const fetchLatexSaves = useCallback(async () => {
+    if (!canPersistLatex || !sessionKey) return
     try {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves`)
       if (!res.ok) return
@@ -2173,11 +2177,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to fetch saved LaTeX', err)
     }
-  }, [sessionKey])
+  }, [canPersistLatex, sessionKey])
 
   const saveLatexSnapshot = useCallback(
     async (options?: { shared?: boolean; auto?: boolean }) => {
       const isAuto = Boolean(options?.auto)
+      if (!canPersistLatex || !sessionKey) {
+        if (!isAuto) {
+          setLatexSaveError('Saving is only available inside a scheduled session.')
+        }
+        return
+      }
       const latexValue = (latexDisplayStateRef.current.latex || latexOutput || '').trim()
       if (!latexValue) return
       const sharedFlag = options?.shared ?? isAdmin
@@ -2215,7 +2225,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (!isAuto) setIsSavingLatex(false)
       }
     },
-    [isAdmin, latexOutput, sessionKey]
+    [canPersistLatex, isAdmin, latexOutput, sessionKey]
   )
 
   useEffect(() => {
@@ -2228,6 +2238,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [fetchLatexSaves])
 
   useEffect(() => {
+    if (canPersistLatex) return
+    setLatestSharedLatex(null)
+    setLatestPersonalLatex(null)
+    setLatexSaveError(null)
+    lastSavedHashRef.current = null
+  }, [canPersistLatex])
+
+  useEffect(() => {
+    if (!canPersistLatex) return
     const latexValue = (latexDisplayState.latex || latexOutput || '').trim()
     if (!latexValue) return
     if (autosaveTimeoutRef.current) {
@@ -2241,7 +2260,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         clearTimeout(autosaveTimeoutRef.current)
       }
     }
-  }, [isAdmin, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
+  }, [canPersistLatex, isAdmin, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
@@ -2406,7 +2425,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               className="flex flex-col"
               style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
             >
-              {!isOverlayMode && !isCompactViewport && (
+              {!isOverlayMode && !isCompactViewport && canPersistLatex && (
                 <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                   {isAdmin ? (
                     <button
@@ -2460,7 +2479,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     revealStackedLatexControls()
                   }}
                 >
-                  {(isOverlayMode || isCompactViewport) && stackedLatexControlsVisible && (
+                  {(isOverlayMode || isCompactViewport) && stackedLatexControlsVisible && canPersistLatex && (
                     <div className="absolute left-2 right-2 top-2 z-10 pointer-events-none">
                       <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm px-2 py-2 text-[11px] text-slate-700">
                         {isAdmin ? (

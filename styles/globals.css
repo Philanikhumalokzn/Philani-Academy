@@ -768,18 +768,6 @@ td{color:#f8fafc;}
   font-size:0.8rem;
   color:#c7d2fe;
 }
-
-/* Board skin (handwriting canvas) */
-.myscript-editor-host{background:#fff;}
-.myscript-editor-host--black canvas,
-.myscript-editor-host--black svg{filter:invert(1) hue-rotate(180deg);}
-
-.myscript-editor-host--green{background:#052e16;}
-.myscript-editor-host--green canvas,
-.myscript-editor-host--green svg{filter:invert(1) hue-rotate(180deg);mix-blend-mode:screen;}
-
-.myscript-editor-host--white canvas,
-.myscript-editor-host--white svg{filter:none;mix-blend-mode:normal;}
 .canvas-overlay-shell__close{
   border-radius:999px;
   border:1px solid rgba(255,255,255,0.35);

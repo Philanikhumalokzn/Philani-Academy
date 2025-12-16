@@ -166,8 +166,6 @@ type LatexDisplayState = {
   options: LatexDisplayOptions
 }
 
-type BoardSkin = 'black' | 'white' | 'green'
-
 type CanvasOrientation = 'portrait' | 'landscape'
 
 type PresenceClient = {
@@ -287,7 +285,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isCompactViewport, setIsCompactViewport] = useState(false)
   const [stackedLatexControlsVisible, setStackedLatexControlsVisible] = useState(false)
   const stackedLatexHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [boardSkin, setBoardSkin] = useState<BoardSkin>('black')
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -362,33 +359,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const KEY = 'pa-board-skin'
-    const readSkin = () => {
-      const raw = window.localStorage.getItem(KEY)
-      const skin: BoardSkin = raw === 'white' || raw === 'green' || raw === 'black' ? raw : 'black'
-      setBoardSkin(skin)
-      if (!raw) {
-        try {
-          window.localStorage.setItem(KEY, skin)
-        } catch {}
-      }
-    }
-    readSkin()
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== KEY) return
-      readSkin()
-    }
-    const handleCustom = () => readSkin()
-    window.addEventListener('storage', handleStorage)
-    window.addEventListener('pa-board-skin-change', handleCustom as any)
-    return () => {
-      window.removeEventListener('storage', handleStorage)
-      window.removeEventListener('pa-board-skin-change', handleCustom as any)
-    }
-  }, [])
-
-  useEffect(() => {
     clientIdRef.current = clientId
   }, [clientId])
 
@@ -419,7 +389,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     clearStackedLatexAutoHide()
     stackedLatexHideTimeoutRef.current = setTimeout(() => {
       setStackedLatexControlsVisible(false)
-    }, 1500)
+    }, 3500)
   }, [clearStackedLatexAutoHide, isCompactViewport, isOverlayMode])
 
   useEffect(() => {
@@ -2167,7 +2137,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isStudentView = !isAdmin
   const useStackedStudentLayout = isStudentView
   const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
-  const editorHostClass = `${isFullscreen ? 'w-full h-full' : 'w-full'} myscript-editor-host myscript-editor-host--${boardSkin}`
+  const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
       return {
@@ -2439,7 +2409,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         {useStackedStudentLayout && (
           <div
             ref={studentStackRef}
-            className={`border rounded p-0 shadow-sm flex flex-col ${boardSkin === 'white' ? 'bg-white' : boardSkin === 'green' ? 'bg-emerald-950 text-white border-emerald-900' : 'bg-slate-950 text-white border-slate-800'}`}
+            className="border rounded bg-white p-0 shadow-sm flex flex-col"
             style={{
               minHeight: isOverlayMode ? '100%' : '520px',
               height: isOverlayMode ? '100%' : '80vh',
@@ -2500,7 +2470,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               )}
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className={`h-full border rounded-lg p-3 overflow-auto relative ${boardSkin === 'white' ? 'bg-slate-50 border-slate-200' : boardSkin === 'green' ? 'bg-emerald-950/60 border-emerald-900 text-white' : 'bg-slate-950/70 border-slate-800 text-white'}`}
+                  className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
                   onPointerDown={() => {
                     revealStackedLatexControls()
                   }}
@@ -2580,11 +2550,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
                     )
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center text-center">
-                      <p className={`${boardSkin === 'white' ? 'text-slate-500' : 'text-white/70'} text-sm`}>
-                        Instructor has not enabled LaTeX display.
-                      </p>
-                    </div>
+                    <p className="text-slate-500 text-sm">Instructor has not enabled LaTeX display.</p>
                   )}
                 </div>
               </div>
@@ -2642,7 +2608,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
               <div
                 ref={studentViewportRef}
-                className={`border rounded relative h-full overflow-auto ${boardSkin === 'white' ? 'bg-white' : boardSkin === 'green' ? 'bg-emerald-950 border-emerald-900' : 'bg-slate-950 border-slate-800'}`}
+                className="border rounded bg-white relative h-full overflow-auto"
                 style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
               >
                 <div

@@ -115,8 +115,8 @@ export default function LiveOverlayWindow({
 
   const clampRect = useCallback(
     (rect: { left: number; top: number; width: number; height: number }) => {
-      const minWidth = minSize?.width ?? 360
-      const minHeight = minSize?.height ?? 300
+      const minWidth = minSize?.width ?? 520
+      const minHeight = minSize?.height ?? 520
       const widthBase = Math.max(bounds.width, minWidth + HORIZONTAL_PADDING * 2)
       const heightBase = Math.max(bounds.height, minHeight + VERTICAL_PADDING * 2)
       let nextWidth = Math.max(minWidth, rect.width)

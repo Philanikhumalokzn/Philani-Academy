@@ -1834,7 +1834,7 @@ export default function Dashboard() {
                     minimized={win.minimized}
                     zIndex={win.z}
                     bounds={overlayBounds}
-                    minSize={{ width: 640, height: 520 }}
+                    minSize={{ width: 720, height: 640 }}
                     isResizable
                     isFullscreen={win.mode === 'fullscreen'}
                     onFocus={focusLiveWindow}

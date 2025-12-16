@@ -5,7 +5,7 @@ type Point = { x: number; y: number }
 type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 const HORIZONTAL_PADDING = 0
-const VERTICAL_PADDING = 12
+const VERTICAL_PADDING = 4
 
 type LiveOverlayWindowProps = {
   id: string
@@ -62,7 +62,7 @@ export default function LiveOverlayWindow({
   const clampPosition = useCallback(
     (candidate: Point): Point => {
       const widthBase = Math.max(bounds.width, size.width + HORIZONTAL_PADDING * 2)
-      const heightBase = Math.max(bounds.height, (minimized ? 64 : size.height) + VERTICAL_PADDING * 2)
+      const heightBase = Math.max(bounds.height, (minimized ? 48 : size.height) + VERTICAL_PADDING * 2)
       const maxX = Math.max(HORIZONTAL_PADDING, widthBase - size.width - HORIZONTAL_PADDING)
       const maxY = Math.max(VERTICAL_PADDING, heightBase - (minimized ? 64 : size.height) - VERTICAL_PADDING)
       return {
@@ -115,8 +115,8 @@ export default function LiveOverlayWindow({
 
   const clampRect = useCallback(
     (rect: { left: number; top: number; width: number; height: number }) => {
-      const minWidth = minSize?.width ?? 520
-      const minHeight = minSize?.height ?? 520
+      const minWidth = minSize?.width ?? 720
+      const minHeight = minSize?.height ?? 640
       const widthBase = Math.max(bounds.width, minWidth + HORIZONTAL_PADDING * 2)
       const heightBase = Math.max(bounds.height, minHeight + VERTICAL_PADDING * 2)
       let nextWidth = Math.max(minWidth, rect.width)

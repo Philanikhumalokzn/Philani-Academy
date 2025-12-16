@@ -281,6 +281,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
+  const [isCompactViewport, setIsCompactViewport] = useState(false)
+  const [stackedLatexControlsVisible, setStackedLatexControlsVisible] = useState(false)
+  const stackedLatexHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -338,6 +341,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [userId])
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mql = window.matchMedia('(max-width: 768px)')
+    const apply = () => setIsCompactViewport(Boolean(mql.matches))
+    apply()
+    try {
+      mql.addEventListener('change', apply)
+      return () => mql.removeEventListener('change', apply)
+    } catch {
+      // Safari / older browsers
+      // eslint-disable-next-line deprecation/deprecation
+      mql.addListener(apply)
+      // eslint-disable-next-line deprecation/deprecation
+      return () => mql.removeListener(apply)
+    }
+  }, [])
+
+  useEffect(() => {
     clientIdRef.current = clientId
   }, [clientId])
 
@@ -348,6 +368,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     latexProjectionOptionsRef.current = latexProjectionOptions
   }, [latexProjectionOptions])
+
+  const clearStackedLatexAutoHide = useCallback(() => {
+    if (stackedLatexHideTimeoutRef.current) {
+      clearTimeout(stackedLatexHideTimeoutRef.current)
+      stackedLatexHideTimeoutRef.current = null
+    }
+  }, [])
+
+  const hideStackedLatexControls = useCallback(() => {
+    clearStackedLatexAutoHide()
+    setStackedLatexControlsVisible(false)
+  }, [clearStackedLatexAutoHide])
+
+  const revealStackedLatexControls = useCallback(() => {
+    // Only enable tap-to-show controls on compact viewports or when embedded in overlay mode.
+    if (!isOverlayMode && !isCompactViewport) return
+    setStackedLatexControlsVisible(true)
+    clearStackedLatexAutoHide()
+    stackedLatexHideTimeoutRef.current = setTimeout(() => {
+      setStackedLatexControlsVisible(false)
+    }, 3500)
+  }, [clearStackedLatexAutoHide, isCompactViewport, isOverlayMode])
+
+  useEffect(() => {
+    return () => {
+      clearStackedLatexAutoHide()
+    }
+  }, [clearStackedLatexAutoHide])
 
   useEffect(() => {
     studentSplitRatioRef.current = studentSplitRatio
@@ -2366,53 +2414,124 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               className="flex flex-col"
               style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
             >
-              <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                {isAdmin ? (
+              {!isOverlayMode && !isCompactViewport && (
+                <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      className="px-2 py-1 border rounded"
+                      onClick={() => saveLatexSnapshot({ shared: true })}
+                      disabled={isSavingLatex}
+                    >
+                      {isSavingLatex ? 'Saving…' : 'Save for class'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="px-2 py-1 border rounded"
+                      onClick={() => saveLatexSnapshot({ shared: false })}
+                      disabled={isSavingLatex}
+                    >
+                      {isSavingLatex ? 'Saving…' : 'Save my copy'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="px-2 py-1 border rounded"
-                    onClick={() => saveLatexSnapshot({ shared: true })}
-                    disabled={isSavingLatex}
+                    onClick={() => handleLoadSavedLatex('shared')}
+                    disabled={!latestSharedLatex}
                   >
-                    {isSavingLatex ? 'Saving…' : 'Save for class'}
+                    Load class
                   </button>
-                ) : (
                   <button
                     type="button"
                     className="px-2 py-1 border rounded"
-                    onClick={() => saveLatexSnapshot({ shared: false })}
-                    disabled={isSavingLatex}
+                    onClick={() => handleLoadSavedLatex('mine')}
+                    disabled={!latestPersonalLatex}
                   >
-                    {isSavingLatex ? 'Saving…' : 'Save my copy'}
+                    Load my save
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="px-2 py-1 border rounded"
-                  onClick={() => handleLoadSavedLatex('shared')}
-                  disabled={!latestSharedLatex}
+                  <button
+                    type="button"
+                    className="px-2 py-1 border rounded"
+                    onClick={fetchLatexSaves}
+                  >
+                    Refresh
+                  </button>
+                  {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
+                </div>
+              )}
+              <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
+                <div
+                  className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
+                  onPointerDown={() => {
+                    revealStackedLatexControls()
+                  }}
                 >
-                  Load class
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-1 border rounded"
-                  onClick={() => handleLoadSavedLatex('mine')}
-                  disabled={!latestPersonalLatex}
-                >
-                  Load my save
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-1 border rounded"
-                  onClick={fetchLatexSaves}
-                >
-                  Refresh
-                </button>
-                {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
-              </div>
-              <div className="mt-2 px-4 pb-2 flex-1 min-h-[140px]">
-                <div className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">
+                  {(isOverlayMode || isCompactViewport) && stackedLatexControlsVisible && (
+                    <div className="absolute left-2 right-2 top-2 z-10 pointer-events-none">
+                      <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm px-2 py-2 text-[11px] text-slate-700">
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            className="px-2 py-1 border rounded"
+                            onClick={() => {
+                              revealStackedLatexControls()
+                              saveLatexSnapshot({ shared: true })
+                            }}
+                            disabled={isSavingLatex}
+                          >
+                            {isSavingLatex ? 'Saving…' : 'Save for class'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="px-2 py-1 border rounded"
+                            onClick={() => {
+                              revealStackedLatexControls()
+                              saveLatexSnapshot({ shared: false })
+                            }}
+                            disabled={isSavingLatex}
+                          >
+                            {isSavingLatex ? 'Saving…' : 'Save my copy'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="px-2 py-1 border rounded"
+                          onClick={() => {
+                            revealStackedLatexControls()
+                            handleLoadSavedLatex('shared')
+                          }}
+                          disabled={!latestSharedLatex}
+                        >
+                          Load class
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-1 border rounded"
+                          onClick={() => {
+                            revealStackedLatexControls()
+                            handleLoadSavedLatex('mine')
+                          }}
+                          disabled={!latestPersonalLatex}
+                        >
+                          Load my save
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-1 border rounded"
+                          onClick={() => {
+                            revealStackedLatexControls()
+                            fetchLatexSaves()
+                          }}
+                        >
+                          Refresh
+                        </button>
+                        {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
+                      </div>
+                    </div>
+                  )}
                   {latexDisplayState.enabled ? (
                     latexProjectionMarkup ? (
                       <div

@@ -1730,23 +1730,21 @@ export default function Dashboard() {
         <div className="live-call-overlay" role="dialog" aria-modal="true">
           <div className="live-call-overlay__backdrop" />
           <div className="live-call-overlay__panel" ref={stageRef}>
-            <div className="live-call-overlay__top">
-              <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
-                ×
-              </button>
-            </div>
-            <div className="live-call-overlay__canvas">
-              <button
-                type="button"
-                onClick={showCanvasWindow}
-                disabled={!canLaunchCanvasOverlay}
-                className="live-call-overlay__canvas-button"
-                style={{ marginLeft: 'auto', marginRight: 'auto' }}
-              >
-                {overlayCanvasLabel}
-              </button>
-            </div>
             <div className="live-call-overlay__video">
+              <div className="live-call-overlay__floating-actions">
+                <button
+                  type="button"
+                  onClick={showCanvasWindow}
+                  disabled={!canLaunchCanvasOverlay}
+                  className="live-call-overlay__canvas-toggle"
+                  aria-label="Open canvas"
+                >
+                  Canvas
+                </button>
+                <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
+                  ×
+                </button>
+              </div>
               {canJoinLiveClass ? (
                 <JitsiRoom
                   roomName={gradeRoomName}
@@ -1763,24 +1761,6 @@ export default function Dashboard() {
                   <p className="text-white text-lg font-semibold text-center">Sign in and pick a grade to unlock the live call.</p>
                 </div>
               )}
-            </div>
-            <div className="live-call-overlay__toolbar" role="group" aria-label="Live call controls">
-              <button type="button" onClick={() => handleLiveControl('mute')} disabled={!liveControls}>
-                Mute
-              </button>
-              <button type="button" onClick={() => handleLiveControl('video')} disabled={!liveControls}>
-                Stop video
-              </button>
-              <button type="button" onClick={() => handleLiveControl('leave')} disabled={!liveControls}>
-                Leave
-              </button>
-            </div>
-            <div className="live-call-overlay__status">
-              <span className="live-call-overlay__status-indicator" />
-              <div>
-                <p>Your devices are working properly</p>
-                <p>Other participants may be joining soon.</p>
-              </div>
             </div>
             {liveWindows.length > 0 && (
               <div className="live-overlay-stage">

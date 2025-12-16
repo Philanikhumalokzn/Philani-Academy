@@ -47,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userId = (token as any)?.id || (token as any)?.sub || null
   const userEmail = (token as any)?.email || null
   const role = (token as any)?.role as string | undefined
-  const isInstructor = role === 'admin' || role === 'teacher'
+  const isAdmin = role === 'admin'
   const sessionKey = sessionKeyParam.toString()
 
   if (req.method === 'GET') {
@@ -73,7 +73,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: 'Latex content is too large' })
     }
 
-    const willShare = isInstructor && shared !== false
+    // Only admins may create session-wide class saves.
+    // Everyone else saves privately (visible only to themselves).
+    const willShare = isAdmin && shared !== false
     const saveTitle = sanitizeTitle(title)
     const safeSession = sanitizeSegment(sessionKey)
     const scopeFolder = willShare ? 'shared' : sanitizeSegment(userId || 'participant')

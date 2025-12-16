@@ -592,6 +592,54 @@ export default function Dashboard() {
     }
   }
 
+  async function renameLatexSave(sessionId: string, saveId: string, currentTitle: string) {
+    const nextTitle = prompt('Rename LaTeX save', currentTitle)
+    if (nextTitle === null) return
+    const trimmed = nextTitle.trim()
+    if (!trimmed) return
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/latex-saves/${encodeURIComponent(saveId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: trimmed })
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to rename save (${res.status})`)
+        return
+      }
+      const updated = await res.json()
+      setLatexSaves(prev => ({
+        shared: prev.shared.map(s => s.id === saveId ? { ...s, title: updated.title } : s),
+        mine: prev.mine.map(s => s.id === saveId ? { ...s, title: updated.title } : s)
+      }))
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    }
+  }
+
+  async function deleteLatexSave(sessionId: string, saveId: string) {
+    if (!confirm('Delete this LaTeX save? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/latex-saves/${encodeURIComponent(saveId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin'
+      })
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to delete save (${res.status})`)
+        return
+      }
+      setLatexSaves(prev => ({
+        shared: prev.shared.filter(s => s.id !== saveId),
+        mine: prev.mine.filter(s => s.id !== saveId)
+      }))
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    }
+  }
+
   function resetMaterialForm() {
     setMaterialTitle('')
     setMaterialFile(null)
@@ -1400,11 +1448,31 @@ export default function Dashboard() {
                                         <div className="font-medium text-sm">{save.title}</div>
                                         <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
                                       </div>
-                                      {save.url && (
-                                        <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
-                                          Download
-                                        </a>
-                                      )}
+                                      <div className="flex items-center gap-2">
+                                        {save.url && (
+                                          <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
+                                            Download
+                                          </a>
+                                        )}
+                                        {normalizedRole === 'admin' && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost text-xs"
+                                              onClick={() => renameLatexSave(s.id, save.id, save.title)}
+                                            >
+                                              Rename
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-danger text-xs"
+                                              onClick={() => deleteLatexSave(s.id, save.id)}
+                                            >
+                                              Delete
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
                                     </li>
                                   ))}
                                 </ul>
@@ -1422,11 +1490,27 @@ export default function Dashboard() {
                                         <div className="font-medium text-sm">{save.title}</div>
                                         <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
                                       </div>
-                                      {save.url && (
-                                        <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
-                                          Download
-                                        </a>
-                                      )}
+                                      <div className="flex items-center gap-2">
+                                        {save.url && (
+                                          <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
+                                            Download
+                                          </a>
+                                        )}
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost text-xs"
+                                          onClick={() => renameLatexSave(s.id, save.id, save.title)}
+                                        >
+                                          Rename
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-danger text-xs"
+                                          onClick={() => deleteLatexSave(s.id, save.id)}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
                                     </li>
                                   ))}
                                 </ul>

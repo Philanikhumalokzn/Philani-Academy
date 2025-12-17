@@ -7,6 +7,7 @@ import { promises as fs } from 'fs'
 import { put } from '@vercel/blob'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
+import { getUserSubscriptionStatus, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 export const config = {
   api: {
@@ -60,6 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
   const role = (token as any)?.role as string | undefined
+  const authUserId = ((token as any)?.id || (token as any)?.sub || '') as string
   const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
   const sessionRecord = await prisma.sessionRecord.findUnique({ where: { id: sessionIdParam }, select: { grade: true, id: true } })
   if (!sessionRecord) return res.status(404).json({ message: 'Session not found' })
@@ -70,6 +72,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (tokenGrade !== sessionGrade) return res.status(403).json({ message: 'Access to this session is restricted to its grade' })
   } else if (role !== 'admin') {
     return res.status(403).json({ message: 'Forbidden' })
+  }
+
+  if (role === 'student') {
+    const status = await getUserSubscriptionStatus(authUserId)
+    if (!status.active) {
+      const denied = subscriptionRequiredResponse()
+      return res.status(denied.status).json(denied.body)
+    }
   }
 
   if (req.method === 'GET') {

@@ -49,6 +49,22 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   verifications ContactVerification[]
+  subscription UserSubscription?
+}
+
+model UserSubscription {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String   @default("payfast")
+  planId      String?
+  status      String   @default("inactive")
+  activeUntil DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([activeUntil])
 }
 
 model SessionRecord {

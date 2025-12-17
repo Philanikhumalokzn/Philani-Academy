@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 
+const SUCCESS_STATUSES = new Set(['COMPLETE', 'COMPLETED', 'PAID', 'SUCCESS'])
+
 export const config = {
   api: { bodyParser: false }
 }
@@ -55,6 +57,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // You should store the full notification in a payments table for auditing.
     console.log('PayFast IPN validated, status=', paymentStatus, 'user=', subscriberId, 'pf_id=', pfPaymentId)
+
+    // Subscription activation (minimal): for successful recurring payments, grant 31 days access.
+    // PayFast frequency is configured as monthly in our checkout (frequency=3).
+    const planId = params.get('custom_str1')
+    if (subscriberId && SUCCESS_STATUSES.has(paymentStatus.toUpperCase())) {
+      const activeUntil = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000)
+      try {
+        await (prisma as any).userSubscription.upsert({
+          where: { userId: subscriberId },
+          create: {
+            userId: subscriberId,
+            provider: 'payfast',
+            planId: planId || null,
+            status: 'active',
+            activeUntil
+          },
+          update: {
+            provider: 'payfast',
+            planId: planId || null,
+            status: 'active',
+            activeUntil
+          }
+        })
+      } catch (err) {
+        console.error('Failed to upsert user subscription from PayFast notify', err)
+      }
+    }
     res.status(200).end()
   } catch (err: any) {
     console.error('Error in PayFast notify handler', err)

@@ -111,6 +111,7 @@ export default function Dashboard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [announcementsLoading, setAnnouncementsLoading] = useState(false)
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null)
+  const [subscriptionActive, setSubscriptionActive] = useState<boolean | null>(null)
   const [announcementTitle, setAnnouncementTitle] = useState('')
   const [announcementContent, setAnnouncementContent] = useState('')
   const [creatingAnnouncement, setCreatingAnnouncement] = useState(false)
@@ -170,6 +171,32 @@ export default function Dashboard() {
   const normalizedRole: SectionRole = userRole ?? 'guest'
   const isAdmin = normalizedRole === 'admin'
   const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
+  const isLearner = normalizedRole === 'student'
+  const isSubscriptionBlocked = isLearner && subscriptionActive === false
+
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      setSubscriptionActive(null)
+      return
+    }
+    if (!isLearner) {
+      setSubscriptionActive(true)
+      return
+    }
+    let cancelled = false
+    fetch('/api/subscription/status', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (cancelled) return
+        setSubscriptionActive(Boolean(data?.active))
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Fail closed for learners: if we can't confirm, treat as unsubscribed.
+        setSubscriptionActive(false)
+      })
+    return () => { cancelled = true }
+  }, [status, isLearner])
   const canUploadMaterials = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
@@ -281,6 +308,11 @@ export default function Dashboard() {
       alert('Sign in and choose a grade to open the shared canvas overlay.')
       return
     }
+
+    if (isSubscriptionBlocked) {
+      alert('A subscription is required to use session resources.')
+      return
+    }
     const nextSessionId = sessionId ?? activeSessionId
     if (!nextSessionId) {
       alert('Select a session before opening the canvas so your work is saved to the correct session.')
@@ -318,13 +350,17 @@ export default function Dashboard() {
       }
       return [...prev, baseWindow]
     })
-  }, [canLaunchCanvasOverlay, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ, activeSessionId])
+  }, [canLaunchCanvasOverlay, isSubscriptionBlocked, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ, activeSessionId])
 
   const openLiveForSession = useCallback((sessionId: string) => {
+    if (isSubscriptionBlocked) {
+      alert('A subscription is required to join sessions.')
+      return
+    }
     setActiveSessionId(sessionId)
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
-  }, [])
+  }, [isSubscriptionBlocked])
 
   const startLiveForSession = useCallback(async (sessionId: string) => {
     try {
@@ -1263,6 +1299,15 @@ export default function Dashboard() {
 
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Upcoming sessions — {activeGradeLabel}</h2>
+          {isSubscriptionBlocked && (
+            <div className="p-3 border rounded bg-slate-50">
+              <div className="font-medium">Subscription required</div>
+              <div className="text-sm muted">Subscribe to join sessions and access lesson materials.</div>
+              <div className="mt-2">
+                <a className="btn btn-primary" href="/subscribe">Subscribe</a>
+              </div>
+            </div>
+          )}
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>
           ) : sessions.length === 0 ? (
@@ -1292,6 +1337,7 @@ export default function Dashboard() {
                           type="button"
                           className={`btn w-full justify-center ${canCreateSession ? '' : 'btn-primary'}`}
                           onClick={() => openLiveForSession(s.id)}
+                          disabled={isSubscriptionBlocked}
                         >
                           Open class
                         </button>
@@ -1299,7 +1345,7 @@ export default function Dashboard() {
                           type="button"
                           className="btn w-full justify-center"
                           onClick={() => showCanvasWindow(s.id)}
-                          disabled={!canLaunchCanvasOverlay}
+                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                         >
                           Canvas
                         </button>
@@ -1307,6 +1353,7 @@ export default function Dashboard() {
                           type="button"
                           className="btn w-full justify-center"
                           onClick={() => toggleMaterialsForSession(s.id)}
+                          disabled={isSubscriptionBlocked}
                         >
                           {expandedSessionId === s.id ? 'Hide materials' : 'Materials'}
                         </button>
@@ -1314,7 +1361,7 @@ export default function Dashboard() {
                           href={s.joinUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className={`btn btn-ghost w-full justify-center ${canCreateSession ? 'col-span-2' : ''}`}
+                          className={`btn btn-ghost w-full justify-center ${canCreateSession ? 'col-span-2' : ''} ${isSubscriptionBlocked ? 'pointer-events-none opacity-50' : ''}`}
                         >
                           Link
                         </a>
@@ -1340,6 +1387,7 @@ export default function Dashboard() {
                           type="button"
                           className="btn"
                           onClick={() => openLiveForSession(s.id)}
+                          disabled={isSubscriptionBlocked}
                         >
                           Open class
                         </button>
@@ -1347,15 +1395,23 @@ export default function Dashboard() {
                           type="button"
                           className="btn"
                           onClick={() => showCanvasWindow(s.id)}
-                          disabled={!canLaunchCanvasOverlay}
+                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                         >
                           Canvas
                         </button>
-                        <a href={s.joinUrl} target="_blank" rel="noreferrer" className="btn btn-ghost">Link</a>
+                        <a
+                          href={s.joinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`btn btn-ghost${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                        >
+                          Link
+                        </a>
                         <button
                           type="button"
                           className="btn"
                           onClick={() => toggleMaterialsForSession(s.id)}
+                          disabled={isSubscriptionBlocked}
                         >
                           {expandedSessionId === s.id ? 'Hide materials' : 'View materials'}
                         </button>

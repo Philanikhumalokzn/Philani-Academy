@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
+import { getUserSubscriptionStatus, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
@@ -19,6 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sessionGrade = normalizeGradeInput((rec as any).grade as string | undefined)
   const userRole = (token as any)?.role as string | undefined
   let userGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+  const authUserId = ((token as any)?.id || (token as any)?.sub || '') as string
 
   if (!userGrade && (userRole === 'student' || userRole === 'teacher')) {
     try {
@@ -39,6 +41,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!sessionGrade) return res.status(403).json({ message: 'Forbidden: session grade missing' })
     if (!userGrade) return res.status(403).json({ message: 'Forbidden: learner grade missing' })
     if (sessionGrade !== userGrade) return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+  }
+
+  if (userRole === 'student') {
+    const status = await getUserSubscriptionStatus(authUserId)
+    if (!status.active) {
+      const denied = subscriptionRequiredResponse()
+      return res.status(denied.status).json(denied.body)
+    }
   }
 
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''

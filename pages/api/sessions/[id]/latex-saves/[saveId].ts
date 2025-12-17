@@ -4,6 +4,7 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import { del } from '@vercel/blob'
 import prisma from '../../../../../lib/prisma'
+import { getUserSubscriptionStatus, subscriptionRequiredResponse } from '../../../../../lib/subscription'
 
 const sanitizeTitle = (value: string | undefined) => {
   const base = (value || '').toString().trim()
@@ -24,6 +25,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = (token as any)?.role as string | undefined
   const isAdmin = role === 'admin'
   const userId = (token as any)?.id || (token as any)?.sub || null
+
+  if (role === 'student') {
+    const authUserId = (userId || '').toString()
+    const status = await getUserSubscriptionStatus(authUserId)
+    if (!status.active) {
+      const denied = subscriptionRequiredResponse()
+      return res.status(denied.status).json(denied.body)
+    }
+  }
 
   const sessionKey = sessionKeyParam.toString()
   const saveId = saveIdParam.toString()

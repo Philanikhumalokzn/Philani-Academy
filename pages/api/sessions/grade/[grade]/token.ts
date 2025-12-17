@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import { GradeValue, normalizeGradeInput } from '../../../../../lib/grades'
 import prisma from '../../../../../lib/prisma'
+import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../../lib/subscription'
 
 function buildRoomSegment(grade: GradeValue, secret: string) {
   const baseKey = `grade-${grade}`
@@ -56,6 +57,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isAdmin && !isOwner && !isTeacher && !isStudent) {
     return res.status(403).json({ message: 'Forbidden' })
+  }
+
+  if (isStudent) {
+    const gatingEnabled = await isSubscriptionGatingEnabled()
+    if (gatingEnabled) {
+      const authUserId = ((authToken as any)?.id || (authToken as any)?.sub || '') as string
+      const status = await getUserSubscriptionStatus(authUserId)
+      if (!status.active) {
+        const denied = subscriptionRequiredResponse()
+        return res.status(denied.status).json(denied.body)
+      }
+    }
   }
 
   const secret = process.env.ROOM_SECRET || ''

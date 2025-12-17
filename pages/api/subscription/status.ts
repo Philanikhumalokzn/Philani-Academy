@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
-import { getUserSubscriptionStatus } from '../../../lib/subscription'
+import { getUserSubscriptionStatus, isSubscriptionGatingEnabled } from '../../../lib/subscription'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -15,5 +15,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
   const status = await getUserSubscriptionStatus(userId)
-  return res.status(200).json({ ...status, activeUntil: status.activeUntil ? status.activeUntil.toISOString() : null })
+  const gatingEnabled = await isSubscriptionGatingEnabled()
+  return res.status(200).json({
+    ...status,
+    gatingEnabled,
+    activeUntil: status.activeUntil ? status.activeUntil.toISOString() : null
+  })
 }

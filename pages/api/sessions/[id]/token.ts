@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
 import jwt from 'jsonwebtoken'
-import { getUserSubscriptionStatus, subscriptionRequiredResponse } from '../../../../lib/subscription'
+import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 // Session-scoped JaaS token, aligned with the grade token logic. Prefers RS256
 // (JAAS_PRIVATE_KEY + JAAS_KEY_ID + JAAS_APP_ID) and falls back to HS256 using
@@ -51,10 +51,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Subscription gating: learners must be subscribed to join sessions.
   if (userRole === 'student') {
-    const status = await getUserSubscriptionStatus(authUserId)
-    if (!status.active) {
-      const denied = subscriptionRequiredResponse()
-      return res.status(denied.status).json(denied.body)
+    const gatingEnabled = await isSubscriptionGatingEnabled()
+    if (gatingEnabled) {
+      const status = await getUserSubscriptionStatus(authUserId)
+      if (!status.active) {
+        const denied = subscriptionRequiredResponse()
+        return res.status(denied.status).json(denied.body)
+      }
     }
   }
 

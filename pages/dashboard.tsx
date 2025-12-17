@@ -140,6 +140,10 @@ export default function Dashboard() {
   const materialsRequestIdRef = useRef(0)
   const latexSavesRequestIdRef = useRef(0)
 
+  const [subscriptionGatingEnabled, setSubscriptionGatingEnabled] = useState<boolean | null>(null)
+  const [subscriptionGatingSaving, setSubscriptionGatingSaving] = useState(false)
+  const [subscriptionGatingError, setSubscriptionGatingError] = useState<string | null>(null)
+
   const overlayBounds = useMemo(() => {
     const fallbackWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
     const fallbackHeight = typeof window === 'undefined' ? 768 : window.innerHeight
@@ -172,15 +176,14 @@ export default function Dashboard() {
   const isAdmin = normalizedRole === 'admin'
   const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const isLearner = normalizedRole === 'student'
-  const isSubscriptionBlocked = isLearner && subscriptionActive === false
+  const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
+  const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
 
   useEffect(() => {
     if (status !== 'authenticated') {
       setSubscriptionActive(null)
-      return
-    }
-    if (!isLearner) {
-      setSubscriptionActive(true)
+      setSubscriptionGatingEnabled(null)
+      setSubscriptionGatingError(null)
       return
     }
     let cancelled = false
@@ -188,15 +191,40 @@ export default function Dashboard() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (cancelled) return
-        setSubscriptionActive(Boolean(data?.active))
+        const gatingEnabled = typeof data?.gatingEnabled === 'boolean' ? data.gatingEnabled : true
+        setSubscriptionGatingEnabled(gatingEnabled)
+        setSubscriptionActive(isLearner ? Boolean(data?.active) : true)
       })
       .catch(() => {
         if (cancelled) return
-        // Fail closed for learners: if we can't confirm, treat as unsubscribed.
-        setSubscriptionActive(false)
+        // Fail closed for learners.
+        setSubscriptionGatingEnabled(true)
+        setSubscriptionActive(isLearner ? false : true)
       })
     return () => { cancelled = true }
   }, [status, isLearner])
+
+  const updateSubscriptionGating = useCallback(async (enabled: boolean) => {
+    setSubscriptionGatingSaving(true)
+    setSubscriptionGatingError(null)
+    try {
+      const res = await fetch('/api/subscription/gating', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ enabled })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || 'Failed to update gating')
+      }
+      setSubscriptionGatingEnabled(Boolean(data?.enabled))
+    } catch (err: any) {
+      setSubscriptionGatingError(err?.message || 'Failed to update gating')
+    } finally {
+      setSubscriptionGatingSaving(false)
+    }
+  }, [])
   const canUploadMaterials = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
@@ -1299,6 +1327,26 @@ export default function Dashboard() {
 
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Upcoming sessions — {activeGradeLabel}</h2>
+          {isAdmin && (
+            <div className="p-3 border rounded bg-slate-50 space-y-2">
+              <div className="font-medium">Subscription gating</div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={effectiveSubscriptionGatingEnabled}
+                  disabled={subscriptionGatingSaving || subscriptionGatingEnabled === null}
+                  onChange={(e) => updateSubscriptionGating(e.target.checked)}
+                />
+                <span>Require an active subscription for learners to join sessions and view materials</span>
+              </label>
+              {subscriptionGatingEnabled === null && (
+                <div className="text-xs muted">Loading current setting…</div>
+              )}
+              {subscriptionGatingError && (
+                <div className="text-sm text-red-600">{subscriptionGatingError}</div>
+              )}
+            </div>
+          )}
           {isSubscriptionBlocked && (
             <div className="p-3 border rounded bg-slate-50">
               <div className="font-medium">Subscription required</div>

@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
-import { getUserSubscriptionStatus, subscriptionRequiredResponse } from '../../../../lib/subscription'
+import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
@@ -44,10 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (userRole === 'student') {
-    const status = await getUserSubscriptionStatus(authUserId)
-    if (!status.active) {
-      const denied = subscriptionRequiredResponse()
-      return res.status(denied.status).json(denied.body)
+    const gatingEnabled = await isSubscriptionGatingEnabled()
+    if (gatingEnabled) {
+      const status = await getUserSubscriptionStatus(authUserId)
+      if (!status.active) {
+        const denied = subscriptionRequiredResponse()
+        return res.status(denied.status).json(denied.body)
+      }
     }
   }
 

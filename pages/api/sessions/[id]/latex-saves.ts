@@ -4,7 +4,7 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import { put } from '@vercel/blob'
 import prisma from '../../../../lib/prisma'
-import { getUserSubscriptionStatus, subscriptionRequiredResponse } from '../../../../lib/subscription'
+import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 const MAX_LATEX_LENGTH = 50000
 
@@ -51,13 +51,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const isAdmin = role === 'admin'
   const sessionKey = sessionKeyParam.toString()
 
-  if (role === 'student') {
-    const authUserId = (userId || '').toString()
-    const status = await getUserSubscriptionStatus(authUserId)
-    if (!status.active) {
-      const denied = subscriptionRequiredResponse()
-      return res.status(denied.status).json(denied.body)
-    }
+    // Subscription gating: learners must be subscribed to access session content.
+    if (!isAdmin && role === 'student') {
+      const gatingEnabled = await isSubscriptionGatingEnabled()
+      if (gatingEnabled) {
+        const authUserId = (userId || '').toString()
+        const status = await getUserSubscriptionStatus(authUserId)
+        if (!status.active) {
+          const denied = subscriptionRequiredResponse()
+          return res.status(denied.status).json(denied.body)
+        }
+      }
   }
 
   if (req.method === 'GET') {

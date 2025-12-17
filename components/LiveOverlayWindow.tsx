@@ -244,44 +244,6 @@ export default function LiveOverlayWindow({
           {subtitle && <p className="live-window__eyebrow">{subtitle}</p>}
           <p className="live-window__title">{title}</p>
         </div>
-        <div className="live-window__header-controls">
-          <button
-            type="button"
-            onPointerDown={event => event.stopPropagation()}
-            onClick={event => {
-              event.stopPropagation()
-              onToggleMinimize(id)
-            }}
-            aria-label={minimized ? 'Restore window' : 'Minimize window'}
-            disabled={isFullscreen}
-          >
-            {minimized ? '▢' : '—'}
-          </button>
-          {onRequestFullscreen && (
-            <button
-              type="button"
-              onPointerDown={event => event.stopPropagation()}
-              onClick={event => {
-                event.stopPropagation()
-                onRequestFullscreen(id)
-              }}
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fill stage'}
-            >
-              {isFullscreen ? '⤡' : '⤢'}
-            </button>
-          )}
-          <button
-            type="button"
-            onPointerDown={event => event.stopPropagation()}
-            onClick={event => {
-              event.stopPropagation()
-              onClose(id)
-            }}
-            aria-label="Close window"
-          >
-            ×
-          </button>
-        </div>
       </div>
       <div
         className="live-window__body"

@@ -1,9 +1,14 @@
-import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-type AnnouncementLike = { id?: string | number | null }
+type AnnouncementLike = {
+  id?: string | number | null
+  title?: string | null
+  content?: string | null
+  createdAt?: string | null
+  grade?: string | null
+}
 
 const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: boolean) => {
   if (!authenticated) return false
@@ -22,6 +27,8 @@ export default function MobileTopChrome() {
   const isVisible = useMobileTopChromeVisible(router.pathname, status === 'authenticated')
 
   const [open, setOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [unreadCount, setUnreadCount] = useState(0)
@@ -38,6 +45,21 @@ export default function MobileTopChrome() {
   const readStorageKey = useMemo(() => `pa:readAnnouncements:${userKey}`, [userKey])
 
   const readSet = useMemo(() => new Set(readIds), [readIds])
+
+  const persistReadIds = useCallback((next: string[]) => {
+    setReadIds(next)
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(readStorageKey, JSON.stringify(next))
+    } catch {}
+  }, [readStorageKey])
+
+  const markRead = useCallback((id: string) => {
+    if (!id) return
+    if (readSet.has(id)) return
+    const next = Array.from(new Set([...readIds, id]))
+    persistReadIds(next)
+  }, [persistReadIds, readIds, readSet])
 
   const computeUnread = useCallback((items: AnnouncementLike[], ids: Set<string>) => {
     if (!items || items.length === 0) return 0
@@ -123,11 +145,24 @@ export default function MobileTopChrome() {
       clearTimeout(hideTimeoutRef.current)
       hideTimeoutRef.current = null
     }
-    hideTimeoutRef.current = setTimeout(() => {
-      setOpen(false)
-      hideTimeoutRef.current = null
-    }, 1500)
+    // Keep chrome visible while notifications sheet is open.
+    if (!notificationsOpen) {
+      hideTimeoutRef.current = setTimeout(() => {
+        setOpen(false)
+        hideTimeoutRef.current = null
+      }, 1500)
+    }
   }, [])
+
+  useEffect(() => {
+    // If the notifications overlay is opened, keep the chrome visible.
+    if (!notificationsOpen) return
+    setOpen(true)
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+  }, [notificationsOpen])
 
   useEffect(() => {
     if (!isVisible) return
@@ -168,6 +203,27 @@ export default function MobileTopChrome() {
 
   if (!isVisible) return null
 
+  const openNotifications = () => {
+    setNotificationsOpen(true)
+    setOpen(true)
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+  }
+
+  const closeNotifications = () => {
+    setNotificationsOpen(false)
+    setExpandedId(null)
+  }
+
+  const toggleAnnouncement = (idRaw: string | number | null | undefined) => {
+    const id = idRaw == null ? '' : String(idRaw)
+    if (!id) return
+    setExpandedId(prev => (prev === id ? null : id))
+    markRead(id)
+  }
+
   return (
     <>
       <div
@@ -176,30 +232,40 @@ export default function MobileTopChrome() {
       >
         <div className="mx-auto w-fit max-w-full rounded-2xl border border-white/15 bg-white/10 backdrop-blur px-2 py-2">
           <div className="flex items-center justify-center gap-2">
-            <Link
-              href="/dashboard"
+            <button
+              type="button"
               aria-label="Home"
               className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+              onClick={() => router.push('/dashboard')}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5Z" fill="currentColor" />
               </svg>
-            </Link>
+            </button>
 
-            <Link
-              href={{ pathname: '/dashboard', query: { panel: 'sessions' } }}
+            <button
+              type="button"
               aria-label="Sessions"
               className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+              onClick={() => router.push({ pathname: '/dashboard', query: { panel: 'sessions' } })}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7Zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10Zm-13 3h4v4H8v-4Z" fill="currentColor" />
               </svg>
-            </Link>
+            </button>
 
-            <Link
-              href={{ pathname: '/dashboard', query: { panel: 'announcements' } }}
-              aria-label="Announcements"
+            <button
+              type="button"
+              aria-label="Notifications"
               className="relative inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+              onClick={() => {
+                // If already open, close; otherwise open as an overlay sheet.
+                if (notificationsOpen) {
+                  closeNotifications()
+                } else {
+                  openNotifications()
+                }
+              }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
@@ -212,20 +278,85 @@ export default function MobileTopChrome() {
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
-            </Link>
+            </button>
 
-            <Link
-              href="/profile"
+            <button
+              type="button"
               aria-label="Settings"
               className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+              onClick={() => router.push('/profile')}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 12.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM11 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" fill="currentColor" />
               </svg>
-            </Link>
+            </button>
           </div>
         </div>
       </div>
+
+      {notificationsOpen && (
+        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" data-mobile-chrome-ignore>
+          <div
+            className="absolute inset-0 bg-black/35 backdrop-blur-md"
+            onClick={closeNotifications}
+            aria-hidden="true"
+          />
+          <div className="absolute inset-x-2 top-14 bottom-3 rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">
+            <div className="p-3 border-b border-white/10 flex items-center justify-between">
+              <div className="font-semibold text-white">Notifications</div>
+              <button
+                type="button"
+                aria-label="Close notifications"
+                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+                onClick={closeNotifications}
+              >
+                <span aria-hidden="true" className="text-lg leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="p-3 overflow-auto h-full">
+              {announcements.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+                  No notifications yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {announcements.map((a) => {
+                    const id = a?.id == null ? '' : String(a.id)
+                    const isExpanded = id && expandedId === id
+                    const isRead = id ? readSet.has(id) : true
+                    return (
+                      <div
+                        key={id || Math.random().toString(36)}
+                        className={`rounded-2xl border p-3 ${isRead ? 'border-white/10 bg-white/5' : 'border-blue-300/40 bg-white/10'}`}
+                      >
+                        <button
+                          type="button"
+                          className="w-full text-left"
+                          onClick={() => toggleAnnouncement(a?.id ?? null)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-white truncate">{a?.title || 'Announcement'}</div>
+                              {a?.createdAt && (
+                                <div className="text-xs text-white/70">{new Date(a.createdAt).toLocaleString()}</div>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>
+                          </div>
+                          {isExpanded && a?.content && (
+                            <div className="mt-2 text-sm text-white/85 whitespace-pre-wrap">{a.content}</div>
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

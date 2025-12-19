@@ -4,6 +4,7 @@ import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'
 import NavBar from '../components/NavBar'
+import MobileTopChrome from '../components/MobileTopChrome'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   return (
@@ -29,6 +30,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       </Head>
       <div className="app-shell">
         <NavBar />
+        <MobileTopChrome />
         <Component {...pageProps} />
       </div>
     </SessionProvider>

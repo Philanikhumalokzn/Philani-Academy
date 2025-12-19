@@ -162,8 +162,10 @@ export default function Dashboard() {
     return `data:image/svg+xml,${encodeURIComponent(svg)}`
   })
   const [mobileHeroBgDragActive, setMobileHeroBgDragActive] = useState(false)
+  const [mobileHeroBgEditVisible, setMobileHeroBgEditVisible] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const heroBgInputRef = useRef<HTMLInputElement | null>(null)
+  const heroBgEditHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const materialsRequestIdRef = useRef(0)
@@ -467,6 +469,39 @@ export default function Dashboard() {
 
   const openMobileAnnouncements = useCallback(() => {
     setMobilePanels(prev => ({ ...prev, announcements: true }))
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile) return
+    if (!router.isReady) return
+    const rawPanel = Array.isArray(router.query.panel) ? router.query.panel[0] : router.query.panel
+    const panel = typeof rawPanel === 'string' ? rawPanel : null
+    if (panel === 'announcements') {
+      openMobileAnnouncements()
+    }
+    if (panel === 'sessions') {
+      setMobilePanels(prev => ({ ...prev, sessions: true }))
+    }
+  }, [isMobile, openMobileAnnouncements, router.isReady, router.query.panel])
+
+  const showMobileHeroEdit = useCallback(() => {
+    setMobileHeroBgEditVisible(true)
+    if (heroBgEditHideTimeoutRef.current) {
+      clearTimeout(heroBgEditHideTimeoutRef.current)
+      heroBgEditHideTimeoutRef.current = null
+    }
+    heroBgEditHideTimeoutRef.current = setTimeout(() => {
+      setMobileHeroBgEditVisible(false)
+      heroBgEditHideTimeoutRef.current = null
+    }, 2500)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (heroBgEditHideTimeoutRef.current) {
+        clearTimeout(heroBgEditHideTimeoutRef.current)
+      }
+    }
   }, [])
 
   const toggleFullscreenLiveWindow = useCallback((id: string) => {
@@ -2326,37 +2361,6 @@ export default function Dashboard() {
       <div className={`${isMobile ? 'w-full px-2 pt-3 pb-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
         {isMobile ? (
           <>
-            <button
-              type="button"
-              onClick={openMobileAnnouncements}
-              aria-label="Announcements"
-              className="fixed top-3 right-3 z-50 md:hidden rounded-full border border-white/25 bg-white/10 backdrop-blur px-3 py-2 text-white"
-            >
-              <span className="relative inline-flex items-center justify-center">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z"
-                    fill="currentColor"
-                  />
-                </svg>
-                {unreadAnnouncementCount > 0 && (
-                  <span
-                    className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                    aria-label={`${unreadAnnouncementCount} unread announcements`}
-                  >
-                    {unreadAnnouncementCount > 99 ? '99+' : unreadAnnouncementCount}
-                  </span>
-                )}
-              </span>
-            </button>
-
             {mobilePanels.announcements && (
               <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
                 <div className="absolute inset-0 bg-black/60" onClick={closeMobileAnnouncements} />
@@ -2399,7 +2403,7 @@ export default function Dashboard() {
                 if (!target) return
                 const tag = target.tagName?.toLowerCase()
                 if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                heroBgInputRef.current?.click()
+                showMobileHeroEdit()
               }}
             >
               <div
@@ -2419,6 +2423,20 @@ export default function Dashboard() {
                   e.target.value = ''
                 }}
               />
+
+              <button
+                type="button"
+                aria-label="Edit background"
+                className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  heroBgInputRef.current?.click()
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                </svg>
+              </button>
               <div className="flex flex-col items-center gap-3">
                 <div className="w-20 h-20 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
                   {learnerAvatarUrl ? (

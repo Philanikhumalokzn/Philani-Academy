@@ -1,15 +1,11 @@
 import Link from 'next/link'
 import { signOut, useSession } from 'next-auth/react'
-import { useRouter } from 'next/router'
 import { useState } from 'react'
 
 export default function NavBar() {
   const { data: session } = useSession()
-  const router = useRouter()
   const role = (session as any)?.user?.role
   const [open, setOpen] = useState(false)
-
-  const hideOnMobileRoutes = router.pathname === '/' || router.pathname === '/dashboard'
 
   const handleBack = () => {
     if (typeof window === 'undefined') return
@@ -26,7 +22,7 @@ export default function NavBar() {
   }
 
   return (
-    <nav className={`top-nav text-white${hideOnMobileRoutes ? ' hidden md:block' : ''}`}>
+    <nav className="top-nav text-white hidden md:block">
       <div className="max-w-6xl mx-auto px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center gap-4">
           <div className="hidden flex-1 md:flex" aria-hidden="true" />

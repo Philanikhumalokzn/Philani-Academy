@@ -2345,8 +2345,18 @@ export default function Dashboard() {
 
   return (
     <>
-      <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white overflow-x-hidden' : 'deep-page'} min-h-screen pb-16`}>
-      <div className={`${isMobile ? 'w-full px-2 pt-3 pb-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
+      <main className={`${isMobile ? 'mobile-dashboard-theme relative text-white overflow-x-hidden' : 'deep-page'} min-h-screen pb-16`}>
+      {isMobile && (
+        <>
+          <div
+            className="absolute inset-0 opacity-25"
+            style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+            aria-hidden="true"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#020b35]/35 via-[#041448]/25 to-[#031641]/35" aria-hidden="true" />
+        </>
+      )}
+      <div className={`${isMobile ? 'relative z-10 w-full px-2 pt-3 pb-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
         {isMobile ? (
           <>
             {mobilePanels.announcements && (

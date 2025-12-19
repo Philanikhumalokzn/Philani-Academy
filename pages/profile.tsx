@@ -299,16 +299,17 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="mobile-dashboard-theme min-h-screen overflow-hidden text-white">
+    <main className="mobile-dashboard-theme profile-overlay-theme min-h-screen overflow-hidden text-white">
       <div
         className="absolute inset-0"
         style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
         aria-hidden="true"
       />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/45 via-[#041448]/30 to-[#031641]/45" aria-hidden="true" />
 
       <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
-        <div className="absolute inset-0 bg-black/35 backdrop-blur-md" aria-hidden="true" />
-        <div className="absolute inset-x-2 top-3 bottom-3 md:static md:inset-auto md:mx-auto md:my-12 md:w-full md:max-w-5xl rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">
+        <div className="absolute inset-0 bg-black/25 backdrop-blur-md" aria-hidden="true" />
+        <div className="absolute inset-x-2 top-3 bottom-3 md:static md:inset-auto md:mx-auto md:my-12 md:w-full md:max-w-5xl rounded-3xl border border-white/10 bg-white/3 shadow-2xl overflow-hidden">
           <div className="p-3 border-b border-white/10 flex items-center justify-end">
             <button
               type="button"
@@ -322,7 +323,7 @@ export default function ProfilePage() {
           <div className="p-4 overflow-auto h-full">
             <div className="mx-auto max-w-5xl space-y-6 md:space-y-8">
               <section className="hero flex-col gap-5">
-                <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+                <div className="space-y-4 rounded-3xl border border-white/10 bg-white/3 p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <button

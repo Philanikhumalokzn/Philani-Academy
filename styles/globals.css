@@ -257,6 +257,11 @@ body{
   color:#f8fafc;
 }
 
+/* Make profile overlay feel like the dashboard glass (less opaque than deep-page cards). */
+.profile-overlay-theme .card{
+  background: rgba(8,14,30,0.65);
+}
+
 .mobile-dashboard-theme .card{
   background:rgba(255,255,255,0.08);
   border:1px solid rgba(255,255,255,0.1);

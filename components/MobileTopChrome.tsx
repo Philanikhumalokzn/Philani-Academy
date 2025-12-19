@@ -133,7 +133,7 @@ export default function MobileTopChrome() {
     if (!isVisible) return
     if (typeof window === 'undefined') return
 
-    const onAnyClick = (e: MouseEvent) => {
+    const onAnyPointer = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null
       if (!target) return
 
@@ -149,8 +149,9 @@ export default function MobileTopChrome() {
       showChrome()
     }
 
-    window.addEventListener('click', onAnyClick)
-    return () => window.removeEventListener('click', onAnyClick)
+    // Use pointerdown + capture so it works reliably on mobile (before routing/link clicks).
+    window.addEventListener('pointerdown', onAnyPointer, { capture: true })
+    return () => window.removeEventListener('pointerdown', onAnyPointer, { capture: true } as any)
   }, [isVisible, showChrome])
 
   useEffect(() => {

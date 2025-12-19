@@ -1158,12 +1158,6 @@ export default function Dashboard() {
   }, [gradeReady, selectedGrade])
 
   useEffect(() => {
-    if (activeSessionId) return
-    if (!sessions || sessions.length === 0) return
-    setActiveSessionId(sessions[0].id)
-  }, [sessions, activeSessionId])
-
-  useEffect(() => {
     if (!gradeReady || !selectedGrade) return
     fetchAnnouncementsForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
@@ -1219,13 +1213,7 @@ export default function Dashboard() {
   }, [overlayBounds, clampWindowPosition])
 
 
-  useEffect(() => {
-    if (!gradeReady) return
-    if (liveOverlayDismissed) return
-    if (status === 'authenticated' && normalizedRole !== 'guest') {
-      setLiveOverlayOpen(true)
-    }
-  }, [status, normalizedRole, gradeReady, liveOverlayDismissed])
+  // Session-scoped: live overlay opens only when a session is joined.
 
   useEffect(() => {
     if (!liveOverlayOpen) return
@@ -2548,6 +2536,7 @@ export default function Dashboard() {
                   tokenEndpoint={null}
                   passwordEndpoint={null}
                   isOwner={isOwnerUser}
+                  showControls={false}
                   onControlsChange={setLiveControls}
                 />
               ) : (

@@ -110,7 +110,7 @@ export default function Subscribe() {
   }, [selectedPlanId])
 
   return (
-    <main className="mobile-dashboard-theme min-h-screen overflow-hidden text-white">
+    <main className="mobile-dashboard-theme relative min-h-screen overflow-hidden text-white">
       <div
         className="absolute inset-0"
         style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
@@ -118,7 +118,7 @@ export default function Subscribe() {
       />
       <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/70 via-[#041448]/55 to-[#031641]/70" aria-hidden="true" />
 
-      <div className="relative z-10 fixed inset-0 md:static" role="dialog" aria-modal="true">
+      <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
         <div className="absolute inset-0 bg-black/35 backdrop-blur-md" aria-hidden="true" />
 
         <div className="absolute inset-x-2 top-3 bottom-3 md:static md:inset-auto md:mx-auto md:my-12 md:w-full md:max-w-4xl rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">

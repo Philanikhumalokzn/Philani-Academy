@@ -8,10 +8,10 @@ const SimpleJitsiEmbed = dynamic(() => import('../components/SimpleJitsiEmbed'),
 export default function JaaSDemoPage() {
   const roomName = 'vpaas-magic-cookie-06c4cf69d5104db0a1814b907036bfa4/SampleAppAliveIntensitiesSurveyFerociously'
   return (
-    <main className="deep-page min-h-screen">
+    <main className="deep-page min-h-screen overflow-hidden">
       <div className="h-[100svh] flex flex-col">
-        <div className="px-2 py-3 border-b border-white/10 bg-white/5">
-          <div className="w-full flex items-center justify-between gap-3">
+        <div className="px-4 py-3 border-b border-white/10 bg-white/5">
+          <div className="mx-auto w-full max-w-6xl flex items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />
             <Link href="/dashboard" className="btn btn-ghost text-sm">Back</Link>
           </div>

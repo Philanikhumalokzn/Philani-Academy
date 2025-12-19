@@ -264,8 +264,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="deep-page min-h-screen px-2 py-6 md:py-12 overflow-x-hidden">
-      <div className="w-full space-y-6 md:space-y-8">
+    <main className="deep-page min-h-screen px-4 py-6 md:py-12 overflow-x-hidden">
+      <div className="mx-auto max-w-5xl space-y-6 md:space-y-8">
         <section className="hero flex-col gap-5">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />

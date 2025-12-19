@@ -689,8 +689,7 @@ td{color:#f8fafc;}
   border:1px solid rgba(255,255,255,0.08);
   border-radius:28px;
   padding:1.25rem;
-  width:96vw;
-  max-width:96vw;
+  width:min(720px,90%);
   box-shadow:0 25px 60px rgba(0,0,0,0.6);
 }
 .canvas-overlay-controls__title{
@@ -729,8 +728,7 @@ td{color:#f8fafc;}
 }
 .canvas-overlay-shell__content{
   position:relative;
-  width:100vw;
-  max-width:100vw;
+  width:min(1400px,95vw);
   height:min(92vh,940px);
   background:rgba(2,6,24,0.92);
   border:1px solid rgba(255,255,255,0.08);
@@ -885,7 +883,7 @@ td{color:#f8fafc;}
 
 .live-call-overlay{position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;}
 .live-call-overlay__backdrop{position:absolute;inset:0;background:#031447;}
-.live-call-overlay__panel{position:relative;width:96vw;max-width:96vw;height:min(90vh,680px);background:linear-gradient(180deg,#03103a,#051f69);border-radius:32px;padding:1.25rem;box-shadow:0 40px 120px rgba(0,0,0,0.65);display:flex;flex-direction:column;gap:0;overflow:hidden;color:#fff;border:1px solid rgba(255,255,255,0.08);}
+.live-call-overlay__panel{position:relative;width:min(900px,96vw);height:min(90vh,680px);background:linear-gradient(180deg,#03103a,#051f69);border-radius:32px;padding:1.25rem;box-shadow:0 40px 120px rgba(0,0,0,0.65);display:flex;flex-direction:column;gap:0;overflow:hidden;color:#fff;border:1px solid rgba(255,255,255,0.08);}
 .live-call-overlay__close{background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.35);border-radius:50%;width:44px;height:44px;color:#fff;font-size:1.5rem;line-height:1;text-align:center;cursor:pointer;}
 .live-call-overlay__floating-actions{position:absolute;top:12px;right:12px;display:flex;align-items:center;gap:0.6rem;z-index:6;}
 .live-call-overlay__canvas-toggle{border:1px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.25);color:#fff;font-weight:600;font-size:0.85rem;padding:0.35rem 0.85rem;border-radius:999px;cursor:pointer;}

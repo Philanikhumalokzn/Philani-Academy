@@ -93,8 +93,8 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <main className="deep-page min-h-screen flex items-center justify-center px-2 py-12">
-      <div className="w-full bg-white text-slate-900 shadow-md rounded-3xl p-8">
+    <main className="deep-page min-h-screen flex items-center justify-center px-4 py-12">
+      <div className="max-w-md w-full bg-white text-slate-900 shadow-md rounded-3xl p-8">
         <div className="flex items-center justify-between gap-3 mb-6">
           <NavArrows backHref="/signup" forwardHref="/auth/signin" />
           <button type="button" className="text-sm text-primary hover:underline font-medium" onClick={() => router.push('/auth/signin')}>Sign in</button>

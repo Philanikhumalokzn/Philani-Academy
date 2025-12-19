@@ -31,8 +31,8 @@ const privacyItems = [
 
 export default function PrivacyNotice() {
   return (
-    <main className="deep-page min-h-screen px-2 py-8 md:py-12">
-      <div className="w-full space-y-8">
+    <main className="deep-page min-h-screen px-4 py-8 md:py-12">
+      <div className="mx-auto max-w-4xl space-y-8">
         <section className="hero flex-col gap-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref="/subscribe" />

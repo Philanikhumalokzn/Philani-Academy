@@ -23,7 +23,7 @@ export default function NavBar() {
 
   return (
     <nav className="top-nav text-white">
-      <div className="w-full px-2 py-3 space-y-3">
+      <div className="max-w-6xl mx-auto px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center gap-4">
           <div className="hidden flex-1 md:flex" aria-hidden="true" />
 
@@ -79,7 +79,7 @@ export default function NavBar() {
         </div>
 
         {open && (
-          <div className="md:hidden px-2 pb-2">
+          <div className="md:hidden px-4 pb-2">
             <div className="flex flex-col items-center space-y-3">
               {role && <div className="text-sm text-blue-100/70 capitalize">{role}</div>}
               {session ? (

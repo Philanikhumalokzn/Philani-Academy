@@ -12,6 +12,9 @@ import BrandLogo from '../components/BrandLogo'
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const WINDOW_PADDING_X = 0
 const WINDOW_PADDING_Y = 12
+const MOBILE_HERO_BG_MIN_WIDTH = 1280
+const MOBILE_HERO_BG_MIN_HEIGHT = 720
+const MOBILE_HERO_BG_MAX_WIDTH = 1920
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -109,6 +112,7 @@ export default function Dashboard() {
   const [editPlanActive, setEditPlanActive] = useState(false)
   const [planSaving, setPlanSaving] = useState(false)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [expandedAnnouncementId, setExpandedAnnouncementId] = useState<string | null>(null)
   const [announcementsLoading, setAnnouncementsLoading] = useState(false)
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null)
   const [subscriptionActive, setSubscriptionActive] = useState<boolean | null>(null)
@@ -134,7 +138,32 @@ export default function Dashboard() {
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
   const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([])
+  const [mobileHeroBgUrl, setMobileHeroBgUrl] = useState<string>(() => {
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020b35"/>
+      <stop offset="0.55" stop-color="#041448"/>
+      <stop offset="1" stop-color="#031641"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <circle cx="1540" cy="260" r="220" fill="url(#glow)"/>
+  <path d="M0 850 L420 620 L720 760 L980 560 L1280 720 L1600 600 L1920 760 L1920 1080 L0 1080 Z" fill="#041a5a" opacity="0.9"/>
+  <path d="M0 910 L360 740 L660 860 L920 720 L1220 860 L1500 760 L1920 900 L1920 1080 L0 1080 Z" fill="#052a7a" opacity="0.55"/>
+  <path d="M0 980 L420 920 L860 1000 L1220 940 L1580 1010 L1920 960 L1920 1080 L0 1080 Z" fill="#00122f" opacity="0.65"/>
+</svg>`
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`
+  })
+  const [mobileHeroBgDragActive, setMobileHeroBgDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const heroBgInputRef = useRef<HTMLInputElement | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const materialsRequestIdRef = useRef(0)
@@ -194,6 +223,125 @@ export default function Dashboard() {
   const learnerNotesLabelLower = isLearner ? 'saved notes' : 'LaTeX saves'
   const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
   const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
+
+  const announcementReadStorageKey = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:readAnnouncements:${userKey}`
+  }, [session])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(announcementReadStorageKey)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed)) setReadAnnouncementIds(parsed.map(String))
+    } catch {
+      setReadAnnouncementIds([])
+    }
+  }, [announcementReadStorageKey])
+
+  const readAnnouncementSet = useMemo(() => new Set(readAnnouncementIds), [readAnnouncementIds])
+  const unreadAnnouncementCount = useMemo(() => {
+    if (!announcements || announcements.length === 0) return 0
+    let count = 0
+    for (const a of announcements) {
+      if (a?.id && !readAnnouncementSet.has(String(a.id))) count += 1
+    }
+    return count
+  }, [announcements, readAnnouncementSet])
+
+  const markAllAnnouncementsRead = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (!announcements || announcements.length === 0) return
+    const next = new Set(readAnnouncementSet)
+    for (const a of announcements) {
+      if (a?.id) next.add(String(a.id))
+    }
+    const nextArr = Array.from(next)
+    setReadAnnouncementIds(nextArr)
+    try {
+      window.localStorage.setItem(announcementReadStorageKey, JSON.stringify(nextArr))
+    } catch {}
+  }, [announcements, announcementReadStorageKey, readAnnouncementSet])
+
+  const markAnnouncementRead = useCallback((announcementId: string) => {
+    if (typeof window === 'undefined') return
+    if (!announcementId) return
+    if (readAnnouncementSet.has(String(announcementId))) return
+    const next = new Set(readAnnouncementSet)
+    next.add(String(announcementId))
+    const nextArr = Array.from(next)
+    setReadAnnouncementIds(nextArr)
+    try {
+      window.localStorage.setItem(announcementReadStorageKey, JSON.stringify(nextArr))
+    } catch {}
+  }, [announcementReadStorageKey, readAnnouncementSet])
+
+  const mobileHeroBgStorageKey = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:mobileHeroBg:${userKey}`
+  }, [session])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(mobileHeroBgStorageKey)
+      if (raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
+    } catch {}
+  }, [mobileHeroBgStorageKey])
+
+  const applyMobileHeroBackgroundFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please choose an image file.')
+      return
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsDataURL(file)
+    })
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.onload = () => resolve(el)
+      el.onerror = () => reject(new Error('Could not load image'))
+      el.src = dataUrl
+    })
+
+    const w = img.naturalWidth || 0
+    const h = img.naturalHeight || 0
+    if (w < MOBILE_HERO_BG_MIN_WIDTH || h < MOBILE_HERO_BG_MIN_HEIGHT) {
+      alert(`Image is too small. Minimum is ${MOBILE_HERO_BG_MIN_WIDTH}×${MOBILE_HERO_BG_MIN_HEIGHT}.`)
+      return
+    }
+    if (w < h) {
+      alert('Please use a landscape (wide) image.')
+      return
+    }
+
+    const scale = Math.min(1, MOBILE_HERO_BG_MAX_WIDTH / w)
+    const targetW = Math.max(1, Math.round(w * scale))
+    const targetH = Math.max(1, Math.round(h * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      alert('Could not process this image.')
+      return
+    }
+    ctx.drawImage(img, 0, 0, targetW, targetH)
+
+    const compressed = canvas.toDataURL('image/jpeg', 0.86)
+    setMobileHeroBgUrl(compressed)
+    try {
+      window.localStorage.setItem(mobileHeroBgStorageKey, compressed)
+    } catch {
+      // Ignore storage failures (quota exceeded)
+    }
+  }, [mobileHeroBgStorageKey])
 
   useEffect(() => {
     if (status !== 'authenticated') {
@@ -1347,29 +1495,57 @@ export default function Dashboard() {
           <div className="text-sm muted">No announcements yet.</div>
         ) : (
           <ul className="space-y-3">
-            {announcements.map(a => (
-              <li key={a.id} className="p-3 border rounded">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="font-medium">{a.title}</div>
-                    <div className="text-xs muted">
-                      {new Date(a.createdAt).toLocaleString()}
-                      {a.createdBy ? ` • ${a.createdBy}` : ''}
+            {announcements.map(a => {
+              const isRead = a?.id ? readAnnouncementSet.has(String(a.id)) : true
+              return (
+                <li key={a.id} className={`border rounded overflow-hidden ${isRead ? '' : 'border-white/30'}`}>
+                  <button
+                    type="button"
+                    className="w-full text-left p-3"
+                    onClick={() => {
+                      setExpandedAnnouncementId(curr => {
+                        const next = curr === a.id ? null : a.id
+                        if (next) markAnnouncementRead(String(a.id))
+                        return next
+                      })
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {!isRead && <span className="inline-block w-2 h-2 rounded-full bg-red-500" aria-label="Unread" />}
+                          <div className="font-medium break-words">{a.title}</div>
+                        </div>
+                        <div className="text-xs muted">
+                          {new Date(a.createdAt).toLocaleString()}
+                          {a.createdBy ? ` • ${a.createdBy}` : ''}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-sm muted">
+                        {expandedAnnouncementId === a.id ? 'Hide' : 'View'}
+                      </div>
                     </div>
-                  </div>
-                  {canManageAnnouncements && (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      onClick={() => deleteAnnouncement(a.id)}
-                    >
-                      Delete
-                    </button>
+                  </button>
+
+                  {expandedAnnouncementId === a.id && (
+                    <div className="px-3 pb-3">
+                      {canManageAnnouncements && (
+                        <div className="flex justify-end mb-2">
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            onClick={() => deleteAnnouncement(a.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                      <p className="text-sm whitespace-pre-line">{a.content}</p>
+                    </div>
                   )}
-                </div>
-                <p className="text-sm mt-2 whitespace-pre-line">{a.content}</p>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
@@ -1619,8 +1795,8 @@ export default function Dashboard() {
                 ) : (
                   <>
                     <div className="p-3 border-b flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 min-w-0">
-                        {sessionDetailsIds.length > 1 && (
+                      <div className="w-24 shrink-0">
+                        {sessionDetailsIds.length > 1 ? (
                           <button
                             type="button"
                             className="btn btn-ghost"
@@ -1628,36 +1804,38 @@ export default function Dashboard() {
                           >
                             Back
                           </button>
-                        )}
-                        <div className="min-w-0">
-                          <div className="font-semibold break-words">
-                            {sessionDetailsSession?.title || 'Session details'}
-                          </div>
-                          {sessionDetailsSession?.startsAt && (
-                            <div className="text-sm muted">{new Date(sessionDetailsSession.startsAt).toLocaleString()}</div>
-                          )}
-                        </div>
+                        ) : null}
                       </div>
-                      <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
-                        Close
-                      </button>
+                      <div className="min-w-0 flex-1 text-center">
+                        <div className="font-semibold break-words">{sessionDetailsSession?.title || 'Session details'}</div>
+                        {sessionDetailsSession?.startsAt && (
+                          <div className="text-sm muted">{new Date(sessionDetailsSession.startsAt).toLocaleString()}</div>
+                        )}
+                      </div>
+                      <div className="w-24 shrink-0 flex justify-end">
+                        <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
+                          Close
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="p-3 border-b flex items-center gap-2">
-                      <button
-                        type="button"
-                        className={`btn ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
-                        onClick={() => setSessionDetailsTab('materials')}
-                      >
-                        Materials
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${sessionDetailsTab === 'latex' ? 'btn-primary' : 'btn-ghost'}`}
-                        onClick={() => setSessionDetailsTab('latex')}
-                      >
-                        {learnerNotesLabel}
-                      </button>
+                    <div className="p-3 border-b">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          className={`btn w-full justify-center ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
+                          onClick={() => setSessionDetailsTab('materials')}
+                        >
+                          Materials
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn w-full justify-center ${sessionDetailsTab === 'latex' ? 'btn-primary' : 'btn-ghost'}`}
+                          onClick={() => setSessionDetailsTab('latex')}
+                        >
+                          {learnerNotesLabel}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-3">
@@ -2168,12 +2346,12 @@ export default function Dashboard() {
                     fill="currentColor"
                   />
                 </svg>
-                {announcements.length > 0 && (
+                {unreadAnnouncementCount > 0 && (
                   <span
                     className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                    aria-label={`${announcements.length} announcements`}
+                    aria-label={`${unreadAnnouncementCount} unread announcements`}
                   >
-                    {announcements.length > 99 ? '99+' : announcements.length}
+                    {unreadAnnouncementCount > 99 ? '99+' : unreadAnnouncementCount}
                   </span>
                 )}
               </span>
@@ -2196,7 +2374,51 @@ export default function Dashboard() {
               </div>
             )}
 
-            <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-5">
+            <section
+              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl space-y-5 ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+              onDragEnter={(e) => {
+                e.preventDefault()
+                setMobileHeroBgDragActive(true)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setMobileHeroBgDragActive(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                setMobileHeroBgDragActive(false)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                setMobileHeroBgDragActive(false)
+                const file = e.dataTransfer?.files?.[0]
+                if (file) applyMobileHeroBackgroundFile(file)
+              }}
+              onClickCapture={(e) => {
+                const target = e.target as HTMLElement | null
+                if (!target) return
+                const tag = target.tagName?.toLowerCase()
+                if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
+                heroBgInputRef.current?.click()
+              }}
+            >
+              <div
+                className="absolute inset-0"
+                style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                aria-hidden="true"
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
+              <input
+                ref={heroBgInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) applyMobileHeroBackgroundFile(file)
+                  e.target.value = ''
+                }}
+              />
               <div className="flex flex-col items-center gap-3">
                 <div className="w-20 h-20 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
                   {learnerAvatarUrl ? (

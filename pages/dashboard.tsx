@@ -313,6 +313,14 @@ export default function Dashboard() {
     setMobilePanels(prev => ({ ...prev, [panel]: !prev[panel] }))
   }, [])
 
+  const closeMobileAnnouncements = useCallback(() => {
+    setMobilePanels(prev => ({ ...prev, announcements: false }))
+  }, [])
+
+  const openMobileAnnouncements = useCallback(() => {
+    setMobilePanels(prev => ({ ...prev, announcements: true }))
+  }, [])
+
   const toggleFullscreenLiveWindow = useCallback((id: string) => {
     setLiveWindows(prev => prev.map(win => {
       if (win.id !== id) return win
@@ -2137,9 +2145,57 @@ export default function Dashboard() {
   return (
     <>
       <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white overflow-x-hidden' : 'deep-page'} min-h-screen pb-16`}>
-      <div className={`${isMobile ? 'w-full px-2 py-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
+      <div className={`${isMobile ? 'w-full px-2 pt-3 pb-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
         {isMobile ? (
           <>
+            <button
+              type="button"
+              onClick={openMobileAnnouncements}
+              aria-label="Announcements"
+              className="fixed top-3 right-3 z-50 md:hidden rounded-full border border-white/25 bg-white/10 backdrop-blur px-3 py-2 text-white"
+            >
+              <span className="relative inline-flex items-center justify-center">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z"
+                    fill="currentColor"
+                  />
+                </svg>
+                {announcements.length > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
+                    aria-label={`${announcements.length} announcements`}
+                  >
+                    {announcements.length > 99 ? '99+' : announcements.length}
+                  </span>
+                )}
+              </span>
+            </button>
+
+            {mobilePanels.announcements && (
+              <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+                <div className="absolute inset-0 bg-black/60" onClick={closeMobileAnnouncements} />
+                <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-[#06184a] shadow-2xl overflow-hidden">
+                  <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
+                    <div className="font-semibold text-white">Announcements</div>
+                    <button type="button" className="btn btn-ghost" onClick={closeMobileAnnouncements}>
+                      Close
+                    </button>
+                  </div>
+                  <div className="p-4 overflow-auto h-full">
+                    <AnnouncementsSection />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-5">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-20 h-20 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
@@ -2176,34 +2232,18 @@ export default function Dashboard() {
               </div>
             </section>
 
-            <section className="space-y-4">
-              {(['announcements', 'sessions'] as const).map(panel => {
-                const isOpen = mobilePanels[panel]
-                const label = panel === 'announcements' ? 'Announcements' : 'Sessions'
-                return (
-                  <div key={panel} className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleMobilePanel(panel)}
-                      className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 ${
-                        isOpen
-                          ? 'bg-white text-[#04123b] border-white focus:ring-white/40 shadow-lg'
-                          : 'bg-white/10 border-white/20 text-white focus:ring-white/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>{label}</span>
-                        <span>{isOpen ? '−' : '+'}</span>
-                      </div>
-                    </button>
-                    {isOpen && (
-                      <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
-                        {panel === 'announcements' ? <AnnouncementsSection /> : renderSessionsSection()}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+            <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-white">Sessions</div>
+                <button
+                  type="button"
+                  className="btn btn-ghost text-xs"
+                  onClick={() => toggleMobilePanel('sessions')}
+                >
+                  {mobilePanels.sessions ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {mobilePanels.sessions && <div className="space-y-4">{renderSessionsSection()}</div>}
             </section>
 
             {renderOverviewCards({ hideGradeWorkspace: true })}

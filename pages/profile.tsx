@@ -1,9 +1,31 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import { gradeToLabel } from '../lib/grades'
 
-import NavArrows from '../components/NavArrows'
+const defaultMobileHeroBg = (() => {
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020b35"/>
+      <stop offset="0.55" stop-color="#041448"/>
+      <stop offset="1" stop-color="#031641"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <circle cx="1540" cy="260" r="220" fill="url(#glow)"/>
+  <path d="M0 850 L420 620 L720 760 L980 560 L1280 720 L1600 600 L1920 760 L1920 1080 L0 1080 Z" fill="#041a5a" opacity="0.9"/>
+  <path d="M0 910 L360 740 L660 860 L920 720 L1220 860 L1500 760 L1920 900 L1920 1080 L0 1080 Z" fill="#052a7a" opacity="0.55"/>
+  <path d="M0 980 L420 920 L860 1000 L1220 940 L1580 1010 L1920 960 L1920 1080 L0 1080 Z" fill="#00122f" opacity="0.65"/>
+</svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+})()
 
 const provinceOptions = [
   'Eastern Cape',
@@ -36,6 +58,7 @@ const toLocalMobile = (input?: string | null) => {
 }
 
 export default function ProfilePage() {
+  const router = useRouter()
   const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -69,6 +92,18 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [mobileHeroBgUrl, setMobileHeroBgUrl] = useState<string>(defaultMobileHeroBg)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    const storageKey = `pa:mobileHeroBg:${userKey}`
+    try {
+      const raw = window.localStorage.getItem(storageKey)
+      if (raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
+    } catch {}
+  }, [session])
 
   const gradeLabel = useMemo(() => {
     if (!profile?.grade) return 'Unassigned'
@@ -264,13 +299,30 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="deep-page min-h-screen px-4 py-6 md:py-12 overflow-x-hidden">
-      <div className="mx-auto max-w-5xl space-y-6 md:space-y-8">
-        <section className="hero flex-col gap-5">
-          <div className="flex w-full flex-wrap items-center justify-between gap-3">
-            <NavArrows backHref="/dashboard" forwardHref={undefined} />
+    <main className="mobile-dashboard-theme min-h-screen overflow-hidden text-white">
+      <div
+        className="absolute inset-0"
+        style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+        aria-hidden="true"
+      />
+
+      <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
+        <div className="absolute inset-0 bg-black/35 backdrop-blur-md" aria-hidden="true" />
+        <div className="absolute inset-x-2 top-3 bottom-3 md:static md:inset-auto md:mx-auto md:my-12 md:w-full md:max-w-5xl rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">
+          <div className="p-3 border-b border-white/10 flex items-center justify-end">
+            <button
+              type="button"
+              aria-label="Close"
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+              onClick={() => router.push('/dashboard')}
+            >
+              <span aria-hidden="true" className="text-lg leading-none">×</span>
+            </button>
           </div>
-          <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <div className="p-4 overflow-auto h-full">
+            <div className="mx-auto max-w-5xl space-y-6 md:space-y-8">
+              <section className="hero flex-col gap-5">
+                <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <button
@@ -316,12 +368,13 @@ export default function ProfilePage() {
               onChange={handleAvatarFileChange}
             />
             {avatarUploadError && <p className="text-xs text-red-400">{avatarUploadError}</p>}
-          </div>
-        </section>
-        {loading ? (
-          <div className="card p-6 text-center text-sm text-white">Loading…</div>
-        ) : (
-          <div className="space-y-6">
+                </div>
+              </section>
+
+              {loading ? (
+                <div className="card p-6 text-center text-sm text-white">Loading…</div>
+              ) : (
+                <div className="space-y-6">
             <section className="card p-6 space-y-4">
               <h2 className="text-xl font-semibold">Learner information</h2>
               <div className="grid gap-4 md:grid-cols-2">
@@ -356,7 +409,7 @@ export default function ProfilePage() {
               </div>
             </section>
 
-            <section className="card p-6 space-y-4">
+                  <section className="card p-6 space-y-4">
               <h2 className="text-xl font-semibold">Contact details</h2>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
@@ -493,8 +546,11 @@ export default function ProfilePage() {
                 </button>
               </div>
             </section>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </main>
   )

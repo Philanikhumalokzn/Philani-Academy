@@ -12,7 +12,6 @@ export default function Subscribe() {
   const [plans, setPlans] = useState<Array<Plan>>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
-
   useEffect(() => {
     fetch('/api/plans')
       .then(r => r.json())
@@ -73,8 +72,8 @@ export default function Subscribe() {
   }, [selectedPlanId])
 
   return (
-    <main className="deep-page min-h-screen px-4 py-6 md:py-12 overflow-x-hidden">
-      <div className="mx-auto w-full max-w-4xl space-y-6 md:space-y-8">
+    <main className="deep-page min-h-screen px-2 py-6 md:py-12 overflow-x-hidden">
+      <div className="w-full space-y-6 md:space-y-8">
         <section className="hero flex-col gap-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <NavArrows backHref="/dashboard" forwardHref={undefined} />

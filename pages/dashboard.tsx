@@ -1545,14 +1545,14 @@ export default function Dashboard() {
                               {latexSaves.shared.length === 0 ? (
                                 <div className="text-sm muted">No class saves yet.</div>
                               ) : (
-                                <ul className="space-y-1">
+                                <ul className="border rounded divide-y overflow-hidden">
                                   {latexSaves.shared.map(save => (
-                                    <li key={save.id} className="flex items-center justify-between gap-3 p-2 border rounded">
-                                      <div>
-                                        <div className="font-medium text-sm">{save.title}</div>
+                                    <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="min-w-0">
+                                        <div className="font-medium text-sm break-words">{save.title}</div>
                                         <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
                                       </div>
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
                                         {save.url && (
                                           <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
                                             Download
@@ -1587,14 +1587,14 @@ export default function Dashboard() {
                               {latexSaves.mine.length === 0 ? (
                                 <div className="text-sm muted">No personal saves yet.</div>
                               ) : (
-                                <ul className="space-y-1">
+                                <ul className="border rounded divide-y overflow-hidden">
                                   {latexSaves.mine.map(save => (
-                                    <li key={save.id} className="flex items-center justify-between gap-3 p-2 border rounded">
-                                      <div>
-                                        <div className="font-medium text-sm">{save.title}</div>
+                                    <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="min-w-0">
+                                        <div className="font-medium text-sm break-words">{save.title}</div>
                                         <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
                                       </div>
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
                                         {save.url && (
                                           <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
                                             Download
@@ -1939,7 +1939,7 @@ export default function Dashboard() {
   return (
     <>
       <main className={`${isMobile ? 'mobile-dashboard-theme bg-gradient-to-b from-[#010924] via-[#041550] to-[#071e63] text-white overflow-x-hidden' : 'deep-page'} min-h-screen pb-16`}>
-      <div className={`max-w-6xl mx-auto ${isMobile ? 'px-4 py-6 space-y-5' : 'px-4 lg:px-8 py-8 space-y-6'}`}>
+      <div className={`${isMobile ? 'w-full px-2 py-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
         {isMobile ? (
           <>
             <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#020b35] via-[#041448] to-[#031641] px-5 py-6 text-center shadow-2xl space-y-5">

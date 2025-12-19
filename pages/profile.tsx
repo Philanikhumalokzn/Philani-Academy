@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useSession } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 import { gradeToLabel } from '../lib/grades'
 
 const defaultMobileHeroBg = (() => {
@@ -310,7 +310,14 @@ export default function ProfilePage() {
       <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
         <div className="absolute inset-0 bg-black/25 backdrop-blur-md" aria-hidden="true" />
         <div className="absolute inset-x-2 top-3 bottom-3 md:static md:inset-auto md:mx-auto md:my-12 md:w-full md:max-w-5xl rounded-3xl border border-white/10 bg-white/3 shadow-2xl overflow-hidden">
-          <div className="p-3 border-b border-white/10 flex items-center justify-end">
+          <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              className="text-sm font-semibold text-red-200 hover:text-red-100"
+              onClick={() => signOut({ callbackUrl: '/' })}
+            >
+              Sign out
+            </button>
             <button
               type="button"
               aria-label="Close"

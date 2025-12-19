@@ -147,6 +147,8 @@ export default function Dashboard() {
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false)
   const [sessionDetailsIds, setSessionDetailsIds] = useState<string[]>([])
   const [sessionDetailsIndex, setSessionDetailsIndex] = useState(0)
+  const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
+  const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex'>('materials')
 
   const overlayBounds = useMemo(() => {
     const fallbackWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
@@ -737,6 +739,8 @@ export default function Dashboard() {
     if (!id) return
     setSessionDetailsIds([id])
     setSessionDetailsIndex(0)
+    setSessionDetailsView('details')
+    setSessionDetailsTab('materials')
     setSessionDetailsOpen(true)
   }
 
@@ -744,6 +748,8 @@ export default function Dashboard() {
     setSessionDetailsOpen(false)
     setSessionDetailsIds([])
     setSessionDetailsIndex(0)
+    setSessionDetailsView('details')
+    setSessionDetailsTab('materials')
     setExpandedSessionId(null)
     setMaterials([])
     setMaterialsError(null)
@@ -758,6 +764,18 @@ export default function Dashboard() {
     const idx = Math.max(0, Math.min(initialIndex, safeIds.length - 1))
     setSessionDetailsIds(safeIds)
     setSessionDetailsIndex(idx)
+    setSessionDetailsView('details')
+    setSessionDetailsTab('materials')
+    setSessionDetailsOpen(true)
+  }, [])
+
+  const openPastSessionsList = useCallback((ids: string[]) => {
+    const safeIds = (ids || []).map(String).filter(Boolean)
+    if (!safeIds.length) return
+    setSessionDetailsIds(safeIds)
+    setSessionDetailsIndex(0)
+    setSessionDetailsView('pastList')
+    setSessionDetailsTab('materials')
     setSessionDetailsOpen(true)
   }, [])
 
@@ -775,6 +793,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!sessionDetailsOpen) return
+    if (sessionDetailsView !== 'details') return
     if (!sessionDetailsSessionId) return
     setActiveSessionId(sessionDetailsSessionId)
     setExpandedSessionId(sessionDetailsSessionId)
@@ -785,7 +804,7 @@ export default function Dashboard() {
     resetMaterialForm()
     fetchMaterials(sessionDetailsSessionId)
     fetchLatexSaves(sessionDetailsSessionId)
-  }, [sessionDetailsOpen, sessionDetailsSessionId])
+  }, [sessionDetailsOpen, sessionDetailsView, sessionDetailsSessionId])
 
   async function uploadMaterial(e: React.FormEvent) {
     e.preventDefault()
@@ -1423,7 +1442,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="btn btn-ghost w-full justify-center"
-                  onClick={() => openSessionDetails(pastSessionIds, 0)}
+                  onClick={() => openPastSessionsList(pastSessionIds)}
                   disabled={isSubscriptionBlocked}
                 >
                   Browse past sessions
@@ -1553,204 +1572,259 @@ export default function Dashboard() {
                 className="card h-full max-h-[92vh] overflow-hidden flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-3 border-b flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold break-words">
-                      {sessionDetailsSession?.title || 'Session details'}
+                {sessionDetailsView === 'pastList' ? (
+                  <>
+                    <div className="p-3 border-b flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold break-words">Past sessions — {activeGradeLabel}</div>
+                        <div className="text-sm muted">Tap a session to view materials and LaTeX saves.</div>
+                      </div>
+                      <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
+                        Close
+                      </button>
                     </div>
-                    {sessionDetailsSession?.startsAt && (
-                      <div className="text-sm muted">{new Date(sessionDetailsSession.startsAt).toLocaleString()}</div>
-                    )}
-                  </div>
-                  <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
-                    Close
-                  </button>
-                </div>
-
-                {sessionDetailsIds.length > 1 && (
-                  <div className="p-3 border-b space-y-2">
-                    <div className="flex items-center justify-between text-xs muted">
-                      <span>Past session</span>
-                      <span>{sessionDetailsIndex + 1} / {sessionDetailsIds.length}</span>
-                    </div>
-                    <input
-                      type="range"
-                      className="w-full"
-                      min={0}
-                      max={Math.max(0, sessionDetailsIds.length - 1)}
-                      value={sessionDetailsIndex}
-                      onChange={(e) => setSessionDetailsIndex(Number(e.target.value) || 0)}
-                    />
-                  </div>
-                )}
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-sm">Materials</div>
-                      {expandedSessionId && (
-                        <button type="button" className="btn btn-ghost text-xs" onClick={() => fetchMaterials(expandedSessionId)}>
-                          Refresh
-                        </button>
-                      )}
-                    </div>
-
-                    {canUploadMaterials && (
-                      <form onSubmit={uploadMaterial} className="space-y-2">
-                        <input
-                          className="input"
-                          placeholder="Material title"
-                          value={materialTitle}
-                          onChange={e => setMaterialTitle(e.target.value)}
-                        />
-                        <input
-                          ref={fileInputRef}
-                          className="input"
-                          type="file"
-                          accept=".pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.key,.txt,.xlsx,.xls,.zip,.rar,.jpg,.jpeg,.png,.mp4,.mov"
-                          onChange={e => handleMaterialFileChange(e.target.files?.[0] ?? null)}
-                        />
-                        <div>
-                          <button className="btn btn-primary" type="submit" disabled={materialUploading || !materialFile}>
-                            {materialUploading ? 'Uploading...' : 'Upload material'}
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    {materialsError ? (
-                      <div className="text-sm text-red-600">{materialsError}</div>
-                    ) : materialsLoading ? (
-                      <div className="text-sm muted">Loading materials...</div>
-                    ) : materials.length === 0 ? (
-                      <div className="text-sm muted">No materials uploaded yet.</div>
-                    ) : (
-                      <ul className="space-y-2">
-                        {materials.map(m => (
-                          <li key={m.id} className="p-2 border rounded flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <a href={m.url} target="_blank" rel="noreferrer" className="font-medium hover:underline break-words">{m.title}</a>
-                              <div className="text-xs muted">
-                                {new Date(m.createdAt).toLocaleString()}
-                                {m.createdBy ? ` • ${m.createdBy}` : ''}
-                                {m.size ? ` • ${formatFileSize(m.size)}` : ''}
-                              </div>
-                            </div>
-                            {canUploadMaterials && (
-                              <button type="button" className="btn btn-danger" onClick={() => deleteMaterial(m.id)}>
-                                Delete
+                    <div className="flex-1 overflow-y-auto p-3">
+                      <ul className="border rounded divide-y overflow-hidden">
+                        {sessionDetailsIds.map((id, idx) => {
+                          const s = sessionById.get(id)
+                          return (
+                            <li key={id}>
+                              <button
+                                type="button"
+                                className="w-full text-left p-3"
+                                onClick={() => {
+                                  setSessionDetailsIndex(idx)
+                                  setSessionDetailsView('details')
+                                  setSessionDetailsTab('materials')
+                                }}
+                              >
+                                <div className="font-medium break-words">{s?.title || 'Session'}</div>
+                                {s?.startsAt && (
+                                  <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                                )}
                               </button>
-                            )}
-                          </li>
-                        ))}
+                            </li>
+                          )
+                        })}
                       </ul>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-sm">LaTeX saves</div>
-                      {expandedSessionId && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost text-xs"
-                          onClick={() => fetchLatexSaves(expandedSessionId)}
-                          disabled={latexSavesLoading}
-                        >
-                          {latexSavesLoading ? 'Refreshing…' : 'Refresh'}
-                        </button>
-                      )}
                     </div>
-                    {latexSavesError ? (
-                      <div className="text-sm text-red-600">{latexSavesError}</div>
-                    ) : latexSavesLoading ? (
-                      <div className="text-sm muted">Loading saved LaTeX…</div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide muted mb-1">Class saves</p>
-                          {latexSaves.shared.length === 0 ? (
-                            <div className="text-sm muted">No class saves yet.</div>
-                          ) : (
-                            <ul className="border rounded divide-y overflow-hidden">
-                              {latexSaves.shared.map(save => (
-                                <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                  <div className="min-w-0">
-                                    <div className="font-medium text-sm break-words">{save.title}</div>
-                                    <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
-                                    {save.url && (
-                                      <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
-                                        Download
-                                      </a>
-                                    )}
-                                    {normalizedRole === 'admin' && (
-                                      <>
-                                        <button
-                                          type="button"
-                                          className="btn btn-ghost text-xs"
-                                          onClick={() => expandedSessionId && renameLatexSave(expandedSessionId, save.id, save.title)}
-                                        >
-                                          Rename
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="btn btn-danger text-xs"
-                                          onClick={() => expandedSessionId && deleteLatexSave(expandedSessionId, save.id)}
-                                        >
-                                          Delete
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-wide muted mb-1">My saves</p>
-                          {latexSaves.mine.length === 0 ? (
-                            <div className="text-sm muted">No personal saves yet.</div>
-                          ) : (
-                            <ul className="border rounded divide-y overflow-hidden">
-                              {latexSaves.mine.map(save => (
-                                <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                  <div className="min-w-0">
-                                    <div className="font-medium text-sm break-words">{save.title}</div>
-                                    <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
-                                    {save.url && (
-                                      <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
-                                        Download
-                                      </a>
-                                    )}
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost text-xs"
-                                      onClick={() => expandedSessionId && renameLatexSave(expandedSessionId, save.id, save.title)}
-                                    >
-                                      Rename
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-danger text-xs"
-                                      onClick={() => expandedSessionId && deleteLatexSave(expandedSessionId, save.id)}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-3 border-b flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2 min-w-0">
+                        {sessionDetailsIds.length > 1 && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => setSessionDetailsView('pastList')}
+                          >
+                            Back
+                          </button>
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-semibold break-words">
+                            {sessionDetailsSession?.title || 'Session details'}
+                          </div>
+                          {sessionDetailsSession?.startsAt && (
+                            <div className="text-sm muted">{new Date(sessionDetailsSession.startsAt).toLocaleString()}</div>
                           )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                </div>
+                      <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="p-3 border-b flex items-center gap-2">
+                      <button
+                        type="button"
+                        className={`btn ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => setSessionDetailsTab('materials')}
+                      >
+                        Materials
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${sessionDetailsTab === 'latex' ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => setSessionDetailsTab('latex')}
+                      >
+                        LaTeX saves
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3">
+                      {sessionDetailsTab === 'materials' ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-sm">Materials</div>
+                            {expandedSessionId && (
+                              <button type="button" className="btn btn-ghost text-xs" onClick={() => fetchMaterials(expandedSessionId)}>
+                                Refresh
+                              </button>
+                            )}
+                          </div>
+
+                          {canUploadMaterials && (
+                            <form onSubmit={uploadMaterial} className="space-y-2">
+                              <input
+                                className="input"
+                                placeholder="Material title"
+                                value={materialTitle}
+                                onChange={e => setMaterialTitle(e.target.value)}
+                              />
+                              <input
+                                ref={fileInputRef}
+                                className="input"
+                                type="file"
+                                accept=".pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.key,.txt,.xlsx,.xls,.zip,.rar,.jpg,.jpeg,.png,.mp4,.mov"
+                                onChange={e => handleMaterialFileChange(e.target.files?.[0] ?? null)}
+                              />
+                              <div>
+                                <button className="btn btn-primary" type="submit" disabled={materialUploading || !materialFile}>
+                                  {materialUploading ? 'Uploading...' : 'Upload material'}
+                                </button>
+                              </div>
+                            </form>
+                          )}
+
+                          {materialsError ? (
+                            <div className="text-sm text-red-600">{materialsError}</div>
+                          ) : materialsLoading ? (
+                            <div className="text-sm muted">Loading materials...</div>
+                          ) : materials.length === 0 ? (
+                            <div className="text-sm muted">No materials uploaded yet.</div>
+                          ) : (
+                            <ul className="space-y-2">
+                              {materials.map(m => (
+                                <li key={m.id} className="p-2 border rounded flex items-start justify-between gap-4">
+                                  <div className="min-w-0">
+                                    <a href={m.url} target="_blank" rel="noreferrer" className="font-medium hover:underline break-words">{m.title}</a>
+                                    <div className="text-xs muted">
+                                      {new Date(m.createdAt).toLocaleString()}
+                                      {m.createdBy ? ` • ${m.createdBy}` : ''}
+                                      {m.size ? ` • ${formatFileSize(m.size)}` : ''}
+                                    </div>
+                                  </div>
+                                  {canUploadMaterials && (
+                                    <button type="button" className="btn btn-danger" onClick={() => deleteMaterial(m.id)}>
+                                      Delete
+                                    </button>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-sm">LaTeX saves</div>
+                            {expandedSessionId && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => fetchLatexSaves(expandedSessionId)}
+                                disabled={latexSavesLoading}
+                              >
+                                {latexSavesLoading ? 'Refreshing…' : 'Refresh'}
+                              </button>
+                            )}
+                          </div>
+
+                          {latexSavesError ? (
+                            <div className="text-sm text-red-600">{latexSavesError}</div>
+                          ) : latexSavesLoading ? (
+                            <div className="text-sm muted">Loading saved LaTeX…</div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div>
+                                <p className="text-xs uppercase tracking-wide muted mb-1">Class saves</p>
+                                {latexSaves.shared.length === 0 ? (
+                                  <div className="text-sm muted">No class saves yet.</div>
+                                ) : (
+                                  <ul className="border rounded divide-y overflow-hidden">
+                                    {latexSaves.shared.map(save => (
+                                      <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="min-w-0">
+                                          <div className="font-medium text-sm break-words">{save.title}</div>
+                                          <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
+                                          {save.url && (
+                                            <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
+                                              Download
+                                            </a>
+                                          )}
+                                          {normalizedRole === 'admin' && (
+                                            <>
+                                              <button
+                                                type="button"
+                                                className="btn btn-ghost text-xs"
+                                                onClick={() => expandedSessionId && renameLatexSave(expandedSessionId, save.id, save.title)}
+                                              >
+                                                Rename
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="btn btn-danger text-xs"
+                                                onClick={() => expandedSessionId && deleteLatexSave(expandedSessionId, save.id)}
+                                              >
+                                                Delete
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-xs uppercase tracking-wide muted mb-1">My saves</p>
+                                {latexSaves.mine.length === 0 ? (
+                                  <div className="text-sm muted">No personal saves yet.</div>
+                                ) : (
+                                  <ul className="border rounded divide-y overflow-hidden">
+                                    {latexSaves.mine.map(save => (
+                                      <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="min-w-0">
+                                          <div className="font-medium text-sm break-words">{save.title}</div>
+                                          <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
+                                          {save.url && (
+                                            <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
+                                              Download
+                                            </a>
+                                          )}
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost text-xs"
+                                            onClick={() => expandedSessionId && renameLatexSave(expandedSessionId, save.id, save.title)}
+                                          >
+                                            Rename
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn btn-danger text-xs"
+                                            onClick={() => expandedSessionId && deleteLatexSave(expandedSessionId, save.id)}
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

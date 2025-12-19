@@ -21,6 +21,9 @@ export default function MobileTopChrome() {
   const { data: session, status } = useSession()
   const isVisible = useMobileTopChromeVisible(router.pathname, status === 'authenticated')
 
+  const [open, setOpen] = useState(false)
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [unreadCount, setUnreadCount] = useState(0)
   const [announcements, setAnnouncements] = useState<AnnouncementLike[]>([])
   const [readIds, setReadIds] = useState<string[]>([])
@@ -114,16 +117,64 @@ export default function MobileTopChrome() {
     setUnreadCount(computeUnread(announcements, readSet))
   }, [announcements, computeUnread, isVisible, readSet])
 
+  const showChrome = useCallback(() => {
+    setOpen(true)
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+    hideTimeoutRef.current = setTimeout(() => {
+      setOpen(false)
+      hideTimeoutRef.current = null
+    }, 1500)
+  }, [])
+
+  useEffect(() => {
+    if (!isVisible) return
+    if (typeof window === 'undefined') return
+
+    const onAnyClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+
+      // Ignore taps inside the chrome itself.
+      if (target.closest('[data-mobile-top-chrome]')) return
+
+      // Ignore taps inside regions that should not toggle the chrome.
+      if (target.closest('[data-mobile-chrome-ignore]')) return
+
+      // "Empty" means: not an interactive element.
+      if (target.closest('a,button,input,textarea,select,[role="button"],[data-mobile-chrome-interactive]')) return
+
+      showChrome()
+    }
+
+    window.addEventListener('click', onAnyClick)
+    return () => window.removeEventListener('click', onAnyClick)
+  }, [isVisible, showChrome])
+
+  useEffect(() => {
+    const handleRoute = () => setOpen(false)
+    router.events.on('routeChangeStart', handleRoute)
+    return () => router.events.off('routeChangeStart', handleRoute)
+  }, [router.events])
+
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+    }
+  }, [])
+
   if (!isVisible) return null
 
   return (
     <>
-      {/* Spacer so content doesn't hide under the fixed chrome on mobile */}
-      <div className="h-16 md:hidden" aria-hidden="true" />
-
-      <div className="fixed top-2 left-2 right-2 z-50 md:hidden">
-        <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur px-2 py-2">
-          <div className="flex items-center gap-2">
+      <div
+        data-mobile-top-chrome
+        className={`fixed top-2 left-2 right-2 z-50 md:hidden transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      >
+        <div className="mx-auto w-fit max-w-full rounded-2xl border border-white/15 bg-white/10 backdrop-blur px-2 py-2">
+          <div className="flex items-center justify-center gap-2">
             <Link
               href="/dashboard"
               aria-label="Home"
@@ -134,47 +185,43 @@ export default function MobileTopChrome() {
               </svg>
             </Link>
 
-            <div className="flex-1 overflow-x-auto">
-              <div className="flex items-center gap-2 min-w-max">
-                <Link
-                  href={{ pathname: '/dashboard', query: { panel: 'sessions' } }}
-                  aria-label="Sessions"
-                  className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7Zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10Zm-13 3h4v4H8v-4Z" fill="currentColor" />
-                  </svg>
-                </Link>
+            <Link
+              href={{ pathname: '/dashboard', query: { panel: 'sessions' } }}
+              aria-label="Sessions"
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7Zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10Zm-13 3h4v4H8v-4Z" fill="currentColor" />
+              </svg>
+            </Link>
 
-                <Link
-                  href={{ pathname: '/dashboard', query: { panel: 'announcements' } }}
-                  aria-label="Announcements"
-                  className="relative inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+            <Link
+              href={{ pathname: '/dashboard', query: { panel: 'announcements' } }}
+              aria-label="Announcements"
+              className="relative inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+              </svg>
+              {unreadCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
+                  aria-label={`${unreadCount} unread announcements`}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
-                  </svg>
-                  {unreadCount > 0 && (
-                    <span
-                      className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                      aria-label={`${unreadCount} unread announcements`}
-                    >
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
-                  )}
-                </Link>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
 
-                <Link
-                  href="/profile"
-                  aria-label="Settings"
-                  className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 12.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM11 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" fill="currentColor" />
-                  </svg>
-                </Link>
-              </div>
-            </div>
+            <Link
+              href="/profile"
+              aria-label="Settings"
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 12.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM11 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" fill="currentColor" />
+              </svg>
+            </Link>
           </div>
         </div>
       </div>

@@ -2379,7 +2379,8 @@ export default function Dashboard() {
             )}
 
             <section
-              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl space-y-5 ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+              data-mobile-chrome-ignore
+              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 pt-6 pb-24 text-center shadow-2xl space-y-5 ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
               onDragEnter={(e) => {
                 e.preventDefault()
                 setMobileHeroBgDragActive(true)
@@ -2437,16 +2438,16 @@ export default function Dashboard() {
                   <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
                 </svg>
               </button>
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-20 h-20 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
+              <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
+                <div className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
                   {learnerAvatarUrl ? (
                     <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
                   ) : (
                     <span>{learnerInitials}</span>
                   )}
                 </div>
-                <div>
-                  <p className="text-xl font-semibold">{learnerName}</p>
+                <div className="pb-1">
+                  <p className="text-xl font-semibold leading-tight">{learnerName}</p>
                   <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
                 </div>
               </div>

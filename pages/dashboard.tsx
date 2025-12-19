@@ -190,6 +190,8 @@ export default function Dashboard() {
   const isAdmin = normalizedRole === 'admin'
   const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const isLearner = normalizedRole === 'student'
+  const learnerNotesLabel = isLearner ? 'Saved notes' : 'LaTeX saves'
+  const learnerNotesLabelLower = isLearner ? 'saved notes' : 'LaTeX saves'
   const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
   const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
 
@@ -657,7 +659,7 @@ export default function Dashboard() {
       } else {
         const data = await res.json().catch(() => ({}))
         if (latexSavesRequestIdRef.current !== requestId) return
-        setLatexSavesError(data?.message || `Failed to load LaTeX saves (${res.status})`)
+        setLatexSavesError(data?.message || `Failed to load ${learnerNotesLabelLower} (${res.status})`)
         setLatexSaves({ shared: [], mine: [] })
       }
     } catch (err) {
@@ -671,7 +673,7 @@ export default function Dashboard() {
   }
 
   async function renameLatexSave(sessionId: string, saveId: string, currentTitle: string) {
-    const nextTitle = prompt('Rename LaTeX save', currentTitle)
+    const nextTitle = prompt(isLearner ? 'Rename saved notes' : 'Rename LaTeX save', currentTitle)
     if (nextTitle === null) return
     const trimmed = nextTitle.trim()
     if (!trimmed) return
@@ -698,7 +700,7 @@ export default function Dashboard() {
   }
 
   async function deleteLatexSave(sessionId: string, saveId: string) {
-    if (!confirm('Delete this LaTeX save? This cannot be undone.')) return
+    if (!confirm(isLearner ? 'Delete these saved notes? This cannot be undone.' : 'Delete this LaTeX save? This cannot be undone.')) return
     try {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/latex-saves/${encodeURIComponent(saveId)}`, {
         method: 'DELETE',
@@ -1200,9 +1202,6 @@ export default function Dashboard() {
           <p className="text-sm muted">
             You are currently in the <span className="font-medium text-white">{activeGradeLabel}</span> workspace.
           </p>
-          {!userGrade && (
-            <p className="text-sm text-red-600">Your profile does not have a grade yet. Please contact an administrator.</p>
-          )}
         </div>
       )}
     </div>
@@ -1382,24 +1381,24 @@ export default function Dashboard() {
 
     return (
       <div className="space-y-6">
-        <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">Create session</h2>
-          {!canCreateSession ? (
-            <div className="text-sm muted">You do not have permission to create sessions. Contact an admin to request instructor access.</div>
-          ) : !selectedGrade ? (
-            <div className="text-sm muted">Select a grade before creating a session.</div>
-          ) : (
-            <form onSubmit={createSession} className="space-y-3">
-              <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
-              <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
-              <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-              <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
-              <div>
-                <button className="btn btn-primary" type="submit">Create</button>
-              </div>
-            </form>
-          )}
-        </div>
+        {canCreateSession && (
+          <div className="card space-y-3">
+            <h2 className="text-lg font-semibold">Create session</h2>
+            {!selectedGrade ? (
+              <div className="text-sm muted">Select a grade before creating a session.</div>
+            ) : (
+              <form onSubmit={createSession} className="space-y-3">
+                <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
+                <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+                <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
+                <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
+                <div>
+                  <button className="btn btn-primary" type="submit">Create</button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
 
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Upcoming sessions — {activeGradeLabel}</h2>
@@ -1577,7 +1576,7 @@ export default function Dashboard() {
                     <div className="p-3 border-b flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold break-words">Past sessions — {activeGradeLabel}</div>
-                        <div className="text-sm muted">Tap a session to view materials and LaTeX saves.</div>
+                        <div className="text-sm muted">Tap a session to view materials and {isLearner ? 'saved notes' : 'LaTeX saves'}.</div>
                       </div>
                       <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
                         Close
@@ -1649,7 +1648,7 @@ export default function Dashboard() {
                         className={`btn ${sessionDetailsTab === 'latex' ? 'btn-primary' : 'btn-ghost'}`}
                         onClick={() => setSessionDetailsTab('latex')}
                       >
-                        LaTeX saves
+                        {learnerNotesLabel}
                       </button>
                     </div>
 
@@ -1719,7 +1718,7 @@ export default function Dashboard() {
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">LaTeX saves</div>
+                            <div className="font-semibold text-sm">{learnerNotesLabel}</div>
                             {expandedSessionId && (
                               <button
                                 type="button"
@@ -1735,13 +1734,13 @@ export default function Dashboard() {
                           {latexSavesError ? (
                             <div className="text-sm text-red-600">{latexSavesError}</div>
                           ) : latexSavesLoading ? (
-                            <div className="text-sm muted">Loading saved LaTeX…</div>
+                            <div className="text-sm muted">Loading {isLearner ? 'saved notes' : 'saved LaTeX'}…</div>
                           ) : (
                             <div className="space-y-3">
                               <div>
-                                <p className="text-xs uppercase tracking-wide muted mb-1">Class saves</p>
+                                <p className="text-xs uppercase tracking-wide muted mb-1">{isLearner ? 'Class notes' : 'Class saves'}</p>
                                 {latexSaves.shared.length === 0 ? (
-                                  <div className="text-sm muted">No class saves yet.</div>
+                                  <div className="text-sm muted">{isLearner ? 'No class notes yet.' : 'No class saves yet.'}</div>
                                 ) : (
                                   <ul className="border rounded divide-y overflow-hidden">
                                     {latexSaves.shared.map(save => (
@@ -1781,9 +1780,9 @@ export default function Dashboard() {
                                 )}
                               </div>
                               <div>
-                                <p className="text-xs uppercase tracking-wide muted mb-1">My saves</p>
+                                <p className="text-xs uppercase tracking-wide muted mb-1">{isLearner ? 'My notes' : 'My saves'}</p>
                                 {latexSaves.mine.length === 0 ? (
-                                  <div className="text-sm muted">No personal saves yet.</div>
+                                  <div className="text-sm muted">{isLearner ? 'No saved notes yet.' : 'No personal saves yet.'}</div>
                                 ) : (
                                   <ul className="border rounded divide-y overflow-hidden">
                                     {latexSaves.mine.map(save => (

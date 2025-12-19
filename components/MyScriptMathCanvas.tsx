@@ -2079,9 +2079,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (controlState.controllerId === clientId) {
         return 'You'
       }
-      return controlState.controllerName || 'Instructor'
+      return controlState.controllerName || 'Teacher'
     }
-    return 'Instructor'
+    return 'Teacher'
   })()
   const latexProjectionMarkup = useMemo(() => {
     if (!latexDisplayState.latex) return ''
@@ -2175,7 +2175,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setLatestSharedLatex(latestShared?.latex || null)
       setLatestPersonalLatex(latestMine?.latex || null)
     } catch (err) {
-      console.warn('Failed to fetch saved LaTeX', err)
+      console.warn('Failed to fetch saved notes', err)
     }
   }, [canPersistLatex, sessionKey])
 
@@ -2207,8 +2207,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         })
         if (!res.ok) {
           const errorData = await res.json().catch(() => null)
-          const message = errorData?.message || 'Failed to save LaTeX'
-          throw new Error(typeof message === 'string' ? message : 'Failed to save LaTeX')
+          const message = errorData?.message || 'Failed to save notes'
+          throw new Error(typeof message === 'string' ? message : 'Failed to save notes')
         }
         const payload = await res.json()
         if (payload?.shared) {
@@ -2218,9 +2218,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         lastSavedHashRef.current = hash
       } catch (err: any) {
-        const message = err?.message || 'Failed to save LaTeX'
+        const message = err?.message || 'Failed to save notes'
         if (!isAuto) setLatexSaveError(message)
-        console.warn('Save LaTeX error', err)
+        console.warn('Save notes error', err)
       } finally {
         if (!isAuto) setIsSavingLatex(false)
       }
@@ -2332,7 +2332,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           onClick={() => runCanvasAction(handleConvert)}
           disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}
         >
-          {isConverting ? 'Converting…' : 'Convert to LaTeX'}
+          {isConverting ? 'Converting…' : 'Convert to Notes'}
         </button>
       </div>
       {isAdmin && (
@@ -2343,7 +2343,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             onClick={() => runCanvasAction(publishAdminLatexAndCanvasToAll)}
             disabled={status !== 'ready' || Boolean(fatalError) || !latexOutput || latexOutput.trim().length === 0}
           >
-            Publish LaTeX to Students
+            Share Notes to Students
           </button>
           <button
             className={`btn ${latexDisplayState.enabled ? 'btn-secondary' : ''}`}
@@ -2351,7 +2351,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             onClick={() => runCanvasAction(toggleLatexProjection)}
             disabled={status !== 'ready' || Boolean(fatalError)}
           >
-            {latexDisplayState.enabled ? 'Stop LaTeX Display Mode' : 'Project LaTeX onto Student Canvas'}
+            {latexDisplayState.enabled ? 'Stop Notes Display Mode' : 'Project Notes onto Student Canvas'}
           </button>
           <button
             className="btn"
@@ -2527,7 +2527,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           }}
                           disabled={!latestPersonalLatex}
                         >
-                          Load my save
+                          Load my notes
                         </button>
                         <button
                           type="button"
@@ -2552,12 +2552,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <p className="text-slate-500 text-sm text-center">Waiting for instructor LaTeX…</p>
+                        <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                       </div>
                     )
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <p className="text-slate-500 text-sm text-center">Instructor has not enabled LaTeX display.</p>
+                      <p className="text-slate-500 text-sm text-center">Teacher hasn’t shared notes yet.</p>
                     </div>
                   )}
                 </div>
@@ -2665,7 +2665,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 )}
                 {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
-                    {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+                    {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>
                 )}
                 {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
@@ -2677,7 +2677,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                       />
                     ) : (
-                      <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                      <p className="text-slate-500 text-sm">Waiting for teacher notes…</p>
                     )}
                   </div>
                 )}
@@ -2750,7 +2750,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           )}
           {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
-              {controlOwnerLabel || 'Instructor'} locked the board. You're in view-only mode.
+              {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
             </div>
           )}
           {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
@@ -2762,7 +2762,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                 />
               ) : (
-                <p className="text-slate-500 text-sm">Waiting for instructor LaTeX…</p>
+                <p className="text-slate-500 text-sm">Waiting for teacher notes…</p>
               )}
             </div>
           )}
@@ -2817,7 +2817,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 type="button"
                 onClick={() => handleOrientationChange('portrait')}
                 disabled={orientationLockedToLandscape}
-                title={orientationLockedToLandscape ? 'Portrait view is disabled while the instructor projects fullscreen.' : undefined}
+                title={orientationLockedToLandscape ? 'Portrait view is disabled while the teacher projects fullscreen.' : undefined}
               >
                 Portrait
               </button>
@@ -2835,7 +2835,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         {isAdmin && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <label className="flex flex-col gap-1">
-              <span className="font-semibold">LaTeX font size</span>
+              <span className="font-semibold">Notes font size</span>
               <input
                 type="range"
                 min="0.7"
@@ -2913,7 +2913,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               onClick={() => saveLatexSnapshot({ shared: true })}
               disabled={isSavingLatex}
             >
-              {isSavingLatex ? 'Saving…' : 'Save class LaTeX'}
+              {isSavingLatex ? 'Saving…' : 'Save class notes'}
             </button>
             <button
               type="button"
@@ -2929,7 +2929,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               onClick={() => handleLoadSavedLatex('shared')}
               disabled={!latestSharedLatex}
             >
-              Load class save
+              Load class notes
             </button>
             {latexSaveError && <span className="text-red-600">{latexSaveError}</span>}
           </div>
@@ -2937,7 +2937,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         {!isOverlayMode && latexOutput && (
           <div>
-            <p className="text-xs font-semibold uppercase text-white mb-1">Latest LaTeX export</p>
+            <p className="text-xs font-semibold uppercase text-white mb-1">Latest notes</p>
             <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
@@ -3001,7 +3001,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <span className="canvas-settings-panel__hint">All students may edit the board.</span>
           )}
           <span className="canvas-settings-panel__hint">
-            Student publishing is {isStudentPublishEnabled ? 'enabled' : 'disabled'} by the instructor.
+            Student publishing is {isStudentPublishEnabled ? 'enabled' : 'disabled'} by the teacher.
           </span>
           {!isRealtimeConnected && (
             <span className="text-xs text-amber-200">Realtime disconnected — updates will be queued</span>

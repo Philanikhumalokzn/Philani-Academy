@@ -592,6 +592,19 @@ export default function Dashboard() {
     })
   }, [canLaunchCanvasOverlay, isSubscriptionBlocked, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ, activeSessionId])
 
+  const pickCurrentOrNextSessionId = useCallback(() => {
+    const activeId = activeSessionId ? String(activeSessionId) : null
+    if (activeId && sessionById.has(activeId)) return activeId
+
+    const nowMs = Date.now()
+    const upcoming = [...(sessions || [])]
+      .filter(s => s?.id && s?.startsAt && new Date(s.startsAt).getTime() >= nowMs)
+      .sort((a, b) => new Date(a?.startsAt).getTime() - new Date(b?.startsAt).getTime())
+
+    if (upcoming.length > 0) return String(upcoming[0].id)
+    return null
+  }, [activeSessionId, sessionById, sessions])
+
   const openLiveForSession = useCallback((sessionId: string) => {
     if (isSubscriptionBlocked) {
       alert('A subscription is required to join sessions.')
@@ -601,6 +614,24 @@ export default function Dashboard() {
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
   }, [isSubscriptionBlocked])
+
+  const openHeroLive = useCallback(() => {
+    const sessionId = pickCurrentOrNextSessionId()
+    if (!sessionId) {
+      alert('No live class right now.')
+      return
+    }
+    openLiveForSession(sessionId)
+  }, [openLiveForSession, pickCurrentOrNextSessionId])
+
+  const openHeroCanvas = useCallback(() => {
+    const sessionId = pickCurrentOrNextSessionId()
+    if (!sessionId) {
+      alert('No session right now.')
+      return
+    }
+    showCanvasWindow(sessionId)
+  }, [pickCurrentOrNextSessionId, showCanvasWindow])
 
   const startLiveForSession = useCallback(async (sessionId: string) => {
     try {
@@ -2389,7 +2420,7 @@ export default function Dashboard() {
 
             <section
               data-mobile-chrome-ignore
-              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[300px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
               onDragEnter={(e) => {
                 e.preventDefault()
                 setMobileHeroBgDragActive(true)
@@ -2460,28 +2491,23 @@ export default function Dashboard() {
                   <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
                 </div>
               </div>
-              {mobileHeroHasCustom && (
-                <div className="absolute inset-x-0 top-6 z-10 flex flex-wrap justify-center gap-3 px-5">
-                  <button
-                    type="button"
-                    className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                    onClick={() => {
-                      setActiveSection('live')
-                      handleShowLiveOverlay()
-                    }}
-                  >
-                    Live class
-                  </button>
-                  <button
-                    type="button"
-                    className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                    onClick={() => showCanvasWindow(activeSessionId)}
-                    disabled={!canLaunchCanvasOverlay}
-                  >
-                    Canvas
-                  </button>
-                </div>
-              )}
+              <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                  onClick={openHeroLive}
+                >
+                  Live class
+                </button>
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                  onClick={openHeroCanvas}
+                  disabled={!canLaunchCanvasOverlay}
+                >
+                  Canvas
+                </button>
+              </div>
             </section>
 
             <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">

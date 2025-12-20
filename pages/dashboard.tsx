@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
-import { getSession, useSession } from 'next-auth/react'
+import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
@@ -2350,7 +2350,13 @@ export default function Dashboard() {
 
   return (
     <>
-      <main className={`${isMobile ? 'mobile-dashboard-theme relative text-white overflow-x-hidden' : 'deep-page'} min-h-screen pb-16`}>
+      <main
+        className={
+          isMobile
+            ? 'mobile-dashboard-theme relative text-white overflow-x-hidden min-h-[100dvh]'
+            : 'deep-page min-h-screen pb-16'
+        }
+      >
       {isMobile && (
         <>
           <div
@@ -2361,9 +2367,9 @@ export default function Dashboard() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#020b35]/35 via-[#041448]/25 to-[#031641]/35" aria-hidden="true" />
         </>
       )}
-      <div className={`${isMobile ? 'relative z-10 w-full px-2 pt-3 pb-6 space-y-5' : 'w-full px-2 py-8 space-y-6'}`}>
+      <div className={`${isMobile ? 'relative z-10 w-full px-2 min-h-[100dvh] flex flex-col' : 'w-full px-2 py-8 space-y-6'}`}>
         {isMobile ? (
-          <>
+          <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
             {mobilePanels.announcements && (
               <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
                 <div className="absolute inset-0 bg-black/60" onClick={closeMobileAnnouncements} />
@@ -2383,7 +2389,7 @@ export default function Dashboard() {
 
             <section
               data-mobile-chrome-ignore
-              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 pt-6 pb-24 text-center shadow-2xl space-y-5 ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[300px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
               onDragEnter={(e) => {
                 e.preventDefault()
                 setMobileHeroBgDragActive(true)
@@ -2455,7 +2461,7 @@ export default function Dashboard() {
                 </div>
               </div>
               {mobileHeroHasCustom && (
-                <div className="flex flex-wrap justify-center gap-3">
+                <div className="absolute inset-x-0 top-6 z-10 flex flex-wrap justify-center gap-3 px-5">
                   <button
                     type="button"
                     className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
@@ -2493,7 +2499,18 @@ export default function Dashboard() {
             </section>
 
             {renderOverviewCards({ hideGradeWorkspace: true })}
-          </>
+            {status === 'authenticated' && (
+              <div className="pt-2 flex justify-center">
+                <button
+                  type="button"
+                  className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <>
             <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

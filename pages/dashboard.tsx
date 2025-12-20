@@ -161,6 +161,11 @@ export default function Dashboard() {
 </svg>`
     return `data:image/svg+xml,${encodeURIComponent(svg)}`
   })
+  const mobileHeroHasCustom = useMemo(() => {
+    if (!mobileHeroBgUrl) return false
+    // Default hero is an inline SVG data URL; user-uploaded images will be image/jpeg, image/png, etc.
+    return !mobileHeroBgUrl.startsWith('data:image/svg+xml,')
+  }, [mobileHeroBgUrl])
   const [mobileHeroBgDragActive, setMobileHeroBgDragActive] = useState(false)
   const [mobileHeroBgEditVisible, setMobileHeroBgEditVisible] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -2449,26 +2454,28 @@ export default function Dashboard() {
                   <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
                 </div>
               </div>
-              <div className="flex flex-wrap justify-center gap-3">
-                <button
-                  type="button"
-                  className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                  onClick={() => {
-                    setActiveSection('live')
-                    handleShowLiveOverlay()
-                  }}
-                >
-                  Live class
-                </button>
-                <button
-                  type="button"
-                  className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                  onClick={() => showCanvasWindow(activeSessionId)}
-                  disabled={!canLaunchCanvasOverlay}
-                >
-                  Canvas
-                </button>
-              </div>
+              {mobileHeroHasCustom && (
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                    onClick={() => {
+                      setActiveSection('live')
+                      handleShowLiveOverlay()
+                    }}
+                  >
+                    Live class
+                  </button>
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                    onClick={() => showCanvasWindow(activeSessionId)}
+                    disabled={!canLaunchCanvasOverlay}
+                  >
+                    Canvas
+                  </button>
+                </div>
+              )}
             </section>
 
             <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">

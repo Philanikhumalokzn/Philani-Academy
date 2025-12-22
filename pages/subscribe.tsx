@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 
+import NavArrows from '../components/NavArrows'
+
 const defaultMobileHeroBg = (() => {
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
@@ -110,102 +112,178 @@ export default function Subscribe() {
   }, [selectedPlanId])
 
   return (
-    <main className="mobile-dashboard-theme relative min-h-screen overflow-hidden text-white">
-      <div
-        className="absolute inset-0"
-        style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-        aria-hidden="true"
-      />
-      <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/70 via-[#041448]/55 to-[#031641]/70" aria-hidden="true" />
+    <>
+      <main className="deep-page min-h-screen px-4 py-6 md:py-12 overflow-x-hidden hidden md:block">
+        <div className="mx-auto w-full max-w-4xl space-y-6 md:space-y-8">
+          <section className="hero flex-col gap-6">
+            <div className="flex w-full flex-wrap items-center justify-between gap-3">
+              <NavArrows backHref="/dashboard" forwardHref={undefined} />
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="board-chip">PayFast secure checkout</span>
+                <span className="board-chip">ZAR billing</span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Subscriptions</p>
+              <h1 className="text-3xl font-semibold md:text-4xl">Choose your Philani Academy plan</h1>
+              <p className="text-sm text-white md:text-base">
+                Plans stay light, mobile-first, and aligned with the no-scroll classrooms. Select the plan that matches your grade bundle, then we hand you off to a POPIA-ready PayFast form.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-sm text-white">
+              Need to update billing details first? Visit your <Link className="text-blue-200 underline" href="/profile">profile</Link> or read the <Link className="text-blue-200 underline" href="/privacy">privacy notice</Link>.
+            </div>
+          </section>
 
-      <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
-        <div className="absolute inset-0 bg-black/35 backdrop-blur-md" aria-hidden="true" />
+          <section className="card p-5 md:p-6 space-y-5">
+            <div className="space-y-1">
+              <h2 className="text-xl font-semibold">Pick a plan to activate</h2>
+              <p className="text-sm text-white">
+                Active plans appear first. We surface the same cards learners see in the dashboard so everything feels consistent.
+              </p>
+            </div>
 
-        <div className="absolute inset-x-2 top-3 bottom-3 md:static md:inset-auto md:mx-auto md:my-12 md:w-full md:max-w-4xl rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">
-          <div className="p-3 border-b border-white/10 flex items-center justify-end">
-            <button
-              type="button"
-              aria-label="Close"
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-              onClick={() => router.push('/dashboard')}
-            >
-              <span aria-hidden="true" className="text-lg leading-none">×</span>
-            </button>
-          </div>
-
-          <div className="p-4 overflow-auto h-full">
-            <div className="mx-auto w-full max-w-4xl space-y-6 md:space-y-8">
-              <section className="hero flex-col gap-6">
-                <div className="flex w-full flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="board-chip">PayFast secure checkout</span>
-                    <span className="board-chip">ZAR billing</span>
-                  </div>
-                </div>
+            {plans.length > 0 ? (
+              <div className="space-y-4">
                 <div className="space-y-3">
-                  <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Subscriptions</p>
-                  <h1 className="text-3xl font-semibold md:text-4xl">Choose your Philani Academy plan</h1>
-                  <p className="text-sm text-white md:text-base">
-                    Select a plan that matches your grade bundle, then continue to secure PayFast checkout.
-                  </p>
+                  {plans.map(plan => (
+                    <label
+                      key={plan.id}
+                      className={`flex flex-col gap-1 rounded-2xl border px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${
+                        selectedPlanId === plan.id
+                          ? 'border-blue-400 bg-white/10 shadow-lg'
+                          : 'border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-base font-semibold text-white">{plan.name}</p>
+                        <p className="text-sm text-white">
+                          {formatAmount(plan.amount, plan.currency)} {plan.active ? '• Currently active' : ''}
+                        </p>
+                      </div>
+                      <input
+                        type="radio"
+                        name="plan"
+                        value={plan.id}
+                        checked={selectedPlanId === plan.id}
+                        onChange={() => setSelectedPlanId(plan.id)}
+                        className="h-5 w-5 accent-blue-500"
+                      />
+                    </label>
+                  ))}
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-sm text-white">
-                  Manage your details in your <Link className="text-blue-200 underline" href="/profile">profile</Link>. Read our{' '}
-                  <Link className="text-blue-200 underline" href="/privacy">privacy notice</Link>.
-                </div>
-              </section>
 
-              <section className="card p-5 md:p-6 space-y-5">
-                <div className="space-y-1">
-                  <h2 className="text-xl font-semibold">Pick a plan to activate</h2>
-                  <p className="text-sm text-white">Pick a plan and continue to checkout.</p>
-                </div>
+                <button onClick={startCheckout} disabled={loading} className="btn btn-primary w-full">
+                  {loading ? 'Preparing PayFast…' : 'Subscribe with PayFast'}
+                </button>
+                {statusMessage && <p className="text-sm text-amber-200">{statusMessage}</p>}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+                No subscription plans are published yet. Ping an admin so they can flip one live from the dashboard.
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
 
-                {plans.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="space-y-3">
-                      {plans.map(plan => (
-                        <label
-                          key={plan.id}
-                          className={`flex flex-col gap-1 rounded-2xl border px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${
-                            selectedPlanId === plan.id
-                              ? 'border-blue-400 bg-white/10 shadow-lg'
-                              : 'border-white/10 hover:border-white/30'
-                          }`}
-                        >
-                          <div>
-                            <p className="text-base font-semibold text-white">{plan.name}</p>
-                            <p className="text-sm text-white">
-                              {formatAmount(plan.amount, plan.currency)} {plan.active ? '• Currently active' : ''}
-                            </p>
-                          </div>
-                          <input
-                            type="radio"
-                            name="plan"
-                            value={plan.id}
-                            checked={selectedPlanId === plan.id}
-                            onChange={() => setSelectedPlanId(plan.id)}
-                            className="h-5 w-5 accent-blue-500"
-                          />
-                        </label>
-                      ))}
+      <main className="mobile-dashboard-theme relative min-h-screen overflow-hidden text-white md:hidden">
+        <div
+          className="absolute inset-0"
+          style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/70 via-[#041448]/55 to-[#031641]/70" aria-hidden="true" />
+
+        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/35 backdrop-blur-md" aria-hidden="true" />
+
+          <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">
+            <div className="p-3 border-b border-white/10 flex items-center justify-end">
+              <button
+                type="button"
+                aria-label="Close"
+                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+                onClick={() => router.push('/dashboard')}
+              >
+                <span aria-hidden="true" className="text-lg leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="p-4 overflow-auto h-full">
+              <div className="mx-auto w-full max-w-4xl space-y-6">
+                <section className="hero flex-col gap-6">
+                  <div className="flex w-full flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="board-chip">PayFast secure checkout</span>
+                      <span className="board-chip">ZAR billing</span>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Subscriptions</p>
+                    <h1 className="text-3xl font-semibold">Choose your Philani Academy plan</h1>
+                    <p className="text-sm text-white">
+                      Select a plan that matches your grade bundle, then continue to secure PayFast checkout.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 text-sm text-white">
+                    Manage your details in your <Link className="text-blue-200 underline" href="/profile">profile</Link>. Read our{' '}
+                    <Link className="text-blue-200 underline" href="/privacy">privacy notice</Link>.
+                  </div>
+                </section>
 
-                    <button onClick={startCheckout} disabled={loading} className="btn btn-primary w-full">
-                      {loading ? 'Preparing PayFast…' : 'Subscribe with PayFast'}
-                    </button>
-                    {statusMessage && <p className="text-sm text-amber-200">{statusMessage}</p>}
+                <section className="card p-5 space-y-5">
+                  <div className="space-y-1">
+                    <h2 className="text-xl font-semibold">Pick a plan to activate</h2>
+                    <p className="text-sm text-white">Pick a plan and continue to checkout.</p>
                   </div>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
-                    No subscription plans are available yet. Please check back soon.
-                  </div>
-                )}
-              </section>
+
+                  {plans.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        {plans.map(plan => (
+                          <label
+                            key={plan.id}
+                            className={`flex flex-col gap-1 rounded-2xl border px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between ${
+                              selectedPlanId === plan.id
+                                ? 'border-blue-400 bg-white/10 shadow-lg'
+                                : 'border-white/10 hover:border-white/30'
+                            }`}
+                          >
+                            <div>
+                              <p className="text-base font-semibold text-white">{plan.name}</p>
+                              <p className="text-sm text-white">
+                                {formatAmount(plan.amount, plan.currency)} {plan.active ? '• Currently active' : ''}
+                              </p>
+                            </div>
+                            <input
+                              type="radio"
+                              name="plan"
+                              value={plan.id}
+                              checked={selectedPlanId === plan.id}
+                              onChange={() => setSelectedPlanId(plan.id)}
+                              className="h-5 w-5 accent-blue-500"
+                            />
+                          </label>
+                        ))}
+                      </div>
+
+                      <button onClick={startCheckout} disabled={loading} className="btn btn-primary w-full">
+                        {loading ? 'Preparing PayFast…' : 'Subscribe with PayFast'}
+                      </button>
+                      {statusMessage && <p className="text-sm text-amber-200">{statusMessage}</p>}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+                      No subscription plans are available yet. Please check back soon.
+                    </div>
+                  )}
+                </section>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </>
   )
 }

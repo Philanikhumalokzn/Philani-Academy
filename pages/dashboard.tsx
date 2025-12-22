@@ -2398,7 +2398,13 @@ export default function Dashboard() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#020b35]/35 via-[#041448]/25 to-[#031641]/35" aria-hidden="true" />
         </>
       )}
-      <div className={`${isMobile ? 'relative z-10 w-full px-2 min-h-[100dvh] flex flex-col' : 'w-full px-2 py-8 space-y-6'}`}>
+      <div
+        className={
+          isMobile
+            ? 'relative z-10 w-full px-2 min-h-[100dvh] flex flex-col'
+            : 'max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6'
+        }
+      >
         {isMobile ? (
           <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
             {mobilePanels.announcements && (

@@ -127,6 +127,27 @@ model LatexSave {
   @@index([sessionKey, userId])
 }
 
+model Diagram {
+  id         String   @id @default(cuid())
+  sessionKey String
+  title      String   @default("")
+  imageUrl   String
+  order      Int      @default(0)
+  annotations Json?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sessionKey])
+}
+
+model DiagramSessionState {
+  sessionKey      String  @id
+  activeDiagramId String?
+  isOpen          Boolean @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
 model SubscriptionPlan {
   id            String   @id @default(cuid())
   name          String

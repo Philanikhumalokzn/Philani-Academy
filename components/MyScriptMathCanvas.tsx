@@ -297,6 +297,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latestPersonalLatex, setLatestPersonalLatex] = useState<string | null>(null)
   const [isSavingLatex, setIsSavingLatex] = useState(false)
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
+
+  type DiagramStrokePoint = { x: number; y: number }
+  type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[] }
+  type DiagramAnnotations = { strokes: DiagramStroke[] }
+  type DiagramRecord = {
+    id: string
+    title: string
+    imageUrl: string
+    order: number
+    annotations: DiagramAnnotations | null
+  }
+  type DiagramState = {
+    activeDiagramId: string | null
+    isOpen: boolean
+  }
+  type DiagramRealtimeMessage =
+    | { kind: 'state'; activeDiagramId: string | null; isOpen: boolean; ts?: number; sender?: string }
+    | { kind: 'add'; diagram: DiagramRecord; ts?: number; sender?: string }
+    | { kind: 'remove'; diagramId: string; ts?: number; sender?: string }
+    | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
+    | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
+
+  const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
+  const diagramsRef = useRef<DiagramRecord[]>([])
+  useEffect(() => {
+    diagramsRef.current = diagrams
+  }, [diagrams])
+  const [diagramState, setDiagramState] = useState<DiagramState>({ activeDiagramId: null, isOpen: false })
+  const diagramStateRef = useRef<DiagramState>({ activeDiagramId: null, isOpen: false })
+  useEffect(() => {
+    diagramStateRef.current = diagramState
+  }, [diagramState])
+  const [diagramManagerOpen, setDiagramManagerOpen] = useState(false)
+  const [diagramUrlInput, setDiagramUrlInput] = useState('')
+  const [diagramTitleInput, setDiagramTitleInput] = useState('')
+  const [diagramBusy, setDiagramBusy] = useState(false)
+  const diagramStageRef = useRef<HTMLDivElement | null>(null)
+  const diagramCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const diagramImageRef = useRef<HTMLImageElement | null>(null)
+  const diagramDrawingRef = useRef(false)
+  const diagramCurrentStrokeRef = useRef<DiagramStroke | null>(null)
+  const diagramLastPublishTsRef = useRef(0)
+  const diagramLastPersistTsRef = useRef(0)
+  const diagramResizeObserverRef = useRef<ResizeObserver | null>(null)
+  const diagramPointerIdRef = useRef<number | null>(null)
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
@@ -555,6 +600,198 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       : 'shared'
     return `myscript:${base}`
   }, [boardId, gradeLabel])
+
+  const activeDiagram = useMemo(() => {
+    if (!diagramState.activeDiagramId) return null
+    return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
+  }, [diagramState.activeDiagramId, diagrams])
+
+  const normalizeAnnotations = useCallback((value: any): DiagramAnnotations => {
+    const strokes = Array.isArray(value?.strokes) ? value.strokes : []
+    return {
+      strokes: strokes
+        .map((s: any) => ({
+          id: typeof s?.id === 'string' ? s.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          color: typeof s?.color === 'string' ? s.color : '#ef4444',
+          width: typeof s?.width === 'number' ? s.width : 3,
+          points: Array.isArray(s?.points)
+            ? s.points
+                .map((p: any) => ({ x: typeof p?.x === 'number' ? p.x : 0, y: typeof p?.y === 'number' ? p.y : 0 }))
+                .filter((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y))
+            : [],
+        }))
+        .filter((s: any) => s.points.length >= 1),
+    }
+  }, [])
+
+  const loadDiagramsFromServer = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/diagrams?sessionKey=${encodeURIComponent(channelName)}`, { credentials: 'same-origin' })
+      if (!res.ok) return
+      const payload = await res.json().catch(() => null)
+      if (!payload) return
+
+      const rawDiagrams = Array.isArray(payload.diagrams) ? payload.diagrams : []
+      const nextDiagrams: DiagramRecord[] = rawDiagrams.map((d: any) => ({
+        id: String(d.id),
+        title: typeof d.title === 'string' ? d.title : '',
+        imageUrl: typeof d.imageUrl === 'string' ? d.imageUrl : '',
+        order: typeof d.order === 'number' ? d.order : 0,
+        annotations: d.annotations ? normalizeAnnotations(d.annotations) : null,
+      }))
+      setDiagrams(nextDiagrams)
+
+      const serverState = payload.state
+      const nextState: DiagramState = {
+        activeDiagramId: typeof serverState?.activeDiagramId === 'string' ? serverState.activeDiagramId : null,
+        isOpen: typeof serverState?.isOpen === 'boolean' ? serverState.isOpen : false,
+      }
+
+      if (!nextState.activeDiagramId && nextDiagrams.length) {
+        nextState.activeDiagramId = nextDiagrams[0].id
+      }
+      setDiagramState(nextState)
+    } catch {
+      // ignore; diagrams are optional
+    }
+  }, [channelName, normalizeAnnotations])
+
+  useEffect(() => {
+    if (!userId) return
+    void loadDiagramsFromServer()
+  }, [loadDiagramsFromServer, userId])
+
+  const publishDiagramMessage = useCallback(async (message: DiagramRealtimeMessage) => {
+    const channel = channelRef.current
+    if (!channel) return
+    try {
+      await channel.publish('diagram', {
+        ...message,
+        ts: message.ts ?? Date.now(),
+        sender: message.sender ?? clientIdRef.current,
+      })
+    } catch (err) {
+      // Non-critical.
+      console.warn('Failed to publish diagram message', err)
+    }
+  }, [])
+
+  const persistDiagramState = useCallback(async (next: DiagramState) => {
+    if (!isAdmin) return
+    try {
+      await fetch('/api/diagrams/state', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionKey: channelName,
+          activeDiagramId: next.activeDiagramId,
+          isOpen: next.isOpen,
+        }),
+      })
+    } catch {
+      // ignore
+    }
+  }, [channelName, isAdmin])
+
+  const setDiagramOverlayState = useCallback(
+    async (next: DiagramState) => {
+      setDiagramState(next)
+      if (isAdmin) {
+        await persistDiagramState(next)
+        await publishDiagramMessage({ kind: 'state', activeDiagramId: next.activeDiagramId, isOpen: next.isOpen })
+      }
+    },
+    [isAdmin, persistDiagramState, publishDiagramMessage]
+  )
+
+  const persistDiagramAnnotations = useCallback(async (diagramId: string, annotations: DiagramAnnotations | null) => {
+    if (!isAdmin) return
+    const now = Date.now()
+    if (now - diagramLastPersistTsRef.current < 250) return
+    diagramLastPersistTsRef.current = now
+    try {
+      await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annotations }),
+      })
+    } catch {
+      // ignore
+    }
+  }, [isAdmin])
+
+  const redrawDiagramCanvas = useCallback(() => {
+    const canvas = diagramCanvasRef.current
+    const stage = diagramStageRef.current
+    const image = diagramImageRef.current
+    if (!canvas || !stage || !image) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const rect = stage.getBoundingClientRect()
+    const width = Math.max(1, Math.floor(rect.width))
+    const height = Math.max(1, Math.floor(rect.height))
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+
+    ctx.clearRect(0, 0, width, height)
+    const strokes = activeDiagram?.annotations?.strokes || []
+    for (const stroke of strokes) {
+      if (!stroke.points.length) continue
+      ctx.strokeStyle = stroke.color || '#ef4444'
+      ctx.lineWidth = stroke.width || 3
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      for (let i = 0; i < stroke.points.length; i++) {
+        const p = stroke.points[i]
+        const x = p.x * width
+        const y = p.y * height
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+    }
+
+    const current = diagramCurrentStrokeRef.current
+    if (current && current.points.length) {
+      ctx.strokeStyle = current.color || '#ef4444'
+      ctx.lineWidth = current.width || 3
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      for (let i = 0; i < current.points.length; i++) {
+        const p = current.points[i]
+        const x = p.x * width
+        const y = p.y * height
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+    }
+  }, [activeDiagram])
+
+  useEffect(() => {
+    redrawDiagramCanvas()
+  }, [redrawDiagramCanvas, activeDiagram?.id, activeDiagram?.annotations])
+
+  useEffect(() => {
+    const stage = diagramStageRef.current
+    if (!stage || typeof ResizeObserver === 'undefined') return
+    const obs = new ResizeObserver(() => {
+      redrawDiagramCanvas()
+    })
+    diagramResizeObserverRef.current = obs
+    obs.observe(stage)
+    return () => {
+      try {
+        obs.disconnect()
+      } catch {}
+      diagramResizeObserverRef.current = null
+    }
+  }, [redrawDiagramCanvas])
 
   const collectEditorSnapshot = useCallback((incrementVersion: boolean): SnapshotPayload | null => {
     const editor = editorInstanceRef.current
@@ -1395,11 +1632,70 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setLatexOutput(latex)
         }
 
+        const handleDiagramMessage = (message: any) => {
+          const data = message?.data as DiagramRealtimeMessage
+          if (!data || typeof data !== 'object') return
+          if ((data as any).sender && (data as any).sender === clientIdRef.current) return
+          if (data.kind === 'state') {
+            const next: DiagramState = {
+              activeDiagramId: typeof data.activeDiagramId === 'string' ? data.activeDiagramId : null,
+              isOpen: Boolean(data.isOpen),
+            }
+            setDiagramState(prev => {
+              // Preserve active selection if the incoming state doesn't have one.
+              if (!next.activeDiagramId && prev.activeDiagramId) {
+                return { ...prev, isOpen: next.isOpen }
+              }
+              return next
+            })
+            return
+          }
+          if (data.kind === 'add') {
+            const diag = data.diagram
+            if (!diag || typeof (diag as any).id !== 'string') return
+            setDiagrams(prev => {
+              if (prev.some(d => d.id === diag.id)) return prev
+              const next = [...prev, { ...diag, annotations: diag.annotations ? normalizeAnnotations(diag.annotations) : null }]
+              next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+              return next
+            })
+            setDiagramState(prev => ({
+              activeDiagramId: prev.activeDiagramId || diag.id,
+              isOpen: prev.isOpen,
+            }))
+            return
+          }
+          if (data.kind === 'remove') {
+            setDiagrams(prev => prev.filter(d => d.id !== data.diagramId))
+            setDiagramState(prev => {
+              if (prev.activeDiagramId !== data.diagramId) return prev
+              const remaining = diagramsRef.current.filter(d => d.id !== data.diagramId)
+              return { ...prev, activeDiagramId: remaining[0]?.id ?? null }
+            })
+            return
+          }
+          if (data.kind === 'clear') {
+            setDiagrams(prev => prev.map(d => (d.id === data.diagramId ? { ...d, annotations: { strokes: [] } } : d)))
+            return
+          }
+          if (data.kind === 'stroke-commit') {
+            setDiagrams(prev => {
+              return prev.map(d => {
+                if (d.id !== data.diagramId) return d
+                const annotations = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [] }
+                return { ...d, annotations: { strokes: [...annotations.strokes, data.stroke] } }
+              })
+            })
+            return
+          }
+        }
+
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
   channel.subscribe('sync-request', handleSyncRequest)
         channel.subscribe('control', handleControlMessage)
   channel.subscribe('latex', handleLatexMessage)
+          channel.subscribe('diagram', handleDiagramMessage)
         // Removed control channel subscription.
 
         const snapshot = captureFullSnapshot()
@@ -2338,6 +2634,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       {isAdmin && (
         <div className="canvas-toolbar__buttons">
           <button
+            className={`btn ${diagramState.isOpen ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(() => setDiagramOverlayState({
+              activeDiagramId: diagramState.activeDiagramId || (diagrams[0]?.id ?? null),
+              isOpen: !diagramState.isOpen,
+            }))}
+            disabled={status !== 'ready' || Boolean(fatalError) || diagrams.length === 0}
+          >
+            {diagramState.isOpen ? 'Hide Diagram' : 'Show Diagram'}
+          </button>
+          <button
+            className={`btn ${diagramManagerOpen ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(() => setDiagramManagerOpen(prev => !prev))}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            Diagrams
+          </button>
+          <button
             className="btn"
             type="button"
             onClick={() => runCanvasAction(publishAdminLatexAndCanvasToAll)}
@@ -2400,6 +2715,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             disabled={status !== 'ready' || Boolean(fatalError)}
           >
             {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
+          </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => runCanvasAction(async () => {
+              if (!activeDiagram?.id) return
+              setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, annotations: { strokes: [] } } : d)))
+              await persistDiagramAnnotations(activeDiagram.id, { strokes: [] })
+              await publishDiagramMessage({ kind: 'clear', diagramId: activeDiagram.id })
+            })}
+            disabled={status !== 'ready' || Boolean(fatalError) || !activeDiagram}
+          >
+            Clear Diagram Ink
           </button>
         </div>
       )}
@@ -2728,6 +3056,332 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             style={editorHostStyle}
             data-orientation={canvasOrientation}
           />
+
+          {diagramManagerOpen && isAdmin && (
+            <div className="absolute inset-0 z-50 bg-slate-900/30 backdrop-blur-sm" onClick={() => setDiagramManagerOpen(false)}>
+              <div
+                className="absolute top-3 right-3 left-3 sm:left-auto sm:w-[420px] max-h-[85%] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm p-3"
+                onClick={e => e.stopPropagation()}
+                onPaste={async e => {
+                  if (!isAdmin) return
+                  if (!e.clipboardData) return
+                  const item = Array.from(e.clipboardData.items || []).find(i => i.type.startsWith('image/'))
+                  if (!item) return
+                  const file = item.getAsFile()
+                  if (!file) return
+                  setDiagramBusy(true)
+                  try {
+                    const form = new FormData()
+                    form.append('sessionKey', channelName)
+                    form.append('file', file)
+                    const uploadRes = await fetch('/api/diagrams/upload', { method: 'POST', credentials: 'same-origin', body: form })
+                    if (!uploadRes.ok) throw new Error('Upload failed')
+                    const uploadPayload = await uploadRes.json()
+                    const url = uploadPayload?.url
+                    if (!url) throw new Error('Missing URL')
+                    const createRes = await fetch('/api/diagrams', {
+                      method: 'POST',
+                      credentials: 'same-origin',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || 'Pasted diagram' }),
+                    })
+                    if (!createRes.ok) throw new Error('Create failed')
+                    const createdPayload = await createRes.json()
+                    const diagram = createdPayload?.diagram
+                    if (diagram?.id) {
+                      const record: any = {
+                        id: String(diagram.id),
+                        title: typeof diagram.title === 'string' ? diagram.title : '',
+                        imageUrl: String(diagram.imageUrl || url),
+                        order: typeof diagram.order === 'number' ? diagram.order : 0,
+                        annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
+                      }
+                      setDiagrams(prev => {
+                        if (prev.some(d => d.id === record.id)) return prev
+                        const next = [...prev, record]
+                        next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+                        return next
+                      })
+                      await publishDiagramMessage({ kind: 'add', diagram: record })
+                      await setDiagramOverlayState({ activeDiagramId: record.id, isOpen: true })
+                    }
+                  } catch (err) {
+                    console.warn('Paste diagram failed', err)
+                  }
+                  setDiagramBusy(false)
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">Diagram stack</p>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => setDiagramManagerOpen(false)}>
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input"
+                      placeholder="Image URL"
+                      value={diagramUrlInput}
+                      onChange={e => setDiagramUrlInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={diagramBusy || !diagramUrlInput.trim()}
+                      onClick={async () => {
+                        if (!isAdmin) return
+                        const url = diagramUrlInput.trim()
+                        if (!url) return
+                        setDiagramBusy(true)
+                        try {
+                          const createRes = await fetch('/api/diagrams', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || '' }),
+                          })
+                          if (!createRes.ok) throw new Error('Create failed')
+                          const createdPayload = await createRes.json()
+                          const diagram = createdPayload?.diagram
+                          if (diagram?.id) {
+                            const record: any = {
+                              id: String(diagram.id),
+                              title: typeof diagram.title === 'string' ? diagram.title : '',
+                              imageUrl: String(diagram.imageUrl || url),
+                              order: typeof diagram.order === 'number' ? diagram.order : 0,
+                              annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
+                            }
+                            setDiagrams(prev => {
+                              if (prev.some(d => d.id === record.id)) return prev
+                              const next = [...prev, record]
+                              next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+                              return next
+                            })
+                            await publishDiagramMessage({ kind: 'add', diagram: record })
+                            await setDiagramOverlayState({ activeDiagramId: record.id, isOpen: true })
+                            setDiagramUrlInput('')
+                          }
+                        } catch (err) {
+                          console.warn('Add diagram failed', err)
+                        }
+                        setDiagramBusy(false)
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input"
+                      placeholder="Optional title"
+                      value={diagramTitleInput}
+                      onChange={e => setDiagramTitleInput(e.target.value)}
+                    />
+                    <label className="btn btn-secondary" style={{ cursor: diagramBusy ? 'not-allowed' : 'pointer' }}>
+                      Upload
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        disabled={diagramBusy}
+                        onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          setDiagramBusy(true)
+                          try {
+                            const form = new FormData()
+                            form.append('sessionKey', channelName)
+                            form.append('file', file)
+                            const uploadRes = await fetch('/api/diagrams/upload', { method: 'POST', credentials: 'same-origin', body: form })
+                            if (!uploadRes.ok) throw new Error('Upload failed')
+                            const uploadPayload = await uploadRes.json()
+                            const url = uploadPayload?.url
+                            if (!url) throw new Error('Missing URL')
+                            const createRes = await fetch('/api/diagrams', {
+                              method: 'POST',
+                              credentials: 'same-origin',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || file.name }),
+                            })
+                            if (!createRes.ok) throw new Error('Create failed')
+                            const createdPayload = await createRes.json()
+                            const diagram = createdPayload?.diagram
+                            if (diagram?.id) {
+                              const record: any = {
+                                id: String(diagram.id),
+                                title: typeof diagram.title === 'string' ? diagram.title : '',
+                                imageUrl: String(diagram.imageUrl || url),
+                                order: typeof diagram.order === 'number' ? diagram.order : 0,
+                                annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
+                              }
+                              setDiagrams(prev => {
+                                if (prev.some(d => d.id === record.id)) return prev
+                                const next = [...prev, record]
+                                next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+                                return next
+                              })
+                              await publishDiagramMessage({ kind: 'add', diagram: record })
+                              await setDiagramOverlayState({ activeDiagramId: record.id, isOpen: true })
+                            }
+                          } catch (err) {
+                            console.warn('Upload diagram failed', err)
+                          }
+                          setDiagramBusy(false)
+                          try {
+                            e.target.value = ''
+                          } catch {}
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <p className="text-[11px] text-slate-600">Tip: paste an image into this panel to add it.</p>
+                </div>
+
+                <div className="mt-3">
+                  <p className="text-xs font-semibold text-slate-700">Diagrams</p>
+                  {diagrams.length === 0 ? (
+                    <p className="text-xs text-slate-500 mt-1">No diagrams yet.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1">
+                      {diagrams.map(d => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          className={`w-full text-left px-2 py-2 rounded border ${diagramState.activeDiagramId === d.id ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'}`}
+                          onClick={async () => {
+                            await setDiagramOverlayState({ activeDiagramId: d.id, isOpen: true })
+                          }}
+                        >
+                          <div className="text-xs font-semibold">{d.title || 'Untitled diagram'}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{d.imageUrl}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {diagramState.isOpen && activeDiagram && (
+            <div className="absolute inset-0 z-40" aria-label="Diagram overlay">
+              <div className="absolute inset-0 bg-black/20" aria-hidden="true" />
+              <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm">
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-white">
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Diagram</p>
+                    <p className="text-sm font-semibold truncate">{activeDiagram.title || 'Untitled diagram'}</p>
+                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        onClick={() => setDiagramManagerOpen(true)}
+                      >
+                        Switch
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => setDiagramOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="relative w-full h-[calc(100%-44px)]">
+                  <div ref={diagramStageRef} className="absolute inset-0">
+                    <img
+                      ref={diagramImageRef}
+                      src={activeDiagram.imageUrl}
+                      alt={activeDiagram.title || 'Diagram'}
+                      className="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
+                      onLoad={() => {
+                        redrawDiagramCanvas()
+                      }}
+                    />
+                    <canvas
+                      ref={diagramCanvasRef}
+                      className={`absolute inset-0 ${isAdmin ? 'cursor-crosshair' : 'pointer-events-none'}`}
+                      onPointerDown={async e => {
+                        if (!isAdmin) return
+                        if (!activeDiagram?.id) return
+                        if (diagramDrawingRef.current) return
+                        const stage = diagramStageRef.current
+                        if (!stage) return
+                        const rect = stage.getBoundingClientRect()
+                        const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
+                        const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
+                        const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+                        const strokeId = `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                        diagramDrawingRef.current = true
+                        diagramPointerIdRef.current = e.pointerId
+                        try {
+                          ;(e.currentTarget as any).setPointerCapture?.(e.pointerId)
+                        } catch {}
+                        diagramCurrentStrokeRef.current = { id: strokeId, color: '#ef4444', width: 3, points: [point] }
+                        redrawDiagramCanvas()
+                      }}
+                      onPointerMove={e => {
+                        if (!isAdmin) return
+                        if (!diagramDrawingRef.current) return
+                        if (diagramPointerIdRef.current !== null && e.pointerId !== diagramPointerIdRef.current) return
+                        const stage = diagramStageRef.current
+                        const curr = diagramCurrentStrokeRef.current
+                        if (!stage || !curr) return
+                        const rect = stage.getBoundingClientRect()
+                        const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
+                        const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
+                        const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+                        curr.points.push(point)
+                        const now = Date.now()
+                        if (now - diagramLastPublishTsRef.current > 120) {
+                          diagramLastPublishTsRef.current = now
+                          redrawDiagramCanvas()
+                        }
+                      }}
+                      onPointerUp={async e => {
+                        if (!isAdmin) return
+                        if (!diagramDrawingRef.current) return
+                        if (diagramPointerIdRef.current !== null && e.pointerId !== diagramPointerIdRef.current) return
+                        diagramDrawingRef.current = false
+                        diagramPointerIdRef.current = null
+                        const stroke = diagramCurrentStrokeRef.current
+                        diagramCurrentStrokeRef.current = null
+                        redrawDiagramCanvas()
+                        if (!stroke || !activeDiagram?.id) return
+
+                        setDiagrams(prev => prev.map(d => {
+                          if (d.id !== activeDiagram.id) return d
+                          const annotations = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [] }
+                          return { ...d, annotations: { strokes: [...annotations.strokes, stroke] } }
+                        }))
+
+                        await publishDiagramMessage({ kind: 'stroke-commit', diagramId: activeDiagram.id, stroke })
+
+                        const updated = diagramsRef.current.find(d => d.id === activeDiagram.id)
+                        const annotations = updated?.annotations ? normalizeAnnotations(updated.annotations) : null
+                        await persistDiagramAnnotations(activeDiagram.id, annotations)
+                      }}
+                      onPointerCancel={() => {
+                        diagramDrawingRef.current = false
+                        diagramPointerIdRef.current = null
+                        diagramCurrentStrokeRef.current = null
+                        redrawDiagramCanvas()
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {(status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
               Preparing collaborative canvas…

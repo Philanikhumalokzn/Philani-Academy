@@ -3401,7 +3401,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 
   const isStudentView = !isAdmin
-  const useStackedStudentLayout = isStudentView
+  const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {

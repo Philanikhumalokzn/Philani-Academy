@@ -300,7 +300,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[] }
-  type DiagramAnnotations = { strokes: DiagramStroke[] }
+  type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number }
+  type DiagramAnnotations = { strokes: DiagramStroke[]; arrows?: DiagramArrow[] }
   type DiagramRecord = {
     id: string
     title: string
@@ -317,6 +318,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     | { kind: 'add'; diagram: DiagramRecord; ts?: number; sender?: string }
     | { kind: 'remove'; diagramId: string; ts?: number; sender?: string }
     | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
+    | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
     | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
@@ -338,10 +340,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const diagramImageRef = useRef<HTMLImageElement | null>(null)
   const diagramDrawingRef = useRef(false)
   const diagramCurrentStrokeRef = useRef<DiagramStroke | null>(null)
+  const diagramCurrentArrowRef = useRef<DiagramArrow | null>(null)
   const diagramLastPublishTsRef = useRef(0)
   const diagramLastPersistTsRef = useRef(0)
   const diagramResizeObserverRef = useRef<ResizeObserver | null>(null)
   const diagramPointerIdRef = useRef<number | null>(null)
+  const diagramToolRef = useRef<'select' | 'pen' | 'arrow' | 'eraser'>('pen')
+  const [diagramTool, setDiagramTool] = useState<'select' | 'pen' | 'arrow' | 'eraser'>('pen')
+  useEffect(() => {
+    diagramToolRef.current = diagramTool
+  }, [diagramTool])
+
+  const diagramUndoRef = useRef<DiagramAnnotations[]>([])
+  const diagramRedoRef = useRef<DiagramAnnotations[]>([])
+  const [diagramCanUndo, setDiagramCanUndo] = useState(false)
+  const [diagramCanRedo, setDiagramCanRedo] = useState(false)
+  const diagramHistoryDiagramIdRef = useRef<string | null>(null)
   const [pageIndex, setPageIndex] = useState(0)
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
@@ -606,8 +620,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
   }, [diagramState.activeDiagramId, diagrams])
 
+  const cloneDiagramAnnotations = useCallback((value: DiagramAnnotations | null | undefined): DiagramAnnotations => {
+    const strokes = Array.isArray(value?.strokes) ? value!.strokes : []
+    const arrows = Array.isArray((value as any)?.arrows) ? (value as any).arrows : []
+    return {
+      strokes: strokes.map(s => ({
+        id: String(s.id),
+        color: typeof s.color === 'string' ? s.color : '#ef4444',
+        width: typeof s.width === 'number' ? s.width : 3,
+        points: Array.isArray(s.points) ? s.points.map(p => ({ x: Number(p.x), y: Number(p.y) })) : [],
+      })),
+      arrows: arrows
+        .map((a: any) => ({
+          id: typeof a?.id === 'string' ? a.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          color: typeof a?.color === 'string' ? a.color : '#ef4444',
+          width: typeof a?.width === 'number' ? a.width : 3,
+          headSize: typeof a?.headSize === 'number' ? a.headSize : 12,
+          start: { x: typeof a?.start?.x === 'number' ? a.start.x : 0, y: typeof a?.start?.y === 'number' ? a.start.y : 0 },
+          end: { x: typeof a?.end?.x === 'number' ? a.end.x : 0, y: typeof a?.end?.y === 'number' ? a.end.y : 0 },
+        }))
+        .filter((a: any) => Number.isFinite(a.start.x) && Number.isFinite(a.start.y) && Number.isFinite(a.end.x) && Number.isFinite(a.end.y)),
+    }
+  }, [])
+
   const normalizeAnnotations = useCallback((value: any): DiagramAnnotations => {
     const strokes = Array.isArray(value?.strokes) ? value.strokes : []
+    const arrows = Array.isArray(value?.arrows) ? value.arrows : []
     return {
       strokes: strokes
         .map((s: any) => ({
@@ -621,8 +659,57 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             : [],
         }))
         .filter((s: any) => s.points.length >= 1),
+      arrows: arrows
+        .map((a: any) => ({
+          id: typeof a?.id === 'string' ? a.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          color: typeof a?.color === 'string' ? a.color : '#ef4444',
+          width: typeof a?.width === 'number' ? a.width : 3,
+          headSize: typeof a?.headSize === 'number' ? a.headSize : 12,
+          start: { x: typeof a?.start?.x === 'number' ? a.start.x : 0, y: typeof a?.start?.y === 'number' ? a.start.y : 0 },
+          end: { x: typeof a?.end?.x === 'number' ? a.end.x : 0, y: typeof a?.end?.y === 'number' ? a.end.y : 0 },
+        }))
+        .filter((a: any) => Number.isFinite(a.start.x) && Number.isFinite(a.start.y) && Number.isFinite(a.end.x) && Number.isFinite(a.end.y)),
     }
   }, [])
+
+  const syncDiagramHistoryFlags = useCallback(() => {
+    setDiagramCanUndo(diagramUndoRef.current.length > 0)
+    setDiagramCanRedo(diagramRedoRef.current.length > 0)
+  }, [])
+
+  const resetDiagramHistoryFor = useCallback((diagramId: string | null) => {
+    diagramHistoryDiagramIdRef.current = diagramId
+    diagramUndoRef.current = []
+    diagramRedoRef.current = []
+    syncDiagramHistoryFlags()
+  }, [syncDiagramHistoryFlags])
+
+  useEffect(() => {
+    const nextId = activeDiagram?.id ?? null
+    if (diagramHistoryDiagramIdRef.current !== nextId) resetDiagramHistoryFor(nextId)
+  }, [activeDiagram?.id, resetDiagramHistoryFor])
+
+  const applyDiagramAnnotations = useCallback((diagramId: string, annotations: DiagramAnnotations | null) => {
+    setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations: annotations ? normalizeAnnotations(annotations) : null } : d)))
+  }, [normalizeAnnotations])
+
+  const diagramPointDistanceSq = (a: DiagramStrokePoint, b: DiagramStrokePoint) => {
+    const dx = a.x - b.x
+    const dy = a.y - b.y
+    return dx * dx + dy * dy
+  }
+
+  const diagramDistancePointToSegmentSq = (p: DiagramStrokePoint, a: DiagramStrokePoint, b: DiagramStrokePoint) => {
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const apx = p.x - a.x
+    const apy = p.y - a.y
+    const abLenSq = abx * abx + aby * aby
+    if (abLenSq <= 1e-12) return diagramPointDistanceSq(p, a)
+    const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq))
+    const proj = { x: a.x + t * abx, y: a.y + t * aby }
+    return diagramPointDistanceSq(p, proj)
+  }
 
   const loadDiagramsFromServer = useCallback(async () => {
     try {
@@ -722,6 +809,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [isAdmin])
 
+  const commitDiagramAnnotations = useCallback(async (diagramId: string, next: DiagramAnnotations | null, pushUndoFrom?: DiagramAnnotations | null) => {
+    if (!isAdmin) return
+
+    if (pushUndoFrom) {
+      diagramUndoRef.current.push(cloneDiagramAnnotations(pushUndoFrom))
+      diagramRedoRef.current = []
+      syncDiagramHistoryFlags()
+    }
+
+    applyDiagramAnnotations(diagramId, next)
+    await persistDiagramAnnotations(diagramId, next)
+    await publishDiagramMessage({ kind: 'annotations-set', diagramId, annotations: next })
+  }, [applyDiagramAnnotations, cloneDiagramAnnotations, isAdmin, persistDiagramAnnotations, publishDiagramMessage, syncDiagramHistoryFlags])
+
+  const eraseDiagramAt = useCallback(async (diagramId: string, point: DiagramStrokePoint) => {
+    const diagram = diagramsRef.current.find(d => d.id === diagramId)
+    if (!diagram) return
+    const current = diagram.annotations ? normalizeAnnotations(diagram.annotations) : { strokes: [], arrows: [] }
+    const strokes = current.strokes || []
+    const arrows = current.arrows || []
+
+    const threshold = 0.018 // normalized radius
+    const thresholdSq = threshold * threshold
+
+    let best: { kind: 'stroke' | 'arrow'; id: string; distSq: number } | null = null
+
+    for (const s of strokes) {
+      const pts = s.points || []
+      if (pts.length === 1) {
+        const dSq = diagramPointDistanceSq(point, pts[0])
+        if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq }
+        continue
+      }
+      for (let i = 0; i < pts.length - 1; i++) {
+        const dSq = diagramDistancePointToSegmentSq(point, pts[i], pts[i + 1])
+        if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq }
+      }
+    }
+
+    for (const a of arrows) {
+      const dSq = diagramDistancePointToSegmentSq(point, a.start, a.end)
+      if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'arrow', id: a.id, distSq: dSq }
+    }
+
+    if (!best) return
+
+    const next: DiagramAnnotations = {
+      strokes: best.kind === 'stroke' ? strokes.filter(s => s.id !== best!.id) : strokes,
+      arrows: best.kind === 'arrow' ? arrows.filter(a => a.id !== best!.id) : arrows,
+    }
+
+    await commitDiagramAnnotations(diagramId, next, current)
+  }, [commitDiagramAnnotations, diagramDistancePointToSegmentSq, normalizeAnnotations])
+
   const redrawDiagramCanvas = useCallback(() => {
     const canvas = diagramCanvasRef.current
     const stage = diagramStageRef.current
@@ -738,6 +879,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     ctx.clearRect(0, 0, width, height)
     const strokes = activeDiagram?.annotations?.strokes || []
+    const arrows = (activeDiagram?.annotations as any)?.arrows || []
+
+    const drawArrow = (arrow: DiagramArrow) => {
+      const start = arrow.start
+      const end = arrow.end
+      const sx = start.x * width
+      const sy = start.y * height
+      const ex = end.x * width
+      const ey = end.y * height
+      const dx = ex - sx
+      const dy = ey - sy
+      const len = Math.sqrt(dx * dx + dy * dy)
+      if (!Number.isFinite(len) || len < 2) return
+      const ux = dx / len
+      const uy = dy / len
+      const head = Math.max(8, Math.min(18, arrow.headSize ?? 12))
+      const backX = ex - ux * head
+      const backY = ey - uy * head
+      const perpX = -uy
+      const perpY = ux
+      const wing = head * 0.55
+      const leftX = backX + perpX * wing
+      const leftY = backY + perpY * wing
+      const rightX = backX - perpX * wing
+      const rightY = backY - perpY * wing
+
+      ctx.strokeStyle = arrow.color || '#ef4444'
+      ctx.lineWidth = arrow.width || 3
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(sx, sy)
+      ctx.lineTo(backX, backY)
+      ctx.stroke()
+
+      ctx.fillStyle = arrow.color || '#ef4444'
+      ctx.beginPath()
+      ctx.moveTo(ex, ey)
+      ctx.lineTo(leftX, leftY)
+      ctx.lineTo(rightX, rightY)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    for (const arrow of arrows as any[]) {
+      if (!arrow?.start || !arrow?.end) continue
+      drawArrow(arrow as any)
+    }
     for (const stroke of strokes) {
       if (!stroke.points.length) continue
       ctx.strokeStyle = stroke.color || '#ef4444'
@@ -770,6 +959,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         else ctx.lineTo(x, y)
       }
       ctx.stroke()
+    }
+
+    const currentArrow = diagramCurrentArrowRef.current
+    if (currentArrow) {
+      drawArrow(currentArrow)
     }
   }, [activeDiagram])
 
@@ -1675,15 +1869,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data.kind === 'clear') {
-            setDiagrams(prev => prev.map(d => (d.id === data.diagramId ? { ...d, annotations: { strokes: [] } } : d)))
+            setDiagrams(prev => prev.map(d => (d.id === data.diagramId ? { ...d, annotations: { strokes: [], arrows: [] } } : d)))
+            return
+          }
+          if (data.kind === 'annotations-set') {
+            setDiagrams(prev => prev.map(d => (d.id === data.diagramId ? { ...d, annotations: data.annotations ? normalizeAnnotations(data.annotations) : null } : d)))
             return
           }
           if (data.kind === 'stroke-commit') {
             setDiagrams(prev => {
               return prev.map(d => {
                 if (d.id !== data.diagramId) return d
-                const annotations = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [] }
-                return { ...d, annotations: { strokes: [...annotations.strokes, data.stroke] } }
+                const annotations = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [], arrows: [] }
+                return { ...d, annotations: { strokes: [...annotations.strokes, data.stroke], arrows: annotations.arrows || [] } }
               })
             })
             return
@@ -2721,9 +2919,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             type="button"
             onClick={() => runCanvasAction(async () => {
               if (!activeDiagram?.id) return
-              setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, annotations: { strokes: [] } } : d)))
-              await persistDiagramAnnotations(activeDiagram.id, { strokes: [] })
-              await publishDiagramMessage({ kind: 'clear', diagramId: activeDiagram.id })
+              const empty = { strokes: [], arrows: [] }
+              setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, annotations: empty } : d)))
+              await persistDiagramAnnotations(activeDiagram.id, empty)
+              await publishDiagramMessage({ kind: 'annotations-set', diagramId: activeDiagram.id, annotations: empty })
             })}
             disabled={status !== 'ready' || Boolean(fatalError) || !activeDiagram}
           >
@@ -3276,27 +3475,134 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     <p className="text-xs text-slate-500">Diagram</p>
                     <p className="text-sm font-semibold truncate">{activeDiagram.title || 'Untitled diagram'}</p>
                   </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-xs"
-                        onClick={() => setDiagramManagerOpen(true)}
-                      >
-                        Switch
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-xs"
-                        onClick={() => setDiagramOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })}
-                      >
-                        Close
-                      </button>
-                    </div>
-                  )}
                 </div>
                 <div className="relative w-full h-[calc(100%-44px)]">
                   <div ref={diagramStageRef} className="absolute inset-0">
+                    {isAdmin && (
+                      <div className="absolute top-2 right-2 z-30 pointer-events-none">
+                        <div className="pointer-events-auto flex items-center gap-2">
+                          <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm">
+                            <button
+                              type="button"
+                              className={`p-2 rounded-md border ${diagramTool === 'select' ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'} text-slate-700 hover:bg-slate-50`}
+                              onClick={() => setDiagramTool('select')}
+                              aria-label="Select tool"
+                              title="Select"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M7 4l10 10-4 1 2 4-2 1-2-4-3 3V4z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className={`p-2 rounded-md border ${diagramTool === 'pen' ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'} text-slate-700 hover:bg-slate-50`}
+                              onClick={() => setDiagramTool('pen')}
+                              aria-label="Pen tool"
+                              title="Pen"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className={`p-2 rounded-md border ${diagramTool === 'arrow' ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'} text-slate-700 hover:bg-slate-50`}
+                              onClick={() => setDiagramTool('arrow')}
+                              aria-label="Arrow tool"
+                              title="Arrow"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M4 12h13" />
+                                <path d="M14 7l5 5-5 5" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className={`p-2 rounded-md border ${diagramTool === 'eraser' ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'} text-slate-700 hover:bg-slate-50`}
+                              onClick={() => setDiagramTool('eraser')}
+                              aria-label="Eraser tool"
+                              title="Eraser"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M20 20H9" />
+                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L10 16l-4 0-2-2 0-4L16.5 3.5z" />
+                              </svg>
+                            </button>
+                            <div className="w-px h-6 bg-slate-200 mx-1" aria-hidden="true" />
+                            <button
+                              type="button"
+                              className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              onClick={async () => {
+                                if (!activeDiagram?.id) return
+                                const diagram = diagramsRef.current.find(d => d.id === activeDiagram.id)
+                                const current = diagram?.annotations ? normalizeAnnotations(diagram.annotations) : { strokes: [], arrows: [] }
+                                const prev = diagramUndoRef.current.pop() || null
+                                if (!prev) return
+                                diagramRedoRef.current.push(cloneDiagramAnnotations(current))
+                                syncDiagramHistoryFlags()
+                                await commitDiagramAnnotations(activeDiagram.id, prev, null)
+                              }}
+                              disabled={!diagramCanUndo}
+                              aria-label="Undo"
+                              title="Undo"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M9 14l-4-4 4-4" />
+                                <path d="M20 20a8 8 0 0 0-8-8H5" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              onClick={async () => {
+                                if (!activeDiagram?.id) return
+                                const diagram = diagramsRef.current.find(d => d.id === activeDiagram.id)
+                                const current = diagram?.annotations ? normalizeAnnotations(diagram.annotations) : { strokes: [], arrows: [] }
+                                const next = diagramRedoRef.current.pop() || null
+                                if (!next) return
+                                diagramUndoRef.current.push(cloneDiagramAnnotations(current))
+                                syncDiagramHistoryFlags()
+                                await commitDiagramAnnotations(activeDiagram.id, next, null)
+                              }}
+                              disabled={!diagramCanRedo}
+                              aria-label="Redo"
+                              title="Redo"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M15 6l4 4-4 4" />
+                                <path d="M4 20a8 8 0 0 1 8-8h7" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="p-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm"
+                            onClick={() => setDiagramManagerOpen(true)}
+                            aria-label="Switch diagram"
+                            title="Switch diagram"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z" />
+                              <path d="M9 12h6" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            className="p-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm"
+                            onClick={() => setDiagramOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })}
+                            aria-label="Close diagram"
+                            title="Close"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M18 6L6 18" />
+                              <path d="M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <img
                       ref={diagramImageRef}
                       src={activeDiagram.imageUrl}
@@ -3308,7 +3614,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     />
                     <canvas
                       ref={diagramCanvasRef}
-                      className={`absolute inset-0 ${isAdmin ? 'cursor-crosshair' : 'pointer-events-none'}`}
+                      className={`absolute inset-0 ${isAdmin ? (diagramTool === 'select' ? 'cursor-default' : diagramTool === 'eraser' ? 'cursor-cell' : 'cursor-crosshair') : 'pointer-events-none'}`}
                       onPointerDown={async e => {
                         if (!isAdmin) return
                         if (!activeDiagram?.id) return
@@ -3319,12 +3625,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
                         const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
                         const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
-                        const strokeId = `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+                        const tool = diagramToolRef.current
+                        if (tool === 'select') return
+
+                        if (tool === 'eraser') {
+                          await eraseDiagramAt(activeDiagram.id, point)
+                          return
+                        }
+
                         diagramDrawingRef.current = true
                         diagramPointerIdRef.current = e.pointerId
                         try {
                           ;(e.currentTarget as any).setPointerCapture?.(e.pointerId)
                         } catch {}
+
+                        if (tool === 'arrow') {
+                          const arrowId = `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                          diagramCurrentArrowRef.current = { id: arrowId, color: '#ef4444', width: 3, start: point, end: point, headSize: 12 }
+                          redrawDiagramCanvas()
+                          return
+                        }
+
+                        const strokeId = `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
                         diagramCurrentStrokeRef.current = { id: strokeId, color: '#ef4444', width: 3, points: [point] }
                         redrawDiagramCanvas()
                       }}
@@ -3333,13 +3656,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         if (!diagramDrawingRef.current) return
                         if (diagramPointerIdRef.current !== null && e.pointerId !== diagramPointerIdRef.current) return
                         const stage = diagramStageRef.current
-                        const curr = diagramCurrentStrokeRef.current
-                        if (!stage || !curr) return
+                        const tool = diagramToolRef.current
+                        const currStroke = diagramCurrentStrokeRef.current
+                        const currArrow = diagramCurrentArrowRef.current
+                        if (!stage) return
                         const rect = stage.getBoundingClientRect()
                         const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
                         const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
                         const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
-                        curr.points.push(point)
+                        if (tool === 'arrow') {
+                          if (!currArrow) return
+                          currArrow.end = point
+                        } else {
+                          if (!currStroke) return
+                          currStroke.points.push(point)
+                        }
                         const now = Date.now()
                         if (now - diagramLastPublishTsRef.current > 120) {
                           diagramLastPublishTsRef.current = now
@@ -3353,26 +3684,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         diagramDrawingRef.current = false
                         diagramPointerIdRef.current = null
                         const stroke = diagramCurrentStrokeRef.current
+                        const arrow = diagramCurrentArrowRef.current
                         diagramCurrentStrokeRef.current = null
+                        diagramCurrentArrowRef.current = null
                         redrawDiagramCanvas()
-                        if (!stroke || !activeDiagram?.id) return
 
-                        setDiagrams(prev => prev.map(d => {
-                          if (d.id !== activeDiagram.id) return d
-                          const annotations = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [] }
-                          return { ...d, annotations: { strokes: [...annotations.strokes, stroke] } }
-                        }))
+                        if (!activeDiagram?.id) return
+                        const currentDiagram = diagramsRef.current.find(d => d.id === activeDiagram.id)
+                        const before = currentDiagram?.annotations ? normalizeAnnotations(currentDiagram.annotations) : { strokes: [], arrows: [] }
 
-                        await publishDiagramMessage({ kind: 'stroke-commit', diagramId: activeDiagram.id, stroke })
+                        if (arrow) {
+                          const next: any = { ...before, arrows: [...(before.arrows || []), arrow] }
+                          await commitDiagramAnnotations(activeDiagram.id, next, before)
+                          return
+                        }
 
-                        const updated = diagramsRef.current.find(d => d.id === activeDiagram.id)
-                        const annotations = updated?.annotations ? normalizeAnnotations(updated.annotations) : null
-                        await persistDiagramAnnotations(activeDiagram.id, annotations)
+                        if (!stroke) return
+                        const next: any = { ...before, strokes: [...(before.strokes || []), stroke], arrows: before.arrows || [] }
+                        await commitDiagramAnnotations(activeDiagram.id, next, before)
                       }}
                       onPointerCancel={() => {
                         diagramDrawingRef.current = false
                         diagramPointerIdRef.current = null
                         diagramCurrentStrokeRef.current = null
+                        diagramCurrentArrowRef.current = null
                         redrawDiagramCanvas()
                       }}
                     />

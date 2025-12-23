@@ -487,13 +487,24 @@ export default function Dashboard() {
     if (!router.isReady) return
     const rawPanel = Array.isArray(router.query.panel) ? router.query.panel[0] : router.query.panel
     const panel = typeof rawPanel === 'string' ? rawPanel : null
+    // On mobile, admins use the full section navigation (including Users/Billing).
+    // Preserve the existing lightweight panels for learners.
+    if (panel && isAdmin) {
+      const normalized = panel.toLowerCase()
+      const allowed: SectionId[] = ['overview', 'live', 'announcements', 'sessions', 'users', 'billing']
+      const next = allowed.find(x => x === normalized)
+      if (next && next !== activeSection) {
+        setActiveSection(next)
+      }
+      return
+    }
     if (panel === 'announcements') {
       openMobileAnnouncements()
     }
     if (panel === 'sessions') {
       setMobilePanels(prev => ({ ...prev, sessions: true }))
     }
-  }, [isMobile, openMobileAnnouncements, router.isReady, router.query.panel])
+  }, [isMobile, isAdmin, activeSection, openMobileAnnouncements, router.isReady, router.query.panel])
 
   const showMobileHeroEdit = useCallback(() => {
     setMobileHeroBgEditVisible(true)
@@ -2698,143 +2709,256 @@ export default function Dashboard() {
         }
       >
         {isMobile ? (
-          <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
-            {mobilePanels.announcements && (
-              <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
-                <div className="absolute inset-0 bg-black/60" onClick={closeMobileAnnouncements} />
-                <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-[#06184a] shadow-2xl overflow-hidden">
-                  <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
-                    <div className="font-semibold text-white">Announcements</div>
-                    <button type="button" className="btn btn-ghost" onClick={closeMobileAnnouncements}>
-                      Close
-                    </button>
-                  </div>
-                  <div className="p-4 overflow-auto h-full">
-                    <AnnouncementsSection />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <section
-              data-mobile-chrome-ignore
-              className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
-              onDragEnter={(e) => {
-                e.preventDefault()
-                setMobileHeroBgDragActive(true)
-              }}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setMobileHeroBgDragActive(true)
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault()
-                setMobileHeroBgDragActive(false)
-              }}
-              onDrop={(e) => {
-                e.preventDefault()
-                setMobileHeroBgDragActive(false)
-                const file = e.dataTransfer?.files?.[0]
-                if (file) applyMobileHeroBackgroundFile(file)
-              }}
-              onClickCapture={(e) => {
-                const target = e.target as HTMLElement | null
-                if (!target) return
-                const tag = target.tagName?.toLowerCase()
-                if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                showMobileHeroEdit()
-              }}
-            >
-              <div
-                className="absolute inset-0"
-                style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                aria-hidden="true"
-              />
-              <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
-              <input
-                ref={heroBgInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) applyMobileHeroBackgroundFile(file)
-                  e.target.value = ''
+          isAdmin ? (
+            <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
+              <section
+                data-mobile-chrome-ignore
+                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+                onDragEnter={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(true)
                 }}
-              />
-
-              <button
-                type="button"
-                aria-label="Edit background"
-                className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  heroBgInputRef.current?.click()
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(true)
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(false)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(false)
+                  const file = e.dataTransfer?.files?.[0]
+                  if (file) applyMobileHeroBackgroundFile(file)
+                }}
+                onClickCapture={(e) => {
+                  const target = e.target as HTMLElement | null
+                  if (!target) return
+                  const tag = target.tagName?.toLowerCase()
+                  if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
+                  showMobileHeroEdit()
                 }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                </svg>
-              </button>
-              <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                <div className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
-                  {learnerAvatarUrl ? (
-                    <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                  ) : (
-                    <span>{learnerInitials}</span>
-                  )}
-                </div>
-                <div className="pb-1">
-                  <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                  <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
-                </div>
-              </div>
-              <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
-                <button
-                  type="button"
-                  className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                  onClick={openHeroLive}
-                >
-                  Live class
-                </button>
-                <button
-                  type="button"
-                  className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                  onClick={openHeroCanvas}
-                  disabled={!canLaunchCanvasOverlay}
-                >
-                  Canvas
-                </button>
-              </div>
-            </section>
+                <div
+                  className="absolute inset-0"
+                  style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                  aria-hidden="true"
+                />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
+                <input
+                  ref={heroBgInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) applyMobileHeroBackgroundFile(file)
+                    e.target.value = ''
+                  }}
+                />
 
-            <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold text-white">Sessions</div>
                 <button
                   type="button"
-                  className="btn btn-ghost text-xs"
-                  onClick={() => toggleMobilePanel('sessions')}
+                  aria-label="Edit background"
+                  className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    heroBgInputRef.current?.click()
+                  }}
                 >
-                  {mobilePanels.sessions ? 'Hide' : 'Show'}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                  </svg>
                 </button>
-              </div>
-              {mobilePanels.sessions && <div className="space-y-4">{renderSessionsSection()}</div>}
-            </section>
+                <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
+                  <div className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
+                    {learnerAvatarUrl ? (
+                      <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{learnerInitials}</span>
+                    )}
+                  </div>
+                  <div className="pb-1">
+                    <p className="text-xl font-semibold leading-tight">{learnerName}</p>
+                    <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                    onClick={openHeroLive}
+                  >
+                    Live class
+                  </button>
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                    onClick={openHeroCanvas}
+                    disabled={!canLaunchCanvasOverlay}
+                  >
+                    Canvas
+                  </button>
+                </div>
+              </section>
 
-            {renderOverviewCards({ hideGradeWorkspace: true })}
-            {status === 'authenticated' && (
-              <div className="pt-2 flex justify-center">
+              <SectionNav />
+              <section className="min-w-0 space-y-6">
+                {renderSection()}
+              </section>
+
+              {status === 'authenticated' && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
+              {mobilePanels.announcements && (
+                <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+                  <div className="absolute inset-0 bg-black/60" onClick={closeMobileAnnouncements} />
+                  <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-[#06184a] shadow-2xl overflow-hidden">
+                    <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
+                      <div className="font-semibold text-white">Announcements</div>
+                      <button type="button" className="btn btn-ghost" onClick={closeMobileAnnouncements}>
+                        Close
+                      </button>
+                    </div>
+                    <div className="p-4 overflow-auto h-full">
+                      <AnnouncementsSection />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <section
+                data-mobile-chrome-ignore
+                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+                onDragEnter={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(true)
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(true)
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(false)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setMobileHeroBgDragActive(false)
+                  const file = e.dataTransfer?.files?.[0]
+                  if (file) applyMobileHeroBackgroundFile(file)
+                }}
+                onClickCapture={(e) => {
+                  const target = e.target as HTMLElement | null
+                  if (!target) return
+                  const tag = target.tagName?.toLowerCase()
+                  if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
+                  showMobileHeroEdit()
+                }}
+              >
+                <div
+                  className="absolute inset-0"
+                  style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                  aria-hidden="true"
+                />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
+                <input
+                  ref={heroBgInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) applyMobileHeroBackgroundFile(file)
+                    e.target.value = ''
+                  }}
+                />
+
                 <button
                   type="button"
-                  className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
-                  onClick={() => signOut({ callbackUrl: '/' })}
+                  aria-label="Edit background"
+                  className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    heroBgInputRef.current?.click()
+                  }}
                 >
-                  Sign out
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                  </svg>
                 </button>
-              </div>
-            )}
-          </div>
+                <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
+                  <div className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
+                    {learnerAvatarUrl ? (
+                      <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{learnerInitials}</span>
+                    )}
+                  </div>
+                  <div className="pb-1">
+                    <p className="text-xl font-semibold leading-tight">{learnerName}</p>
+                    <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                    onClick={openHeroLive}
+                  >
+                    Live class
+                  </button>
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                    onClick={openHeroCanvas}
+                    disabled={!canLaunchCanvasOverlay}
+                  >
+                    Canvas
+                  </button>
+                </div>
+              </section>
+
+              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-white">Sessions</div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost text-xs"
+                    onClick={() => toggleMobilePanel('sessions')}
+                  >
+                    {mobilePanels.sessions ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {mobilePanels.sessions && <div className="space-y-4">{renderSessionsSection()}</div>}
+              </section>
+
+              {renderOverviewCards({ hideGradeWorkspace: true })}
+              {status === 'authenticated' && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          )
         ) : (
           <>
             <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

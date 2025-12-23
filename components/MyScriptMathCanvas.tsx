@@ -2673,6 +2673,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     originClientId: clientIdRef.current,
                   })
                 }
+
+                // Ensure late-joining clients immediately receive the current diagram overlay state
+                // (and its annotations) so "Show Diagram" is reflected on student screens.
+                try {
+                  const currentDiagramState = diagramStateRef.current
+                  await channel.publish('diagram', {
+                    kind: 'state',
+                    activeDiagramId: currentDiagramState.activeDiagramId,
+                    isOpen: Boolean(currentDiagramState.isOpen),
+                    ts: Date.now(),
+                    sender: clientIdRef.current,
+                  })
+                  const activeId = currentDiagramState.activeDiagramId
+                  if (currentDiagramState.isOpen && activeId) {
+                    const diag = diagramsRef.current.find(d => d.id === activeId)
+                    await channel.publish('diagram', {
+                      kind: 'annotations-set',
+                      diagramId: activeId,
+                      annotations: diag?.annotations ?? { strokes: [], arrows: [] },
+                      ts: Date.now(),
+                      sender: clientIdRef.current,
+                    })
+                  }
+                } catch (err) {
+                  console.warn('Failed to rebroadcast diagram state', err)
+                }
+
                 if (latexDisplayStateRef.current.enabled) {
                   const latex = latexDisplayStateRef.current.latex || (latexOutput || '').trim()
                   try {
@@ -4192,7 +4219,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           )}
 
           {diagramState.isOpen && activeDiagram && (
-            <div className="absolute inset-0 z-40" aria-label="Diagram overlay">
+            <div
+              className={isAdmin ? 'absolute inset-0 z-40' : 'fixed inset-0 z-50'}
+              aria-label="Diagram overlay"
+            >
               <div className="absolute inset-0 bg-black/20" aria-hidden="true" />
               <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm">
                 <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-white">

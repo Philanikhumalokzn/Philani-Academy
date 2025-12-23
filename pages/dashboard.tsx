@@ -2871,7 +2871,7 @@ export default function Dashboard() {
         >
           <div className="live-call-overlay__backdrop" />
           <div className="live-call-overlay__panel" ref={stageRef}>
-            <div className="live-call-overlay__video">
+            <div className="live-call-overlay__video relative">
               {activeSessionId && (
                 <DiagramOverlayModule
                   boardId={String(activeSessionId)}

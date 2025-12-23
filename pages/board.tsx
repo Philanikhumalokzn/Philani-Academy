@@ -172,7 +172,7 @@ export default function BoardPage() {
         </div>
       )}
 
-      <div className="board-fullscreen__stage" ref={canvasStageRef}>
+      <div className="board-fullscreen__stage relative" ref={canvasStageRef}>
         {renderCanvas()}
         {status === 'authenticated' && selectedGrade && (
           <DiagramOverlayModule

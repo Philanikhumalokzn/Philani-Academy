@@ -409,7 +409,7 @@ export default function DiagramOverlayModule(props: {
     }
 
     const current = currentStrokeRef.current
-    if (current && drawingRef.current) {
+    if (current) {
       const pts = current.points
       if (pts.length >= 1) {
         ctx.strokeStyle = current.color
@@ -469,27 +469,40 @@ export default function DiagramOverlayModule(props: {
     redraw()
   }
 
-  const onPointerUp = async () => {
+  const onPointerUp = () => {
     if (!isAdmin) return
     if (!activeDiagram?.id) return
     if (!drawingRef.current) return
     drawingRef.current = false
     const stroke = currentStrokeRef.current
-    currentStrokeRef.current = null
     if (!stroke || stroke.points.length < 2) {
+      currentStrokeRef.current = null
       redraw()
       return
     }
 
     const diagramId = activeDiagram.id
+    // Keep the just-finished stroke visible immediately, even if React batching delays
+    // the diagram state update until after this handler returns.
+    currentStrokeRef.current = stroke
     setDiagrams(prev => prev.map(d => {
       if (d.id !== diagramId) return d
       const current = d.annotations ? normalizeAnnotations(d.annotations) : { space: 'image', strokes: [] }
       return { ...d, annotations: { space: 'image', strokes: [...current.strokes, stroke] } }
     }))
 
-    await publish({ kind: 'stroke-commit', diagramId, stroke })
     redraw()
+    void publish({ kind: 'stroke-commit', diagramId, stroke })
+
+    // Clear the preview stroke after the next paint.
+    try {
+      requestAnimationFrame(() => {
+        currentStrokeRef.current = null
+        redraw()
+      })
+    } catch {
+      currentStrokeRef.current = null
+    }
   }
 
   // Best-effort migration: legacy strokes were stored in container-normalized space (0..1 of host).
@@ -546,7 +559,7 @@ export default function DiagramOverlayModule(props: {
   if (!diagramState.isOpen) {
     if (!isAdmin) return null
     return (
-      <div className="fixed top-16 right-4 z-[200]">
+      <div className={isAdmin ? 'absolute top-2 right-2 z-[200]' : 'fixed top-16 right-4 z-[200]'}>
         <button
           type="button"
           className="btn btn-secondary"
@@ -565,7 +578,7 @@ export default function DiagramOverlayModule(props: {
   if (!activeDiagram) return null
 
   return (
-    <div className="fixed inset-0 z-[200]" aria-label="Diagram overlay module">
+    <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
       <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm">
         <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">

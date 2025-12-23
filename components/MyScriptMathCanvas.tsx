@@ -351,6 +351,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     diagramToolRef.current = diagramTool
   }, [diagramTool])
 
+  type DiagramSelection = { kind: 'stroke' | 'arrow'; id: string } | null
+  const [diagramSelection, setDiagramSelection] = useState<DiagramSelection>(null)
+  const diagramSelectionRef = useRef<DiagramSelection>(null)
+  useEffect(() => {
+    diagramSelectionRef.current = diagramSelection
+  }, [diagramSelection])
+
+  useEffect(() => {
+    if (diagramTool !== 'select' && diagramSelectionRef.current) {
+      setDiagramSelection(null)
+    }
+  }, [diagramTool])
+
+  const diagramPreviewRef = useRef<{ diagramId: string; annotations: DiagramAnnotations | null } | null>(null)
+  const diagramEditRef = useRef<null | {
+    diagramId: string
+    selection: NonNullable<DiagramSelection>
+    mode: 'move' | 'scale'
+    handle?: 'nw' | 'ne' | 'sw' | 'se'
+    startPoint: DiagramStrokePoint
+    base: DiagramAnnotations
+    baseBbox: { minX: number; minY: number; maxX: number; maxY: number }
+    anchorPoint?: DiagramStrokePoint
+  }>(null)
+
   const diagramUndoRef = useRef<DiagramAnnotations[]>([])
   const diagramRedoRef = useRef<DiagramAnnotations[]>([])
   const [diagramCanUndo, setDiagramCanUndo] = useState(false)
@@ -711,6 +736,187 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return diagramPointDistanceSq(p, proj)
   }
 
+  const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
+
+  const diagramAnnotationsForRender = useCallback(
+    (diagramId: string) => {
+      const preview = diagramPreviewRef.current
+      if (preview && preview.diagramId === diagramId) {
+        return preview.annotations ? normalizeAnnotations(preview.annotations) : { strokes: [], arrows: [] }
+      }
+      const d = diagramsRef.current.find(x => x.id === diagramId)
+      return d?.annotations ? normalizeAnnotations(d.annotations) : { strokes: [], arrows: [] }
+    },
+    [normalizeAnnotations]
+  )
+
+  const bboxFromStroke = (stroke: DiagramStroke) => {
+    const pts = stroke.points || []
+    let minX = 1, minY = 1, maxX = 0, maxY = 0
+    for (const p of pts) {
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x)
+      maxY = Math.max(maxY, p.y)
+    }
+    return { minX, minY, maxX, maxY }
+  }
+
+  const bboxFromArrow = (arrow: DiagramArrow) => {
+    const minX = Math.min(arrow.start.x, arrow.end.x)
+    const minY = Math.min(arrow.start.y, arrow.end.y)
+    const maxX = Math.max(arrow.start.x, arrow.end.x)
+    const maxY = Math.max(arrow.start.y, arrow.end.y)
+    return { minX, minY, maxX, maxY }
+  }
+
+  const selectionBbox = useCallback((diagramId: string, selection: NonNullable<DiagramSelection>) => {
+    const ann = diagramAnnotationsForRender(diagramId)
+    if (selection.kind === 'stroke') {
+      const stroke = (ann.strokes || []).find(s => s.id === selection.id)
+      if (!stroke) return null
+      return bboxFromStroke(stroke)
+    }
+    const arrows = (ann as any).arrows || []
+    const arrow = arrows.find((a: any) => a.id === selection.id)
+    if (!arrow) return null
+    return bboxFromArrow(arrow)
+  }, [diagramAnnotationsForRender])
+
+  const bboxCornerPoints = (bbox: { minX: number; minY: number; maxX: number; maxY: number }) => {
+    return {
+      nw: { x: bbox.minX, y: bbox.minY },
+      ne: { x: bbox.maxX, y: bbox.minY },
+      sw: { x: bbox.minX, y: bbox.maxY },
+      se: { x: bbox.maxX, y: bbox.maxY },
+    } as const
+  }
+
+  const oppositeHandle = (h: 'nw' | 'ne' | 'sw' | 'se') => {
+    if (h === 'nw') return 'se'
+    if (h === 'ne') return 'sw'
+    if (h === 'sw') return 'ne'
+    return 'nw'
+  }
+
+  const hitTestHandle = (point: DiagramStrokePoint, bbox: { minX: number; minY: number; maxX: number; maxY: number }, stageWidth: number, stageHeight: number) => {
+    const corners = bboxCornerPoints(bbox)
+    const rPx = 10
+    const rx = rPx / Math.max(stageWidth, 1)
+    const ry = rPx / Math.max(stageHeight, 1)
+    const rSq = Math.max(rx * rx, ry * ry)
+    for (const key of Object.keys(corners) as Array<keyof typeof corners>) {
+      const c = corners[key]
+      const dSq = diagramPointDistanceSq(point, c)
+      if (dSq <= rSq) return key as 'nw' | 'ne' | 'sw' | 'se'
+    }
+    return null
+  }
+
+  const hitTestAnnotation = useCallback((diagramId: string, point: DiagramStrokePoint) => {
+    const ann = diagramAnnotationsForRender(diagramId)
+    const strokes = ann.strokes || []
+    const arrows = (ann as any).arrows || []
+
+    const threshold = 0.02
+    const thresholdSq = threshold * threshold
+
+    let best: { kind: 'stroke' | 'arrow'; id: string; distSq: number } | null = null
+
+    for (const s of strokes) {
+      const pts = s.points || []
+      if (pts.length === 1) {
+        const dSq = diagramPointDistanceSq(point, pts[0])
+        if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq }
+        continue
+      }
+      for (let i = 0; i < pts.length - 1; i++) {
+        const dSq = diagramDistancePointToSegmentSq(point, pts[i], pts[i + 1])
+        if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq }
+      }
+    }
+
+    for (const a of arrows) {
+      const dSq = diagramDistancePointToSegmentSq(point, a.start, a.end)
+      if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'arrow', id: a.id, distSq: dSq }
+    }
+
+    return best ? ({ kind: best.kind, id: best.id } as NonNullable<DiagramSelection>) : null
+  }, [diagramAnnotationsForRender])
+
+  const applyMoveToAnnotations = (base: DiagramAnnotations, selection: NonNullable<DiagramSelection>, dx: number, dy: number) => {
+    const next = cloneDiagramAnnotations(base)
+    if (selection.kind === 'stroke') {
+      next.strokes = (next.strokes || []).map(s => {
+        if (s.id !== selection.id) return s
+        return {
+          ...s,
+          points: (s.points || []).map(p => ({ x: clamp01(p.x + dx), y: clamp01(p.y + dy) })),
+        }
+      })
+      return next
+    }
+    const arrows = (next as any).arrows || []
+    ;(next as any).arrows = arrows.map((a: any) => {
+      if (a.id !== selection.id) return a
+      return {
+        ...a,
+        start: { x: clamp01(a.start.x + dx), y: clamp01(a.start.y + dy) },
+        end: { x: clamp01(a.end.x + dx), y: clamp01(a.end.y + dy) },
+      }
+    })
+    return next
+  }
+
+  const applyScaleToAnnotations = (
+    base: DiagramAnnotations,
+    selection: NonNullable<DiagramSelection>,
+    anchor: DiagramStrokePoint,
+    baseCorner: DiagramStrokePoint,
+    currCorner: DiagramStrokePoint
+  ) => {
+    const baseDx = baseCorner.x - anchor.x
+    const baseDy = baseCorner.y - anchor.y
+    const currDx = currCorner.x - anchor.x
+    const currDy = currCorner.y - anchor.y
+
+    const minNormalizedDelta = 0.01
+    const signedClampDelta = (baseDelta: number, currentDelta: number) => {
+      if (Math.abs(baseDelta) < 1e-6) return currentDelta
+      const dir = baseDelta >= 0 ? 1 : -1
+      const projected = currentDelta * dir
+      const clamped = Math.max(minNormalizedDelta, projected)
+      return clamped * dir
+    }
+
+    const safeCurrDx = signedClampDelta(baseDx, currDx)
+    const safeCurrDy = signedClampDelta(baseDy, currDy)
+
+    const sx = Math.abs(baseDx) < 1e-6 ? 1 : safeCurrDx / baseDx
+    const sy = Math.abs(baseDy) < 1e-6 ? 1 : safeCurrDy / baseDy
+
+    const next = cloneDiagramAnnotations(base)
+    const scalePoint = (p: DiagramStrokePoint) => ({
+      x: clamp01(anchor.x + (p.x - anchor.x) * sx),
+      y: clamp01(anchor.y + (p.y - anchor.y) * sy),
+    })
+
+    if (selection.kind === 'stroke') {
+      next.strokes = (next.strokes || []).map(s => {
+        if (s.id !== selection.id) return s
+        return { ...s, points: (s.points || []).map(scalePoint) }
+      })
+      return next
+    }
+
+    const arrows = (next as any).arrows || []
+    ;(next as any).arrows = arrows.map((a: any) => {
+      if (a.id !== selection.id) return a
+      return { ...a, start: scalePoint(a.start), end: scalePoint(a.end) }
+    })
+    return next
+  }
+
   const loadDiagramsFromServer = useCallback(async () => {
     try {
       const res = await fetch(`/api/diagrams?sessionKey=${encodeURIComponent(channelName)}`, { credentials: 'same-origin' })
@@ -878,8 +1084,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (canvas.height !== height) canvas.height = height
 
     ctx.clearRect(0, 0, width, height)
-    const strokes = activeDiagram?.annotations?.strokes || []
-    const arrows = (activeDiagram?.annotations as any)?.arrows || []
+
+    const diagramId = activeDiagram?.id
+    const annotationsToRender = diagramId ? diagramAnnotationsForRender(diagramId) : { strokes: [], arrows: [] }
+    const strokes = annotationsToRender.strokes || []
+    const arrows = (annotationsToRender as any)?.arrows || []
 
     const drawArrow = (arrow: DiagramArrow) => {
       const start = arrow.start
@@ -965,7 +1174,48 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (currentArrow) {
       drawArrow(currentArrow)
     }
-  }, [activeDiagram])
+
+    if (diagramId) {
+      const sel = diagramSelectionRef.current
+      if (sel) {
+        const bbox = selectionBbox(diagramId, sel)
+        if (bbox) {
+          const pad = 0.008
+          const minX = Math.max(0, bbox.minX - pad)
+          const minY = Math.max(0, bbox.minY - pad)
+          const maxX = Math.min(1, bbox.maxX + pad)
+          const maxY = Math.min(1, bbox.maxY + pad)
+          const x = minX * width
+          const y = minY * height
+          const w = Math.max(1, (maxX - minX) * width)
+          const h = Math.max(1, (maxY - minY) * height)
+
+          ctx.save()
+          ctx.strokeStyle = 'rgba(15,23,42,0.85)'
+          ctx.lineWidth = 1
+          ctx.setLineDash([6, 4])
+          ctx.strokeRect(x, y, w, h)
+          ctx.setLineDash([])
+
+          const corners = bboxCornerPoints({ minX, minY, maxX, maxY })
+          const r = 6
+          for (const key of Object.keys(corners) as Array<keyof typeof corners>) {
+            const c = corners[key]
+            const cx = c.x * width
+            const cy = c.y * height
+            ctx.fillStyle = '#ffffff'
+            ctx.strokeStyle = 'rgba(15,23,42,0.85)'
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.arc(cx, cy, r, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.stroke()
+          }
+          ctx.restore()
+        }
+      }
+    }
+  }, [activeDiagram, diagramAnnotationsForRender, selectionBbox])
 
   useEffect(() => {
     redrawDiagramCanvas()
@@ -3627,7 +3877,65 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
 
                         const tool = diagramToolRef.current
-                        if (tool === 'select') return
+                        if (tool === 'select') {
+                          const diagramId = activeDiagram.id
+
+                          const existing = diagramSelectionRef.current
+                          const bbox = existing ? selectionBbox(diagramId, existing) : null
+                          const handle = (() => {
+                            if (!existing || !bbox) return null
+                            const w = Math.max(rect.width, 1)
+                            const h = Math.max(rect.height, 1)
+                            return hitTestHandle(point, bbox, w, h)
+                          })()
+
+                          const nextSelection = existing || hitTestAnnotation(diagramId, point)
+
+                          if (!nextSelection) {
+                            setDiagramSelection(null)
+                            return
+                          }
+
+                          if (!existing || existing.id !== nextSelection.id || existing.kind !== nextSelection.kind) {
+                            setDiagramSelection(nextSelection)
+                          }
+
+                          const startBBox = selectionBbox(diagramId, nextSelection)
+                          if (!startBBox) return
+
+                          const base = diagramAnnotationsForRender(diagramId)
+                          const corners = bboxCornerPoints(startBBox)
+                          if (handle) {
+                            const anchorHandle = oppositeHandle(handle)
+                            const anchorPoint = corners[anchorHandle]
+                            diagramEditRef.current = {
+                              diagramId,
+                              selection: nextSelection,
+                              mode: 'scale',
+                              handle,
+                              startPoint: point,
+                              base,
+                              baseBbox: startBBox,
+                              anchorPoint,
+                            }
+                          } else {
+                            diagramEditRef.current = {
+                              diagramId,
+                              selection: nextSelection,
+                              mode: 'move',
+                              startPoint: point,
+                              base,
+                              baseBbox: startBBox,
+                            }
+                          }
+
+                          diagramDrawingRef.current = true
+                          diagramPointerIdRef.current = e.pointerId
+                          try {
+                            ;(e.currentTarget as any).setPointerCapture?.(e.pointerId)
+                          } catch {}
+                          return
+                        }
 
                         if (tool === 'eraser') {
                           await eraseDiagramAt(activeDiagram.id, point)
@@ -3653,17 +3961,76 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }}
                       onPointerMove={e => {
                         if (!isAdmin) return
-                        if (!diagramDrawingRef.current) return
-                        if (diagramPointerIdRef.current !== null && e.pointerId !== diagramPointerIdRef.current) return
                         const stage = diagramStageRef.current
                         const tool = diagramToolRef.current
-                        const currStroke = diagramCurrentStrokeRef.current
-                        const currArrow = diagramCurrentArrowRef.current
                         if (!stage) return
                         const rect = stage.getBoundingClientRect()
                         const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
                         const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
                         const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+
+                        if (tool === 'select' && !diagramDrawingRef.current) {
+                          const canvasEl = e.currentTarget as HTMLCanvasElement
+                          if (!activeDiagram?.id) {
+                            canvasEl.style.cursor = 'default'
+                            return
+                          }
+
+                          const diagramId = activeDiagram.id
+                          const sel = diagramSelectionRef.current
+
+                          if (sel) {
+                            const bbox = selectionBbox(diagramId, sel)
+                            if (bbox) {
+                              const handle = hitTestHandle(point, bbox, rect.width, rect.height)
+                              if (handle) {
+                                canvasEl.style.cursor = handle === 'nw' || handle === 'se' ? 'nwse-resize' : 'nesw-resize'
+                                return
+                              }
+
+                              const hit = hitTestAnnotation(diagramId, point)
+                              if (hit && hit.kind === sel.kind && hit.id === sel.id) {
+                                canvasEl.style.cursor = 'move'
+                                return
+                              }
+                            }
+                            canvasEl.style.cursor = 'default'
+                            return
+                          }
+
+                          const hit = hitTestAnnotation(diagramId, point)
+                          canvasEl.style.cursor = hit ? 'pointer' : 'default'
+                          return
+                        }
+
+                        if (!diagramDrawingRef.current) return
+                        if (diagramPointerIdRef.current !== null && e.pointerId !== diagramPointerIdRef.current) return
+
+                        const currStroke = diagramCurrentStrokeRef.current
+                        const currArrow = diagramCurrentArrowRef.current
+
+                        if (tool === 'select') {
+                          const edit = diagramEditRef.current
+                          if (!edit) return
+                          const dx = point.x - edit.startPoint.x
+                          const dy = point.y - edit.startPoint.y
+                          if (edit.mode === 'move') {
+                            const preview = applyMoveToAnnotations(edit.base, edit.selection, dx, dy)
+                            diagramPreviewRef.current = { diagramId: edit.diagramId, annotations: preview }
+                            redrawDiagramCanvas()
+                            return
+                          }
+                          if (edit.mode === 'scale' && edit.handle && edit.anchorPoint) {
+                            const corners = bboxCornerPoints(edit.baseBbox)
+                            const baseCorner = corners[edit.handle]
+                            const preview = applyScaleToAnnotations(edit.base, edit.selection, edit.anchorPoint, baseCorner, point)
+                            diagramPreviewRef.current = { diagramId: edit.diagramId, annotations: preview }
+                            redrawDiagramCanvas()
+                            return
+                          }
+                          return
+                        }
+
                         if (tool === 'arrow') {
                           if (!currArrow) return
                           currArrow.end = point
@@ -3683,6 +4050,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         if (diagramPointerIdRef.current !== null && e.pointerId !== diagramPointerIdRef.current) return
                         diagramDrawingRef.current = false
                         diagramPointerIdRef.current = null
+
+                        if (diagramToolRef.current === 'select') {
+                          const edit = diagramEditRef.current
+                          diagramEditRef.current = null
+                          const preview = diagramPreviewRef.current
+                          diagramPreviewRef.current = null
+                          redrawDiagramCanvas()
+                          if (!edit || !preview || preview.diagramId !== edit.diagramId || !preview.annotations) return
+
+                          const diagram = diagramsRef.current.find(d => d.id === edit.diagramId)
+                          const before = diagram?.annotations ? normalizeAnnotations(diagram.annotations) : { strokes: [], arrows: [] }
+                          await commitDiagramAnnotations(edit.diagramId, preview.annotations, before)
+                          return
+                        }
+
                         const stroke = diagramCurrentStrokeRef.current
                         const arrow = diagramCurrentArrowRef.current
                         diagramCurrentStrokeRef.current = null
@@ -3708,6 +4090,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         diagramPointerIdRef.current = null
                         diagramCurrentStrokeRef.current = null
                         diagramCurrentArrowRef.current = null
+                        diagramEditRef.current = null
+                        diagramPreviewRef.current = null
                         redrawDiagramCanvas()
                       }}
                     />

@@ -3397,10 +3397,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     return 'Teacher'
   })()
+
+  const latexRenderOptions = isAdmin ? latexProjectionOptions : latexDisplayState.options
+  const latexRenderSource = useMemo(() => {
+    if (isAdmin) {
+      return (latexDisplayState.latex || latexOutput || '').trim()
+    }
+    return (latexDisplayState.latex || '').trim()
+  }, [isAdmin, latexDisplayState.latex, latexOutput])
+
   const latexProjectionMarkup = useMemo(() => {
-    if (!latexDisplayState.latex) return ''
-    let latexString = latexDisplayState.latex
-    if (latexDisplayState.options.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
+    if (!latexRenderSource) return ''
+    let latexString = latexRenderSource
+    if (latexRenderOptions.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
       const lines = latexString.split(/\\\\/g).map(line => line.trim()).filter(Boolean)
       if (lines.length) {
         const processed = lines.map(line => {
@@ -3422,14 +3431,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to render LaTeX overlay', err)
       return ''
     }
-  }, [latexDisplayState.latex, latexDisplayState.options.alignAtEquals])
+  }, [latexRenderOptions.alignAtEquals, latexRenderSource])
 
   const latexOverlayStyle = useMemo<CSSProperties>(
     () => ({
-      fontSize: `${latexDisplayState.options.fontScale}rem`,
-      textAlign: latexDisplayState.options.textAlign,
+      fontSize: `${latexRenderOptions.fontScale}rem`,
+      textAlign: latexRenderOptions.textAlign,
     }),
-    [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
+    [latexRenderOptions.fontScale, latexRenderOptions.textAlign]
   )
 
   const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
@@ -3894,7 +3903,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </div>
                     </div>
                   )}
-                  {latexDisplayState.enabled ? (
+                  {isAdmin ? (
+                    latexProjectionMarkup ? (
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={latexOverlayStyle}
+                        dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <p className="text-slate-500 text-sm text-center">Convert to notes to preview the typeset LaTeX here.</p>
+                      </div>
+                    )
+                  ) : latexDisplayState.enabled ? (
                     latexProjectionMarkup ? (
                       <div
                         className="text-slate-900 leading-relaxed"

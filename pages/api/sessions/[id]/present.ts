@@ -15,7 +15,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (token as any).email === ownerEmail
 
-  const rec = await prisma.sessionRecord.findUnique({ where: { id: String(id) }, select: { grade: true } })
+  const rec = await prisma.sessionRecord.findUnique({
+    where: { id: String(id) },
+    select: { grade: true, startsAt: true, endsAt: true },
+  })
   if (!rec) return res.status(404).json({ message: 'Session not found' })
 
   const sessionGrade = normalizeGradeInput((rec as any)?.grade as string | undefined)
@@ -27,6 +30,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!isOwner && !isAdmin && !teacherAllowed) {
     return res.status(403).json({ message: 'Forbidden' })
+  }
+
+  const startMs = rec.startsAt ? new Date(rec.startsAt).getTime() : 0
+  const endMs = rec.endsAt ? new Date(rec.endsAt).getTime() : startMs ? startMs + 60 * 60 * 1000 : 0
+  const nowMs = Date.now()
+  if (!startMs || !endMs || nowMs < startMs || nowMs > endMs) {
+    return res.status(400).json({
+      message: 'Session can only be started during its scheduled timeframe',
+      startsAt: rec.startsAt,
+      endsAt: rec.endsAt,
+    })
   }
 
   try {

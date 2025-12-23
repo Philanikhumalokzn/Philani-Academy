@@ -80,6 +80,7 @@ model SessionRecord {
   description String?
   joinUrl   String
   startsAt  DateTime
+  endsAt    DateTime
   grade     Grade
   jitsiPassword String?
   jitsiActive   Boolean @default(false)

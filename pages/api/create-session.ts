@@ -13,8 +13,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = token.role as string | undefined
   if (!role || (role !== 'admin' && role !== 'teacher')) return res.status(403).json({ message: 'Forbidden' })
 
-  const { title, joinUrl, startsAt, grade } = req.body
-  if (!title || !joinUrl || !startsAt) return res.status(400).json({ message: 'Missing fields' })
+  const { title, joinUrl, startsAt, endsAt, grade } = req.body
+  if (!title || !joinUrl || !startsAt || !endsAt) return res.status(400).json({ message: 'Missing fields' })
 
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
   if (!normalizedGrade) return res.status(400).json({ message: 'Grade is required' })
@@ -29,11 +29,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const crypto = require('crypto')
   const jitsiPassword = crypto.randomBytes(6).toString('hex')
 
+  const startDate = new Date(startsAt)
+  const endDate = new Date(endsAt)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return res.status(400).json({ message: 'Invalid start/end time' })
+  }
+  if (endDate.getTime() <= startDate.getTime()) {
+    return res.status(400).json({ message: 'End time must be after start time' })
+  }
+
   const rec = await prisma.sessionRecord.create({ data: {
     title,
     description: '',
     joinUrl,
-    startsAt: new Date(startsAt),
+    startsAt: startDate,
+    endsAt: endDate,
     jitsiPassword,
     grade: normalizedGrade,
     createdBy: (token?.email as string) || 'unknown'

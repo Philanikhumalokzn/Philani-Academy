@@ -91,7 +91,9 @@ export default function Dashboard() {
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
+  const [endsAt, setEndsAt] = useState('')
   const [minStartsAt, setMinStartsAt] = useState('')
+  const [minEndsAt, setMinEndsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
   const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [users, setUsers] = useState<any[] | null>(null)
@@ -135,6 +137,9 @@ export default function Dashboard() {
   const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [liveOverrideSessionId, setLiveOverrideSessionId] = useState<string | null>(null)
+  const [resolvedLiveSessionId, setResolvedLiveSessionId] = useState<string | null>(null)
+  const [liveSelectionBusy, setLiveSelectionBusy] = useState(false)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
   const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
@@ -742,16 +747,21 @@ export default function Dashboard() {
     try {
       // convert local datetime-local value to an ISO UTC string before sending
       let startsAtIso = startsAt
+      let endsAtIso = endsAt
       if (startsAt) {
         const dt = new Date(startsAt)
         startsAtIso = dt.toISOString()
+      }
+      if (endsAt) {
+        const dt = new Date(endsAt)
+        endsAtIso = dt.toISOString()
       }
 
       const res = await fetch('/api/create-session', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso, grade: selectedGrade })
+        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso, endsAt: endsAtIso, grade: selectedGrade })
       })
 
       if (res.ok) {
@@ -759,6 +769,7 @@ export default function Dashboard() {
         setTitle('')
         setJoinUrl('')
         setStartsAt('')
+        setEndsAt('')
         fetchSessionsForGrade(selectedGrade)
         return
       }
@@ -806,6 +817,24 @@ export default function Dashboard() {
       // Network or unexpected error
       console.error('fetchSessions error', err)
       setSessionsError(err instanceof Error ? err.message : 'Network error')
+    }
+  }
+
+  async function fetchLiveSelectionForGrade(gradeOverride?: GradeValue | null) {
+    const gradeToFetch = gradeOverride ?? selectedGrade
+    if (!gradeToFetch) {
+      setLiveOverrideSessionId(null)
+      setResolvedLiveSessionId(null)
+      return
+    }
+    try {
+      const res = await fetch(`/api/sessions/live?grade=${encodeURIComponent(gradeToFetch)}`, { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = await res.json().catch(() => null)
+      setLiveOverrideSessionId(data?.overrideSessionId ? String(data.overrideSessionId) : null)
+      setResolvedLiveSessionId(data?.resolvedLiveSessionId ? String(data.resolvedLiveSessionId) : null)
+    } catch {
+      // ignore
     }
   }
 
@@ -1191,7 +1220,21 @@ export default function Dashboard() {
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return
     fetchSessionsForGrade(selectedGrade)
+    fetchLiveSelectionForGrade(selectedGrade)
   }, [gradeReady, selectedGrade])
+
+  useEffect(() => {
+    if (!sessions || sessions.length === 0) return
+    // If no active session is selected yet, default to the resolved live session.
+    if (!activeSessionId && resolvedLiveSessionId) {
+      setActiveSessionId(resolvedLiveSessionId)
+      return
+    }
+    // If selected session no longer exists, fall back.
+    if (activeSessionId && !sessionById.has(String(activeSessionId)) && resolvedLiveSessionId) {
+      setActiveSessionId(resolvedLiveSessionId)
+    }
+  }, [sessions, activeSessionId, resolvedLiveSessionId, sessionById])
 
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return
@@ -1282,7 +1325,32 @@ export default function Dashboard() {
     const local = `${yyyy}-${mm}-${dd}T${hh}:${min}`
     setStartsAt(local)
     setMinStartsAt(local)
+    // Default to a 60 minute session.
+    const end = new Date(now)
+    end.setMinutes(end.getMinutes() + 60)
+    const endLocal = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`
+    setEndsAt(endLocal)
+    setMinEndsAt(local)
   }, [])
+
+  useEffect(() => {
+    if (!startsAt) return
+    // Keep the end time sensible when start time changes.
+    setMinEndsAt(startsAt)
+    try {
+      const startMs = new Date(startsAt).getTime()
+      const endMs = endsAt ? new Date(endsAt).getTime() : 0
+      if (!endMs || Number.isNaN(endMs) || endMs <= startMs) {
+        const end = new Date(startMs)
+        end.setMinutes(end.getMinutes() + 60)
+        const pad = (n: number) => n.toString().padStart(2, '0')
+        const endLocal = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`
+        setEndsAt(endLocal)
+      }
+    } catch {
+      // ignore
+    }
+  }, [startsAt])
   useEffect(() => {
     // fetch users only for admins
     if ((session as any)?.user?.role === 'admin') {
@@ -1615,12 +1683,29 @@ export default function Dashboard() {
     const canCreateSession = Boolean(session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher'))
 
     const nowMs = Date.now()
-    const sortedSessions = [...(sessions || [])].sort((a, b) => new Date(a?.startsAt).getTime() - new Date(b?.startsAt).getTime())
-    const upcomingSessions = sortedSessions.filter(s => new Date(s?.startsAt).getTime() >= nowMs)
+    const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
+    const getEndMs = (s: any) => {
+      if (s?.endsAt) return new Date(s.endsAt).getTime()
+      const startMs = getStartMs(s)
+      return startMs ? startMs + 60 * 60 * 1000 : 0
+    }
+    const isCurrentWindow = (s: any) => {
+      const startMs = getStartMs(s)
+      const endMs = getEndMs(s)
+      return Boolean(startMs && endMs && startMs <= nowMs && nowMs <= endMs)
+    }
+
+    const sortedSessions = [...(sessions || [])].sort((a, b) => getStartMs(a) - getStartMs(b))
+    const currentSessions = sortedSessions.filter(s => isCurrentWindow(s))
+    const scheduledSessions = sortedSessions.filter(s => getStartMs(s) > nowMs)
     const pastSessions = sortedSessions
-      .filter(s => new Date(s?.startsAt).getTime() < nowMs)
-      .sort((a, b) => new Date(b?.startsAt).getTime() - new Date(a?.startsAt).getTime())
+      .filter(s => getEndMs(s) < nowMs)
+      .sort((a, b) => getStartMs(b) - getStartMs(a))
     const pastSessionIds = pastSessions.map(s => String(s.id)).filter(Boolean)
+
+    const defaultCurrentSessionId = currentSessions.length
+      ? String([...currentSessions].sort((a, b) => getStartMs(b) - getStartMs(a))[0].id)
+      : null
 
     return (
       <div className="space-y-6">
@@ -1635,6 +1720,7 @@ export default function Dashboard() {
                 <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
                 <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
+                <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>
@@ -1643,8 +1729,151 @@ export default function Dashboard() {
           </div>
         )}
 
+        {isAdmin && selectedGrade && (
+          <div className="card space-y-3">
+            <h2 className="text-lg font-semibold">Live lesson selector</h2>
+            <p className="text-sm muted">
+              Current lessons are determined by the scheduled timeframe. By default, the current lesson is live.
+              You can override by selecting a past session.
+            </p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="live-session"
+                  checked={!liveOverrideSessionId}
+                  onChange={async () => {
+                    setLiveSelectionBusy(true)
+                    try {
+                      await fetch('/api/sessions/live', {
+                        method: 'PUT',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ grade: selectedGrade, overrideSessionId: '' }),
+                      })
+                      await fetchLiveSelectionForGrade(selectedGrade)
+                    } finally {
+                      setLiveSelectionBusy(false)
+                    }
+                  }}
+                  disabled={liveSelectionBusy}
+                />
+                <span>Auto (use the current lesson in its timeframe)</span>
+              </label>
+              {pastSessions.length === 0 ? (
+                <div className="text-sm muted">No past sessions to override yet.</div>
+              ) : (
+                <div className="space-y-2">
+                  {pastSessions.slice(0, 8).map(s => (
+                    <label key={s.id} className="flex items-start gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="live-session"
+                        checked={liveOverrideSessionId === String(s.id)}
+                        onChange={async () => {
+                          setLiveSelectionBusy(true)
+                          try {
+                            const res = await fetch('/api/sessions/live', {
+                              method: 'PUT',
+                              credentials: 'same-origin',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ grade: selectedGrade, overrideSessionId: String(s.id) }),
+                            })
+                            if (!res.ok) {
+                              const data = await res.json().catch(() => ({}))
+                              alert(data?.message || `Failed to set live session (${res.status})`)
+                            }
+                            await fetchLiveSelectionForGrade(selectedGrade)
+                          } finally {
+                            setLiveSelectionBusy(false)
+                          }
+                        }}
+                        disabled={liveSelectionBusy}
+                      />
+                      <span className="min-w-0">
+                        <span className="font-medium break-words">{s.title}</span>
+                        <span className="block text-xs muted">{new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">Resolved live session:</span>{' '}
+              {resolvedLiveSessionId && sessionById.get(resolvedLiveSessionId)
+                ? sessionById.get(resolvedLiveSessionId).title
+                : defaultCurrentSessionId && sessionById.get(defaultCurrentSessionId)
+                ? sessionById.get(defaultCurrentSessionId).title
+                : 'None'}
+            </div>
+          </div>
+        )}
+
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">Upcoming sessions — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold">Current sessions — {activeGradeLabel}</h2>
+          {sessionsError ? (
+            <div className="text-sm text-red-600">{sessionsError}</div>
+          ) : sortedSessions.length === 0 ? (
+            <div className="text-sm muted">No sessions scheduled for this grade yet.</div>
+          ) : currentSessions.length === 0 ? (
+            <div className="text-sm muted">No current session right now (outside all scheduled time windows).</div>
+          ) : (
+            <ul className="space-y-3">
+              {currentSessions.map(s => (
+                <li key={s.id} className="p-3 border rounded">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium leading-snug break-words">{s.title}</div>
+                      <div className="text-xs muted">
+                        {new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {canCreateSession && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => startLiveForSession(s.id)}
+                          disabled={!isCurrentWindow(s)}
+                        >
+                          Start class
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={`btn ${canCreateSession ? '' : 'btn-primary'}`}
+                        onClick={() => openLiveForSession(s.id)}
+                        disabled={isSubscriptionBlocked}
+                      >
+                        Open class
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => showCanvasWindow(s.id)}
+                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                      >
+                        Canvas
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => openSessionDetails([String(s.id)], 0)}
+                        disabled={isSubscriptionBlocked}
+                      >
+                        Materials
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="card space-y-3">
+          <h2 className="text-lg font-semibold">Scheduled sessions — {activeGradeLabel}</h2>
           {isAdmin && (
             <div className="p-3 border rounded bg-slate-50 space-y-2">
               <div className="font-medium">Subscription gating</div>
@@ -1691,29 +1920,20 @@ export default function Dashboard() {
                 </button>
               )}
               <ul className="space-y-3">
-              {upcomingSessions.length === 0 ? (
+              {scheduledSessions.length === 0 ? (
                 <li className="p-3 border rounded">
                   <div className="text-sm muted">No upcoming sessions right now.</div>
                 </li>
-              ) : upcomingSessions.map(s => (
+              ) : scheduledSessions.map(s => (
                 <li key={s.id} className="p-3 border rounded">
                   {isMobile ? (
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <div className="font-medium leading-snug break-words">{s.title}</div>
-                        <div className="text-xs muted">{new Date(s.startsAt).toLocaleString()}</div>
+                        <div className="text-xs muted">{new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}</div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
-                        {canCreateSession && (
-                          <button
-                            type="button"
-                            className="btn btn-primary w-full justify-center"
-                            onClick={() => startLiveForSession(s.id)}
-                          >
-                            Start class
-                          </button>
-                        )}
                         <button
                           type="button"
                           className={`btn w-full justify-center ${canCreateSession ? '' : 'btn-primary'}`}
@@ -1730,6 +1950,14 @@ export default function Dashboard() {
                         >
                           Canvas
                         </button>
+                        <a
+                          href={s.joinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`btn btn-ghost w-full justify-center${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                        >
+                          Link
+                        </a>
                         <button
                           type="button"
                           className="btn w-full justify-center"
@@ -1738,14 +1966,6 @@ export default function Dashboard() {
                         >
                           Materials
                         </button>
-                        <a
-                          href={s.joinUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`btn btn-ghost w-full justify-center ${canCreateSession ? 'col-span-2' : ''} ${isSubscriptionBlocked ? 'pointer-events-none opacity-50' : ''}`}
-                        >
-                          Link
-                        </a>
                       </div>
                     </div>
                   ) : (
@@ -1842,7 +2062,9 @@ export default function Dashboard() {
                               >
                                 <div className="font-medium break-words">{s?.title || 'Session'}</div>
                                 {s?.startsAt && (
-                                  <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                                  <div className="text-sm muted">
+                                    {new Date(s.startsAt).toLocaleString()} → {new Date((s as any).endsAt || s.startsAt).toLocaleString()}
+                                  </div>
                                 )}
                               </button>
                             </li>
@@ -1868,7 +2090,9 @@ export default function Dashboard() {
                       <div className="min-w-0 flex-1 text-center">
                         <div className="font-semibold break-words">{sessionDetailsSession?.title || 'Session details'}</div>
                         {sessionDetailsSession?.startsAt && (
-                          <div className="text-sm muted">{new Date(sessionDetailsSession.startsAt).toLocaleString()}</div>
+                          <div className="text-sm muted">
+                            {new Date(sessionDetailsSession.startsAt).toLocaleString()} → {new Date((sessionDetailsSession as any).endsAt || sessionDetailsSession.startsAt).toLocaleString()}
+                          </div>
                         )}
                       </div>
                       <div className="w-24 shrink-0 flex justify-end">

@@ -1524,9 +1524,15 @@ export default function DiagramOverlayModule(props: {
     }
     const cx = (bbox.minX + bbox.maxX) / 2
     const cy = (bbox.minY + bbox.maxY) / 2
+    if (action !== 'flip-h' && action !== 'flip-v' && action !== 'rotate') {
+      setContextMenu(null)
+      return
+    }
+
     const mapPoint = (p: DiagramStrokePoint) => {
       if (action === 'flip-h') return { x: clamp01(cx - (p.x - cx)), y: clamp01(p.y) }
       if (action === 'flip-v') return { x: clamp01(p.x), y: clamp01(cy - (p.y - cy)) }
+      // rotate 90° clockwise around center
       const dx = p.x - cx
       const dy = p.y - cy
       return { x: clamp01(cx + dy), y: clamp01(cy - dx) }
@@ -1564,10 +1570,16 @@ export default function DiagramOverlayModule(props: {
 
   if (!activeDiagram) return null
 
+  const selectionIsLocked = (() => {
+    if (!selection) return false
+    const ann = activeDiagram.annotations ? normalizeAnnotations(activeDiagram.annotations) : { space: IMAGE_SPACE, strokes: [], arrows: [] }
+    return isSelectionLockedInAnnotations(ann, selection)
+  })()
+
   return (
     <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
-      <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm">
+      <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900">
         <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
           <div className="min-w-0">
             <p className="text-xs text-slate-500">Diagram</p>
@@ -1606,7 +1618,7 @@ export default function DiagramOverlayModule(props: {
           onMouseDown={() => setContextMenu(null)}
         >
           {isAdmin && (
-            <div className="absolute top-2 left-2 z-40 pointer-events-none">
+            <div className="absolute bottom-2 left-2 z-40 pointer-events-none">
               <div className="pointer-events-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm">
                 <button
                   type="button"
@@ -1667,6 +1679,48 @@ export default function DiagramOverlayModule(props: {
                     <path d="M3 14l7-7 8 8-7 7H6l-3-3z" />
                   </svg>
                 </button>
+                <div className="w-px h-6 bg-slate-200 mx-1" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => selection && void applyContextAction('flip-h', activeDiagram.id, selection)}
+                  disabled={!selection || selectionIsLocked}
+                  aria-label="Flip horizontal"
+                  title="Flip horizontal"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 3v18" />
+                    <path d="M5 7l6 5-6 5V7z" />
+                    <path d="M19 7l-6 5 6 5V7z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => selection && void applyContextAction('flip-v', activeDiagram.id, selection)}
+                  disabled={!selection || selectionIsLocked}
+                  aria-label="Flip vertical"
+                  title="Flip vertical"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 12h18" />
+                    <path d="M7 5l5 6 5-6H7z" />
+                    <path d="M7 19l5-6 5 6H7z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => selection && void applyContextAction('rotate', activeDiagram.id, selection)}
+                  disabled={!selection || selectionIsLocked}
+                  aria-label="Rotate"
+                  title="Rotate 90°"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-3-6.7" />
+                    <path d="M21 3v6h-6" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -1719,44 +1773,44 @@ export default function DiagramOverlayModule(props: {
                 e.stopPropagation()
               }}
             >
-              <div className="min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden text-slate-900">
                 {contextMenu.selection && (
                   <>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('copy', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('copy', contextMenu.diagramId, contextMenu.selection!)}>
                       Copy
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('duplicate', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('duplicate', contextMenu.diagramId, contextMenu.selection!)}>
                       Duplicate
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('delete', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('delete', contextMenu.diagramId, contextMenu.selection!)}>
                       Delete
                     </button>
                     <div className="h-px bg-slate-200" />
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('bring-front', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('bring-front', contextMenu.diagramId, contextMenu.selection!)}>
                       Bring to front
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('send-back', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('send-back', contextMenu.diagramId, contextMenu.selection!)}>
                       Send to back
                     </button>
                     <div className="h-px bg-slate-200" />
                     <button
                       type="button"
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
                       onClick={() => void applyContextAction(isSelectionLockedInAnnotations(normalizeAnnotations(diagramsRef.current.find(d => d.id === contextMenu.diagramId)?.annotations ?? null), contextMenu.selection!) ? 'unlock' : 'lock', contextMenu.diagramId, contextMenu.selection!)}
                     >
                       Toggle lock
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('snap-smooth', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('snap-smooth', contextMenu.diagramId, contextMenu.selection!)}>
                       Snap / smooth
                     </button>
                     <div className="h-px bg-slate-200" />
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('flip-h', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('flip-h', contextMenu.diagramId, contextMenu.selection!)}>
                       Flip horizontal
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('flip-v', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('flip-v', contextMenu.diagramId, contextMenu.selection!)}>
                       Flip vertical
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={() => void applyContextAction('rotate', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('rotate', contextMenu.diagramId, contextMenu.selection!)}>
                       Rotate 90°
                     </button>
                     <div className="h-px bg-slate-200" />
@@ -1792,7 +1846,7 @@ export default function DiagramOverlayModule(props: {
                 {Boolean(clipboardRef.current) && contextMenu.point && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+                    className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
                     onClick={() => {
                       handlePasteAtPoint(contextMenu.diagramId, contextMenu.point as DiagramStrokePoint)
                       setContextMenu(null)

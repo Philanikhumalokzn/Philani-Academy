@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 type DiagramStrokePoint = { x: number; y: number }
 type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[] }
-type DiagramAnnotations = { strokes: DiagramStroke[] }
+type DiagramAnnotations = { space?: 'image'; strokes: DiagramStroke[] }
 
 type DiagramRecord = {
   id: string
@@ -77,8 +77,10 @@ export default function DiagramOverlayModule(props: {
   }, [diagramState.activeDiagramId, diagrams])
 
   const normalizeAnnotations = (value: any): DiagramAnnotations => {
+    const space = value?.space === 'image' ? 'image' : undefined
     const strokes = Array.isArray(value?.strokes) ? value.strokes : []
     return {
+      space,
       strokes: strokes
         .map((s: any) => ({
           id: typeof s?.id === 'string' ? s.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -168,10 +170,24 @@ export default function DiagramOverlayModule(props: {
       const diag = diagramsRef.current.find(d => d.id === next.activeDiagramId)
       if (diag) {
         await publish({ kind: 'add', diagram: diag })
-        await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: diag.annotations ?? { strokes: [] } })
+        await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: diag.annotations ?? { space: 'image', strokes: [] } })
       }
     }
   }, [isAdmin, persistState, publish])
+
+  const persistAnnotations = useCallback(async (diagramId: string, annotations: DiagramAnnotations | null) => {
+    if (!isAdmin) return
+    try {
+      await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annotations }),
+      })
+    } catch {
+      // ignore
+    }
+  }, [isAdmin])
 
   // Ably connection (independent from canvas)
   useEffect(() => {
@@ -241,7 +257,7 @@ export default function DiagramOverlayModule(props: {
           }
 
           if (data.kind === 'clear') {
-            setDiagrams(prev => prev.map(d => (d.id === data.diagramId ? { ...d, annotations: { strokes: [] } } : d)))
+            setDiagrams(prev => prev.map(d => (d.id === data.diagramId ? { ...d, annotations: { space: 'image', strokes: [] } } : d)))
             return
           }
 
@@ -253,8 +269,8 @@ export default function DiagramOverlayModule(props: {
           if (data.kind === 'stroke-commit') {
             setDiagrams(prev => prev.map(d => {
               if (d.id !== data.diagramId) return d
-              const current = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [] }
-              return { ...d, annotations: { strokes: [...current.strokes, data.stroke] } }
+              const current = d.annotations ? normalizeAnnotations(d.annotations) : { space: 'image', strokes: [] }
+              return { ...d, annotations: { space: 'image', strokes: [...current.strokes, data.stroke] } }
             }))
           }
         }
@@ -274,7 +290,7 @@ export default function DiagramOverlayModule(props: {
               const diag = diagramsRef.current.find(d => d.id === activeId)
               if (diag) {
                 await publish({ kind: 'add', diagram: diag })
-                await publish({ kind: 'annotations-set', diagramId: activeId, annotations: diag.annotations ?? { strokes: [] } })
+                await publish({ kind: 'annotations-set', diagramId: activeId, annotations: diag.annotations ?? { space: 'image', strokes: [] } })
               }
             }
           })
@@ -311,6 +327,50 @@ export default function DiagramOverlayModule(props: {
   const imageRef = useRef<HTMLImageElement | null>(null)
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
+  const migratedDiagramIdsRef = useRef<Set<string>>(new Set())
+
+  const getContainRect = useCallback((containerW: number, containerH: number) => {
+    const img = imageRef.current
+    const naturalW = img?.naturalWidth ?? 0
+    const naturalH = img?.naturalHeight ?? 0
+    if (!naturalW || !naturalH || !Number.isFinite(containerW) || !Number.isFinite(containerH) || containerW <= 0 || containerH <= 0) {
+      return { x: 0, y: 0, w: Math.max(1, containerW), h: Math.max(1, containerH) }
+    }
+    const scale = Math.min(containerW / naturalW, containerH / naturalH)
+    const w = naturalW * scale
+    const h = naturalH * scale
+    const x = (containerW - w) / 2
+    const y = (containerH - h) / 2
+    return { x, y, w, h }
+  }, [])
+
+  const mapClientToImageSpace = useCallback((clientX: number, clientY: number) => {
+    const host = containerRef.current
+    if (!host) return null
+    const rect = host.getBoundingClientRect()
+    const containerW = Math.max(1, rect.width)
+    const containerH = Math.max(1, rect.height)
+
+    const px = clientX - rect.left
+    const py = clientY - rect.top
+    const imgRect = getContainRect(containerW, containerH)
+
+    if (px < imgRect.x || py < imgRect.y || px > imgRect.x + imgRect.w || py > imgRect.y + imgRect.h) {
+      return null
+    }
+
+    const x = (px - imgRect.x) / Math.max(1e-6, imgRect.w)
+    const y = (py - imgRect.y) / Math.max(1e-6, imgRect.h)
+    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+  }, [getContainRect])
+
+  const mapImageToCanvasPx = useCallback((p: DiagramStrokePoint, canvasW: number, canvasH: number) => {
+    const imgRect = getContainRect(canvasW, canvasH)
+    return {
+      x: imgRect.x + p.x * imgRect.w,
+      y: imgRect.y + p.y * imgRect.h,
+    }
+  }, [getContainRect])
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
@@ -329,7 +389,7 @@ export default function DiagramOverlayModule(props: {
 
     const diag = activeDiagram
     if (!diag) return
-    const annotations = diag.annotations ? normalizeAnnotations(diag.annotations) : { strokes: [] }
+    const annotations = diag.annotations ? normalizeAnnotations(diag.annotations) : { space: 'image', strokes: [] }
 
     for (const s of annotations.strokes) {
       const pts = s.points || []
@@ -339,9 +399,11 @@ export default function DiagramOverlayModule(props: {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
-      ctx.moveTo(pts[0].x * w, pts[0].y * h)
+      const p0 = mapImageToCanvasPx(pts[0], w, h)
+      ctx.moveTo(p0.x, p0.y)
       for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x * w, pts[i].y * h)
+        const pi = mapImageToCanvasPx(pts[i], w, h)
+        ctx.lineTo(pi.x, pi.y)
       }
       ctx.stroke()
     }
@@ -355,12 +417,16 @@ export default function DiagramOverlayModule(props: {
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         ctx.beginPath()
-        ctx.moveTo(pts[0].x * w, pts[0].y * h)
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * w, pts[i].y * h)
+        const p0 = mapImageToCanvasPx(pts[0], w, h)
+        ctx.moveTo(p0.x, p0.y)
+        for (let i = 1; i < pts.length; i++) {
+          const pi = mapImageToCanvasPx(pts[i], w, h)
+          ctx.lineTo(pi.x, pi.y)
+        }
         ctx.stroke()
       }
     }
-  }, [activeDiagram])
+  }, [activeDiagram, mapImageToCanvasPx, normalizeAnnotations])
 
   useEffect(() => {
     redraw()
@@ -374,14 +440,7 @@ export default function DiagramOverlayModule(props: {
     return () => ro.disconnect()
   }, [redraw])
 
-  const toPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const host = containerRef.current
-    if (!host) return null
-    const rect = host.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
-    const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
-    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
-  }
+  const toPoint = (e: React.PointerEvent<HTMLCanvasElement>) => mapClientToImageSpace(e.clientX, e.clientY)
 
   const onPointerDown = async (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isAdmin) return
@@ -425,13 +484,64 @@ export default function DiagramOverlayModule(props: {
     const diagramId = activeDiagram.id
     setDiagrams(prev => prev.map(d => {
       if (d.id !== diagramId) return d
-      const current = d.annotations ? normalizeAnnotations(d.annotations) : { strokes: [] }
-      return { ...d, annotations: { strokes: [...current.strokes, stroke] } }
+      const current = d.annotations ? normalizeAnnotations(d.annotations) : { space: 'image', strokes: [] }
+      return { ...d, annotations: { space: 'image', strokes: [...current.strokes, stroke] } }
     }))
 
     await publish({ kind: 'stroke-commit', diagramId, stroke })
     redraw()
   }
+
+  // Best-effort migration: legacy strokes were stored in container-normalized space (0..1 of host).
+  // Convert to image-relative space so portrait/landscape clients render identically.
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!diagramState.isOpen) return
+    const diag = activeDiagram
+    if (!diag?.id) return
+    if (migratedDiagramIdsRef.current.has(diag.id)) return
+
+    const imgEl = imageRef.current
+    const host = containerRef.current
+    if (!imgEl || !host) return
+    if (!imgEl.complete || !imgEl.naturalWidth || !imgEl.naturalHeight) return
+
+    const normalized = diag.annotations ? normalizeAnnotations(diag.annotations) : null
+    if (!normalized) {
+      migratedDiagramIdsRef.current.add(diag.id)
+      return
+    }
+    if (normalized.space === 'image') {
+      migratedDiagramIdsRef.current.add(diag.id)
+      return
+    }
+
+    const rect = host.getBoundingClientRect()
+    const containerW = Math.max(1, rect.width)
+    const containerH = Math.max(1, rect.height)
+    const imgRect = getContainRect(containerW, containerH)
+
+    const toImg = (p: DiagramStrokePoint) => {
+      const stagePxX = p.x * containerW
+      const stagePxY = p.y * containerH
+      const x = (stagePxX - imgRect.x) / Math.max(1e-6, imgRect.w)
+      const y = (stagePxY - imgRect.y) / Math.max(1e-6, imgRect.h)
+      return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+    }
+
+    const migrated: DiagramAnnotations = {
+      space: 'image',
+      strokes: (normalized.strokes || []).map(s => ({
+        ...s,
+        points: Array.isArray(s.points) ? s.points.map(toImg) : [],
+      })),
+    }
+
+    migratedDiagramIdsRef.current.add(diag.id)
+    setDiagrams(prev => prev.map(d => (d.id === diag.id ? { ...d, annotations: migrated } : d)))
+    void persistAnnotations(diag.id, migrated)
+    void publish({ kind: 'annotations-set', diagramId: diag.id, annotations: migrated })
+  }, [activeDiagram, diagramState.isOpen, getContainRect, isAdmin, normalizeAnnotations, persistAnnotations, publish])
 
   if (!diagramState.isOpen) {
     if (!isAdmin) return null

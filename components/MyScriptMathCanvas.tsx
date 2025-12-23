@@ -284,6 +284,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const isStudentView = !isAdmin
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
+  const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
 
   const [stackedLatexControlsVisible, setStackedLatexControlsVisible] = useState(false)
   const stackedLatexHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -298,6 +299,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const [adminSolutionSteps, setAdminSolutionSteps] = useState<string[]>([])
+  const pendingAdminCommitRef = useRef(false)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
@@ -2122,6 +2125,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     })
   }, [applySnapshotCore, isAdmin])
 
+  const normalizeStepLatex = useCallback((value: string) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    // Strip a surrounding aligned environment so we can safely re-wrap.
+    const stripped = raw
+      .replace(/^\s*\\begin\{aligned\}/, '')
+      .replace(/\\end\{aligned\}\s*$/, '')
+      .trim()
+    return stripped
+  }, [])
+
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
   const editorInitLayoutKey = isAdmin ? (isCompactViewport ? 'admin-compact' : 'admin-wide') : 'learner'
@@ -2238,13 +2252,46 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             broadcastSnapshot(false)
           }
 
-          // Removed auto-export on change to prevent cumulative/garbage LaTeX updates.
+          // Admin compact/stacked mode: keep a live typeset preview updated without broadcasting.
+          if (useAdminStepComposer && !pendingAdminCommitRef.current) {
+            if (pendingExportRef.current) {
+              clearTimeout(pendingExportRef.current)
+            }
+            pendingExportRef.current = setTimeout(() => {
+              pendingExportRef.current = null
+              const inst = editorInstanceRef.current
+              if (!inst) return
+              try {
+                forcedConvertDepthRef.current += 1
+                inst.convert?.()
+              } catch {
+                forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+              }
+            }, 450)
+          }
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
-          setLatexOutput(typeof latex === 'string' ? latex : '')
+          const latexValue = typeof latex === 'string' ? latex : ''
+          setLatexOutput(latexValue)
           setIsConverting(false)
+
+          if (pendingAdminCommitRef.current) {
+            pendingAdminCommitRef.current = false
+            const step = normalizeStepLatex(latexValue)
+            if (step) {
+              setAdminSolutionSteps(prev => [...prev, step])
+            }
+            try {
+              editorInstanceRef.current?.clear?.()
+            } catch {}
+            setLatexOutput('')
+            lastSymbolCountRef.current = 0
+            lastBroadcastBaseCountRef.current = 0
+            return
+          }
+
           const isSharedPage = pageIndex === sharedPageIndexRef.current
           const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           if (forcedConvertDepthRef.current > 0) {
@@ -2326,6 +2373,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
   }, [broadcastSnapshot, editorInitLayoutKey])
+
+  useEffect(() => {
+    if (!useAdminStepComposer) return
+    setAdminSolutionSteps([])
+    pendingAdminCommitRef.current = false
+  }, [boardId, useAdminStepComposer])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -3398,13 +3451,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return 'Teacher'
   })()
 
-  const latexRenderOptions = isAdmin ? latexProjectionOptions : latexDisplayState.options
+  const latexRenderOptions = useAdminStepComposer
+    ? { ...latexProjectionOptions, alignAtEquals: true }
+    : isAdmin
+      ? latexProjectionOptions
+      : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
+    if (useAdminStepComposer) {
+      const current = normalizeStepLatex(latexOutput)
+      const combined = [...adminSolutionSteps, ...(current ? [current] : [])].filter(Boolean).join(' \\ ')
+      return combined.trim()
+    }
     if (isAdmin) {
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [isAdmin, latexDisplayState.latex, latexOutput])
+  }, [adminSolutionSteps, isAdmin, latexDisplayState.latex, latexOutput, normalizeStepLatex, useAdminStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
     if (!latexRenderSource) return ''
@@ -3967,7 +4029,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
             </div>
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
-              <div className="flex items-center justify-end mb-2">
+                <div className={`flex items-center mb-2 ${isAdmin ? 'justify-between' : 'justify-end'}`}>
                 {studentScaleControl && (
                   <div className="flex items-center gap-1 text-[11px] text-slate-600">
                     <button
@@ -3993,6 +4055,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       Fit
                     </button>
                   </div>
+                )}
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="px-2 py-1 border rounded"
+                    title="Send step"
+                    onClick={() => {
+                      if (!editorInstanceRef.current) return
+                      if (lockedOutRef.current) return
+                      pendingAdminCommitRef.current = true
+                      try {
+                        forcedConvertDepthRef.current += 1
+                        editorInstanceRef.current.convert?.()
+                      } catch {
+                        pendingAdminCommitRef.current = false
+                        forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+                      }
+                    }}
+                    disabled={status !== 'ready' || Boolean(fatalError) || !normalizeStepLatex(latexOutput)}
+                  >
+                    <span className="sr-only">Send</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      height="18"
+                      fill="currentColor"
+                      className="text-slate-700"
+                      aria-hidden="true"
+                    >
+                      <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                    </svg>
+                  </button>
                 )}
               </div>
               <div

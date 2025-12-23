@@ -281,6 +281,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
   const [isCompactViewport, setIsCompactViewport] = useState(false)
+
+  const isStudentView = !isAdmin
+  const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
+
   const [stackedLatexControlsVisible, setStackedLatexControlsVisible] = useState(false)
   const stackedLatexHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Broadcaster role removed: all clients can publish.
@@ -2118,6 +2122,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     })
   }, [applySnapshotCore, isAdmin])
 
+  // Used to safely re-initialize the iink editor when admin layout switches on mobile.
+  // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
+  const editorInitLayoutKey = isAdmin ? (isCompactViewport ? 'admin-compact' : 'admin-wide') : 'learner'
+
   useEffect(() => {
     let cancelled = false
     const host = editorHostRef.current
@@ -2150,6 +2158,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           throw new Error('MyScript iink runtime did not expose the expected API.')
         }
 
+        const waitForHostSize = async () => {
+          if (typeof window === 'undefined') return
+          for (let attempt = 0; attempt < 10; attempt += 1) {
+            if (cancelled) return
+            const width = host.clientWidth
+            const height = host.clientHeight
+            if (width > 0 && height > 0) return
+            await new Promise<void>(resolve => {
+              if (typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(() => resolve())
+              } else {
+                setTimeout(() => resolve(), 0)
+              }
+            })
+          }
+        }
+
+        await waitForHostSize()
+
         const options = {
           configuration: {
             server: {
@@ -2178,6 +2205,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         editorInstanceRef.current = editor
         setStatus('ready')
+
+        // Ensure the editor has a valid view size after any initial layout shifts.
+        try {
+          editor.resize?.()
+        } catch {}
 
         const handleChanged = (evt: any) => {
           setCanUndo(Boolean(evt.detail?.canUndo))
@@ -2293,7 +2325,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         editorInstanceRef.current = null
       }
     }
-  }, [broadcastSnapshot])
+  }, [broadcastSnapshot, editorInitLayoutKey])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -3400,8 +3432,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [latexDisplayState.options.fontScale, latexDisplayState.options.textAlign]
   )
 
-  const isStudentView = !isAdmin
-  const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {

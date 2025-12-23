@@ -1550,22 +1550,7 @@ export default function DiagramOverlayModule(props: {
   }, [applyAnnotations, applySnapOrSmooth, cloneAnnotations, deleteSelectionFromAnnotations, duplicateSelectionInAnnotations, getMaxZ, getMinZ, isSelectionLockedInAnnotations, normalizeAnnotations, pushUndoSnapshot, setSelectionStyleInAnnotations, setSelectionZInAnnotations])
 
   if (!diagramState.isOpen) {
-    if (!isAdmin) return null
-    return (
-      <div className={isAdmin ? 'absolute top-16 right-2 z-30 pointer-events-none' : 'fixed top-16 right-4 z-30 pointer-events-none'}>
-        <button
-          type="button"
-          className="btn btn-secondary pointer-events-auto"
-          onClick={() => setOverlayState({
-            activeDiagramId: diagramState.activeDiagramId || (diagrams[0]?.id ?? null),
-            isOpen: true,
-          })}
-          disabled={diagrams.length === 0}
-        >
-          Show diagram
-        </button>
-      </div>
-    )
+    return null
   }
 
   if (!activeDiagram) return null

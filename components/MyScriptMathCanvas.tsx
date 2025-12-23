@@ -3060,7 +3060,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {diagramManagerOpen && isAdmin && (
             <div className="absolute inset-0 z-50 bg-slate-900/30 backdrop-blur-sm" onClick={() => setDiagramManagerOpen(false)}>
               <div
-                className="absolute top-3 right-3 left-3 sm:left-auto sm:w-[420px] max-h-[85%] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm p-3"
+                className="absolute top-3 right-3 left-3 sm:left-auto sm:w-[420px] max-h-[85%] overflow-auto card p-3"
                 onClick={e => e.stopPropagation()}
                 onPaste={async e => {
                   if (!isAdmin) return

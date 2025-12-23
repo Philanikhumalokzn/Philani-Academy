@@ -2567,6 +2567,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               }
               return next
             })
+
+            // If the state references a diagram we don't have yet (e.g., late join), refetch.
+            if (next.isOpen && next.activeDiagramId) {
+              const known = diagramsRef.current.some(d => d.id === next.activeDiagramId)
+              if (!known) {
+                void loadDiagramsFromServer()
+              }
+            }
             return
           }
           if (data.kind === 'add') {
@@ -2688,6 +2696,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   const activeId = currentDiagramState.activeDiagramId
                   if (currentDiagramState.isOpen && activeId) {
                     const diag = diagramsRef.current.find(d => d.id === activeId)
+                    if (diag) {
+                      await channel.publish('diagram', {
+                        kind: 'add',
+                        diagram: {
+                          id: diag.id,
+                          title: diag.title,
+                          imageUrl: diag.imageUrl,
+                          order: diag.order,
+                          annotations: diag.annotations ?? null,
+                        },
+                        ts: Date.now(),
+                        sender: clientIdRef.current,
+                      })
+                    }
                     await channel.publish('diagram', {
                       kind: 'annotations-set',
                       diagramId: activeId,

@@ -196,6 +196,10 @@ const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
 const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 
+// Diagrams have been extracted into `DiagramOverlayModule`. Keep the embedded implementation disabled
+// to avoid two competing sources of diagram state on the same Ably channel.
+const ENABLE_EMBEDDED_DIAGRAMS = false
+
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
 const getBroadcastDebounce = () => {
@@ -1007,6 +1011,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const loadDiagramsFromServer = useCallback(async () => {
+    if (!ENABLE_EMBEDDED_DIAGRAMS) return
     try {
       const res = await fetch(`/api/diagrams?sessionKey=${encodeURIComponent(channelName)}`, { credentials: 'same-origin' })
       if (!res.ok) return
@@ -1040,10 +1045,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     if (!userId) return
+    if (!ENABLE_EMBEDDED_DIAGRAMS) return
     void loadDiagramsFromServer()
   }, [loadDiagramsFromServer, userId])
 
   const publishDiagramMessage = useCallback(async (message: DiagramRealtimeMessage) => {
+    if (!ENABLE_EMBEDDED_DIAGRAMS) return
     const channel = channelRef.current
     if (!channel) return
     try {
@@ -2552,6 +2559,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         const handleDiagramMessage = (message: any) => {
+          if (!ENABLE_EMBEDDED_DIAGRAMS) return
           const data = message?.data as DiagramRealtimeMessage
           if (!data || typeof data !== 'object') return
           if ((data as any).sender && (data as any).sender === clientIdRef.current) return
@@ -2626,7 +2634,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   channel.subscribe('sync-request', handleSyncRequest)
         channel.subscribe('control', handleControlMessage)
   channel.subscribe('latex', handleLatexMessage)
-          channel.subscribe('diagram', handleDiagramMessage)
+          if (ENABLE_EMBEDDED_DIAGRAMS) {
+            channel.subscribe('diagram', handleDiagramMessage)
+          }
         // Removed control channel subscription.
 
         const snapshot = captureFullSnapshot()
@@ -2686,7 +2696,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 // (and its annotations) so "Show Diagram" is reflected on student screens.
                 // IMPORTANT: only admins should broadcast this; otherwise a student's default
                 // state (isOpen=false) can override the teacher for late joiners.
-                if (isAdmin) {
+                if (ENABLE_EMBEDDED_DIAGRAMS && isAdmin) {
                   try {
                     const currentDiagramState = diagramStateRef.current
                     await channel.publish('diagram', {
@@ -3609,25 +3619,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       </div>
       {isAdmin && (
         <div className="canvas-toolbar__buttons">
-          <button
-            className={`btn ${diagramState.isOpen ? 'btn-secondary' : ''}`}
-            type="button"
-            onClick={() => runCanvasAction(() => setDiagramOverlayState({
-              activeDiagramId: diagramState.activeDiagramId || (diagrams[0]?.id ?? null),
-              isOpen: !diagramState.isOpen,
-            }))}
-            disabled={status !== 'ready' || Boolean(fatalError) || diagrams.length === 0}
-          >
-            {diagramState.isOpen ? 'Hide Diagram' : 'Show Diagram'}
-          </button>
-          <button
-            className={`btn ${diagramManagerOpen ? 'btn-secondary' : ''}`}
-            type="button"
-            onClick={() => runCanvasAction(() => setDiagramManagerOpen(prev => !prev))}
-            disabled={status !== 'ready' || Boolean(fatalError)}
-          >
-            Diagrams
-          </button>
+          {ENABLE_EMBEDDED_DIAGRAMS && (
+            <>
+              <button
+                className={`btn ${diagramState.isOpen ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={() => runCanvasAction(() => setDiagramOverlayState({
+                  activeDiagramId: diagramState.activeDiagramId || (diagrams[0]?.id ?? null),
+                  isOpen: !diagramState.isOpen,
+                }))}
+                disabled={status !== 'ready' || Boolean(fatalError) || diagrams.length === 0}
+              >
+                {diagramState.isOpen ? 'Hide Diagram' : 'Show Diagram'}
+              </button>
+              <button
+                className={`btn ${diagramManagerOpen ? 'btn-secondary' : ''}`}
+                type="button"
+                onClick={() => runCanvasAction(() => setDiagramManagerOpen(prev => !prev))}
+                disabled={status !== 'ready' || Boolean(fatalError)}
+              >
+                Diagrams
+              </button>
+            </>
+          )}
           <button
             className="btn"
             type="button"
@@ -3692,20 +3706,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           >
             {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
           </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => runCanvasAction(async () => {
-              if (!activeDiagram?.id) return
-              const empty = { strokes: [], arrows: [] }
-              setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, annotations: empty } : d)))
-              await persistDiagramAnnotations(activeDiagram.id, empty)
-              await publishDiagramMessage({ kind: 'annotations-set', diagramId: activeDiagram.id, annotations: empty })
-            })}
-            disabled={status !== 'ready' || Boolean(fatalError) || !activeDiagram}
-          >
-            Clear Diagram Ink
-          </button>
+          {ENABLE_EMBEDDED_DIAGRAMS && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => runCanvasAction(async () => {
+                if (!activeDiagram?.id) return
+                const empty = { strokes: [], arrows: [] }
+                setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, annotations: empty } : d)))
+                await persistDiagramAnnotations(activeDiagram.id, empty)
+                await publishDiagramMessage({ kind: 'annotations-set', diagramId: activeDiagram.id, annotations: empty })
+              })}
+              disabled={status !== 'ready' || Boolean(fatalError) || !activeDiagram}
+            >
+              Clear Diagram Ink
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -4034,7 +4050,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             data-orientation={canvasOrientation}
           />
 
-          {diagramManagerOpen && isAdmin && (
+          {ENABLE_EMBEDDED_DIAGRAMS && diagramManagerOpen && isAdmin && (
             <div className="absolute inset-0 z-50 bg-slate-900/30 backdrop-blur-sm" onClick={() => setDiagramManagerOpen(false)}>
               <div
                 className="absolute top-3 right-3 left-3 sm:left-auto sm:w-[420px] max-h-[85%] overflow-auto card p-3"
@@ -4244,7 +4260,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </div>
           )}
 
-          {diagramState.isOpen && activeDiagram && (
+          {ENABLE_EMBEDDED_DIAGRAMS && diagramState.isOpen && activeDiagram && (
             <div
               className={isAdmin ? 'absolute inset-0 z-40' : 'fixed inset-0 z-[200]'}
               aria-label="Diagram overlay"

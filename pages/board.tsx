@@ -8,6 +8,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 const FloatingJitsiWindow = dynamic(() => import('../components/FloatingJitsiWindow'), { ssr: false })
+const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
 
 const useIsMobile = (maxWidth = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
@@ -173,6 +174,15 @@ export default function BoardPage() {
 
       <div className="board-fullscreen__stage" ref={canvasStageRef}>
         {renderCanvas()}
+        {status === 'authenticated' && selectedGrade && (
+          <DiagramOverlayModule
+            boardId={undefined}
+            gradeLabel={activeGradeLabel}
+            userId={realtimeUserId}
+            userDisplayName={realtimeDisplayName}
+            isAdmin={isOwnerUser}
+          />
+        )}
         {status === 'authenticated' && !isMobile && selectedGrade && (
           <FloatingJitsiWindow
             roomName={gradeRoomName}

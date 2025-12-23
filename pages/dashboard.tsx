@@ -10,6 +10,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import BrandLogo from '../components/BrandLogo'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
+const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
 const WINDOW_PADDING_X = 0
 const WINDOW_PADDING_Y = 12
 const MOBILE_HERO_BG_MIN_WIDTH = 1280
@@ -2871,6 +2872,15 @@ export default function Dashboard() {
           <div className="live-call-overlay__backdrop" />
           <div className="live-call-overlay__panel" ref={stageRef}>
             <div className="live-call-overlay__video">
+              {activeSessionId && (
+                <DiagramOverlayModule
+                  boardId={String(activeSessionId)}
+                  gradeLabel={selectedGrade ? activeGradeLabel : null}
+                  userId={realtimeUserId}
+                  userDisplayName={realtimeDisplayName}
+                  isAdmin={isOwnerUser}
+                />
+              )}
               <div className="live-call-overlay__floating-actions">
                 <button
                   type="button"

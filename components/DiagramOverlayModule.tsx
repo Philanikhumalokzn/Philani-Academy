@@ -1552,10 +1552,10 @@ export default function DiagramOverlayModule(props: {
   if (!diagramState.isOpen) {
     if (!isAdmin) return null
     return (
-      <div className={isAdmin ? 'absolute top-2 right-2 z-[200]' : 'fixed top-16 right-4 z-[200]'}>
+      <div className={isAdmin ? 'absolute top-16 right-2 z-30 pointer-events-none' : 'fixed top-16 right-4 z-30 pointer-events-none'}>
         <button
           type="button"
-          className="btn btn-secondary"
+          className="btn btn-secondary pointer-events-auto"
           onClick={() => setOverlayState({
             activeDiagramId: diagramState.activeDiagramId || (diagrams[0]?.id ?? null),
             isOpen: true,

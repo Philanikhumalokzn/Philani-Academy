@@ -3980,7 +3980,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </div>
                 )}
                 {status === 'ready' && (
-                  <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
+                  <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
                     Ready
                   </div>
                 )}
@@ -4893,7 +4893,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </div>
           )}
           {status === 'ready' && (
-            <div className="absolute top-2 right-2 text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
+            <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
               Ready
             </div>
           )}

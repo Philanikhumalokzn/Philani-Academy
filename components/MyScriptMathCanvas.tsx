@@ -2684,42 +2684,46 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                 // Ensure late-joining clients immediately receive the current diagram overlay state
                 // (and its annotations) so "Show Diagram" is reflected on student screens.
-                try {
-                  const currentDiagramState = diagramStateRef.current
-                  await channel.publish('diagram', {
-                    kind: 'state',
-                    activeDiagramId: currentDiagramState.activeDiagramId,
-                    isOpen: Boolean(currentDiagramState.isOpen),
-                    ts: Date.now(),
-                    sender: clientIdRef.current,
-                  })
-                  const activeId = currentDiagramState.activeDiagramId
-                  if (currentDiagramState.isOpen && activeId) {
-                    const diag = diagramsRef.current.find(d => d.id === activeId)
-                    if (diag) {
+                // IMPORTANT: only admins should broadcast this; otherwise a student's default
+                // state (isOpen=false) can override the teacher for late joiners.
+                if (isAdmin) {
+                  try {
+                    const currentDiagramState = diagramStateRef.current
+                    await channel.publish('diagram', {
+                      kind: 'state',
+                      activeDiagramId: currentDiagramState.activeDiagramId,
+                      isOpen: Boolean(currentDiagramState.isOpen),
+                      ts: Date.now(),
+                      sender: clientIdRef.current,
+                    })
+                    const activeId = currentDiagramState.activeDiagramId
+                    if (currentDiagramState.isOpen && activeId) {
+                      const diag = diagramsRef.current.find(d => d.id === activeId)
+                      if (diag) {
+                        await channel.publish('diagram', {
+                          kind: 'add',
+                          diagram: {
+                            id: diag.id,
+                            title: diag.title,
+                            imageUrl: diag.imageUrl,
+                            order: diag.order,
+                            annotations: diag.annotations ?? null,
+                          },
+                          ts: Date.now(),
+                          sender: clientIdRef.current,
+                        })
+                      }
                       await channel.publish('diagram', {
-                        kind: 'add',
-                        diagram: {
-                          id: diag.id,
-                          title: diag.title,
-                          imageUrl: diag.imageUrl,
-                          order: diag.order,
-                          annotations: diag.annotations ?? null,
-                        },
+                        kind: 'annotations-set',
+                        diagramId: activeId,
+                        annotations: diag?.annotations ?? { strokes: [], arrows: [] },
                         ts: Date.now(),
                         sender: clientIdRef.current,
                       })
                     }
-                    await channel.publish('diagram', {
-                      kind: 'annotations-set',
-                      diagramId: activeId,
-                      annotations: diag?.annotations ?? { strokes: [], arrows: [] },
-                      ts: Date.now(),
-                      sender: clientIdRef.current,
-                    })
+                  } catch (err) {
+                    console.warn('Failed to rebroadcast diagram state', err)
                   }
-                } catch (err) {
-                  console.warn('Failed to rebroadcast diagram state', err)
                 }
 
                 if (latexDisplayStateRef.current.enabled) {
@@ -4242,7 +4246,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
           {diagramState.isOpen && activeDiagram && (
             <div
-              className={isAdmin ? 'absolute inset-0 z-40' : 'fixed inset-0 z-50'}
+              className={isAdmin ? 'absolute inset-0 z-40' : 'fixed inset-0 z-[200]'}
               aria-label="Diagram overlay"
             >
               <div className="absolute inset-0 bg-black/20" aria-hidden="true" />

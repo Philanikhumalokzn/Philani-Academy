@@ -299,8 +299,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
 
   type DiagramStrokePoint = { x: number; y: number }
-  type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[] }
-  type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number }
+  type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
+  type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number; z?: number; locked?: boolean }
   type DiagramAnnotations = { strokes: DiagramStroke[]; arrows?: DiagramArrow[] }
   type DiagramRecord = {
     id: string
@@ -357,6 +357,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     diagramSelectionRef.current = diagramSelection
   }, [diagramSelection])
+
+  type DiagramContextMenuState = {
+    diagramId: string
+    selection: NonNullable<DiagramSelection>
+    xPx: number
+    yPx: number
+    point: DiagramStrokePoint
+  } | null
+  const [diagramContextMenu, setDiagramContextMenu] = useState<DiagramContextMenuState>(null)
+  const diagramContextMenuRef = useRef<HTMLDivElement | null>(null)
+  const diagramClipboardRef = useRef<null | { kind: 'stroke' | 'arrow'; data: DiagramStroke | DiagramArrow }>(null)
+
+  const getCssVarColor = (name: '--accent' | '--text' | '--muted' | '--primary') => {
+    if (typeof window === 'undefined') return ''
+    try {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    } catch {
+      return ''
+    }
+  }
+
+  const diagramColorPresets = useMemo(() => {
+    const accent = getCssVarColor('--accent')
+    const text = getCssVarColor('--text')
+    const muted = getCssVarColor('--muted')
+    const primary = getCssVarColor('--primary')
+    const red = '#ef4444'
+    return [
+      { key: 'accent', label: 'Accent', value: accent || red },
+      { key: 'text', label: 'Text', value: text || red },
+      { key: 'muted', label: 'Muted', value: muted || red },
+      { key: 'primary', label: 'Primary', value: primary || red },
+      { key: 'red', label: 'Red', value: red },
+    ] as const
+  }, [diagramState.isOpen])
+
+  const diagramWidthPresets = useMemo(() => {
+    return [
+      { key: 'thin', label: 'Thin', value: 2 },
+      { key: 'medium', label: 'Medium', value: 4 },
+      { key: 'thick', label: 'Thick', value: 7 },
+    ] as const
+  }, [])
+
+  useEffect(() => {
+    if (!diagramContextMenu) return
+    if (!diagramSelection || diagramTool !== 'select') {
+      setDiagramContextMenu(null)
+    }
+  }, [diagramContextMenu, diagramSelection, diagramTool])
+
+  useEffect(() => {
+    if (!diagramContextMenu) return
+    if (typeof window === 'undefined') return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDiagramContextMenu(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [diagramContextMenu])
 
   useEffect(() => {
     if (diagramTool !== 'select' && diagramSelectionRef.current) {
@@ -653,6 +713,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         id: String(s.id),
         color: typeof s.color === 'string' ? s.color : '#ef4444',
         width: typeof s.width === 'number' ? s.width : 3,
+        z: typeof (s as any)?.z === 'number' && Number.isFinite((s as any).z) ? (s as any).z : undefined,
+        locked: Boolean((s as any)?.locked),
         points: Array.isArray(s.points) ? s.points.map(p => ({ x: Number(p.x), y: Number(p.y) })) : [],
       })),
       arrows: arrows
@@ -661,6 +723,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           color: typeof a?.color === 'string' ? a.color : '#ef4444',
           width: typeof a?.width === 'number' ? a.width : 3,
           headSize: typeof a?.headSize === 'number' ? a.headSize : 12,
+          z: typeof a?.z === 'number' && Number.isFinite(a.z) ? a.z : undefined,
+          locked: Boolean(a?.locked),
           start: { x: typeof a?.start?.x === 'number' ? a.start.x : 0, y: typeof a?.start?.y === 'number' ? a.start.y : 0 },
           end: { x: typeof a?.end?.x === 'number' ? a.end.x : 0, y: typeof a?.end?.y === 'number' ? a.end.y : 0 },
         }))
@@ -677,6 +741,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           id: typeof s?.id === 'string' ? s.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           color: typeof s?.color === 'string' ? s.color : '#ef4444',
           width: typeof s?.width === 'number' ? s.width : 3,
+          z: typeof s?.z === 'number' && Number.isFinite(s.z) ? s.z : undefined,
+          locked: Boolean(s?.locked),
           points: Array.isArray(s?.points)
             ? s.points
                 .map((p: any) => ({ x: typeof p?.x === 'number' ? p.x : 0, y: typeof p?.y === 'number' ? p.y : 0 }))
@@ -690,6 +756,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           color: typeof a?.color === 'string' ? a.color : '#ef4444',
           width: typeof a?.width === 'number' ? a.width : 3,
           headSize: typeof a?.headSize === 'number' ? a.headSize : 12,
+          z: typeof a?.z === 'number' && Number.isFinite(a.z) ? a.z : undefined,
+          locked: Boolean(a?.locked),
           start: { x: typeof a?.start?.x === 'number' ? a.start.x : 0, y: typeof a?.start?.y === 'number' ? a.start.y : 0 },
           end: { x: typeof a?.end?.x === 'number' ? a.end.x : 0, y: typeof a?.end?.y === 'number' ? a.end.y : 0 },
         }))
@@ -821,24 +889,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const threshold = 0.02
     const thresholdSq = threshold * threshold
 
-    let best: { kind: 'stroke' | 'arrow'; id: string; distSq: number } | null = null
+    let best: { kind: 'stroke' | 'arrow'; id: string; distSq: number; z: number } | null = null
+
+    const zOf = (sel: { kind: 'stroke' | 'arrow'; id: string }) => {
+      if (sel.kind === 'stroke') {
+        const s = strokes.find(x => x.id === sel.id)
+        return typeof (s as any)?.z === 'number' && Number.isFinite((s as any).z) ? (s as any).z : 0
+      }
+      const a = arrows.find((x: any) => x.id === sel.id)
+      return typeof a?.z === 'number' && Number.isFinite(a.z) ? a.z : 0
+    }
 
     for (const s of strokes) {
       const pts = s.points || []
       if (pts.length === 1) {
         const dSq = diagramPointDistanceSq(point, pts[0])
-        if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq }
+        if (dSq <= thresholdSq) {
+          const cand = { kind: 'stroke' as const, id: s.id }
+          const z = zOf(cand)
+          if (!best || z > best.z || (z === best.z && dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq, z }
+        }
         continue
       }
       for (let i = 0; i < pts.length - 1; i++) {
         const dSq = diagramDistancePointToSegmentSq(point, pts[i], pts[i + 1])
-        if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq }
+        if (dSq <= thresholdSq) {
+          const cand = { kind: 'stroke' as const, id: s.id }
+          const z = zOf(cand)
+          if (!best || z > best.z || (z === best.z && dSq < best.distSq)) best = { kind: 'stroke', id: s.id, distSq: dSq, z }
+        }
       }
     }
 
     for (const a of arrows) {
       const dSq = diagramDistancePointToSegmentSq(point, a.start, a.end)
-      if (dSq <= thresholdSq && (!best || dSq < best.distSq)) best = { kind: 'arrow', id: a.id, distSq: dSq }
+      if (dSq <= thresholdSq) {
+        const cand = { kind: 'arrow' as const, id: a.id }
+        const z = zOf(cand)
+        if (!best || z > best.z || (z === best.z && dSq < best.distSq)) best = { kind: 'arrow', id: a.id, distSq: dSq, z }
+      }
     }
 
     return best ? ({ kind: best.kind, id: best.id } as NonNullable<DiagramSelection>) : null
@@ -1061,6 +1150,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     if (!best) return
 
+    if (best.kind === 'stroke') {
+      const s = strokes.find(s => s.id === best!.id)
+      if ((s as any)?.locked) return
+    } else {
+      const a = arrows.find(a => a.id === best!.id)
+      if ((a as any)?.locked) return
+    }
+
     const next: DiagramAnnotations = {
       strokes: best.kind === 'stroke' ? strokes.filter(s => s.id !== best!.id) : strokes,
       arrows: best.kind === 'arrow' ? arrows.filter(a => a.id !== best!.id) : arrows,
@@ -1068,6 +1165,369 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     await commitDiagramAnnotations(diagramId, next, current)
   }, [commitDiagramAnnotations, diagramDistancePointToSegmentSq, normalizeAnnotations])
+
+  const deleteSelectionFromAnnotations = (base: DiagramAnnotations, selection: NonNullable<DiagramSelection>) => {
+    const next = cloneDiagramAnnotations(base)
+    if (selection.kind === 'stroke') {
+      next.strokes = (next.strokes || []).filter(s => s.id !== selection.id)
+      return next
+    }
+    const arrows = (next as any).arrows || []
+    ;(next as any).arrows = arrows.filter((a: any) => a.id !== selection.id)
+    return next
+  }
+
+  const transformSelectionInAnnotations = (
+    base: DiagramAnnotations,
+    selection: NonNullable<DiagramSelection>,
+    mapPoint: (p: DiagramStrokePoint) => DiagramStrokePoint
+  ) => {
+    const next = cloneDiagramAnnotations(base)
+    if (selection.kind === 'stroke') {
+      next.strokes = (next.strokes || []).map(s => {
+        if (s.id !== selection.id) return s
+        return { ...s, points: (s.points || []).map(mapPoint) }
+      })
+      return next
+    }
+    const arrows = (next as any).arrows || []
+    ;(next as any).arrows = arrows.map((a: any) => {
+      if (a.id !== selection.id) return a
+      return { ...a, start: mapPoint(a.start), end: mapPoint(a.end) }
+    })
+    return next
+  }
+
+  const selectionBboxFromAnnotations = (ann: DiagramAnnotations, selection: NonNullable<DiagramSelection>) => {
+    if (selection.kind === 'stroke') {
+      const stroke = (ann.strokes || []).find(s => s.id === selection.id)
+      if (!stroke) return null
+      return bboxFromStroke(stroke)
+    }
+    const arrows = (ann as any).arrows || []
+    const arrow = arrows.find((a: any) => a.id === selection.id)
+    if (!arrow) return null
+    return bboxFromArrow(arrow)
+  }
+
+  const isSelectionLockedInAnnotations = (ann: DiagramAnnotations, selection: NonNullable<DiagramSelection>) => {
+    if (selection.kind === 'stroke') {
+      const stroke = (ann.strokes || []).find(s => s.id === selection.id)
+      return Boolean((stroke as any)?.locked)
+    }
+    const arrows = (ann as any).arrows || []
+    const arrow = arrows.find((a: any) => a.id === selection.id)
+    return Boolean(arrow?.locked)
+  }
+
+  const getMaxZ = (ann: DiagramAnnotations) => {
+    let max = 0
+    for (const s of ann.strokes || []) {
+      if (typeof (s as any)?.z === 'number' && Number.isFinite((s as any).z)) max = Math.max(max, (s as any).z)
+    }
+    for (const a of (ann as any).arrows || []) {
+      if (typeof a?.z === 'number' && Number.isFinite(a.z)) max = Math.max(max, a.z)
+    }
+    return max
+  }
+
+  const getMinZ = (ann: DiagramAnnotations) => {
+    let min = 0
+    let hasAny = false
+    for (const s of ann.strokes || []) {
+      if (typeof (s as any)?.z === 'number' && Number.isFinite((s as any).z)) {
+        min = hasAny ? Math.min(min, (s as any).z) : (s as any).z
+        hasAny = true
+      }
+    }
+    for (const a of (ann as any).arrows || []) {
+      if (typeof a?.z === 'number' && Number.isFinite(a.z)) {
+        min = hasAny ? Math.min(min, a.z) : a.z
+        hasAny = true
+      }
+    }
+    return hasAny ? min : 0
+  }
+
+  const setSelectionZInAnnotations = (base: DiagramAnnotations, selection: NonNullable<DiagramSelection>, z: number) => {
+    const next = cloneDiagramAnnotations(base)
+    if (selection.kind === 'stroke') {
+      next.strokes = (next.strokes || []).map(s => (s.id === selection.id ? ({ ...s, z } as any) : s))
+      return next
+    }
+    const arrows = (next as any).arrows || []
+    ;(next as any).arrows = arrows.map((a: any) => (a.id === selection.id ? ({ ...a, z } as any) : a))
+    return next
+  }
+
+  const setSelectionStyleInAnnotations = (base: DiagramAnnotations, selection: NonNullable<DiagramSelection>, patch: Partial<{ color: string; width: number; locked: boolean }>) => {
+    const next = cloneDiagramAnnotations(base)
+    if (selection.kind === 'stroke') {
+      next.strokes = (next.strokes || []).map(s => {
+        if (s.id !== selection.id) return s
+        return {
+          ...s,
+          ...(typeof patch.color === 'string' ? { color: patch.color } : null),
+          ...(typeof patch.width === 'number' ? { width: patch.width } : null),
+          ...(typeof patch.locked === 'boolean' ? { locked: patch.locked } : null),
+        }
+      })
+      return next
+    }
+    const arrows = (next as any).arrows || []
+    ;(next as any).arrows = arrows.map((a: any) => {
+      if (a.id !== selection.id) return a
+      return {
+        ...a,
+        ...(typeof patch.color === 'string' ? { color: patch.color } : null),
+        ...(typeof patch.width === 'number' ? { width: patch.width } : null),
+        ...(typeof patch.locked === 'boolean' ? { locked: patch.locked } : null),
+      }
+    })
+    return next
+  }
+
+  const duplicateSelectionInAnnotations = (base: DiagramAnnotations, selection: NonNullable<DiagramSelection>, dx = 0.02, dy = 0.02) => {
+    const next = cloneDiagramAnnotations(base)
+    const newId = `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const maxZ = getMaxZ(base)
+
+    if (selection.kind === 'stroke') {
+      const stroke = (base.strokes || []).find(s => s.id === selection.id)
+      if (!stroke) return next
+      const copy: any = {
+        ...cloneDiagramAnnotations({ strokes: [stroke], arrows: [] }).strokes[0],
+        id: newId,
+        locked: false,
+        z: maxZ + 1,
+        points: (stroke.points || []).map(p => ({ x: clamp01(p.x + dx), y: clamp01(p.y + dy) })),
+      }
+      next.strokes = [...(next.strokes || []), copy]
+      return next
+    }
+
+    const arrows = (base as any).arrows || []
+    const arrow = arrows.find((a: any) => a.id === selection.id)
+    if (!arrow) return next
+    const copy: any = {
+      ...cloneDiagramAnnotations({ strokes: [], arrows: [arrow] } as any).arrows[0],
+      id: newId,
+      locked: false,
+      z: maxZ + 1,
+      start: { x: clamp01(arrow.start.x + dx), y: clamp01(arrow.start.y + dy) },
+      end: { x: clamp01(arrow.end.x + dx), y: clamp01(arrow.end.y + dy) },
+    }
+    ;(next as any).arrows = [...((next as any).arrows || []), copy]
+    return next
+  }
+
+  const applySnapOrSmooth = (base: DiagramAnnotations, selection: NonNullable<DiagramSelection>) => {
+    if (selection.kind === 'arrow') {
+      const next = cloneDiagramAnnotations(base)
+      const arrows = (next as any).arrows || []
+      ;(next as any).arrows = arrows.map((a: any) => {
+        if (a.id !== selection.id) return a
+        const dx = a.end.x - a.start.x
+        const dy = a.end.y - a.start.y
+        const angle = Math.atan2(dy, dx)
+        const snap = Math.PI / 4
+        const snapped = Math.round(angle / snap) * snap
+        const len = Math.sqrt(dx * dx + dy * dy)
+        const ux = Math.cos(snapped)
+        const uy = Math.sin(snapped)
+        const midX = (a.start.x + a.end.x) / 2
+        const midY = (a.start.y + a.end.y) / 2
+        const half = len / 2
+        return {
+          ...a,
+          start: { x: clamp01(midX - ux * half), y: clamp01(midY - uy * half) },
+          end: { x: clamp01(midX + ux * half), y: clamp01(midY + uy * half) },
+        }
+      })
+      return next
+    }
+
+    const next = cloneDiagramAnnotations(base)
+    next.strokes = (next.strokes || []).map(s => {
+      if (s.id !== selection.id) return s
+      const pts = s.points || []
+      if (pts.length <= 2) return s
+      const out: DiagramStrokePoint[] = [pts[0]]
+      const minDistSq = 0.0002
+      for (let i = 1; i < pts.length - 1; i++) {
+        const last = out[out.length - 1]
+        const p = pts[i]
+        const dSq = (p.x - last.x) * (p.x - last.x) + (p.y - last.y) * (p.y - last.y)
+        if (dSq >= minDistSq) out.push(p)
+      }
+      out.push(pts[pts.length - 1])
+      return { ...s, points: out }
+    })
+    return next
+  }
+
+  const applyDiagramContextAction = useCallback(async (action: string, diagramId: string, selection: NonNullable<DiagramSelection>, point?: DiagramStrokePoint) => {
+    const diagram = diagramsRef.current.find(d => d.id === diagramId)
+    const before = diagram?.annotations ? normalizeAnnotations(diagram.annotations) : { strokes: [], arrows: [] }
+
+    if (action === 'copy') {
+      if (selection.kind === 'stroke') {
+        const stroke = (before.strokes || []).find(s => s.id === selection.id)
+        if (stroke) diagramClipboardRef.current = { kind: 'stroke', data: cloneDiagramAnnotations({ strokes: [stroke], arrows: [] }).strokes[0] }
+      } else {
+        const arrows = (before as any).arrows || []
+        const arrow = arrows.find((a: any) => a.id === selection.id)
+        if (arrow) diagramClipboardRef.current = { kind: 'arrow', data: cloneDiagramAnnotations({ strokes: [], arrows: [arrow] } as any).arrows[0] }
+      }
+      setDiagramContextMenu(null)
+      return
+    }
+
+    if (action === 'paste') {
+      const clip = diagramClipboardRef.current
+      if (!clip || !point) {
+        setDiagramContextMenu(null)
+        return
+      }
+      const baseAnn = cloneDiagramAnnotations(before)
+      const maxZ = getMaxZ(baseAnn)
+      const newId = `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+      if (clip.kind === 'stroke') {
+        const stroke = clip.data as DiagramStroke
+        const bbox = bboxFromStroke(stroke)
+        const cx = (bbox.minX + bbox.maxX) / 2
+        const cy = (bbox.minY + bbox.maxY) / 2
+        const dx = point.x - cx
+        const dy = point.y - cy
+        const copy: any = {
+          ...cloneDiagramAnnotations({ strokes: [stroke], arrows: [] }).strokes[0],
+          id: newId,
+          locked: false,
+          z: maxZ + 1,
+          points: (stroke.points || []).map(pt => ({ x: clamp01(pt.x + dx), y: clamp01(pt.y + dy) })),
+        }
+        baseAnn.strokes = [...(baseAnn.strokes || []), copy]
+        setDiagramContextMenu(null)
+        setDiagramSelection({ kind: 'stroke', id: newId })
+        await commitDiagramAnnotations(diagramId, baseAnn, before)
+        return
+      }
+
+      const arrow = clip.data as any
+      const bbox = bboxFromArrow(arrow)
+      const cx = (bbox.minX + bbox.maxX) / 2
+      const cy = (bbox.minY + bbox.maxY) / 2
+      const dx = point.x - cx
+      const dy = point.y - cy
+      const copy: any = {
+        ...cloneDiagramAnnotations({ strokes: [], arrows: [arrow] } as any).arrows[0],
+        id: newId,
+        locked: false,
+        z: maxZ + 1,
+        start: { x: clamp01(arrow.start.x + dx), y: clamp01(arrow.start.y + dy) },
+        end: { x: clamp01(arrow.end.x + dx), y: clamp01(arrow.end.y + dy) },
+      }
+      ;(baseAnn as any).arrows = [...((baseAnn as any).arrows || []), copy]
+      setDiagramContextMenu(null)
+      setDiagramSelection({ kind: 'arrow', id: newId })
+      await commitDiagramAnnotations(diagramId, baseAnn, before)
+      return
+    }
+
+    if (action === 'delete') {
+      const next = deleteSelectionFromAnnotations(before, selection)
+      setDiagramContextMenu(null)
+      setDiagramSelection(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (action === 'duplicate') {
+      const next = duplicateSelectionInAnnotations(before, selection)
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (action === 'bring-front') {
+      const next = setSelectionZInAnnotations(before, selection, getMaxZ(before) + 1)
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+    if (action === 'send-back') {
+      const next = setSelectionZInAnnotations(before, selection, getMinZ(before) - 1)
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (action === 'lock' || action === 'unlock') {
+      const next = setSelectionStyleInAnnotations(before, selection, { locked: action === 'lock' })
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (action.startsWith('set-color:')) {
+      const color = action.slice('set-color:'.length)
+      const next = setSelectionStyleInAnnotations(before, selection, { color })
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (action.startsWith('set-width:')) {
+      const width = Number(action.slice('set-width:'.length))
+      if (!Number.isFinite(width)) {
+        setDiagramContextMenu(null)
+        return
+      }
+      const next = setSelectionStyleInAnnotations(before, selection, { width })
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (action === 'snap-smooth') {
+      if (isSelectionLockedInAnnotations(before, selection)) {
+        setDiagramContextMenu(null)
+        return
+      }
+      const next = applySnapOrSmooth(before, selection)
+      setDiagramContextMenu(null)
+      await commitDiagramAnnotations(diagramId, next, before)
+      return
+    }
+
+    if (isSelectionLockedInAnnotations(before, selection)) {
+      setDiagramContextMenu(null)
+      return
+    }
+
+    const bbox = selectionBboxFromAnnotations(before, selection)
+    if (!bbox) {
+      setDiagramContextMenu(null)
+      return
+    }
+
+    const cx = (bbox.minX + bbox.maxX) / 2
+    const cy = (bbox.minY + bbox.maxY) / 2
+
+    const mapPoint = (p: DiagramStrokePoint) => {
+      if (action === 'flip-h') return { x: clamp01(cx - (p.x - cx)), y: clamp01(p.y) }
+      if (action === 'flip-v') return { x: clamp01(p.x), y: clamp01(cy - (p.y - cy)) }
+      // rotate 90° clockwise around center
+      const dx = p.x - cx
+      const dy = p.y - cy
+      return { x: clamp01(cx + dy), y: clamp01(cy - dx) }
+    }
+
+    const next = transformSelectionInAnnotations(before, selection, mapPoint)
+    setDiagramContextMenu(null)
+    await commitDiagramAnnotations(diagramId, next, before)
+  }, [applySnapOrSmooth, cloneDiagramAnnotations, commitDiagramAnnotations, deleteSelectionFromAnnotations, duplicateSelectionInAnnotations, getMaxZ, getMinZ, normalizeAnnotations, setSelectionStyleInAnnotations, setSelectionZInAnnotations])
 
   const redrawDiagramCanvas = useCallback(() => {
     const canvas = diagramCanvasRef.current
@@ -1132,12 +1592,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       ctx.fill()
     }
 
-    for (const arrow of arrows as any[]) {
-      if (!arrow?.start || !arrow?.end) continue
-      drawArrow(arrow as any)
-    }
-    for (const stroke of strokes) {
-      if (!stroke.points.length) continue
+    const items: Array<
+      | { kind: 'arrow'; z: number; arrow: DiagramArrow }
+      | { kind: 'stroke'; z: number; stroke: DiagramStroke }
+    > = []
+    ;(arrows as any[]).forEach((a, i) => {
+      if (!a?.start || !a?.end) return
+      const z = typeof a?.z === 'number' && Number.isFinite(a.z) ? a.z : i
+      items.push({ kind: 'arrow', z, arrow: a as any })
+    })
+    strokes.forEach((s, i) => {
+      if (!s.points.length) return
+      const z = typeof (s as any)?.z === 'number' && Number.isFinite((s as any).z) ? (s as any).z : 1000 + i
+      items.push({ kind: 'stroke', z, stroke: s })
+    })
+    items.sort((a, b) => a.z - b.z)
+    for (const item of items) {
+      if (item.kind === 'arrow') {
+        drawArrow(item.arrow)
+        continue
+      }
+      const stroke = item.stroke
       ctx.strokeStyle = stroke.color || '#ef4444'
       ctx.lineWidth = stroke.width || 3
       ctx.lineJoin = 'round'
@@ -3727,7 +4202,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </div>
                 </div>
                 <div className="relative w-full h-[calc(100%-44px)]">
-                  <div ref={diagramStageRef} className="absolute inset-0">
+                  <div
+                    ref={diagramStageRef}
+                    className="absolute inset-0"
+                    onContextMenuCapture={e => {
+                      if (!isAdmin) return
+                      if (!activeDiagram?.id) return
+                      if (diagramToolRef.current !== 'select') return
+                      e.preventDefault()
+                      e.stopPropagation()
+
+                      const stage = diagramStageRef.current
+                      if (!stage) return
+                      const rect = stage.getBoundingClientRect()
+                      const x = (e.clientX - rect.left) / Math.max(rect.width, 1)
+                      const y = (e.clientY - rect.top) / Math.max(rect.height, 1)
+                      const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+
+                      const diagramId = activeDiagram.id
+                      const hit = hitTestAnnotation(diagramId, point)
+                      const existing = diagramSelectionRef.current
+                      const selection = hit || existing
+                      if (!selection) {
+                        setDiagramContextMenu(null)
+                        return
+                      }
+                      if (hit && (!existing || existing.id !== hit.id || existing.kind !== hit.kind)) {
+                        setDiagramSelection(hit)
+                      }
+
+                      const menuWidth = 224
+                      const menuHeight = 420
+                      const px = e.clientX - rect.left
+                      const py = e.clientY - rect.top
+                      const clampedX = Math.max(8, Math.min(px, rect.width - menuWidth - 8))
+                      const clampedY = Math.max(8, Math.min(py, rect.height - menuHeight - 8))
+                      setDiagramContextMenu({ diagramId, selection, xPx: clampedX, yPx: clampedY, point })
+                    }}
+                    onPointerDownCapture={e => {
+                      if (!diagramContextMenu) return
+                      const menuEl = diagramContextMenuRef.current
+                      if (menuEl && e.target instanceof Node && menuEl.contains(e.target)) return
+                      setDiagramContextMenu(null)
+                    }}
+                  >
                     {isAdmin && (
                       <div className="absolute top-2 right-2 z-30 pointer-events-none">
                         <div className="pointer-events-auto flex items-center gap-2">
@@ -3892,6 +4410,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           const hit = hitTestAnnotation(diagramId, point)
 
                           if (handle && existing && bbox) {
+                            {
+                              const annNow = diagramAnnotationsForRender(diagramId)
+                              if (isSelectionLockedInAnnotations(annNow, existing)) {
+                                return
+                              }
+                            }
                             const base = diagramAnnotationsForRender(diagramId)
                             const corners = bboxCornerPoints(bbox)
                             const anchorHandle = oppositeHandle(handle)
@@ -3909,6 +4433,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           } else if (hit) {
                             if (!existing || existing.id !== hit.id || existing.kind !== hit.kind) {
                               setDiagramSelection(hit)
+                            }
+                            {
+                              const annNow = diagramAnnotationsForRender(diagramId)
+                              if (isSelectionLockedInAnnotations(annNow, hit)) {
+                                return
+                              }
                             }
                             const startBBox = selectionBbox(diagramId, hit)
                             if (!startBBox) return
@@ -4092,6 +4622,183 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         redrawDiagramCanvas()
                       }}
                     />
+
+                    {isAdmin && diagramContextMenu && diagramContextMenu.diagramId === activeDiagram.id && (
+                      <div
+                        ref={diagramContextMenuRef}
+                        className="absolute z-40 w-56 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+                        style={{ left: diagramContextMenu.xPx, top: diagramContextMenu.yPx }}
+                        onPointerDown={e => e.stopPropagation()}
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                      >
+                        <div className="px-3 py-2 text-xs font-semibold text-slate-500 border-b border-slate-200">Annotation</div>
+
+                        <div className="py-1">
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('copy', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Copy
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('paste', diagramContextMenu.diagramId, diagramContextMenu.selection, diagramContextMenu.point)
+                            }}
+                          >
+                            Paste
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('duplicate', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Duplicate
+                          </button>
+                        </div>
+
+                        <div className="h-px bg-slate-200" aria-hidden="true" />
+
+                        <div className="py-1">
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('bring-front', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Bring to front
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('send-back', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Send to back
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('lock', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Lock
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('unlock', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Unlock
+                          </button>
+                        </div>
+
+                        <div className="h-px bg-slate-200" aria-hidden="true" />
+
+                        <div className="px-3 pt-2 text-xs font-semibold text-slate-500">Color</div>
+                        <div className="px-3 pb-2 pt-1 flex flex-wrap gap-2">
+                          {diagramColorPresets.map(p => (
+                            <button
+                              key={p.key}
+                              type="button"
+                              className="h-6 w-6 rounded border border-slate-200"
+                              style={{ background: p.value }}
+                              onClick={async () => {
+                                await applyDiagramContextAction(`set-color:${p.value}`, diagramContextMenu.diagramId, diagramContextMenu.selection)
+                              }}
+                              aria-label={`Set color ${p.label}`}
+                              title={p.label}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="h-px bg-slate-200" aria-hidden="true" />
+
+                        <div className="px-3 pt-2 text-xs font-semibold text-slate-500">Thickness</div>
+                        <div className="px-3 pb-2 pt-1 flex items-center gap-2">
+                          {diagramWidthPresets.map(p => (
+                            <button
+                              key={p.key}
+                              type="button"
+                              className="px-2 py-1 rounded border border-slate-200 text-xs text-slate-700 hover:bg-slate-50"
+                              onClick={async () => {
+                                await applyDiagramContextAction(`set-width:${p.value}`, diagramContextMenu.diagramId, diagramContextMenu.selection)
+                              }}
+                              title={p.label}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="h-px bg-slate-200" aria-hidden="true" />
+
+                        <div className="py-1">
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            onClick={async () => {
+                              await applyDiagramContextAction('snap-smooth', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                            }}
+                          >
+                            Snap / Smooth
+                          </button>
+                        </div>
+
+                        <div className="h-px bg-slate-200" aria-hidden="true" />
+
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          onClick={async () => {
+                            await applyDiagramContextAction('delete', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                          }}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          onClick={async () => {
+                            await applyDiagramContextAction('flip-h', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                          }}
+                        >
+                          Flip horizontal
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          onClick={async () => {
+                            await applyDiagramContextAction('flip-v', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                          }}
+                        >
+                          Flip vertical
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          onClick={async () => {
+                            await applyDiagramContextAction('rotate-90', diagramContextMenu.diagramId, diagramContextMenu.selection)
+                          }}
+                        >
+                          Rotate 90°
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

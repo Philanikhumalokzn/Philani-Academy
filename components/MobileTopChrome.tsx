@@ -110,9 +110,20 @@ export default function MobileTopChrome() {
     const grade = (session as any)?.user?.grade as string | undefined
     const role = (session as any)?.user?.role as string | undefined
 
+    const queryGradeRaw = Array.isArray(router.query?.grade) ? router.query.grade[0] : router.query?.grade
+    const queryGrade = typeof queryGradeRaw === 'string' ? queryGradeRaw : undefined
+
+    const gradeForAdmin = queryGrade || grade
+
+    if (role === 'admin' && !gradeForAdmin) {
+      // Admin announcement endpoint requires a grade query parameter.
+      setAnnouncements([])
+      return () => controller.abort()
+    }
+
     const url = (() => {
       // Admin endpoint needs a grade query param; fall back to session grade when available.
-      if (role === 'admin' && grade) return `/api/announcements?grade=${encodeURIComponent(grade)}`
+      if (role === 'admin' && gradeForAdmin) return `/api/announcements?grade=${encodeURIComponent(gradeForAdmin)}`
       return '/api/announcements'
     })()
 

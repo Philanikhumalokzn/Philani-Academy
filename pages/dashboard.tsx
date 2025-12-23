@@ -1745,7 +1745,7 @@ export default function Dashboard() {
                   onChange={async () => {
                     setLiveSelectionBusy(true)
                     try {
-                      await fetch('/api/sessions/live', {
+                      await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
                         method: 'PUT',
                         credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
@@ -1773,7 +1773,7 @@ export default function Dashboard() {
                         onChange={async () => {
                           setLiveSelectionBusy(true)
                           try {
-                            const res = await fetch('/api/sessions/live', {
+                            const res = await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
                               method: 'PUT',
                               credentials: 'same-origin',
                               headers: { 'Content-Type': 'application/json' },

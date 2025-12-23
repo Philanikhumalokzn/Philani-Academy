@@ -3889,44 +3889,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             return hitTestHandle(point, bbox, w, h)
                           })()
 
-                          const nextSelection = existing || hitTestAnnotation(diagramId, point)
+                          const hit = hitTestAnnotation(diagramId, point)
 
-                          if (!nextSelection) {
-                            setDiagramSelection(null)
-                            return
-                          }
-
-                          if (!existing || existing.id !== nextSelection.id || existing.kind !== nextSelection.kind) {
-                            setDiagramSelection(nextSelection)
-                          }
-
-                          const startBBox = selectionBbox(diagramId, nextSelection)
-                          if (!startBBox) return
-
-                          const base = diagramAnnotationsForRender(diagramId)
-                          const corners = bboxCornerPoints(startBBox)
-                          if (handle) {
+                          if (handle && existing && bbox) {
+                            const base = diagramAnnotationsForRender(diagramId)
+                            const corners = bboxCornerPoints(bbox)
                             const anchorHandle = oppositeHandle(handle)
                             const anchorPoint = corners[anchorHandle]
                             diagramEditRef.current = {
                               diagramId,
-                              selection: nextSelection,
+                              selection: existing,
                               mode: 'scale',
                               handle,
                               startPoint: point,
                               base,
-                              baseBbox: startBBox,
+                              baseBbox: bbox,
                               anchorPoint,
                             }
-                          } else {
+                          } else if (hit) {
+                            if (!existing || existing.id !== hit.id || existing.kind !== hit.kind) {
+                              setDiagramSelection(hit)
+                            }
+                            const startBBox = selectionBbox(diagramId, hit)
+                            if (!startBBox) return
+                            const base = diagramAnnotationsForRender(diagramId)
                             diagramEditRef.current = {
                               diagramId,
-                              selection: nextSelection,
+                              selection: hit,
                               mode: 'move',
                               startPoint: point,
                               base,
                               baseBbox: startBBox,
                             }
+                          } else {
+                            setDiagramSelection(null)
+                            return
                           }
 
                           diagramDrawingRef.current = true

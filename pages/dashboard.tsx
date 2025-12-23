@@ -1225,16 +1225,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!sessions || sessions.length === 0) return
+    // If an admin has selected a past session override, it becomes the current lesson and
+    // takes precedence until unselected.
+    if (liveOverrideSessionId && resolvedLiveSessionId) {
+      if (String(activeSessionId || '') !== String(resolvedLiveSessionId)) {
+        setActiveSessionId(String(resolvedLiveSessionId))
+      }
+      return
+    }
+
     // If no active session is selected yet, default to the resolved live session.
     if (!activeSessionId && resolvedLiveSessionId) {
-      setActiveSessionId(resolvedLiveSessionId)
+      setActiveSessionId(String(resolvedLiveSessionId))
       return
     }
     // If selected session no longer exists, fall back.
     if (activeSessionId && !sessionById.has(String(activeSessionId)) && resolvedLiveSessionId) {
-      setActiveSessionId(resolvedLiveSessionId)
+      setActiveSessionId(String(resolvedLiveSessionId))
     }
-  }, [sessions, activeSessionId, resolvedLiveSessionId, sessionById])
+  }, [sessions, activeSessionId, resolvedLiveSessionId, sessionById, liveOverrideSessionId])
 
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return
@@ -1707,6 +1716,12 @@ export default function Dashboard() {
       ? String([...currentSessions].sort((a, b) => getStartMs(b) - getStartMs(a))[0].id)
       : null
 
+    const resolvedCurrentLessonId =
+      (resolvedLiveSessionId && sessionById.has(String(resolvedLiveSessionId)) ? String(resolvedLiveSessionId) : null) ??
+      (defaultCurrentSessionId && sessionById.has(String(defaultCurrentSessionId)) ? String(defaultCurrentSessionId) : null)
+
+    const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
+
     return (
       <div className="space-y-6">
         {canCreateSession && (
@@ -1811,11 +1826,63 @@ export default function Dashboard() {
         )}
 
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">Current sessions — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold">Current lesson — {activeGradeLabel}</h2>
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>
           ) : sortedSessions.length === 0 ? (
             <div className="text-sm muted">No sessions scheduled for this grade yet.</div>
+          ) : resolvedCurrentLesson ? (
+            <div className="p-3 border rounded space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium leading-snug break-words">{resolvedCurrentLesson.title}</div>
+                  {resolvedCurrentLesson.startsAt ? (
+                    <div className="text-xs muted">
+                      {new Date(resolvedCurrentLesson.startsAt).toLocaleString()} → {new Date((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt).toLocaleString()}
+                    </div>
+                  ) : null}
+                  {liveOverrideSessionId ? (
+                    <div className="text-xs muted">Override selected (persists until unselected).</div>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canCreateSession && (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => startLiveForSession(String(resolvedCurrentLesson.id))}
+                      disabled={!isCurrentWindow(resolvedCurrentLesson)}
+                    >
+                      Start class
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`btn ${canCreateSession ? '' : 'btn-primary'}`}
+                    onClick={() => openLiveForSession(String(resolvedCurrentLesson.id))}
+                    disabled={isSubscriptionBlocked}
+                  >
+                    Open class
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id))}
+                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                  >
+                    Canvas
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0)}
+                    disabled={isSubscriptionBlocked}
+                  >
+                    Materials
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : currentSessions.length === 0 ? (
             <div className="text-sm muted">No current session right now (outside all scheduled time windows).</div>
           ) : (

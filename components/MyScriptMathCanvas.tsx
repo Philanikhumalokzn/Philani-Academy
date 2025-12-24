@@ -3941,8 +3941,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [hasWriteAccess, isCompactViewport, smoothScrollViewportBy, useStackedStudentLayout])
 
-  const showHorizontalScrollbar = useStackedStudentLayout && isCompactViewport
-  const horizontalScrollbarIsFixed = Boolean(showHorizontalScrollbar && isOverlayMode)
+  // Manual horizontal scrollbar: always show it at the physical bottom of the viewport.
+  // (Not conditionally tied to stacked/compact/overlay modes.)
+  const horizontalScrollbarIsFixed = true
   const horizontalScrollbarThumbPct = useMemo(() => Math.max(8, Math.round(horizontalPanThumbRatio * 100)), [horizontalPanThumbRatio])
   const horizontalScrollbarLeftPct = useMemo(() => {
     const usable = Math.max(0, 100 - horizontalScrollbarThumbPct)
@@ -3980,18 +3981,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
   }, [])
 
-  const horizontalScrollbar = showHorizontalScrollbar ? (
+  const horizontalScrollbar = (
     <div
       ref={horizontalPanTrackRef}
-      className={horizontalScrollbarIsFixed ? 'fixed left-0 right-0 z-[200]' : 'w-full'}
-      style={
-        horizontalScrollbarIsFixed
-          ? ({
-              bottom: 0,
-              paddingBottom: 'env(safe-area-inset-bottom)',
-            } as any)
-          : undefined
-      }
+      className="fixed left-0 right-0 bottom-0 z-[500]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' } as any}
       onPointerMove={updateHorizontalScrollbarDrag}
       onPointerUp={endHorizontalScrollbarDrag}
       onPointerCancel={endHorizontalScrollbarDrag}
@@ -4023,7 +4017,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         </div>
       </div>
     </div>
-  ) : null
+  )
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -4861,15 +4855,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 )}
               </div>
 
-              {/* Always-visible horizontal scrollbar (mobile stacked). In overlay, portal it to the document body so it can't be clipped by transforms/overflow. */}
-              {horizontalScrollbarIsFixed
-                ? hasMounted && horizontalScrollbar
-                  ? createPortal(horizontalScrollbar, document.body)
-                  : null
-                : horizontalScrollbar}
             </div>
           </div>
         )}
+
+        {/* Manual horizontal scrollbar: always pinned to the physical bottom of the screen. */}
+        {horizontalScrollbar}
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>

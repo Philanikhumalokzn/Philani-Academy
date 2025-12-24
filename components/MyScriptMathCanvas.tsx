@@ -2181,6 +2181,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return ''
   }, [])
 
+  const getLatexFromEditorModel = useCallback(() => {
+    const editor = editorInstanceRef.current
+    const exports = editor?.model?.exports ?? {}
+    const latex = exports?.['application/x-latex']
+    return typeof latex === 'string' ? latex : ''
+  }, [])
+
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
   const editorInitLayoutKey = isAdmin ? (isCompactViewport ? 'admin-compact' : 'admin-wide') : 'learner'
@@ -2306,17 +2313,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               pendingExportRef.current = null
               if (previewExportInFlightRef.current) return
               previewExportInFlightRef.current = true
-              exportLatexFromEditor()
-                .then(latex => {
-                  if (cancelled) return
-                  const latexValue = typeof latex === 'string' ? latex : ''
-                  // Keep last good preview; don't wipe it if export returns empty.
-                  if (latexValue && latexValue.trim().length > 0) {
-                    setLatexOutput(latexValue)
-                    const normalized = normalizeStepLatex(latexValue)
-                    if (normalized) setAdminDraftLatex(normalized)
-                  }
-                })
+              ;(async () => {
+                let latexValue = getLatexFromEditorModel()
+                if (!latexValue || latexValue.trim().length === 0) {
+                  const exported = await exportLatexFromEditor()
+                  latexValue = typeof exported === 'string' ? exported : ''
+                }
+                if (cancelled) return
+                // Keep last good preview; don't wipe it if recognition is still catching up.
+                if (latexValue && latexValue.trim().length > 0) {
+                  setLatexOutput(latexValue)
+                  const normalized = normalizeStepLatex(latexValue)
+                  if (normalized) setAdminDraftLatex(normalized)
+                }
+              })()
                 .finally(() => {
                   previewExportInFlightRef.current = false
                 })
@@ -3499,7 +3509,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (useAdminStepComposer) {
       const combined = [...adminSolutionSteps, ...(adminDraftLatex ? [adminDraftLatex] : [])]
         .filter(Boolean)
-        .join(' \\\\ ')
+        .join(' \\ ')
       return combined.trim()
     }
     if (isAdmin) {
@@ -4111,9 +4121,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                       try {
                         // Ensure we have the latest preview before committing.
+                        // Let recognition catch up before committing.
+                        try {
+                          if (typeof editor.waitForIdle === 'function') {
+                            await editor.waitForIdle()
+                          }
+                        } catch {}
+
                         let step = adminDraftLatex
                         if (!step) {
-                          // Retry a few times in case recognition is still catching up.
+                          const modelLatex = getLatexFromEditorModel()
+                          const normalizedModel = normalizeStepLatex(modelLatex)
+                          if (normalizedModel) {
+                            step = normalizedModel
+                            setLatexOutput(modelLatex)
+                            setAdminDraftLatex(normalizedModel)
+                          }
+                        }
+                        if (!step) {
+                          // Retry export a few times in case recognition is still catching up.
                           for (let i = 0; i < 3 && !step; i += 1) {
                             const exported = await exportLatexFromEditor()
                             const normalized = normalizeStepLatex(exported)
@@ -4123,7 +4149,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               setAdminDraftLatex(normalized)
                               break
                             }
-                            await new Promise<void>(resolve => setTimeout(resolve, 220))
+                            await new Promise<void>(resolve => setTimeout(resolve, 250))
                           }
                         }
                         if (!step) return

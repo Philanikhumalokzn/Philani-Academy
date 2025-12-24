@@ -3697,6 +3697,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
 
+  // Mobile stacked mode: provide extra horizontal writing room by making the ink surface wider than
+  // the viewport so users can scroll sideways for long expressions.
+  const inkSurfaceWidthFactor = useMemo(() => {
+    if (!useStackedStudentLayout) return 1
+    if (!isCompactViewport) return 1
+    // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
+    // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
+    return 6
+  }, [isCompactViewport, useStackedStudentLayout])
+
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
   // Persist LaTeX strictly against the scheduled session id.
@@ -4372,7 +4382,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   style={{
                     transform: `scale(${studentViewScale})`,
                     transformOrigin: 'top left',
-                    width: `${100 / studentViewScale}%`,
+                    width: `${(100 * inkSurfaceWidthFactor) / studentViewScale}%`,
                     height: `${100 / studentViewScale}%`,
                   }}
                 >

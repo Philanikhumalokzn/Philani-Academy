@@ -3856,8 +3856,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
       if (maxScroll <= 0) return
 
-      const leftPanGain = 2
-      leftPanPendingDxRef.current += dx * leftPanGain
+      // Keep in-stroke left pan gentle (1:1). Extra clearance is applied on pen-up.
+      leftPanPendingDxRef.current += dx
       if (typeof window === 'undefined') {
         viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + leftPanPendingDxRef.current, maxScroll))
         leftPanPendingDxRef.current = 0
@@ -3893,9 +3893,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const midX = rect.left + rect.width * 0.5
       const gain = 0.9
 
-      // If the exclusive left-edge right-to-left mode was engaged, do not apply the midpoint
-      // correction that would tend to pan right afterwards.
+      // If the exclusive left-edge right-to-left mode was engaged, apply an extra pen-up scroll
+      // so the stroke end point sits ~20% away from the left edge (clearance), then stop.
       if (strokeTrackRef.current.leftPanArmed) {
+        const targetX = rect.left + rect.width * 0.2
+        const delta = strokeTrackRef.current.lastX - targetX
+        if (delta < -1) {
+          smoothScrollViewportBy(delta)
+        }
         return
       }
 

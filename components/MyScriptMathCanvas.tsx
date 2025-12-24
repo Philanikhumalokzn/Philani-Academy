@@ -292,8 +292,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
 
-  const [stackedLatexControlsVisible, setStackedLatexControlsVisible] = useState(false)
-  const stackedLatexHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tap-to-reveal controls is disabled; controls live in the separator strip.
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -533,39 +532,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     latexProjectionOptionsRef.current = latexProjectionOptions
   }, [latexProjectionOptions])
 
-  const clearStackedLatexAutoHide = useCallback(() => {
-    if (stackedLatexHideTimeoutRef.current) {
-      clearTimeout(stackedLatexHideTimeoutRef.current)
-      stackedLatexHideTimeoutRef.current = null
-    }
-  }, [])
 
-  const hideStackedLatexControls = useCallback(() => {
-    clearStackedLatexAutoHide()
-    setStackedLatexControlsVisible(false)
-  }, [clearStackedLatexAutoHide])
-
-  const revealStackedLatexControls = useCallback(() => {
-    // Only enable tap-to-show controls on compact viewports or when embedded in overlay mode.
-    if (!isOverlayMode && !isCompactViewport) return
-    setStackedLatexControlsVisible(true)
-    clearStackedLatexAutoHide()
-    stackedLatexHideTimeoutRef.current = setTimeout(() => {
-      setStackedLatexControlsVisible(false)
-    }, 1500)
-  }, [clearStackedLatexAutoHide, isCompactViewport, isOverlayMode])
-
-  useEffect(() => {
-    if (!onOverlayChromeVisibilityChange) return
-    if (!isOverlayMode && !isCompactViewport) return
-    onOverlayChromeVisibilityChange(stackedLatexControlsVisible)
-  }, [isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange, stackedLatexControlsVisible])
-
-  useEffect(() => {
-    return () => {
-      clearStackedLatexAutoHide()
-    }
-  }, [clearStackedLatexAutoHide])
 
   useEffect(() => {
     studentSplitRatioRef.current = studentSplitRatio
@@ -1955,6 +1922,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       stackedNotesBroadcastTimeoutRef.current = setTimeout(() => {
         stackedNotesBroadcastTimeoutRef.current = null
+
+        // Avoid broadcasting a temporary empty string while the teacher is still writing
+        // (recognition can lag and would cause students to see the preview blink).
+        const symbolCount = lastSymbolCountRef.current
+        if (!trimmed && symbolCount > 0) return
+
         const ts = Date.now()
         lastStackedNotesBroadcastRef.current = { latex: trimmed, ts }
         channel
@@ -1967,7 +1940,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             ts,
           })
           .catch(err => console.warn('Failed to broadcast stacked notes preview', err))
-      }, 120)
+      }, 220)
     },
     [isAdmin, userDisplayName]
   )
@@ -3964,7 +3937,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         {useStackedStudentLayout && (
           <div
             ref={studentStackRef}
-            className="border rounded bg-white p-0 shadow-sm flex flex-col"
+            className="border rounded bg-white p-0 shadow-sm flex flex-col relative"
             style={{
               flex: isOverlayMode ? 1 : undefined,
               minHeight: isOverlayMode ? '100%' : '520px',
@@ -4028,9 +4001,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <div
                   className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
                   ref={isAdmin ? adminTopPanelRef : undefined}
-                  onPointerDown={() => {
-                    revealStackedLatexControls()
-                  }}
                   onClick={isAdmin ? async (e) => {
                     if (!useAdminStepComposer) return
                     if (!adminSteps.length) return
@@ -4081,70 +4051,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     setAdminDraftLatex(adminSteps[index]?.latex || '')
                   } : undefined}
                 >
-                  {(isOverlayMode || isCompactViewport) && stackedLatexControlsVisible && canPersistLatex && (
-                    <div className="absolute left-2 right-2 top-2 z-10 pointer-events-none">
-                      <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 text-[11px] text-slate-700">
-                        {isAdmin ? (
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                            onClick={() => {
-                              revealStackedLatexControls()
-                              saveLatexSnapshot({ shared: true })
-                            }}
-                            disabled={isSavingLatex}
-                          >
-                            {isSavingLatex ? 'Saving…' : 'Save for class'}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                            onClick={() => {
-                              revealStackedLatexControls()
-                              saveLatexSnapshot({ shared: false })
-                            }}
-                            disabled={isSavingLatex}
-                          >
-                            {isSavingLatex ? 'Saving…' : 'Save my copy'}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                          onClick={() => {
-                            revealStackedLatexControls()
-                            handleLoadSavedLatex('shared')
-                          }}
-                          disabled={!latestSharedLatex}
-                        >
-                          Load class
-                        </button>
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                          onClick={() => {
-                            revealStackedLatexControls()
-                            handleLoadSavedLatex('mine')
-                          }}
-                          disabled={!latestPersonalLatex}
-                        >
-                          Load my notes
-                        </button>
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-slate-700"
-                          onClick={() => {
-                            revealStackedLatexControls()
-                            fetchLatexSaves()
-                          }}
-                        >
-                          Refresh
-                        </button>
-                        {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
-                      </div>
-                    </div>
-                  )}
                   {isAdmin ? (
                     latexProjectionMarkup ? (
                       <div
@@ -4155,6 +4061,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <p className="text-slate-500 text-sm text-center">Convert to notes to preview the typeset LaTeX here.</p>
+                      </div>
+                    )
+                  ) : useStackedStudentLayout ? (
+                    latexProjectionMarkup ? (
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={latexOverlayStyle}
+                        dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                       </div>
                     )
                   ) : latexDisplayState.enabled ? (
@@ -4209,40 +4127,61 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
             </div>
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
-                <div className={`flex items-center mb-2 ${isAdmin ? 'justify-between' : 'justify-end'}`}>
-                {studentScaleControl && (
-                  <div className="flex items-center gap-1 text-[11px] text-slate-600">
+              <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
+                {canPersistLatex ? (
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                        onClick={() => saveLatexSnapshot({ shared: true })}
+                        disabled={isSavingLatex}
+                      >
+                        {isSavingLatex ? 'Saving…' : 'Save for class'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                        onClick={() => saveLatexSnapshot({ shared: false })}
+                        disabled={isSavingLatex}
+                      >
+                        {isSavingLatex ? 'Saving…' : 'Save my copy'}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="px-2 py-1 border rounded"
-                      onClick={() => studentScaleControl.handleAdjust(-0.1)}
+                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                      onClick={() => handleLoadSavedLatex('shared')}
+                      disabled={!latestSharedLatex}
                     >
-                      -
-                    </button>
-                    <span className="px-1 w-12 text-center">{(studentViewScale * 100).toFixed(0)}%</span>
-                    <button
-                      type="button"
-                      className="px-2 py-1 border rounded"
-                      onClick={() => studentScaleControl.handleAdjust(0.1)}
-                    >
-                      +
+                      Load class
                     </button>
                     <button
                       type="button"
-                      className="px-2 py-1 border rounded"
-                      onClick={() => studentScaleControl.handleFit()}
+                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                      onClick={() => handleLoadSavedLatex('mine')}
+                      disabled={!latestPersonalLatex}
                     >
-                      Fit
+                      Load my notes
                     </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-slate-700"
+                      onClick={fetchLatexSaves}
+                    >
+                      Refresh
+                    </button>
+                    {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
                   </div>
-                )}
+                ) : null}
 
-                {isAdmin && (
+                {isAdmin ? (
                   <div className="flex items-center gap-2">
                     {isOverlayMode && (
                       <button
                         type="button"
-                        className="px-2 py-1 border rounded"
+                        className="px-2 py-1"
                         title="Canvas controls"
                         onClick={() => {
                           openOverlayControls()
@@ -4266,7 +4205,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                     <button
                       type="button"
-                      className="px-2 py-1 border rounded"
+                      className="px-2 py-1"
                       title="Send step"
                       onClick={async () => {
                       const editor = editorInstanceRef.current
@@ -4353,7 +4292,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </svg>
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
               <div
                 ref={studentViewportRef}
@@ -5335,28 +5274,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             </button>
           )}
-          {isOverlayMode && (
-            <div
-              className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
-              style={{
-                pointerEvents: overlayControlsVisible ? 'auto' : 'none',
-                cursor: overlayControlsVisible ? 'default' : undefined,
-              }}
-              onClick={closeOverlayControls}
-            >
-              <div className="canvas-overlay-controls__panel" onClick={event => {
-                event.stopPropagation()
-                kickOverlayAutoHide()
-              }}>
-                <p className="canvas-overlay-controls__title">Canvas controls</p>
-                {renderToolbarBlock()}
-                <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
-                  Return to drawing
-                </button>
-              </div>
-            </div>
-          )}
         </div>
+        )}
+
+        {isOverlayMode && useStackedStudentLayout && (
+          <div
+            className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+            style={{
+              pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+              cursor: overlayControlsVisible ? 'default' : undefined,
+              zIndex: 50,
+            }}
+            onClick={closeOverlayControls}
+          >
+            <div className="canvas-overlay-controls__panel" onClick={event => {
+              event.stopPropagation()
+              kickOverlayAutoHide()
+            }}>
+              <p className="canvas-overlay-controls__title">Canvas controls</p>
+              {renderToolbarBlock()}
+              <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                Return to drawing
+              </button>
+            </div>
+          </div>
         )}
 
         {!isOverlayMode && renderToolbarBlock()}

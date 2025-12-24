@@ -299,9 +299,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
-  const [adminSolutionSteps, setAdminSolutionSteps] = useState<string[]>([])
+
+  type AdminStep = { latex: string; symbols: any[] | null }
+  const [adminSteps, setAdminSteps] = useState<AdminStep[]>([])
   const [adminDraftLatex, setAdminDraftLatex] = useState('')
   const [adminSendingStep, setAdminSendingStep] = useState(false)
+  const [adminEditIndex, setAdminEditIndex] = useState<number | null>(null)
+  const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
+  const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
@@ -2320,12 +2325,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
-                // Keep last good preview; don't wipe it if recognition is still catching up.
-                if (latexValue && latexValue.trim().length > 0) {
-                  setLatexOutput(latexValue)
-                  const normalized = normalizeStepLatex(latexValue)
-                  if (normalized) setAdminDraftLatex(normalized)
-                }
+                setLatexOutput(latexValue)
+                const normalized = normalizeStepLatex(latexValue)
+                // In edit mode, we want the draft to track the current ink, including scratch-to-erase.
+                // So we allow the draft to become empty.
+                setAdminDraftLatex(normalized)
               })()
                 .finally(() => {
                   previewExportInFlightRef.current = false
@@ -2424,9 +2428,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     if (!useAdminStepComposer) return
-    setAdminSolutionSteps([])
+    setAdminSteps([])
     setAdminDraftLatex('')
     setAdminSendingStep(false)
+    setAdminEditIndex(null)
   }, [boardId, useAdminStepComposer])
 
   useEffect(() => {
@@ -3507,16 +3512,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useAdminStepComposer) {
-      const combined = [...adminSolutionSteps, ...(adminDraftLatex ? [adminDraftLatex] : [])]
-        .filter(Boolean)
-        .join(' \\\\ ')
-      return combined.trim()
+      const lines = adminSteps.map(s => s.latex)
+      if (adminEditIndex !== null) {
+        if (adminDraftLatex) {
+          lines[adminEditIndex] = adminDraftLatex
+        }
+      } else if (adminDraftLatex) {
+        lines.push(adminDraftLatex)
+      }
+      return lines.filter(Boolean).join(' \\\\ ').trim()
     }
     if (isAdmin) {
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminSolutionSteps, isAdmin, latexDisplayState.latex, latexOutput, useAdminStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexDisplayState.latex, latexOutput, useAdminStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
     if (!latexRenderSource) return ''
@@ -3951,9 +3961,59 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
                   className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
+                  ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={() => {
                     revealStackedLatexControls()
                   }}
+                  onClick={isAdmin ? async (e) => {
+                    if (!useAdminStepComposer) return
+                    if (!adminSteps.length) return
+                    const now = Date.now()
+                    const box = adminTopPanelRef.current?.getBoundingClientRect()
+                    if (!box) return
+
+                    const last = adminLastTapRef.current
+                    const y = (e as any).clientY ?? 0
+                    const within = last && (now - last.ts) < 350 && Math.abs(y - last.y) < 22
+                    adminLastTapRef.current = { ts: now, y }
+                    if (!within) return
+
+                    // Double-tap: pick the row and load it for editing.
+                    const localY = y - box.top
+                    const approxRowHeight = 34
+                    const index = Math.max(0, Math.min(adminSteps.length - 1, Math.floor(localY / approxRowHeight)))
+
+                    // Commit current draft first (if any), mirroring paper-plane behavior.
+                    const editor = editorInstanceRef.current
+                    if (!editor) return
+                    if (lockedOutRef.current) return
+
+                    // If there's active ink, commit it as a new step before switching.
+                    const currentSymbols = captureFullSnapshot()?.symbols
+                    const hasInk = Array.isArray(currentSymbols) ? currentSymbols.length > 0 : Boolean(currentSymbols)
+                    const currentStep = adminDraftLatex
+                    if (hasInk && currentStep) {
+                      const symbols = captureFullSnapshot()?.symbols ?? null
+                      setAdminSteps(prev => [...prev, { latex: currentStep, symbols }])
+                    }
+
+                    // Load selected step ink.
+                    suppressBroadcastUntilTsRef.current = Date.now() + 1200
+                    try {
+                      editor.clear?.()
+                    } catch {}
+                    const stepSymbols = adminSteps[index]?.symbols
+                    if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
+                      try {
+                        await nextAnimationFrame()
+                        await editor.importPointEvents(stepSymbols)
+                      } catch (err) {
+                        console.warn('Failed to load step ink for editing', err)
+                      }
+                    }
+                    setAdminEditIndex(index)
+                    setAdminDraftLatex(adminSteps[index]?.latex || '')
+                  } : undefined}
                 >
                   {(isOverlayMode || isCompactViewport) && stackedLatexControlsVisible && canPersistLatex && (
                     <div className="absolute left-2 right-2 top-2 z-10 pointer-events-none">
@@ -4156,10 +4216,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             await new Promise<void>(resolve => setTimeout(resolve, 250))
                           }
                         }
+                        // If still empty (e.g., everything scratched away), do not commit.
                         if (!step) return
 
-                        setAdminSolutionSteps(prev => [...prev, step])
+                        const snapshot = captureFullSnapshot()
+                        const symbols = snapshot?.symbols ?? null
+                        setAdminSteps(prev => {
+                          const next = [...prev]
+                          if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
+                            next[adminEditIndex] = { latex: step, symbols }
+                          } else {
+                            next.push({ latex: step, symbols })
+                          }
+                          return next
+                        })
                         setAdminDraftLatex('')
+                        setAdminEditIndex(null)
                         setLatexOutput('')
 
                         // Clear handwriting for next step without broadcasting a global clear.

@@ -3719,6 +3719,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
   const [horizontalScrollSpeed, setHorizontalScrollSpeed] = useState(1)
   const horizontalScrollSpeedRef = useRef(1)
+  const [horizontalScrollbarActive, setHorizontalScrollbarActive] = useState(false)
+  const [speedSliderActive, setSpeedSliderActive] = useState(false)
   useEffect(() => {
     horizontalScrollSpeedRef.current = horizontalScrollSpeed
   }, [horizontalScrollSpeed])
@@ -3965,6 +3967,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     horizontalPanDragRef.current.startScrollLeft = viewport.scrollLeft
     horizontalPanDragRef.current.trackWidth = Math.max(1, rect.width)
     horizontalPanDragRef.current.maxScroll = maxScroll
+    setHorizontalScrollbarActive(true)
     try {
       track.setPointerCapture(event.pointerId)
     } catch {}
@@ -3978,6 +3981,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       track?.releasePointerCapture(event.pointerId)
     } catch {}
     horizontalPanDragRef.current.pointerId = null
+    setHorizontalScrollbarActive(false)
   }, [])
 
   const updateHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
@@ -3999,6 +4003,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!track) return
     speedDragRef.current.active = true
     speedDragRef.current.pointerId = event.pointerId
+    setSpeedSliderActive(true)
     try {
       track.setPointerCapture(event.pointerId)
     } catch {}
@@ -4012,6 +4017,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       track?.releasePointerCapture(event.pointerId)
     } catch {}
     speedDragRef.current.pointerId = null
+    setSpeedSliderActive(false)
   }, [])
 
   const updateSpeedFromPointer = useCallback((clientY: number) => {
@@ -4502,7 +4508,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className="flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
+              className="flex items-center justify-center px-4 py-1 bg-white cursor-row-resize select-none"
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
@@ -4527,10 +4533,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             >
               <div
                 ref={horizontalPanTrackRef}
-                className="w-full h-1.5 bg-slate-200 rounded-full relative"
+                className={`w-full bg-slate-200 rounded-full relative transition-all duration-150 ${horizontalScrollbarActive ? 'h-2' : 'h-1'}`}
                 onPointerMove={updateHorizontalScrollbarDrag}
                 onPointerUp={endHorizontalScrollbarDrag}
                 onPointerCancel={endHorizontalScrollbarDrag}
+                onPointerDown={event => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setHorizontalScrollbarActive(true)
+                  const track = horizontalPanTrackRef.current
+                  const viewport = studentViewportRef.current
+                  if (!track || !viewport) return
+                  const rect = track.getBoundingClientRect()
+                  const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+                  const ratio = rect.width > 0 ? x / rect.width : 0
+                  viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+                }}
               >
                 <div
                   className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
@@ -4821,16 +4839,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     Preparing collaborative canvas…
                   </div>
                 )}
-                {status === 'error' && fatalError && (
-                  <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 bg-white/80 text-center px-4">
-                    {fatalError}
-                  </div>
-                )}
-                {transientError && status === 'ready' && (
-                  <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
-                    {transientError}
-                  </div>
-                )}
                 {status === 'ready' && (
                   <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
                     Ready
@@ -4899,7 +4907,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           <div className="fixed right-2 top-1/2 -translate-y-1/2 z-[500] select-none">
             <div
               ref={speedTrackRef}
-              className="w-3 h-48 bg-slate-200 rounded-full relative"
+              className={`h-48 bg-slate-200 rounded-full relative transition-all duration-150 ${speedSliderActive ? 'w-3' : 'w-1.5'}`}
               onPointerMove={updateSpeedDrag}
               onPointerUp={endSpeedDrag}
               onPointerCancel={endSpeedDrag}
@@ -4918,8 +4926,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div
                 className="absolute left-0 right-0 bg-slate-400 rounded-full"
                 style={{
-                  height: '24px',
-                  bottom: `calc(${speedPct}% - 12px)`,
+                  height: speedSliderActive ? '24px' : '14px',
+                  bottom: speedSliderActive ? `calc(${speedPct}% - 12px)` : `calc(${speedPct}% - 7px)`,
                   cursor: 'grab',
                 }}
                 onPointerDown={event => {

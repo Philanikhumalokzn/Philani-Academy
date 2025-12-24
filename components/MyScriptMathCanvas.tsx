@@ -3715,11 +3715,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null }>(
     { active: false, pointerId: null }
   )
-  const strokeTrackRef = useRef<{ active: boolean; lastX: number }>(
-    { active: false, lastX: 0 }
+  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number }>(
+    { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0 }
   )
-  const autoPanPendingDxRef = useRef(0)
-  const autoPanRafRef = useRef<number | null>(null)
+  const autoPanAnimRef = useRef<number | null>(null)
   useEffect(() => {
     if (!useStackedStudentLayout) return
     if (!isCompactViewport) return
@@ -3773,6 +3772,46 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [inkSurfaceWidthFactor, isCompactViewport, studentViewScale, useStackedStudentLayout])
 
+  const smoothScrollViewportBy = useCallback((delta: number) => {
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (max <= 0) return
+
+    const startLeft = viewport.scrollLeft
+    const targetLeft = Math.max(0, Math.min(startLeft + delta, max))
+    const total = targetLeft - startLeft
+    if (Math.abs(total) < 1) return
+
+    if (typeof window === 'undefined') {
+      viewport.scrollLeft = targetLeft
+      return
+    }
+
+    if (autoPanAnimRef.current) {
+      try {
+        window.cancelAnimationFrame(autoPanAnimRef.current)
+      } catch {}
+      autoPanAnimRef.current = null
+    }
+
+    const durationMs = 220
+    const startTs = window.performance?.now?.() ?? Date.now()
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+
+    const step = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - startTs) / durationMs))
+      viewport.scrollLeft = startLeft + total * ease(t)
+      if (t < 1) {
+        autoPanAnimRef.current = window.requestAnimationFrame(step)
+      } else {
+        autoPanAnimRef.current = null
+      }
+    }
+
+    autoPanAnimRef.current = window.requestAnimationFrame(step)
+  }, [])
+
   useEffect(() => {
     if (!useStackedStudentLayout) return
     if (!isCompactViewport) return
@@ -3782,53 +3821,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const onDown = (event: PointerEvent) => {
       strokeTrackRef.current.active = true
+      strokeTrackRef.current.startX = event.clientX
       strokeTrackRef.current.lastX = event.clientX
+      strokeTrackRef.current.minX = event.clientX
+      strokeTrackRef.current.maxX = event.clientX
     }
     const onMove = (event: PointerEvent) => {
       if (!strokeTrackRef.current.active) return
-      const viewport = studentViewportRef.current
-      if (!viewport) {
-        strokeTrackRef.current.lastX = event.clientX
-        return
-      }
-      const rect = viewport.getBoundingClientRect()
-      const edgeRight = rect.left + rect.width * 0.6
-      const edgeLeft = rect.left + rect.width * 0.4
-
-      const prevX = strokeTrackRef.current.lastX
       const nextX = event.clientX
-      const dx = nextX - prevX
       strokeTrackRef.current.lastX = nextX
-
-      // Subtle continuous auto-pan: when writing near an edge and moving further outward,
-      // scroll by the same horizontal delta so the extra width is "repaid" seamlessly.
-      if (dx > 0 && nextX >= edgeRight) {
-        autoPanPendingDxRef.current += dx
-      } else if (dx < 0 && nextX <= edgeLeft) {
-        autoPanPendingDxRef.current += dx
-      } else {
-        return
-      }
-
-      if (typeof window === 'undefined') {
-        viewport.scrollLeft += autoPanPendingDxRef.current
-        autoPanPendingDxRef.current = 0
-        return
-      }
-
-      if (autoPanRafRef.current) return
-      autoPanRafRef.current = window.requestAnimationFrame(() => {
-        autoPanRafRef.current = null
-        const pending = autoPanPendingDxRef.current
-        autoPanPendingDxRef.current = 0
-        if (!pending) return
-        viewport.scrollLeft += pending
-      })
+      strokeTrackRef.current.minX = Math.min(strokeTrackRef.current.minX, nextX)
+      strokeTrackRef.current.maxX = Math.max(strokeTrackRef.current.maxX, nextX)
     }
     const onUpLike = () => {
       if (!strokeTrackRef.current.active) return
       strokeTrackRef.current.active = false
-      autoPanPendingDxRef.current = 0
+
+      // Only auto-pan between strokes (after pen lifts), to avoid disturbing handwriting.
+      if (horizontalPanDragRef.current.active) return
+      const viewport = studentViewportRef.current
+      if (!viewport) return
+      const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      if (maxScroll <= 0) return
+
+      const rect = viewport.getBoundingClientRect()
+      const edgeRight = rect.left + rect.width * 0.6
+      const edgeLeft = rect.left + rect.width * 0.4
+
+      const startX = strokeTrackRef.current.startX
+      const endX = strokeTrackRef.current.lastX
+      const direction = endX - startX
+      if (Math.abs(direction) < 6) return
+
+      const gain = 0.9
+
+      if (direction > 0) {
+        const excess = strokeTrackRef.current.maxX - edgeRight
+        if (excess > 0) {
+          smoothScrollViewportBy(excess * gain)
+        }
+      } else {
+        const excess = strokeTrackRef.current.minX - edgeLeft
+        if (excess < 0) {
+          smoothScrollViewportBy(excess * gain)
+        }
+      }
     }
 
     host.addEventListener('pointerdown', onDown, { passive: true })
@@ -3841,14 +3878,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       host.removeEventListener('pointermove', onMove as any)
       host.removeEventListener('pointerup', onUpLike as any)
       host.removeEventListener('pointercancel', onUpLike as any)
-      if (autoPanRafRef.current && typeof window !== 'undefined') {
+      if (autoPanAnimRef.current && typeof window !== 'undefined') {
         try {
-          window.cancelAnimationFrame(autoPanRafRef.current)
+          window.cancelAnimationFrame(autoPanAnimRef.current)
         } catch {}
-        autoPanRafRef.current = null
+        autoPanAnimRef.current = null
       }
     }
-  }, [hasWriteAccess, isCompactViewport, useStackedStudentLayout])
+  }, [hasWriteAccess, isCompactViewport, smoothScrollViewportBy, useStackedStudentLayout])
 
   const showHorizontalScrollbar = useStackedStudentLayout && isCompactViewport
   const horizontalScrollbarIsFixed = Boolean(showHorizontalScrollbar && isOverlayMode)

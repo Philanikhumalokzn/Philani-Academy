@@ -292,7 +292,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
 
-  // Tap-to-reveal controls is disabled; controls live in the separator strip.
+  // Stacked layout controls live in the separator row (no tap-to-reveal).
+
+  const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearOverlayChromeAutoHide = useCallback(() => {
+    if (overlayChromeHideTimeoutRef.current) {
+      clearTimeout(overlayChromeHideTimeoutRef.current)
+      overlayChromeHideTimeoutRef.current = null
+    }
+  }, [])
+
+  const revealOverlayChrome = useCallback(() => {
+    if (!onOverlayChromeVisibilityChange) return
+    if (!isOverlayMode || !isCompactViewport) return
+    onOverlayChromeVisibilityChange(true)
+    clearOverlayChromeAutoHide()
+    overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      onOverlayChromeVisibilityChange(false)
+    }, 1800)
+  }, [clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+
+  useEffect(() => {
+    return () => {
+      clearOverlayChromeAutoHide()
+    }
+  }, [clearOverlayChromeAutoHide])
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -532,7 +556,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     latexProjectionOptionsRef.current = latexProjectionOptions
   }, [latexProjectionOptions])
 
-
+  // (Tap-to-reveal controls removed.)
 
   useEffect(() => {
     studentSplitRatioRef.current = studentSplitRatio
@@ -4001,6 +4025,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <div
                   className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
                   ref={isAdmin ? adminTopPanelRef : undefined}
+                  onPointerDown={() => {
+                    // On mobile overlay, tapping the top panel should only reveal the close chrome.
+                    revealOverlayChrome()
+                  }}
                   onClick={isAdmin ? async (e) => {
                     if (!useAdminStepComposer) return
                     if (!adminSteps.length) return

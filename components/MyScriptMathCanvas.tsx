@@ -285,6 +285,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
+  const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
@@ -548,6 +549,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     setHasMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const compute = () => {
+      const vv = (window as any).visualViewport as VisualViewport | undefined
+      if (!vv) {
+        setViewportBottomOffsetPx(0)
+        return
+      }
+      const bottomGap = window.innerHeight - (vv.height + vv.offsetTop)
+      setViewportBottomOffsetPx(Math.max(0, Math.round(bottomGap)))
+    }
+
+    compute()
+    window.addEventListener('resize', compute)
+    const vv = (window as any).visualViewport as VisualViewport | undefined
+    vv?.addEventListener('resize', compute)
+    vv?.addEventListener('scroll', compute)
+    return () => {
+      window.removeEventListener('resize', compute)
+      vv?.removeEventListener('resize', compute)
+      vv?.removeEventListener('scroll', compute)
+    }
   }, [])
 
   useEffect(() => {
@@ -3984,8 +4010,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const horizontalScrollbar = (
     <div
       ref={horizontalPanTrackRef}
-      className="fixed left-0 right-0 bottom-0 z-[500]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' } as any}
+      className="fixed left-0 right-0 z-[500]"
+      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px)` } as any}
       onPointerMove={updateHorizontalScrollbarDrag}
       onPointerUp={endHorizontalScrollbarDrag}
       onPointerCancel={endHorizontalScrollbarDrag}

@@ -3719,6 +3719,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0 }
   )
   const autoPanAnimRef = useRef<number | null>(null)
+  const leftPanPendingDxRef = useRef(0)
+  const leftPanRafRef = useRef<number | null>(null)
   useEffect(() => {
     if (!useStackedStudentLayout) return
     if (!isCompactViewport) return
@@ -3828,14 +3830,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     const onMove = (event: PointerEvent) => {
       if (!strokeTrackRef.current.active) return
+      const viewport = studentViewportRef.current
       const nextX = event.clientX
+      const prevX = strokeTrackRef.current.lastX
+      const dx = nextX - prevX
       strokeTrackRef.current.lastX = nextX
       strokeTrackRef.current.minX = Math.min(strokeTrackRef.current.minX, nextX)
       strokeTrackRef.current.maxX = Math.max(strokeTrackRef.current.maxX, nextX)
+
+      // Special-case: for explicitly leftward strokes (e.g., drawing a long fraction bar from right to left),
+      // pan the viewport left continuously by exactly the stroke movement amount.
+      // This intentionally happens during the stroke to keep the writing experience fluid.
+      if (!viewport) return
+      if (dx >= 0) return
+
+      const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      if (maxScroll <= 0) return
+
+      leftPanPendingDxRef.current += dx
+      if (typeof window === 'undefined') {
+        viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + leftPanPendingDxRef.current, maxScroll))
+        leftPanPendingDxRef.current = 0
+        return
+      }
+
+      if (leftPanRafRef.current) return
+      leftPanRafRef.current = window.requestAnimationFrame(() => {
+        leftPanRafRef.current = null
+        const pending = leftPanPendingDxRef.current
+        leftPanPendingDxRef.current = 0
+        if (!pending) return
+        viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
+      })
     }
     const onUpLike = () => {
       if (!strokeTrackRef.current.active) return
       strokeTrackRef.current.active = false
+
+      leftPanPendingDxRef.current = 0
 
       // Only auto-pan between strokes (after pen lifts), to avoid disturbing handwriting.
       if (horizontalPanDragRef.current.active) return
@@ -3850,6 +3882,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // Use the stroke's maxX so shapes that "finish" left but extend right (like a 3) still pan.
       const midX = rect.left + rect.width * 0.5
       const gain = 0.9
+
+      // If the user intentionally drew a leftward stroke (classic right-to-left fraction bar),
+      // do not apply the midpoint correction that would tend to pan right afterwards.
+      const direction = strokeTrackRef.current.lastX - strokeTrackRef.current.startX
+      if (direction < -6) {
+        return
+      }
 
       const excessRight = strokeTrackRef.current.maxX - midX
       if (excessRight > 0) {
@@ -3872,6 +3911,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           window.cancelAnimationFrame(autoPanAnimRef.current)
         } catch {}
         autoPanAnimRef.current = null
+      }
+      if (leftPanRafRef.current && typeof window !== 'undefined') {
+        try {
+          window.cancelAnimationFrame(leftPanRafRef.current)
+        } catch {}
+        leftPanRafRef.current = null
       }
     }
   }, [hasWriteAccess, isCompactViewport, smoothScrollViewportBy, useStackedStudentLayout])

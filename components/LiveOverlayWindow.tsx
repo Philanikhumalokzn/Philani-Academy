@@ -248,9 +248,14 @@ export default function LiveOverlayWindow({
       <div
         className="live-window__body"
         style={{
-          height: minimized ? 0 : size.height - 56,
+          height: minimized
+            ? 0
+            : className?.includes('live-window--canvas')
+            ? size.height
+            : size.height - 56,
           visibility: minimized ? 'hidden' : 'visible',
-          pointerEvents: minimized ? 'none' : 'auto'
+          pointerEvents: minimized ? 'none' : 'auto',
+          padding: className?.includes('live-window--canvas') ? 0 : undefined,
         }}
       >
         {children}

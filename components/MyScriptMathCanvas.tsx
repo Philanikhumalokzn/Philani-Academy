@@ -160,6 +160,12 @@ type LatexDisplayState = {
   options: LatexDisplayOptions
 }
 
+type StackedNotesState = {
+  latex: string
+  options: LatexDisplayOptions
+  ts: number
+}
+
 type CanvasOrientation = 'portrait' | 'landscape'
 
 type PresenceClient = {
@@ -299,6 +305,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
+  const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
 
   type AdminStep = { latex: string; symbols: any[] | null }
   const [adminSteps, setAdminSteps] = useState<AdminStep[]>([])
@@ -1927,6 +1934,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [isAdmin, userDisplayName]
   )
 
+  const stackedNotesBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastStackedNotesBroadcastRef = useRef<{ latex: string; ts: number }>({ latex: '', ts: 0 })
+  const publishStackedNotesPreview = useCallback(
+    (latex: string, options: LatexDisplayOptions) => {
+      if (!isAdmin) return
+      const channel = channelRef.current
+      if (!channel) return
+
+      const trimmed = (latex || '').trim()
+      const now = Date.now()
+      if (trimmed === lastStackedNotesBroadcastRef.current.latex && now - lastStackedNotesBroadcastRef.current.ts < 250) {
+        return
+      }
+
+      if (stackedNotesBroadcastTimeoutRef.current) {
+        clearTimeout(stackedNotesBroadcastTimeoutRef.current)
+        stackedNotesBroadcastTimeoutRef.current = null
+      }
+
+      stackedNotesBroadcastTimeoutRef.current = setTimeout(() => {
+        stackedNotesBroadcastTimeoutRef.current = null
+        const ts = Date.now()
+        lastStackedNotesBroadcastRef.current = { latex: trimmed, ts }
+        channel
+          .publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'stacked-notes',
+            latex: trimmed,
+            options,
+            ts,
+          })
+          .catch(err => console.warn('Failed to broadcast stacked notes preview', err))
+      }, 120)
+    },
+    [isAdmin, userDisplayName]
+  )
+
   useEffect(() => {
     if (!isAdmin) return
     if (!latexDisplayStateRef.current.enabled) return
@@ -2590,7 +2635,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes'
             targetClientId?: string
             snapshot?: SnapshotPayload | null
             enabled?: boolean
@@ -2643,6 +2688,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   .catch(err => console.warn('Failed to request sync after exiting LaTeX display mode', err))
               }
             }
+            return
+          }
+          if (data?.action === 'stacked-notes') {
+            const latex = typeof data.latex === 'string' ? data.latex : ''
+            const options = sanitizeLatexOptions(data.options)
+            const ts = data?.ts ?? Date.now()
+            setStackedNotesState(prev => {
+              if (ts < prev.ts) return prev
+              return { latex, options, ts }
+            })
             return
           }
           if (data?.action === 'force-resync') {
@@ -3509,7 +3564,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     ? { ...latexProjectionOptions, alignAtEquals: true }
     : isAdmin
       ? latexProjectionOptions
-      : latexDisplayState.options
+      : useStackedStudentLayout
+        ? stackedNotesState.options
+        : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useAdminStepComposer) {
       const lines = adminSteps.map(s => s.latex)
@@ -3525,8 +3582,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (isAdmin) {
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
+    if (useStackedStudentLayout) {
+      return (stackedNotesState.latex || '').trim()
+    }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexDisplayState.latex, latexOutput, useAdminStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexDisplayState.latex, latexOutput, stackedNotesState.latex, useAdminStepComposer, useStackedStudentLayout])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!useAdminStepComposer) return
+    publishStackedNotesPreview(latexRenderSource, latexRenderOptions)
+  }, [isAdmin, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
     if (!latexRenderSource) return ''
@@ -3916,7 +3982,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   {isAdmin ? (
                     <button
                       type="button"
-                      className="px-2 py-1 border rounded"
+                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
                       onClick={() => saveLatexSnapshot({ shared: true })}
                       disabled={isSavingLatex}
                     >
@@ -3925,7 +3991,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   ) : (
                     <button
                       type="button"
-                      className="px-2 py-1 border rounded"
+                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
                       onClick={() => saveLatexSnapshot({ shared: false })}
                       disabled={isSavingLatex}
                     >
@@ -3934,7 +4000,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   )}
                   <button
                     type="button"
-                    className="px-2 py-1 border rounded"
+                    className="px-2 py-1 text-slate-700 disabled:opacity-50"
                     onClick={() => handleLoadSavedLatex('shared')}
                     disabled={!latestSharedLatex}
                   >
@@ -3942,7 +4008,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </button>
                   <button
                     type="button"
-                    className="px-2 py-1 border rounded"
+                    className="px-2 py-1 text-slate-700 disabled:opacity-50"
                     onClick={() => handleLoadSavedLatex('mine')}
                     disabled={!latestPersonalLatex}
                   >
@@ -3950,7 +4016,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </button>
                   <button
                     type="button"
-                    className="px-2 py-1 border rounded"
+                    className="px-2 py-1 text-slate-700"
                     onClick={fetchLatexSaves}
                   >
                     Refresh
@@ -4017,11 +4083,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 >
                   {(isOverlayMode || isCompactViewport) && stackedLatexControlsVisible && canPersistLatex && (
                     <div className="absolute left-2 right-2 top-2 z-10 pointer-events-none">
-                      <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm px-2 py-2 text-[11px] text-slate-700">
+                      <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 text-[11px] text-slate-700">
                         {isAdmin ? (
                           <button
                             type="button"
-                            className="px-2 py-1 border rounded"
+                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
                             onClick={() => {
                               revealStackedLatexControls()
                               saveLatexSnapshot({ shared: true })
@@ -4033,7 +4099,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         ) : (
                           <button
                             type="button"
-                            className="px-2 py-1 border rounded"
+                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
                             onClick={() => {
                               revealStackedLatexControls()
                               saveLatexSnapshot({ shared: false })
@@ -4045,7 +4111,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         )}
                         <button
                           type="button"
-                          className="px-2 py-1 border rounded"
+                          className="px-2 py-1 text-slate-700 disabled:opacity-50"
                           onClick={() => {
                             revealStackedLatexControls()
                             handleLoadSavedLatex('shared')
@@ -4056,7 +4122,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         </button>
                         <button
                           type="button"
-                          className="px-2 py-1 border rounded"
+                          className="px-2 py-1 text-slate-700 disabled:opacity-50"
                           onClick={() => {
                             revealStackedLatexControls()
                             handleLoadSavedLatex('mine')
@@ -4067,7 +4133,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         </button>
                         <button
                           type="button"
-                          className="px-2 py-1 border rounded"
+                          className="px-2 py-1 text-slate-700"
                           onClick={() => {
                             revealStackedLatexControls()
                             fetchLatexSaves()
@@ -4172,11 +4238,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 )}
 
                 {isAdmin && (
-                  <button
-                    type="button"
-                    className="px-2 py-1 border rounded"
-                    title="Send step"
-                    onClick={async () => {
+                  <div className="flex items-center gap-2">
+                    {isOverlayMode && (
+                      <button
+                        type="button"
+                        className="px-2 py-1 border rounded"
+                        title="Canvas controls"
+                        onClick={() => {
+                          openOverlayControls()
+                        }}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
+                      >
+                        <span className="sr-only">Canvas controls</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="currentColor"
+                          className="text-slate-700"
+                          aria-hidden="true"
+                        >
+                          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.06 7.06 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.65.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.25.1.52.01.65-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" />
+                        </svg>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="px-2 py-1 border rounded"
+                      title="Send step"
+                      onClick={async () => {
                       const editor = editorInstanceRef.current
                       if (!editor) return
                       if (lockedOutRef.current) return
@@ -4244,22 +4336,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       } finally {
                         setAdminSendingStep(false)
                       }
-                    }}
-                    disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
-                  >
-                    <span className="sr-only">Send</span>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      width="18"
-                      height="18"
-                      fill="currentColor"
-                      className="text-slate-700"
-                      aria-hidden="true"
+                      }}
+                      disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
                     >
-                      <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                    </svg>
-                  </button>
+                      <span className="sr-only">Send</span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="18"
+                        height="18"
+                        fill="currentColor"
+                        className="text-slate-700"
+                        aria-hidden="true"
+                      >
+                        <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                      </svg>
+                    </button>
+                  </div>
                 )}
               </div>
               <div

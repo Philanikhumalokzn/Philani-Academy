@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
 
@@ -24,19 +24,6 @@ type OverlayControlsHandle = {
 
 export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
-  const [chromeVisible, setChromeVisible] = useState(false)
-
-  const triggerOverlayControls = () => {
-    const handle = controlsHandleRef.current
-    if (!handle) return
-    if (handle.open) {
-      handle.open()
-      return
-    }
-    if (handle.toggle) {
-      handle.toggle()
-    }
-  }
 
   useEffect(() => {
     if (!isVisible || typeof window === 'undefined') return
@@ -53,24 +40,8 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           <BrandLogo height={32} label className="text-white" labelClassName="text-white/60 tracking-[0.3em] uppercase text-[10px]" />
           <span className="live-canvas-window__badge">{gradeLabel || 'Shared board'}</span>
         </div>
-        <button
-          type="button"
-          className="live-canvas-window__controls live-canvas-window__controls--icon"
-          onClick={triggerOverlayControls}
-          aria-label="Open canvas controls"
-        >
-          <span aria-hidden="true">⚙</span>
-        </button>
       </div>
       <div className="live-canvas-window__body">
-        <button
-          type="button"
-          className={`live-canvas-window__floating-gear ${chromeVisible ? 'is-visible' : ''}`}
-          onClick={triggerOverlayControls}
-          aria-label="Open canvas controls"
-        >
-          <span aria-hidden="true">⚙</span>
-        </button>
         <MyScriptMathCanvas
           uiMode="overlay"
           gradeLabel={gradeLabel || undefined}
@@ -82,7 +53,6 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           defaultOrientation={defaultOrientation}
           overlayControlsHandleRef={controlsHandleRef}
           onOverlayChromeVisibilityChange={visible => {
-            setChromeVisible(visible)
             onOverlayChromeVisibilityChange?.(visible)
           }}
         />

@@ -15,18 +15,6 @@ type CanvasOverlayProps = {
 
 export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
   const controlsHandleRef = useRef<{ open: () => void; close: () => void; toggle: () => void } | null>(null)
-
-  const triggerOverlayControls = () => {
-    const handle = controlsHandleRef.current
-    if (!handle) return
-    if (handle.open) {
-      handle.open()
-      return
-    }
-    if (handle.toggle) {
-      handle.toggle()
-    }
-  }
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return
     const handleKeydown = (event: KeyboardEvent) => {
@@ -61,28 +49,12 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             <div className="canvas-overlay-shell__badge">{gradeLabel || 'Shared board'}</div>
           </div>
           <div className="canvas-overlay-shell__actions">
-            <button
-              type="button"
-              className="canvas-overlay-shell__controls canvas-overlay-shell__controls--icon"
-              onClick={triggerOverlayControls}
-              aria-label="Open canvas controls"
-            >
-              <span aria-hidden="true">⚙</span>
-            </button>
             <button type="button" className="canvas-overlay-shell__close" onClick={onClose}>
               Close
             </button>
           </div>
         </header>
         <div className="canvas-overlay-shell__canvas">
-          <button
-            type="button"
-            className="canvas-overlay-shell__floating-gear"
-            onClick={triggerOverlayControls}
-            aria-label="Open canvas controls"
-          >
-            <span aria-hidden="true">⚙</span>
-          </button>
           <button
             type="button"
             className="canvas-overlay-shell__mobile-close"

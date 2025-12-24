@@ -284,6 +284,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [hasMounted, setHasMounted] = useState(false)
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
@@ -543,6 +544,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // eslint-disable-next-line deprecation/deprecation
       return () => mql.removeListener(apply)
     }
+  }, [])
+
+  useEffect(() => {
+    setHasMounted(true)
   }, [])
 
   useEffect(() => {
@@ -4857,8 +4862,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
 
               {/* Always-visible horizontal scrollbar (mobile stacked). In overlay, portal it to the document body so it can't be clipped by transforms/overflow. */}
-              {horizontalScrollbarIsFixed && typeof document !== 'undefined'
-                ? horizontalScrollbar
+              {horizontalScrollbarIsFixed
+                ? hasMounted && horizontalScrollbar
                   ? createPortal(horizontalScrollbar, document.body)
                   : null
                 : horizontalScrollbar}

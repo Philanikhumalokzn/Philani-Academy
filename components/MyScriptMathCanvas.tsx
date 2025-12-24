@@ -3526,12 +3526,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (lines.length) {
         const processed = lines.map(line => {
           const equalsIndex = line.indexOf('=')
-          if (equalsIndex === -1) return line
+          if (equalsIndex === -1) {
+            // Keep line breaks consistent even without an equals sign.
+            // Prefix with an alignment marker so KaTeX treats this as its own row.
+            return /(^|\s)&/.test(line) ? line : `& ${line}`
+          }
           const left = line.slice(0, equalsIndex).trim()
           const right = line.slice(equalsIndex + 1).trim()
           return `${left} &= ${right}`
         })
-        latexString = `\\begin{aligned}${processed.join(' \\ ')}\\end{aligned}`
+        latexString = `\\begin{aligned}${processed.join(' \\\\ ')}\\end{aligned}`
       }
     }
     try {

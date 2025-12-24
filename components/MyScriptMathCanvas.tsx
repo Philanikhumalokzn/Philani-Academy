@@ -3707,6 +3707,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return 6
   }, [isCompactViewport, useStackedStudentLayout])
 
+  const [horizontalPanMax, setHorizontalPanMax] = useState(0)
+  const [horizontalPanValue, setHorizontalPanValue] = useState(0)
+  const horizontalPanRafRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    if (!isCompactViewport) return
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+
+    const update = () => {
+      const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      setHorizontalPanMax(max)
+      const clamped = Math.max(0, Math.min(viewport.scrollLeft, max))
+      setHorizontalPanValue(clamped)
+      if (viewport.scrollLeft !== clamped) {
+        viewport.scrollLeft = clamped
+      }
+    }
+
+    update()
+
+    const onScroll = () => {
+      if (typeof window === 'undefined') return
+      if (horizontalPanRafRef.current) return
+      horizontalPanRafRef.current = window.requestAnimationFrame(() => {
+        horizontalPanRafRef.current = null
+        update()
+      })
+    }
+
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', update)
+
+    let ro: ResizeObserver | null = null
+    try {
+      ro = new ResizeObserver(() => update())
+      ro.observe(viewport)
+    } catch {}
+
+    return () => {
+      viewport.removeEventListener('scroll', onScroll as any)
+      window.removeEventListener('resize', update)
+      try {
+        ro?.disconnect()
+      } catch {}
+      if (horizontalPanRafRef.current && typeof window !== 'undefined') {
+        try {
+          window.cancelAnimationFrame(horizontalPanRafRef.current)
+        } catch {}
+        horizontalPanRafRef.current = null
+      }
+    }
+  }, [inkSurfaceWidthFactor, isCompactViewport, studentViewScale, useStackedStudentLayout])
+
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
   // Persist LaTeX strictly against the scheduled session id.
@@ -4373,6 +4427,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </div>
                 ) : null}
               </div>
+
+              {useStackedStudentLayout && isCompactViewport && horizontalPanMax > 0 && (
+                <div className="mb-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={horizontalPanMax}
+                    step={1}
+                    value={horizontalPanValue}
+                    aria-label="Pan horizontally"
+                    className="w-full"
+                    onChange={event => {
+                      const next = Number((event.target as HTMLInputElement).value)
+                      setHorizontalPanValue(next)
+                      const viewport = studentViewportRef.current
+                      if (viewport) {
+                        viewport.scrollLeft = next
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
               <div
                 ref={studentViewportRef}
                 className="border rounded bg-white relative h-full overflow-auto"

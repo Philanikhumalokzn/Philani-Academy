@@ -300,6 +300,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [adminSolutionSteps, setAdminSolutionSteps] = useState<string[]>([])
+  const [adminDraftLatex, setAdminDraftLatex] = useState('')
+  const [adminSendingStep, setAdminSendingStep] = useState(false)
   const previewExportInFlightRef = useRef(false)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
@@ -2307,7 +2309,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               exportLatexFromEditor()
                 .then(latex => {
                   if (cancelled) return
-                  setLatexOutput(typeof latex === 'string' ? latex : '')
+                  const latexValue = typeof latex === 'string' ? latex : ''
+                  // Keep last good preview; don't wipe it if export returns empty.
+                  if (latexValue && latexValue.trim().length > 0) {
+                    setLatexOutput(latexValue)
+                    const normalized = normalizeStepLatex(latexValue)
+                    if (normalized) setAdminDraftLatex(normalized)
+                  }
                 })
                 .finally(() => {
                   previewExportInFlightRef.current = false
@@ -2407,6 +2415,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     if (!useAdminStepComposer) return
     setAdminSolutionSteps([])
+    setAdminDraftLatex('')
+    setAdminSendingStep(false)
   }, [boardId, useAdminStepComposer])
 
   useEffect(() => {
@@ -3487,15 +3497,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useAdminStepComposer) {
-      const current = normalizeStepLatex(latexOutput)
-      const combined = [...adminSolutionSteps, ...(current ? [current] : [])].filter(Boolean).join(' \\ ')
+      const combined = [...adminSolutionSteps, ...(adminDraftLatex ? [adminDraftLatex] : [])]
+        .filter(Boolean)
+        .join(' \\\\ ')
       return combined.trim()
     }
     if (isAdmin) {
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminSolutionSteps, isAdmin, latexDisplayState.latex, latexOutput, normalizeStepLatex, useAdminStepComposer])
+  }, [adminDraftLatex, adminSolutionSteps, isAdmin, latexDisplayState.latex, latexOutput, useAdminStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
     if (!latexRenderSource) return ''
@@ -4095,30 +4106,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       const editor = editorInstanceRef.current
                       if (!editor) return
                       if (lockedOutRef.current) return
+                      if (adminSendingStep) return
+                      setAdminSendingStep(true)
 
-                      // Ensure we have the latest preview before committing.
-                      let step = normalizeStepLatex(latexOutput)
-                      if (!step) {
-                        const exported = await exportLatexFromEditor()
-                        step = normalizeStepLatex(exported)
-                        if (exported && !latexOutput) {
-                          setLatexOutput(exported)
-                        }
-                      }
-                      if (!step) return
-
-                      setAdminSolutionSteps(prev => [...prev, step])
-
-                      // Clear handwriting for next step without broadcasting a global clear.
-                      suppressBroadcastUntilTsRef.current = Date.now() + 1200
                       try {
-                        editor.clear?.()
-                      } catch {}
-                      setLatexOutput('')
-                      lastSymbolCountRef.current = 0
-                      lastBroadcastBaseCountRef.current = 0
+                        // Ensure we have the latest preview before committing.
+                        let step = adminDraftLatex
+                        if (!step) {
+                          // Retry a few times in case recognition is still catching up.
+                          for (let i = 0; i < 3 && !step; i += 1) {
+                            const exported = await exportLatexFromEditor()
+                            const normalized = normalizeStepLatex(exported)
+                            if (normalized) {
+                              step = normalized
+                              setLatexOutput(exported)
+                              setAdminDraftLatex(normalized)
+                              break
+                            }
+                            await new Promise<void>(resolve => setTimeout(resolve, 220))
+                          }
+                        }
+                        if (!step) return
+
+                        setAdminSolutionSteps(prev => [...prev, step])
+                        setAdminDraftLatex('')
+                        setLatexOutput('')
+
+                        // Clear handwriting for next step without broadcasting a global clear.
+                        suppressBroadcastUntilTsRef.current = Date.now() + 1200
+                        try {
+                          editor.clear?.()
+                        } catch {}
+                        lastSymbolCountRef.current = 0
+                        lastBroadcastBaseCountRef.current = 0
+                      } finally {
+                        setAdminSendingStep(false)
+                      }
                     }}
-                    disabled={status !== 'ready' || Boolean(fatalError)}
+                    disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
                   >
                     <span className="sr-only">Send</span>
                     <svg

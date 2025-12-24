@@ -3711,14 +3711,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
   const horizontalPanRafRef = useRef<number | null>(null)
-  const horizontalPanSmoothRafRef = useRef<number | null>(null)
   const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null }>(
     { active: false, pointerId: null }
   )
-  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number }>(
-    { active: false, startX: 0, lastX: 0 }
+  const strokeTrackRef = useRef<{ active: boolean; lastX: number }>(
+    { active: false, lastX: 0 }
   )
+  const autoPanPendingDxRef = useRef(0)
+  const autoPanRafRef = useRef<number | null>(null)
   useEffect(() => {
     if (!useStackedStudentLayout) return
     if (!isCompactViewport) return
@@ -3772,45 +3773,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [inkSurfaceWidthFactor, isCompactViewport, studentViewScale, useStackedStudentLayout])
 
-  const smoothScrollViewportTo = useCallback((targetLeft: number) => {
-    const viewport = studentViewportRef.current
-    if (!viewport) return
-    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    const clampedTarget = Math.max(0, Math.min(targetLeft, max))
-
-    if (horizontalPanSmoothRafRef.current && typeof window !== 'undefined') {
-      try {
-        window.cancelAnimationFrame(horizontalPanSmoothRafRef.current)
-      } catch {}
-      horizontalPanSmoothRafRef.current = null
-    }
-
-    const start = viewport.scrollLeft
-    const delta = clampedTarget - start
-    if (Math.abs(delta) < 1) return
-    if (typeof window === 'undefined') {
-      viewport.scrollLeft = clampedTarget
-      return
-    }
-
-    const durationMs = 220
-    const startTs = window.performance?.now?.() ?? Date.now()
-    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
-
-    const step = (now: number) => {
-      const tRaw = (now - startTs) / durationMs
-      const t = Math.min(1, Math.max(0, tRaw))
-      viewport.scrollLeft = start + delta * easeOut(t)
-      if (t < 1) {
-        horizontalPanSmoothRafRef.current = window.requestAnimationFrame(step)
-      } else {
-        horizontalPanSmoothRafRef.current = null
-      }
-    }
-
-    horizontalPanSmoothRafRef.current = window.requestAnimationFrame(step)
-  }, [])
-
   useEffect(() => {
     if (!useStackedStudentLayout) return
     if (!isCompactViewport) return
@@ -3820,37 +3782,53 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const onDown = (event: PointerEvent) => {
       strokeTrackRef.current.active = true
-      strokeTrackRef.current.startX = event.clientX
       strokeTrackRef.current.lastX = event.clientX
     }
     const onMove = (event: PointerEvent) => {
       if (!strokeTrackRef.current.active) return
-      strokeTrackRef.current.lastX = event.clientX
+      const viewport = studentViewportRef.current
+      if (!viewport) {
+        strokeTrackRef.current.lastX = event.clientX
+        return
+      }
+      const rect = viewport.getBoundingClientRect()
+      const edgeRight = rect.left + rect.width * 0.6
+      const edgeLeft = rect.left + rect.width * 0.4
+
+      const prevX = strokeTrackRef.current.lastX
+      const nextX = event.clientX
+      const dx = nextX - prevX
+      strokeTrackRef.current.lastX = nextX
+
+      // Subtle continuous auto-pan: when writing near an edge and moving further outward,
+      // scroll by the same horizontal delta so the extra width is "repaid" seamlessly.
+      if (dx > 0 && nextX >= edgeRight) {
+        autoPanPendingDxRef.current += dx
+      } else if (dx < 0 && nextX <= edgeLeft) {
+        autoPanPendingDxRef.current += dx
+      } else {
+        return
+      }
+
+      if (typeof window === 'undefined') {
+        viewport.scrollLeft += autoPanPendingDxRef.current
+        autoPanPendingDxRef.current = 0
+        return
+      }
+
+      if (autoPanRafRef.current) return
+      autoPanRafRef.current = window.requestAnimationFrame(() => {
+        autoPanRafRef.current = null
+        const pending = autoPanPendingDxRef.current
+        autoPanPendingDxRef.current = 0
+        if (!pending) return
+        viewport.scrollLeft += pending
+      })
     }
     const onUpLike = () => {
       if (!strokeTrackRef.current.active) return
       strokeTrackRef.current.active = false
-      const viewport = studentViewportRef.current
-      if (!viewport) return
-      const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-      if (max <= 0) return
-
-      const rect = viewport.getBoundingClientRect()
-      const startX = strokeTrackRef.current.startX
-      const lastX = strokeTrackRef.current.lastX
-      const deltaX = lastX - startX
-      if (Math.abs(deltaX) < 8) return
-
-      const direction = deltaX > 0 ? 1 : -1
-      const edgeRight = rect.left + rect.width * 0.8
-      const edgeLeft = rect.left + rect.width * 0.2
-
-      if (direction > 0 && lastX < edgeRight) return
-      if (direction < 0 && lastX > edgeLeft) return
-
-      const scrollDelta = rect.width * 0.7 * direction
-      const target = viewport.scrollLeft + scrollDelta
-      smoothScrollViewportTo(target)
+      autoPanPendingDxRef.current = 0
     }
 
     host.addEventListener('pointerdown', onDown, { passive: true })
@@ -3863,8 +3841,53 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       host.removeEventListener('pointermove', onMove as any)
       host.removeEventListener('pointerup', onUpLike as any)
       host.removeEventListener('pointercancel', onUpLike as any)
+      if (autoPanRafRef.current && typeof window !== 'undefined') {
+        try {
+          window.cancelAnimationFrame(autoPanRafRef.current)
+        } catch {}
+        autoPanRafRef.current = null
+      }
     }
-  }, [hasWriteAccess, isCompactViewport, smoothScrollViewportTo, useStackedStudentLayout])
+  }, [hasWriteAccess, isCompactViewport, useStackedStudentLayout])
+
+  const showHorizontalScrollbar = useStackedStudentLayout && isCompactViewport
+  const horizontalScrollbarIsFixed = Boolean(showHorizontalScrollbar && isOverlayMode)
+  const horizontalScrollbarThumbPct = useMemo(() => Math.max(8, Math.round(horizontalPanThumbRatio * 100)), [horizontalPanThumbRatio])
+  const horizontalScrollbarLeftPct = useMemo(() => {
+    const usable = Math.max(0, 100 - horizontalScrollbarThumbPct)
+    return horizontalPanMax > 0 ? (horizontalPanValue / horizontalPanMax) * usable : 0
+  }, [horizontalPanMax, horizontalPanValue, horizontalScrollbarThumbPct])
+
+  const beginHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
+    const track = horizontalPanTrackRef.current
+    if (!track) return
+    horizontalPanDragRef.current.active = true
+    horizontalPanDragRef.current.pointerId = event.pointerId
+    try {
+      track.setPointerCapture(event.pointerId)
+    } catch {}
+  }, [])
+
+  const endHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
+    if (!horizontalPanDragRef.current.active) return
+    horizontalPanDragRef.current.active = false
+    const track = horizontalPanTrackRef.current
+    try {
+      track?.releasePointerCapture(event.pointerId)
+    } catch {}
+    horizontalPanDragRef.current.pointerId = null
+  }, [])
+
+  const updateHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
+    if (!horizontalPanDragRef.current.active) return
+    const track = horizontalPanTrackRef.current
+    const viewport = studentViewportRef.current
+    if (!track || !viewport) return
+    const rect = track.getBoundingClientRect()
+    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+    const ratio = rect.width > 0 ? x / rect.width : 0
+    viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+  }, [])
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -4367,14 +4390,83 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <div
                         className={`flex items-center gap-2 text-[11px] text-slate-600 ${simplified ? 'flex-nowrap' : 'flex-wrap'}`}
                       >
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-slate-700 disabled:opacity-50 whitespace-nowrap"
-                          onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
-                          disabled={isSavingLatex}
-                        >
-                          {isSavingLatex ? 'Saving…' : 'Save notes'}
-                        </button>
+                        {simplified ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              title="Save notes"
+                              onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
+                              disabled={isSavingLatex}
+                            >
+                              <span className="sr-only">Save notes</span>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="currentColor"
+                                className="text-slate-700"
+                                aria-hidden="true"
+                              >
+                                <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
+                                <path d="M7 12h10v8H7z" opacity="0.2" />
+                                <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
+                              </svg>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              title="Undo"
+                              onClick={() => runCanvasAction(handleUndo)}
+                              disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                            >
+                              <span className="sr-only">Undo</span>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="currentColor"
+                                className="text-slate-700"
+                                aria-hidden="true"
+                              >
+                                <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
+                              </svg>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              title="Redo"
+                              onClick={() => runCanvasAction(handleRedo)}
+                              disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                            >
+                              <span className="sr-only">Redo</span>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="currentColor"
+                                className="text-slate-700"
+                                aria-hidden="true"
+                              >
+                                <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-slate-700 disabled:opacity-50 whitespace-nowrap"
+                            onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
+                            disabled={isSavingLatex}
+                          >
+                            {isSavingLatex ? 'Saving…' : (isAdmin ? 'Save for class' : 'Save my copy')}
+                          </button>
+                        )}
 
                         {!simplified && (
                           <>
@@ -4533,7 +4625,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ) : null}
               </div>
 
-              <div className="border rounded bg-white relative h-full overflow-hidden flex flex-col">
+              <div
+                className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
+                style={horizontalScrollbarIsFixed ? { paddingBottom: '18px' } : undefined}
+              >
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
@@ -4555,82 +4650,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     />
                   </div>
                 </div>
-
-                {/* Always-visible horizontal scrollbar (mobile stacked) */}
-                {useStackedStudentLayout && isCompactViewport && (
-                  <div
-                    ref={horizontalPanTrackRef}
-                    className="h-3 px-3 flex items-center bg-white"
-                    onPointerDown={event => {
-                      const track = horizontalPanTrackRef.current
-                      const viewport = studentViewportRef.current
-                      if (!track || !viewport) return
-                      const rect = track.getBoundingClientRect()
-                      const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-                      const ratio = rect.width > 0 ? x / rect.width : 0
-                      const target = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-                      viewport.scrollLeft = target
-                    }}
-                  >
-                    <div className="w-full h-1.5 bg-slate-200 rounded-full relative">
-                      {(() => {
-                        const thumbPct = Math.max(8, Math.round(horizontalPanThumbRatio * 100))
-                        const usable = Math.max(0, 100 - thumbPct)
-                        const leftPct = horizontalPanMax > 0 ? (horizontalPanValue / horizontalPanMax) * usable : 0
-                        return (
-                          <div
-                            className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
-                            style={{
-                              width: `${thumbPct}%`,
-                              left: `${leftPct}%`,
-                              cursor: 'grab',
-                            }}
-                            onPointerDown={event => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              const track = horizontalPanTrackRef.current
-                              const viewport = studentViewportRef.current
-                              if (!track || !viewport) return
-                              horizontalPanDragRef.current.active = true
-                              horizontalPanDragRef.current.pointerId = event.pointerId
-                              try {
-                                track.setPointerCapture(event.pointerId)
-                              } catch {}
-                            }}
-                            onPointerMove={event => {
-                              if (!horizontalPanDragRef.current.active) return
-                              const track = horizontalPanTrackRef.current
-                              const viewport = studentViewportRef.current
-                              if (!track || !viewport) return
-                              const rect = track.getBoundingClientRect()
-                              const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-                              const ratio = rect.width > 0 ? x / rect.width : 0
-                              viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-                            }}
-                            onPointerUp={event => {
-                              if (!horizontalPanDragRef.current.active) return
-                              horizontalPanDragRef.current.active = false
-                              const track = horizontalPanTrackRef.current
-                              try {
-                                track?.releasePointerCapture(event.pointerId)
-                              } catch {}
-                              horizontalPanDragRef.current.pointerId = null
-                            }}
-                            onPointerCancel={event => {
-                              if (!horizontalPanDragRef.current.active) return
-                              horizontalPanDragRef.current.active = false
-                              const track = horizontalPanTrackRef.current
-                              try {
-                                track?.releasePointerCapture(event.pointerId)
-                              } catch {}
-                              horizontalPanDragRef.current.pointerId = null
-                            }}
-                          />
-                        )
-                      })()}
-                    </div>
-                  </div>
-                )}
 
                 {(status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
@@ -4705,6 +4724,52 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </div>
                 )}
               </div>
+
+              {/* Always-visible horizontal scrollbar (mobile stacked). In overlay, pin it to the screen bottom. */}
+              {showHorizontalScrollbar && (
+                <div
+                  ref={horizontalPanTrackRef}
+                  className={horizontalScrollbarIsFixed ? 'fixed left-0 right-0 z-40' : 'w-full'}
+                  style={
+                    horizontalScrollbarIsFixed
+                      ? ({
+                          bottom: 0,
+                          paddingBottom: 'env(safe-area-inset-bottom)',
+                        } as any)
+                      : undefined
+                  }
+                  onPointerMove={updateHorizontalScrollbarDrag}
+                  onPointerUp={endHorizontalScrollbarDrag}
+                  onPointerCancel={endHorizontalScrollbarDrag}
+                  onPointerDown={event => {
+                    const track = horizontalPanTrackRef.current
+                    const viewport = studentViewportRef.current
+                    if (!track || !viewport) return
+                    const rect = track.getBoundingClientRect()
+                    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+                    const ratio = rect.width > 0 ? x / rect.width : 0
+                    viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+                  }}
+                >
+                  <div className="h-3 px-4 flex items-center bg-white">
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full relative">
+                      <div
+                        className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
+                        style={{
+                          width: `${horizontalScrollbarThumbPct}%`,
+                          left: `${horizontalScrollbarLeftPct}%`,
+                          cursor: 'grab',
+                        }}
+                        onPointerDown={event => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          beginHorizontalScrollbarDrag(event)
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

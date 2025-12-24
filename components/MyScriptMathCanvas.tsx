@@ -300,7 +300,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [adminSolutionSteps, setAdminSolutionSteps] = useState<string[]>([])
-  const pendingAdminCommitRef = useRef(false)
+  const previewExportInFlightRef = useRef(false)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
@@ -2136,6 +2136,49 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return stripped
   }, [])
 
+  const exportLatexFromEditor = useCallback(async () => {
+    const editor = editorInstanceRef.current
+    if (!editor) return ''
+
+    const extract = (payload: any) => {
+      if (!payload) return ''
+      if (typeof payload === 'string') return payload
+      if (typeof payload === 'object') {
+        const direct = payload['application/x-latex']
+        if (typeof direct === 'string') return direct
+        // Some SDKs return arrays or nested objects; best-effort extract.
+        const first = (payload as any)[0]
+        if (typeof first === 'string') return first
+        if (first && typeof first === 'object' && typeof first['application/x-latex'] === 'string') return first['application/x-latex']
+      }
+      return ''
+    }
+
+    try {
+      if (typeof editor.export_ === 'function') {
+        let res = await editor.export_()
+        let latex = extract(res)
+        if (!latex) {
+          res = await editor.export_(['application/x-latex'])
+          latex = extract(res)
+        }
+        if (!latex) {
+          res = await editor.export_('application/x-latex')
+          latex = extract(res)
+        }
+        return typeof latex === 'string' ? latex : ''
+      }
+      if (typeof editor.export === 'function') {
+        const res = await editor.export()
+        const latex = extract(res)
+        return typeof latex === 'string' ? latex : ''
+      }
+    } catch (err) {
+      console.warn('Failed to export LaTeX', err)
+    }
+    return ''
+  }, [])
+
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
   const editorInitLayoutKey = isAdmin ? (isCompactViewport ? 'admin-compact' : 'admin-wide') : 'learner'
@@ -2252,21 +2295,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             broadcastSnapshot(false)
           }
 
-          // Admin compact/stacked mode: keep a live typeset preview updated without broadcasting.
-          if (useAdminStepComposer && !pendingAdminCommitRef.current) {
+          // Admin compact/stacked mode: keep a live typeset preview updated without mutating the ink.
+          if (useAdminStepComposer) {
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
             pendingExportRef.current = setTimeout(() => {
               pendingExportRef.current = null
-              const inst = editorInstanceRef.current
-              if (!inst) return
-              try {
-                forcedConvertDepthRef.current += 1
-                inst.convert?.()
-              } catch {
-                forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
-              }
+              if (previewExportInFlightRef.current) return
+              previewExportInFlightRef.current = true
+              exportLatexFromEditor()
+                .then(latex => {
+                  if (cancelled) return
+                  setLatexOutput(typeof latex === 'string' ? latex : '')
+                })
+                .finally(() => {
+                  previewExportInFlightRef.current = false
+                })
             }, 450)
           }
         }
@@ -2276,21 +2321,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const latexValue = typeof latex === 'string' ? latex : ''
           setLatexOutput(latexValue)
           setIsConverting(false)
-
-          if (pendingAdminCommitRef.current) {
-            pendingAdminCommitRef.current = false
-            const step = normalizeStepLatex(latexValue)
-            if (step) {
-              setAdminSolutionSteps(prev => [...prev, step])
-            }
-            try {
-              editorInstanceRef.current?.clear?.()
-            } catch {}
-            setLatexOutput('')
-            lastSymbolCountRef.current = 0
-            lastBroadcastBaseCountRef.current = 0
-            return
-          }
 
           const isSharedPage = pageIndex === sharedPageIndexRef.current
           const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
@@ -2372,12 +2402,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         editorInstanceRef.current = null
       }
     }
-  }, [broadcastSnapshot, editorInitLayoutKey])
+  }, [broadcastSnapshot, editorInitLayoutKey, exportLatexFromEditor, normalizeStepLatex, useAdminStepComposer])
 
   useEffect(() => {
     if (!useAdminStepComposer) return
     setAdminSolutionSteps([])
-    pendingAdminCommitRef.current = false
   }, [boardId, useAdminStepComposer])
 
   useEffect(() => {
@@ -4062,19 +4091,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     type="button"
                     className="px-2 py-1 border rounded"
                     title="Send step"
-                    onClick={() => {
-                      if (!editorInstanceRef.current) return
+                    onClick={async () => {
+                      const editor = editorInstanceRef.current
+                      if (!editor) return
                       if (lockedOutRef.current) return
-                      pendingAdminCommitRef.current = true
-                      try {
-                        forcedConvertDepthRef.current += 1
-                        editorInstanceRef.current.convert?.()
-                      } catch {
-                        pendingAdminCommitRef.current = false
-                        forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+
+                      // Ensure we have the latest preview before committing.
+                      let step = normalizeStepLatex(latexOutput)
+                      if (!step) {
+                        const exported = await exportLatexFromEditor()
+                        step = normalizeStepLatex(exported)
+                        if (exported && !latexOutput) {
+                          setLatexOutput(exported)
+                        }
                       }
+                      if (!step) return
+
+                      setAdminSolutionSteps(prev => [...prev, step])
+
+                      // Clear handwriting for next step without broadcasting a global clear.
+                      suppressBroadcastUntilTsRef.current = Date.now() + 1200
+                      try {
+                        editor.clear?.()
+                      } catch {}
+                      setLatexOutput('')
+                      lastSymbolCountRef.current = 0
+                      lastBroadcastBaseCountRef.current = 0
                     }}
-                    disabled={status !== 'ready' || Boolean(fatalError) || !normalizeStepLatex(latexOutput)}
+                    disabled={status !== 'ready' || Boolean(fatalError)}
                   >
                     <span className="sr-only">Send</span>
                     <svg

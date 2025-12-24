@@ -3709,7 +3709,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
+  const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
   const horizontalPanRafRef = useRef<number | null>(null)
+  const horizontalPanSmoothRafRef = useRef<number | null>(null)
+  const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)
+  const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null }>(
+    { active: false, pointerId: null }
+  )
+  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number }>(
+    { active: false, startX: 0, lastX: 0 }
+  )
   useEffect(() => {
     if (!useStackedStudentLayout) return
     if (!isCompactViewport) return
@@ -3719,6 +3728,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const update = () => {
       const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
       setHorizontalPanMax(max)
+      const ratio = viewport.scrollWidth > 0 ? Math.min(1, Math.max(0, viewport.clientWidth / viewport.scrollWidth)) : 1
+      setHorizontalPanThumbRatio(ratio)
       const clamped = Math.max(0, Math.min(viewport.scrollLeft, max))
       setHorizontalPanValue(clamped)
       if (viewport.scrollLeft !== clamped) {
@@ -3760,6 +3771,100 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
   }, [inkSurfaceWidthFactor, isCompactViewport, studentViewScale, useStackedStudentLayout])
+
+  const smoothScrollViewportTo = useCallback((targetLeft: number) => {
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    const clampedTarget = Math.max(0, Math.min(targetLeft, max))
+
+    if (horizontalPanSmoothRafRef.current && typeof window !== 'undefined') {
+      try {
+        window.cancelAnimationFrame(horizontalPanSmoothRafRef.current)
+      } catch {}
+      horizontalPanSmoothRafRef.current = null
+    }
+
+    const start = viewport.scrollLeft
+    const delta = clampedTarget - start
+    if (Math.abs(delta) < 1) return
+    if (typeof window === 'undefined') {
+      viewport.scrollLeft = clampedTarget
+      return
+    }
+
+    const durationMs = 220
+    const startTs = window.performance?.now?.() ?? Date.now()
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
+
+    const step = (now: number) => {
+      const tRaw = (now - startTs) / durationMs
+      const t = Math.min(1, Math.max(0, tRaw))
+      viewport.scrollLeft = start + delta * easeOut(t)
+      if (t < 1) {
+        horizontalPanSmoothRafRef.current = window.requestAnimationFrame(step)
+      } else {
+        horizontalPanSmoothRafRef.current = null
+      }
+    }
+
+    horizontalPanSmoothRafRef.current = window.requestAnimationFrame(step)
+  }, [])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    if (!isCompactViewport) return
+    if (!hasWriteAccess) return
+    const host = editorHostRef.current
+    if (!host) return
+
+    const onDown = (event: PointerEvent) => {
+      strokeTrackRef.current.active = true
+      strokeTrackRef.current.startX = event.clientX
+      strokeTrackRef.current.lastX = event.clientX
+    }
+    const onMove = (event: PointerEvent) => {
+      if (!strokeTrackRef.current.active) return
+      strokeTrackRef.current.lastX = event.clientX
+    }
+    const onUpLike = () => {
+      if (!strokeTrackRef.current.active) return
+      strokeTrackRef.current.active = false
+      const viewport = studentViewportRef.current
+      if (!viewport) return
+      const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      if (max <= 0) return
+
+      const rect = viewport.getBoundingClientRect()
+      const startX = strokeTrackRef.current.startX
+      const lastX = strokeTrackRef.current.lastX
+      const deltaX = lastX - startX
+      if (Math.abs(deltaX) < 8) return
+
+      const direction = deltaX > 0 ? 1 : -1
+      const edgeRight = rect.left + rect.width * 0.8
+      const edgeLeft = rect.left + rect.width * 0.2
+
+      if (direction > 0 && lastX < edgeRight) return
+      if (direction < 0 && lastX > edgeLeft) return
+
+      const scrollDelta = rect.width * 0.7 * direction
+      const target = viewport.scrollLeft + scrollDelta
+      smoothScrollViewportTo(target)
+    }
+
+    host.addEventListener('pointerdown', onDown, { passive: true })
+    host.addEventListener('pointermove', onMove, { passive: true })
+    host.addEventListener('pointerup', onUpLike, { passive: true })
+    host.addEventListener('pointercancel', onUpLike, { passive: true })
+
+    return () => {
+      host.removeEventListener('pointerdown', onDown as any)
+      host.removeEventListener('pointermove', onMove as any)
+      host.removeEventListener('pointerup', onUpLike as any)
+      host.removeEventListener('pointercancel', onUpLike as any)
+    }
+  }, [hasWriteAccess, isCompactViewport, smoothScrollViewportTo, useStackedStudentLayout])
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -4428,48 +4533,105 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ) : null}
               </div>
 
-              {useStackedStudentLayout && isCompactViewport && horizontalPanMax > 0 && (
-                <div className="mb-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={horizontalPanMax}
-                    step={1}
-                    value={horizontalPanValue}
-                    aria-label="Pan horizontally"
-                    className="w-full"
-                    onChange={event => {
-                      const next = Number((event.target as HTMLInputElement).value)
-                      setHorizontalPanValue(next)
-                      const viewport = studentViewportRef.current
-                      if (viewport) {
-                        viewport.scrollLeft = next
-                      }
-                    }}
-                  />
-                </div>
-              )}
-
-              <div
-                ref={studentViewportRef}
-                className="border rounded bg-white relative h-full overflow-auto"
-                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
-              >
+              <div className="border rounded bg-white relative h-full overflow-hidden flex flex-col">
                 <div
-                  style={{
-                    transform: `scale(${studentViewScale})`,
-                    transformOrigin: 'top left',
-                    width: `${(100 * inkSurfaceWidthFactor) / studentViewScale}%`,
-                    height: `${100 / studentViewScale}%`,
-                  }}
+                  ref={studentViewportRef}
+                  className="relative flex-1 min-h-0 overflow-auto"
+                  style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
                 >
                   <div
-                    ref={editorHostRef}
-                    className={editorHostClass}
-                    style={{ ...editorHostStyle, height: '100%' }}
-                    data-orientation={canvasOrientation}
-                  />
+                    style={{
+                      transform: `scale(${studentViewScale})`,
+                      transformOrigin: 'top left',
+                      width: `${(100 * inkSurfaceWidthFactor) / studentViewScale}%`,
+                      height: `${100 / studentViewScale}%`,
+                    }}
+                  >
+                    <div
+                      ref={editorHostRef}
+                      className={editorHostClass}
+                      style={{ ...editorHostStyle, height: '100%' }}
+                      data-orientation={canvasOrientation}
+                    />
+                  </div>
                 </div>
+
+                {/* Always-visible horizontal scrollbar (mobile stacked) */}
+                {useStackedStudentLayout && isCompactViewport && (
+                  <div
+                    ref={horizontalPanTrackRef}
+                    className="h-3 px-3 flex items-center bg-white"
+                    onPointerDown={event => {
+                      const track = horizontalPanTrackRef.current
+                      const viewport = studentViewportRef.current
+                      if (!track || !viewport) return
+                      const rect = track.getBoundingClientRect()
+                      const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+                      const ratio = rect.width > 0 ? x / rect.width : 0
+                      const target = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+                      viewport.scrollLeft = target
+                    }}
+                  >
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full relative">
+                      {(() => {
+                        const thumbPct = Math.max(8, Math.round(horizontalPanThumbRatio * 100))
+                        const usable = Math.max(0, 100 - thumbPct)
+                        const leftPct = horizontalPanMax > 0 ? (horizontalPanValue / horizontalPanMax) * usable : 0
+                        return (
+                          <div
+                            className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
+                            style={{
+                              width: `${thumbPct}%`,
+                              left: `${leftPct}%`,
+                              cursor: 'grab',
+                            }}
+                            onPointerDown={event => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              const track = horizontalPanTrackRef.current
+                              const viewport = studentViewportRef.current
+                              if (!track || !viewport) return
+                              horizontalPanDragRef.current.active = true
+                              horizontalPanDragRef.current.pointerId = event.pointerId
+                              try {
+                                track.setPointerCapture(event.pointerId)
+                              } catch {}
+                            }}
+                            onPointerMove={event => {
+                              if (!horizontalPanDragRef.current.active) return
+                              const track = horizontalPanTrackRef.current
+                              const viewport = studentViewportRef.current
+                              if (!track || !viewport) return
+                              const rect = track.getBoundingClientRect()
+                              const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+                              const ratio = rect.width > 0 ? x / rect.width : 0
+                              viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+                            }}
+                            onPointerUp={event => {
+                              if (!horizontalPanDragRef.current.active) return
+                              horizontalPanDragRef.current.active = false
+                              const track = horizontalPanTrackRef.current
+                              try {
+                                track?.releasePointerCapture(event.pointerId)
+                              } catch {}
+                              horizontalPanDragRef.current.pointerId = null
+                            }}
+                            onPointerCancel={event => {
+                              if (!horizontalPanDragRef.current.active) return
+                              horizontalPanDragRef.current.active = false
+                              const track = horizontalPanTrackRef.current
+                              try {
+                                track?.releasePointerCapture(event.pointerId)
+                              } catch {}
+                              horizontalPanDragRef.current.pointerId = null
+                            }}
+                          />
+                        )
+                      })()}
+                    </div>
+                  </div>
+                )}
+
                 {(status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
                     Preparing collaborative canvas…

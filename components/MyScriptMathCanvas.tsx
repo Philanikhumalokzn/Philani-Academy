@@ -1,4 +1,5 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
+import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
@@ -3894,9 +3895,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gain = 0.9
 
       // If the exclusive left-edge right-to-left mode was engaged, apply an extra pen-up scroll
-      // so the stroke end point sits ~20% away from the left edge (clearance), then stop.
+      // so the stroke end point sits ~50% away from the left edge (clearance), then stop.
       if (strokeTrackRef.current.leftPanArmed) {
-        const targetX = rect.left + rect.width * 0.2
+        const targetX = rect.left + rect.width * 0.5
         const delta = strokeTrackRef.current.lastX - targetX
         if (delta < -1) {
           smoothScrollViewportBy(delta)
@@ -3973,6 +3974,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const ratio = rect.width > 0 ? x / rect.width : 0
     viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
   }, [])
+
+  const horizontalScrollbar = showHorizontalScrollbar ? (
+    <div
+      ref={horizontalPanTrackRef}
+      className={horizontalScrollbarIsFixed ? 'fixed left-0 right-0 z-[200]' : 'w-full'}
+      style={
+        horizontalScrollbarIsFixed
+          ? ({
+              bottom: 0,
+              paddingBottom: 'env(safe-area-inset-bottom)',
+            } as any)
+          : undefined
+      }
+      onPointerMove={updateHorizontalScrollbarDrag}
+      onPointerUp={endHorizontalScrollbarDrag}
+      onPointerCancel={endHorizontalScrollbarDrag}
+      onPointerDown={event => {
+        const track = horizontalPanTrackRef.current
+        const viewport = studentViewportRef.current
+        if (!track || !viewport) return
+        const rect = track.getBoundingClientRect()
+        const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+        const ratio = rect.width > 0 ? x / rect.width : 0
+        viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      }}
+    >
+      <div className="h-3 px-4 flex items-center bg-white">
+        <div className="w-full h-1.5 bg-slate-200 rounded-full relative">
+          <div
+            className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
+            style={{
+              width: `${horizontalScrollbarThumbPct}%`,
+              left: `${horizontalScrollbarLeftPct}%`,
+              cursor: 'grab',
+            }}
+            onPointerDown={event => {
+              event.preventDefault()
+              event.stopPropagation()
+              beginHorizontalScrollbarDrag(event)
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -4810,51 +4856,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 )}
               </div>
 
-              {/* Always-visible horizontal scrollbar (mobile stacked). In overlay, pin it to the screen bottom. */}
-              {showHorizontalScrollbar && (
-                <div
-                  ref={horizontalPanTrackRef}
-                  className={horizontalScrollbarIsFixed ? 'fixed left-0 right-0 z-40' : 'w-full'}
-                  style={
-                    horizontalScrollbarIsFixed
-                      ? ({
-                          bottom: 0,
-                          paddingBottom: 'env(safe-area-inset-bottom)',
-                        } as any)
-                      : undefined
-                  }
-                  onPointerMove={updateHorizontalScrollbarDrag}
-                  onPointerUp={endHorizontalScrollbarDrag}
-                  onPointerCancel={endHorizontalScrollbarDrag}
-                  onPointerDown={event => {
-                    const track = horizontalPanTrackRef.current
-                    const viewport = studentViewportRef.current
-                    if (!track || !viewport) return
-                    const rect = track.getBoundingClientRect()
-                    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-                    const ratio = rect.width > 0 ? x / rect.width : 0
-                    viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-                  }}
-                >
-                  <div className="h-3 px-4 flex items-center bg-white">
-                    <div className="w-full h-1.5 bg-slate-200 rounded-full relative">
-                      <div
-                        className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
-                        style={{
-                          width: `${horizontalScrollbarThumbPct}%`,
-                          left: `${horizontalScrollbarLeftPct}%`,
-                          cursor: 'grab',
-                        }}
-                        onPointerDown={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          beginHorizontalScrollbarDrag(event)
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Always-visible horizontal scrollbar (mobile stacked). In overlay, portal it to the document body so it can't be clipped by transforms/overflow. */}
+              {horizontalScrollbarIsFixed && typeof document !== 'undefined'
+                ? horizontalScrollbar
+                  ? createPortal(horizontalScrollbar, document.body)
+                  : null
+                : horizontalScrollbar}
             </div>
           </div>
         )}

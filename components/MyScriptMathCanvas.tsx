@@ -1,5 +1,4 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
-import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
@@ -284,8 +283,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [hasMounted, setHasMounted] = useState(false)
-  const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
@@ -547,34 +544,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [])
 
-  useEffect(() => {
-    setHasMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const compute = () => {
-      const vv = (window as any).visualViewport as VisualViewport | undefined
-      if (!vv) {
-        setViewportBottomOffsetPx(0)
-        return
-      }
-      const bottomGap = window.innerHeight - (vv.height + vv.offsetTop)
-      setViewportBottomOffsetPx(Math.max(0, Math.round(bottomGap)))
-    }
-
-    compute()
-    window.addEventListener('resize', compute)
-    const vv = (window as any).visualViewport as VisualViewport | undefined
-    vv?.addEventListener('resize', compute)
-    vv?.addEventListener('scroll', compute)
-    return () => {
-      window.removeEventListener('resize', compute)
-      vv?.removeEventListener('resize', compute)
-      vv?.removeEventListener('scroll', compute)
-    }
-  }, [])
+  // (Bottom viewport offset logic removed; scrollbar now lives in the separator strip.)
 
   useEffect(() => {
     clientIdRef.current = clientId
@@ -3744,7 +3714,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
   const horizontalPanRafRef = useRef<number | null>(null)
   const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)
-  const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null }>(
+  const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; trackWidth: number; maxScroll: number }>(
+    { active: false, pointerId: null, startX: 0, startScrollLeft: 0, trackWidth: 1, maxScroll: 0 }
+  )
+  const [horizontalScrollSpeed, setHorizontalScrollSpeed] = useState(1)
+  const horizontalScrollSpeedRef = useRef(1)
+  useEffect(() => {
+    horizontalScrollSpeedRef.current = horizontalScrollSpeed
+  }, [horizontalScrollSpeed])
+
+  const speedTrackRef = useRef<HTMLDivElement | null>(null)
+  const speedDragRef = useRef<{ active: boolean; pointerId: number | null }>(
     { active: false, pointerId: null }
   )
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
@@ -3755,7 +3735,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const leftPanRafRef = useRef<number | null>(null)
   useEffect(() => {
     if (!useStackedStudentLayout) return
-    if (!isCompactViewport) return
     const viewport = studentViewportRef.current
     if (!viewport) return
 
@@ -3804,7 +3783,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         horizontalPanRafRef.current = null
       }
     }
-  }, [inkSurfaceWidthFactor, isCompactViewport, studentViewScale, useStackedStudentLayout])
+  }, [inkSurfaceWidthFactor, studentViewScale, useStackedStudentLayout])
 
   const smoothScrollViewportBy = useCallback((delta: number) => {
     const viewport = studentViewportRef.current
@@ -3967,9 +3946,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [hasWriteAccess, isCompactViewport, smoothScrollViewportBy, useStackedStudentLayout])
 
-  // Manual horizontal scrollbar: always show it at the physical bottom of the viewport.
-  // (Not conditionally tied to stacked/compact/overlay modes.)
-  const horizontalScrollbarIsFixed = true
   const horizontalScrollbarThumbPct = useMemo(() => Math.max(8, Math.round(horizontalPanThumbRatio * 100)), [horizontalPanThumbRatio])
   const horizontalScrollbarLeftPct = useMemo(() => {
     const usable = Math.max(0, 100 - horizontalScrollbarThumbPct)
@@ -3978,9 +3954,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const beginHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
     const track = horizontalPanTrackRef.current
+    const viewport = studentViewportRef.current
     if (!track) return
+    if (!viewport) return
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    const rect = track.getBoundingClientRect()
     horizontalPanDragRef.current.active = true
     horizontalPanDragRef.current.pointerId = event.pointerId
+    horizontalPanDragRef.current.startX = event.clientX
+    horizontalPanDragRef.current.startScrollLeft = viewport.scrollLeft
+    horizontalPanDragRef.current.trackWidth = Math.max(1, rect.width)
+    horizontalPanDragRef.current.maxScroll = maxScroll
     try {
       track.setPointerCapture(event.pointerId)
     } catch {}
@@ -4001,49 +3985,57 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const track = horizontalPanTrackRef.current
     const viewport = studentViewportRef.current
     if (!track || !viewport) return
-    const rect = track.getBoundingClientRect()
-    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-    const ratio = rect.width > 0 ? x / rect.width : 0
-    viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    const trackWidth = Math.max(1, horizontalPanDragRef.current.trackWidth)
+    const maxScroll = Math.max(0, horizontalPanDragRef.current.maxScroll)
+    const dx = event.clientX - horizontalPanDragRef.current.startX
+    const ratioDx = dx / trackWidth
+    const speed = horizontalScrollSpeedRef.current
+    const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * speed
+    viewport.scrollLeft = Math.max(0, Math.min(target, maxScroll))
   }, [])
 
-  const horizontalScrollbar = (
-    <div
-      ref={horizontalPanTrackRef}
-      className="fixed left-0 right-0 z-[500]"
-      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px)` } as any}
-      onPointerMove={updateHorizontalScrollbarDrag}
-      onPointerUp={endHorizontalScrollbarDrag}
-      onPointerCancel={endHorizontalScrollbarDrag}
-      onPointerDown={event => {
-        const track = horizontalPanTrackRef.current
-        const viewport = studentViewportRef.current
-        if (!track || !viewport) return
-        const rect = track.getBoundingClientRect()
-        const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-        const ratio = rect.width > 0 ? x / rect.width : 0
-        viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-      }}
-    >
-      <div className="h-3 px-4 flex items-center bg-white">
-        <div className="w-full h-1.5 bg-slate-200 rounded-full relative">
-          <div
-            className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
-            style={{
-              width: `${horizontalScrollbarThumbPct}%`,
-              left: `${horizontalScrollbarLeftPct}%`,
-              cursor: 'grab',
-            }}
-            onPointerDown={event => {
-              event.preventDefault()
-              event.stopPropagation()
-              beginHorizontalScrollbarDrag(event)
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  )
+  const beginSpeedDrag = useCallback((event: React.PointerEvent) => {
+    const track = speedTrackRef.current
+    if (!track) return
+    speedDragRef.current.active = true
+    speedDragRef.current.pointerId = event.pointerId
+    try {
+      track.setPointerCapture(event.pointerId)
+    } catch {}
+  }, [])
+
+  const endSpeedDrag = useCallback((event: React.PointerEvent) => {
+    if (!speedDragRef.current.active) return
+    speedDragRef.current.active = false
+    const track = speedTrackRef.current
+    try {
+      track?.releasePointerCapture(event.pointerId)
+    } catch {}
+    speedDragRef.current.pointerId = null
+  }, [])
+
+  const updateSpeedFromPointer = useCallback((clientY: number) => {
+    const track = speedTrackRef.current
+    if (!track) return
+    const rect = track.getBoundingClientRect()
+    const y = Math.max(0, Math.min(clientY - rect.top, rect.height))
+    const ratio = rect.height > 0 ? 1 - y / rect.height : 0
+    const min = 0.5
+    const max = 2.5
+    setHorizontalScrollSpeed(min + ratio * (max - min))
+  }, [])
+
+  const updateSpeedDrag = useCallback((event: React.PointerEvent) => {
+    if (!speedDragRef.current.active) return
+    updateSpeedFromPointer(event.clientY)
+  }, [updateSpeedFromPointer])
+
+  const speedPct = useMemo(() => {
+    const min = 0.5
+    const max = 2.5
+    const clamped = Math.max(min, Math.min(horizontalScrollSpeed, max))
+    return Math.round(((clamped - min) / (max - min)) * 100)
+  }, [horizontalScrollSpeed])
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
@@ -4533,8 +4525,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 document.body.style.userSelect = 'none'
               }}
             >
-              <div className="w-full h-0.5 bg-slate-200 relative">
-                <div className="absolute left-1/2 -translate-x-1/2 w-12 h-1.5 bg-slate-400 rounded-full" />
+              <div
+                ref={horizontalPanTrackRef}
+                className="w-full h-1.5 bg-slate-200 rounded-full relative"
+                onPointerMove={updateHorizontalScrollbarDrag}
+                onPointerUp={endHorizontalScrollbarDrag}
+                onPointerCancel={endHorizontalScrollbarDrag}
+              >
+                <div
+                  className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
+                  style={{
+                    width: `${horizontalScrollbarThumbPct}%`,
+                    left: `${horizontalScrollbarLeftPct}%`,
+                    cursor: 'grab',
+                  }}
+                  onPointerDown={event => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    beginHorizontalScrollbarDrag(event)
+                  }}
+                />
               </div>
             </div>
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
@@ -4783,7 +4793,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
               <div
                 className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
-                style={horizontalScrollbarIsFixed ? { paddingBottom: '18px' } : undefined}
               >
                 <div
                   ref={studentViewportRef}
@@ -4885,8 +4894,43 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {/* Manual horizontal scrollbar: always pinned to the physical bottom of the screen. */}
-        {horizontalScrollbar}
+        {/* Right-edge vertical slider: adjusts horizontal scroll speed. */}
+        {useStackedStudentLayout && (
+          <div className="fixed right-2 top-1/2 -translate-y-1/2 z-[500] select-none">
+            <div
+              ref={speedTrackRef}
+              className="w-3 h-48 bg-slate-200 rounded-full relative"
+              onPointerMove={updateSpeedDrag}
+              onPointerUp={endSpeedDrag}
+              onPointerCancel={endSpeedDrag}
+              onPointerDown={event => {
+                event.preventDefault()
+                updateSpeedFromPointer(event.clientY)
+                beginSpeedDrag(event)
+              }}
+              title="Horizontal scroll speed"
+              aria-label="Horizontal scroll speed"
+              role="slider"
+              aria-valuemin={0.5}
+              aria-valuemax={2.5}
+              aria-valuenow={Number(horizontalScrollSpeed.toFixed(2))}
+            >
+              <div
+                className="absolute left-0 right-0 bg-slate-400 rounded-full"
+                style={{
+                  height: '24px',
+                  bottom: `calc(${speedPct}% - 12px)`,
+                  cursor: 'grab',
+                }}
+                onPointerDown={event => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  beginSpeedDrag(event)
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>

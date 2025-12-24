@@ -3845,26 +3845,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (maxScroll <= 0) return
 
       const rect = viewport.getBoundingClientRect()
-      const edgeRight = rect.left + rect.width * 0.6
-      const edgeLeft = rect.left + rect.width * 0.4
-
-      const startX = strokeTrackRef.current.startX
-      const endX = strokeTrackRef.current.lastX
-      const direction = endX - startX
-      if (Math.abs(direction) < 6) return
-
+      // Threshold is the screen midpoint (50%). We keep the latest stroke footprint on the left side
+      // of this imaginary center line, so there is always at least ~50% free space to the right.
+      // Use the stroke's maxX so shapes that "finish" left but extend right (like a 3) still pan.
+      const midX = rect.left + rect.width * 0.5
       const gain = 0.9
 
-      if (direction > 0) {
-        const excess = strokeTrackRef.current.maxX - edgeRight
-        if (excess > 0) {
-          smoothScrollViewportBy(excess * gain)
-        }
-      } else {
-        const excess = strokeTrackRef.current.minX - edgeLeft
-        if (excess < 0) {
-          smoothScrollViewportBy(excess * gain)
-        }
+      const excessRight = strokeTrackRef.current.maxX - midX
+      if (excessRight > 0) {
+        smoothScrollViewportBy(excessRight * gain)
       }
     }
 

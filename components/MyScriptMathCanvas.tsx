@@ -3585,6 +3585,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return (latexDisplayState.latex || '').trim()
   }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexDisplayState.latex, latexOutput, stackedNotesState.latex, useAdminStepComposer, useStackedStudentLayout])
 
+  // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
+  // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
+  // preview until we either receive a non-empty update or the board truly becomes empty.
+  const [stableAdminStackedLatexRenderSource, setStableAdminStackedLatexRenderSource] = useState('')
+  const stableAdminStackedLatexRenderSourceRef = useRef('')
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!useStackedStudentLayout) return
+
+    const next = (latexRenderSource || '').trim()
+    if (next) {
+      if (stableAdminStackedLatexRenderSourceRef.current !== next) {
+        stableAdminStackedLatexRenderSourceRef.current = next
+        setStableAdminStackedLatexRenderSource(next)
+      }
+      return
+    }
+
+    const hasInk = lastSymbolCountRef.current > 0
+    const hasSteps = useAdminStepComposer && adminSteps.length > 0
+    if (hasInk || hasSteps) {
+      // Keep current stable preview.
+      return
+    }
+
+    if (stableAdminStackedLatexRenderSourceRef.current) {
+      stableAdminStackedLatexRenderSourceRef.current = ''
+      setStableAdminStackedLatexRenderSource('')
+    }
+  }, [adminSteps.length, isAdmin, latexRenderSource, useAdminStepComposer, useStackedStudentLayout])
+
+  const latexProjectionRenderSource = (isAdmin && useStackedStudentLayout)
+    ? stableAdminStackedLatexRenderSource
+    : latexRenderSource
+
   useEffect(() => {
     if (!isAdmin) return
     if (!useAdminStepComposer) return
@@ -3592,8 +3627,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAdmin, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
-    if (!latexRenderSource) return ''
-    let latexString = latexRenderSource
+    if (!latexProjectionRenderSource) return ''
+    let latexString = latexProjectionRenderSource
     if (latexRenderOptions.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
       const lines = latexString.split(/\\\\/g).map(line => line.trim()).filter(Boolean)
       if (lines.length) {
@@ -3620,7 +3655,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to render LaTeX overlay', err)
       return ''
     }
-  }, [latexRenderOptions.alignAtEquals, latexRenderSource])
+  }, [latexRenderOptions.alignAtEquals, latexProjectionRenderSource])
 
   const latexOverlayStyle = useMemo<CSSProperties>(
     () => ({
@@ -4157,51 +4192,57 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
                 {canPersistLatex ? (
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                    {isAdmin ? (
-                      <button
-                        type="button"
-                        className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                        onClick={() => saveLatexSnapshot({ shared: true })}
-                        disabled={isSavingLatex}
+                  (() => {
+                    const simplified = Boolean(isOverlayMode || isCompactViewport)
+                    return (
+                      <div
+                        className={`flex items-center gap-2 text-[11px] text-slate-600 ${simplified ? 'flex-nowrap' : 'flex-wrap'}`}
                       >
-                        {isSavingLatex ? 'Saving…' : 'Save for class'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                        onClick={() => saveLatexSnapshot({ shared: false })}
-                        disabled={isSavingLatex}
-                      >
-                        {isSavingLatex ? 'Saving…' : 'Save my copy'}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                      onClick={() => handleLoadSavedLatex('shared')}
-                      disabled={!latestSharedLatex}
-                    >
-                      Load class
-                    </button>
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                      onClick={() => handleLoadSavedLatex('mine')}
-                      disabled={!latestPersonalLatex}
-                    >
-                      Load my notes
-                    </button>
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-slate-700"
-                      onClick={fetchLatexSaves}
-                    >
-                      Refresh
-                    </button>
-                    {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
-                  </div>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-slate-700 disabled:opacity-50 whitespace-nowrap"
+                          onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
+                          disabled={isSavingLatex}
+                        >
+                          {isSavingLatex ? 'Saving…' : 'Save notes'}
+                        </button>
+
+                        {!simplified && (
+                          <>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              onClick={() => handleLoadSavedLatex('shared')}
+                              disabled={!latestSharedLatex}
+                            >
+                              Load class
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              onClick={() => handleLoadSavedLatex('mine')}
+                              disabled={!latestPersonalLatex}
+                            >
+                              Load my notes
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700"
+                              onClick={fetchLatexSaves}
+                            >
+                              Refresh
+                            </button>
+                          </>
+                        )}
+
+                        {latexSaveError && (
+                          <span className={`text-red-600 text-[11px] ${simplified ? 'truncate max-w-[40vw]' : ''}`}>
+                            {latexSaveError}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()
                 ) : null}
 
                 {isAdmin ? (

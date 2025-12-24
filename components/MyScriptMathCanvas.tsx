@@ -3509,7 +3509,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (useAdminStepComposer) {
       const combined = [...adminSolutionSteps, ...(adminDraftLatex ? [adminDraftLatex] : [])]
         .filter(Boolean)
-        .join(' \\ ')
+        .join(' \\\\ ')
       return combined.trim()
     }
     if (isAdmin) {

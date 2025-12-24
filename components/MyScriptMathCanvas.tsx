@@ -3715,8 +3715,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null }>(
     { active: false, pointerId: null }
   )
-  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number }>(
-    { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0 }
+  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
+    { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
   const autoPanAnimRef = useRef<number | null>(null)
   const leftPanPendingDxRef = useRef(0)
@@ -3827,6 +3827,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       strokeTrackRef.current.lastX = event.clientX
       strokeTrackRef.current.minX = event.clientX
       strokeTrackRef.current.maxX = event.clientX
+      strokeTrackRef.current.leftPanArmed = false
     }
     const onMove = (event: PointerEvent) => {
       if (!strokeTrackRef.current.active) return
@@ -3838,10 +3839,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       strokeTrackRef.current.minX = Math.min(strokeTrackRef.current.minX, nextX)
       strokeTrackRef.current.maxX = Math.max(strokeTrackRef.current.maxX, nextX)
 
-      // Special-case: for explicitly leftward strokes (e.g., drawing a long fraction bar from right to left),
-      // pan the viewport left continuously by exactly the stroke movement amount.
-      // This intentionally happens during the stroke to keep the writing experience fluid.
+      // Exclusive special-case: only when a single pen-down stroke is moving right->left AND
+      // the pointer has reached near the left edge (<10% from the left of the viewport).
+      // This supports drawing long fraction bars from right to left without losing canvas.
       if (!viewport) return
+
+      const rect = viewport.getBoundingClientRect()
+      const leftEdgeTrigger = rect.left + rect.width * 0.1
+      if (nextX <= leftEdgeTrigger) {
+        strokeTrackRef.current.leftPanArmed = true
+      }
+
+      if (!strokeTrackRef.current.leftPanArmed) return
       if (dx >= 0) return
 
       const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
@@ -3883,10 +3892,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const midX = rect.left + rect.width * 0.5
       const gain = 0.9
 
-      // If the user intentionally drew a leftward stroke (classic right-to-left fraction bar),
-      // do not apply the midpoint correction that would tend to pan right afterwards.
-      const direction = strokeTrackRef.current.lastX - strokeTrackRef.current.startX
-      if (direction < -6) {
+      // If the exclusive left-edge right-to-left mode was engaged, do not apply the midpoint
+      // correction that would tend to pan right afterwards.
+      if (strokeTrackRef.current.leftPanArmed) {
         return
       }
 

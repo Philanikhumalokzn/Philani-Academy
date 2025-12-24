@@ -3856,7 +3856,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
       if (maxScroll <= 0) return
 
-      leftPanPendingDxRef.current += dx
+      const leftPanGain = 2
+      leftPanPendingDxRef.current += dx * leftPanGain
       if (typeof window === 'undefined') {
         viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + leftPanPendingDxRef.current, maxScroll))
         leftPanPendingDxRef.current = 0

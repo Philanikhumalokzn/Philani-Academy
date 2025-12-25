@@ -4452,7 +4452,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className="flex items-center justify-center px-4 py-0 bg-white cursor-row-resize select-none"
+              className={`flex items-center justify-center px-4 bg-white cursor-row-resize select-none transition-all duration-150 ${horizontalScrollbarActive ? 'h-2' : 'h-1'}`}
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
@@ -4481,18 +4481,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 onPointerMove={updateHorizontalScrollbarDrag}
                 onPointerUp={endHorizontalScrollbarDrag}
                 onPointerCancel={endHorizontalScrollbarDrag}
-                onPointerDown={event => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setHorizontalScrollbarActive(true)
-                  const track = horizontalPanTrackRef.current
-                  const viewport = studentViewportRef.current
-                  if (!track || !viewport) return
-                  const rect = track.getBoundingClientRect()
-                  const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-                  const ratio = rect.width > 0 ? x / rect.width : 0
-                  viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-                }}
               >
                 <div
                   className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
@@ -4576,55 +4564,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
               )}
 
-              <div className={`h-full ${showSideControls ? 'flex gap-2' : ''}`}>
-                {showSideControls && (canPersistLatex || isAdmin) && (
-                  <div className="w-10 flex flex-col items-center gap-2 pt-2">
-                    {canPersistLatex && (
-                      <button
-                        type="button"
-                        className="p-2 text-slate-700 disabled:opacity-50"
-                        title="Save notes"
-                        onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
-                        disabled={isSavingLatex}
-                      >
-                        <span className="sr-only">Save notes</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                          <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
-                          <path d="M7 12h10v8H7z" opacity="0.2" />
-                          <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
-                        </svg>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      className="p-2 text-slate-700 disabled:opacity-50"
-                      title="Undo"
-                      onClick={() => runCanvasAction(handleUndo)}
-                      disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                    >
-                      <span className="sr-only">Undo</span>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                        <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
-                      </svg>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="p-2 text-slate-700 disabled:opacity-50"
-                      title="Redo"
-                      onClick={() => runCanvasAction(handleRedo)}
-                      disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                    >
-                      <span className="sr-only">Redo</span>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                        <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-
-                <div className="border rounded bg-white relative h-full overflow-hidden flex-1 flex flex-col">
+              <div className="relative h-full">
+                <div
+                  className={`border rounded bg-white relative h-full overflow-hidden flex flex-col ${showSideControls && (canPersistLatex || isAdmin) ? 'mx-12' : ''}`}
+                >
                   <div
                     ref={studentViewportRef}
                     className="relative flex-1 min-h-0 overflow-auto"
@@ -4712,9 +4655,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
 
                 {showSideControls && (canPersistLatex || isAdmin) && (
-                  <div className="w-10 flex flex-col items-center gap-2 pt-2">
+                  <div className="pointer-events-none absolute inset-0">
+                    {canPersistLatex ? (
+                      <div className="pointer-events-auto absolute left-0 top-1/2 -translate-y-1/2 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Save notes"
+                          onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
+                          disabled={isSavingLatex}
+                        >
+                          <span className="sr-only">Save notes</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
+                            <path d="M7 12h10v8H7z" opacity="0.2" />
+                            <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Undo"
+                          onClick={() => runCanvasAction(handleUndo)}
+                          disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                        >
+                          <span className="sr-only">Undo</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Redo"
+                          onClick={() => runCanvasAction(handleRedo)}
+                          disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                        >
+                          <span className="sr-only">Redo</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : null}
+
                     {isAdmin ? (
-                      <>
+                      <div className="pointer-events-auto absolute right-0 top-1/2 -translate-y-1/2 flex flex-col gap-2">
                         <button
                           type="button"
                           className="p-2 text-slate-700 disabled:opacity-50"
@@ -4807,10 +4795,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             </svg>
                           </button>
                         )}
-                      </>
-                    ) : (
-                      <div className="h-[1px]" />
-                    )}
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

@@ -3746,18 +3746,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; trackWidth: number; maxScroll: number }>(
     { active: false, pointerId: null, startX: 0, startScrollLeft: 0, trackWidth: 1, maxScroll: 0 }
   )
-  const [horizontalScrollSpeed, setHorizontalScrollSpeed] = useState(1)
-  const horizontalScrollSpeedRef = useRef(1)
   const [horizontalScrollbarActive, setHorizontalScrollbarActive] = useState(false)
-  const [speedSliderActive, setSpeedSliderActive] = useState(false)
-  useEffect(() => {
-    horizontalScrollSpeedRef.current = horizontalScrollSpeed
-  }, [horizontalScrollSpeed])
-
-  const speedTrackRef = useRef<HTMLDivElement | null>(null)
-  const speedDragRef = useRef<{ active: boolean; pointerId: number | null }>(
-    { active: false, pointerId: null }
-  )
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
@@ -4022,55 +4011,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const maxScroll = Math.max(0, horizontalPanDragRef.current.maxScroll)
     const dx = event.clientX - horizontalPanDragRef.current.startX
     const ratioDx = dx / trackWidth
-    const speed = horizontalScrollSpeedRef.current
-    const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * speed
+    const dragSensitivity = 2.5
+    const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * dragSensitivity
     viewport.scrollLeft = Math.max(0, Math.min(target, maxScroll))
   }, [])
-
-  const beginSpeedDrag = useCallback((event: React.PointerEvent) => {
-    const track = speedTrackRef.current
-    if (!track) return
-    speedDragRef.current.active = true
-    speedDragRef.current.pointerId = event.pointerId
-    setSpeedSliderActive(true)
-    try {
-      track.setPointerCapture(event.pointerId)
-    } catch {}
-  }, [])
-
-  const endSpeedDrag = useCallback((event: React.PointerEvent) => {
-    if (!speedDragRef.current.active) return
-    speedDragRef.current.active = false
-    const track = speedTrackRef.current
-    try {
-      track?.releasePointerCapture(event.pointerId)
-    } catch {}
-    speedDragRef.current.pointerId = null
-    setSpeedSliderActive(false)
-  }, [])
-
-  const updateSpeedFromPointer = useCallback((clientY: number) => {
-    const track = speedTrackRef.current
-    if (!track) return
-    const rect = track.getBoundingClientRect()
-    const y = Math.max(0, Math.min(clientY - rect.top, rect.height))
-    const ratio = rect.height > 0 ? 1 - y / rect.height : 0
-    const min = 0.5
-    const max = 2.5
-    setHorizontalScrollSpeed(min + ratio * (max - min))
-  }, [])
-
-  const updateSpeedDrag = useCallback((event: React.PointerEvent) => {
-    if (!speedDragRef.current.active) return
-    updateSpeedFromPointer(event.clientY)
-  }, [updateSpeedFromPointer])
-
-  const speedPct = useMemo(() => {
-    const min = 0.5
-    const max = 2.5
-    const clamped = Math.max(min, Math.min(horizontalScrollSpeed, max))
-    return Math.round(((clamped - min) / (max - min)) * 100)
-  }, [horizontalScrollSpeed])
 
   const showBottomHorizontalScrollbar = Boolean(useStackedStudentLayout && isCompactViewport)
 
@@ -4100,8 +4044,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
       }}
     >
-      <div className={`px-4 flex items-center bg-white transition-all duration-150 ${horizontalScrollbarActive ? 'h-5' : 'h-3'}`}>
-        <div className={`w-full bg-slate-200 rounded-full relative transition-all duration-150 ${horizontalScrollbarActive ? 'h-2' : 'h-1'}`}>
+      <div className={`px-4 flex items-center bg-white transition-all duration-150 ${horizontalScrollbarActive ? 'h-10' : 'h-8'}`}>
+        <div className={`w-full bg-slate-200 rounded-full relative transition-all duration-150 ${horizontalScrollbarActive ? 'h-5' : 'h-4'}`}>
           <div
             className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
             style={{
@@ -4773,6 +4717,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       if (!editor) return
                       if (lockedOutRef.current) return
                       if (adminSendingStep) return
+
+                      // Reset the manual horizontal scrollbar to the start whenever a step is sent.
+                      // (Keeps the next step starting from the left.)
+                      try {
+                        const viewport = studentViewportRef.current
+                        if (viewport) {
+                          viewport.scrollLeft = 0
+                        }
+                        setHorizontalPanValue(0)
+                      } catch {}
+
                       setAdminSendingStep(true)
 
                       try {
@@ -4950,44 +4905,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         )}
 
         {hasMounted && horizontalScrollbar}
-
-        {/* Right-edge vertical slider: adjusts horizontal scroll speed. */}
-        {useStackedStudentLayout && (
-          <div className="fixed right-2 top-1/2 -translate-y-1/2 z-[500] select-none">
-            <div
-              ref={speedTrackRef}
-              className={`h-48 bg-slate-200 rounded-full relative transition-all duration-150 ${speedSliderActive ? 'w-3' : 'w-1.5'}`}
-              onPointerMove={updateSpeedDrag}
-              onPointerUp={endSpeedDrag}
-              onPointerCancel={endSpeedDrag}
-              onPointerDown={event => {
-                event.preventDefault()
-                updateSpeedFromPointer(event.clientY)
-                beginSpeedDrag(event)
-              }}
-              title="Horizontal scroll speed"
-              aria-label="Horizontal scroll speed"
-              role="slider"
-              aria-valuemin={0.5}
-              aria-valuemax={2.5}
-              aria-valuenow={Number(horizontalScrollSpeed.toFixed(2))}
-            >
-              <div
-                className="absolute left-0 right-0 bg-slate-400 rounded-full"
-                style={{
-                  height: speedSliderActive ? '24px' : '14px',
-                  bottom: speedSliderActive ? `calc(${speedPct}% - 12px)` : `calc(${speedPct}% - 7px)`,
-                  cursor: 'grab',
-                }}
-                onPointerDown={event => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  beginSpeedDrag(event)
-                }}
-              />
-            </div>
-          </div>
-        )}
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>

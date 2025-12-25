@@ -4182,8 +4182,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const showSideSliders = Boolean(useStackedStudentLayout && isCompactViewport)
 
   // Keep side sliders short and docked above the bottom horizontal scrollbar.
+  // Also reserve the same amount of space in the stacked scroll viewport so the fixed bar
+  // never visually covers ink as the learner writes near the bottom.
+  const stackedBottomOverlayReservePx = 28
   const sideSliderBottomCss = useMemo(
-    () => `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + 28px)`,
+    () => `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${stackedBottomOverlayReservePx}px)`,
     [viewportBottomOffsetPx]
   )
 
@@ -5142,7 +5145,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
-                  style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+                  style={{
+                    touchAction: 'pan-x pan-y pinch-zoom',
+                    paddingBottom: showBottomHorizontalScrollbar
+                      ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${stackedBottomOverlayReservePx}px)`
+                      : undefined,
+                  }}
                 >
                   <div
                     style={{

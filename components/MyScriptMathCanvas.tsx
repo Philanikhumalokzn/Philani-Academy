@@ -519,6 +519,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const splitDragStartYRef = useRef(0)
   const splitStartRatioRef = useRef(0.55)
   const splitDragPointerIdRef = useRef<number | null>(null)
+
+  const editorResizeRafRef = useRef<number | null>(null)
+  const requestEditorResize = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (editorResizeRafRef.current) return
+    editorResizeRafRef.current = window.requestAnimationFrame(() => {
+      editorResizeRafRef.current = null
+      try {
+        editorInstanceRef.current?.resize?.()
+      } catch {}
+    })
+  }, [])
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedHashRef = useRef<string | null>(null)
   const pageRecordsRef = useRef<Array<{ snapshot: SnapshotPayload | null }>>([{ snapshot: null }])
@@ -611,6 +623,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }, [canvasOrientation, isFullscreen])
 
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    const host = editorHostRef.current
+    if (!host) return
+    const obs = new ResizeObserver(() => {
+      requestEditorResize()
+    })
+    try {
+      obs.observe(host)
+    } catch {}
+    return () => {
+      try {
+        obs.disconnect()
+      } catch {}
+      if (editorResizeRafRef.current && typeof window !== 'undefined') {
+        try {
+          window.cancelAnimationFrame(editorResizeRafRef.current)
+        } catch {}
+        editorResizeRafRef.current = null
+      }
+    }
+  }, [editorReinitNonce, requestEditorResize])
+
   const handleSplitPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!splitDragActiveRef.current) return
     const stackEl = studentStackRef.current
@@ -622,7 +657,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
     setStudentSplitRatio(clamped)
     studentSplitRatioRef.current = clamped
-  }, [])
+    requestEditorResize()
+  }, [requestEditorResize])
 
   const stopSplitDrag = useCallback(() => {
     if (!splitDragActiveRef.current) return
@@ -637,7 +673,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     splitDragPointerIdRef.current = null
     splitStartRatioRef.current = studentSplitRatioRef.current
     document.body.style.userSelect = ''
-  }, [])
+    requestEditorResize()
+  }, [requestEditorResize])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 

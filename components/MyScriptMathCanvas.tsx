@@ -202,6 +202,10 @@ const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
 const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 
+// Reserve a small strip above the bottom of the viewport in stacked mobile mode so
+// fixed overlays (like the custom scrollbar and quick trays) never cover ink.
+const STACKED_BOTTOM_OVERLAY_RESERVE_PX = 28
+
 // Diagrams have been extracted into `DiagramOverlayModule`. Keep the embedded implementation disabled
 // to avoid two competing sources of diagram state on the same Ably channel.
 const ENABLE_EMBEDDED_DIAGRAMS = false
@@ -3840,6 +3844,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const masterGainDragRef = useRef<{ active: boolean; pointerId: number | null; startY: number; startValue: number; trackHeight: number }>(
     { active: false, pointerId: null, startY: 0, startValue: 3.5, trackHeight: 1 }
   )
+
+  const toggleMobileDiagramTray = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.dispatchEvent(
+        new CustomEvent('philani-diagrams:toggle-tray', {
+          detail: {
+            bottomOffsetPx: viewportBottomOffsetPx,
+            reservePx: STACKED_BOTTOM_OVERLAY_RESERVE_PX,
+          },
+        })
+      )
+    } catch {}
+  }, [viewportBottomOffsetPx])
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
@@ -4221,9 +4239,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Keep side sliders short and docked above the bottom horizontal scrollbar.
   // Also reserve the same amount of space in the stacked scroll viewport so the fixed bar
   // never visually covers ink as the learner writes near the bottom.
-  const stackedBottomOverlayReservePx = 28
   const sideSliderBottomCss = useMemo(
-    () => `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${stackedBottomOverlayReservePx}px)`,
+    () => `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`,
     [viewportBottomOffsetPx]
   )
 
@@ -5048,6 +5065,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                 {isAdmin ? (
                   <div className="flex items-center gap-2">
+                    {isCompactViewport && (
+                      <button
+                        type="button"
+                        className="px-2 py-1"
+                        title="Diagrams"
+                        onClick={toggleMobileDiagramTray}
+                        disabled={Boolean(fatalError)}
+                      >
+                        <span className="sr-only">Diagrams</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="currentColor"
+                          className="text-slate-700"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm2 0v14h12V5H6z" />
+                          <path d="M8 15l2.5-3 2 2.4L15 12l3 4H8z" opacity="0.25" />
+                          <path d="M8 15l2.5-3 2 2.4L15 12l3 4H8z" />
+                          <circle cx="9" cy="9" r="1.4" />
+                        </svg>
+                      </button>
+                    )}
+
                     {isOverlayMode && (
                       <button
                         type="button"
@@ -5185,7 +5228,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   style={{
                     touchAction: 'pan-x pan-y pinch-zoom',
                     paddingBottom: showBottomHorizontalScrollbar
-                      ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${stackedBottomOverlayReservePx}px)`
+                      ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
                       : undefined,
                   }}
                 >

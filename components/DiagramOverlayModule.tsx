@@ -51,6 +51,15 @@ export default function DiagramOverlayModule(props: {
 }) {
   const { boardId, gradeLabel, userId, userDisplayName, isAdmin } = props
 
+  const [mobileTrayOpen, setMobileTrayOpen] = useState(false)
+  const [mobileTrayBottomOffsetPx, setMobileTrayBottomOffsetPx] = useState(0)
+  const [mobileTrayReservePx, setMobileTrayReservePx] = useState(28)
+
+  const mobileTrayBottomCss = useMemo(
+    () => `calc(env(safe-area-inset-bottom) + ${mobileTrayBottomOffsetPx}px + ${mobileTrayReservePx}px)`,
+    [mobileTrayBottomOffsetPx, mobileTrayReservePx]
+  )
+
   const clientId = useMemo(() => {
     const base = sanitizeIdentifier(userId || 'anonymous')
     const randomSuffix = Math.random().toString(36).slice(2, 8)
@@ -195,6 +204,76 @@ export default function DiagramOverlayModule(props: {
       }
     }
   }, [isAdmin, persistState, publish])
+
+  const mobileDiagramTray = isAdmin && mobileTrayOpen ? (
+    <div
+      className="fixed left-0 right-0 z-[220] sm:hidden"
+      style={{ bottom: mobileTrayBottomCss } as any}
+      onClick={e => {
+        // Only close if the click is on the backdrop, not inside the tray content.
+        if (e.target === e.currentTarget) setMobileTrayOpen(false)
+      }}
+    >
+      <div
+        className="mx-3 mb-2 bg-white border border-slate-200 rounded-lg shadow-sm px-2 py-2"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex gap-2 overflow-x-auto">
+          {diagrams.length === 0 ? (
+            <div className="text-[11px] text-slate-500 px-2 py-2">No diagrams yet.</div>
+          ) : (
+            diagrams.map(d => (
+              <button
+                key={d.id}
+                type="button"
+                className={`shrink-0 w-28 rounded-md border px-2 py-2 text-left ${diagramState.activeDiagramId === d.id ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'}`}
+                onClick={() => {
+                  setMobileTrayOpen(false)
+                  void setOverlayState({ activeDiagramId: d.id, isOpen: true })
+                }}
+              >
+                <div className="w-full h-14 rounded bg-slate-100 overflow-hidden">
+                  {d.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={d.imageUrl} alt={d.title || 'Diagram'} className="w-full h-full object-cover" />
+                  ) : null}
+                </div>
+                <div className="mt-1 text-[11px] text-slate-700 truncate">{d.title || 'Diagram'}</div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail as any
+      if (detail && typeof detail === 'object') {
+        if (typeof detail.bottomOffsetPx === 'number' && Number.isFinite(detail.bottomOffsetPx)) {
+          setMobileTrayBottomOffsetPx(Math.max(0, Math.round(detail.bottomOffsetPx)))
+        }
+        if (typeof detail.reservePx === 'number' && Number.isFinite(detail.reservePx)) {
+          setMobileTrayReservePx(Math.max(0, Math.round(detail.reservePx)))
+        }
+      }
+      setMobileTrayOpen(prev => !prev)
+    }
+
+    window.addEventListener('philani-diagrams:toggle-tray', handler as any)
+    return () => {
+      window.removeEventListener('philani-diagrams:toggle-tray', handler as any)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (diagramState.isOpen) {
+      setMobileTrayOpen(false)
+    }
+  }, [diagramState.isOpen])
 
   const persistAnnotations = useCallback(async (diagramId: string, annotations: DiagramAnnotations | null) => {
     if (!isAdmin) return
@@ -1549,22 +1628,21 @@ export default function DiagramOverlayModule(props: {
     applyAnnotations(diagramId, next)
   }, [applyAnnotations, applySnapOrSmooth, cloneAnnotations, deleteSelectionFromAnnotations, duplicateSelectionInAnnotations, getMaxZ, getMinZ, isSelectionLockedInAnnotations, normalizeAnnotations, pushUndoSnapshot, setSelectionStyleInAnnotations, setSelectionZInAnnotations])
 
-  if (!diagramState.isOpen) {
-    return null
-  }
-
-  if (!activeDiagram) return null
-
   const selectionIsLocked = (() => {
+    if (!diagramState.isOpen) return false
+    if (!activeDiagram) return false
     if (!selection) return false
     const ann = activeDiagram.annotations ? normalizeAnnotations(activeDiagram.annotations) : { space: IMAGE_SPACE, strokes: [], arrows: [] }
     return isSelectionLockedInAnnotations(ann, selection)
   })()
 
   return (
-    <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
-      <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
-      <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900">
+    <>
+      {mobileDiagramTray}
+      {diagramState.isOpen && activeDiagram ? (
+        <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
+          <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+          <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900">
         <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
           <div className="min-w-0">
             <p className="text-xs text-slate-500">Diagram</p>
@@ -1881,7 +1959,9 @@ export default function DiagramOverlayModule(props: {
             }}
           />
         </div>
-      </div>
-    </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }

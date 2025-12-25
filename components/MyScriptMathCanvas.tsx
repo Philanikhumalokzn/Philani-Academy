@@ -4676,6 +4676,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                 <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
                               </svg>
                             </button>
+
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              title="Clear"
+                              onClick={() => runCanvasAction(handleClear)}
+                              disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                            >
+                              <span className="sr-only">Clear</span>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="currentColor"
+                                className="text-slate-700"
+                                aria-hidden="true"
+                              >
+                                <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
+                              </svg>
+                            </button>
                           </div>
                         ) : (
                           <button

@@ -3786,6 +3786,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     { active: false, pointerId: null, startX: 0, startScrollLeft: 0, usableTrackWidth: 1, maxScroll: 0 }
   )
   const [horizontalScrollbarActive, setHorizontalScrollbarActive] = useState(false)
+
+  const [verticalPanMax, setVerticalPanMax] = useState(0)
+  const [verticalPanValue, setVerticalPanValue] = useState(0)
+  const [verticalPanThumbRatio, setVerticalPanThumbRatio] = useState(1)
+  const verticalPanRafRef = useRef<number | null>(null)
+  const verticalPanTrackRef = useRef<HTMLDivElement | null>(null)
+  const verticalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startY: number; startScrollTop: number; usableTrackHeight: number; maxScroll: number }>(
+    { active: false, pointerId: null, startY: 0, startScrollTop: 0, usableTrackHeight: 1, maxScroll: 0 }
+  )
+  const [verticalScrollbarActive, setVerticalScrollbarActive] = useState(false)
+
+  // Master scroll speed/rate that affects both custom scrollbars.
+  const [manualScrollGain, setManualScrollGain] = useState(3.5)
+  const masterGainTrackRef = useRef<HTMLDivElement | null>(null)
+  const masterGainDragRef = useRef<{ active: boolean; pointerId: number | null; startY: number; startValue: number; trackHeight: number }>(
+    { active: false, pointerId: null, startY: 0, startValue: 3.5, trackHeight: 1 }
+  )
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
@@ -3840,6 +3857,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           window.cancelAnimationFrame(horizontalPanRafRef.current)
         } catch {}
         horizontalPanRafRef.current = null
+      }
+    }
+  }, [inkSurfaceWidthFactor, studentViewScale, useStackedStudentLayout])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+
+    const update = () => {
+      const max = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      setVerticalPanMax(max)
+      const ratio = viewport.scrollHeight > 0 ? Math.min(1, Math.max(0, viewport.clientHeight / viewport.scrollHeight)) : 1
+      setVerticalPanThumbRatio(ratio)
+      const clamped = Math.max(0, Math.min(viewport.scrollTop, max))
+      setVerticalPanValue(clamped)
+      if (viewport.scrollTop !== clamped) {
+        viewport.scrollTop = clamped
+      }
+    }
+
+    update()
+
+    const onScroll = () => {
+      if (typeof window === 'undefined') return
+      if (verticalPanRafRef.current) return
+      verticalPanRafRef.current = window.requestAnimationFrame(() => {
+        verticalPanRafRef.current = null
+        update()
+      })
+    }
+
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', update)
+
+    let ro: ResizeObserver | null = null
+    try {
+      ro = new ResizeObserver(() => update())
+      ro.observe(viewport)
+    } catch {}
+
+    return () => {
+      viewport.removeEventListener('scroll', onScroll as any)
+      window.removeEventListener('resize', update)
+      try {
+        ro?.disconnect()
+      } catch {}
+      if (verticalPanRafRef.current && typeof window !== 'undefined') {
+        try {
+          window.cancelAnimationFrame(verticalPanRafRef.current)
+        } catch {}
+        verticalPanRafRef.current = null
       }
     }
   }, [inkSurfaceWidthFactor, studentViewScale, useStackedStudentLayout])
@@ -4054,43 +4123,233 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const maxScroll = Math.max(0, horizontalPanDragRef.current.maxScroll)
     const dx = event.clientX - horizontalPanDragRef.current.startX
     const ratioDx = dx / usableTrackWidth
-    const dragSensitivity = 3.5
-    const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * dragSensitivity
+    const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * manualScrollGain
     viewport.scrollLeft = Math.max(0, Math.min(target, maxScroll))
+  }, [manualScrollGain])
+
+  const verticalScrollbarThumbPct = useMemo(() => Math.max(8, Math.round(verticalPanThumbRatio * 100)), [verticalPanThumbRatio])
+  const verticalScrollbarTopPct = useMemo(() => {
+    const usable = Math.max(0, 100 - verticalScrollbarThumbPct)
+    return verticalPanMax > 0 ? (verticalPanValue / verticalPanMax) * usable : 0
+  }, [verticalPanMax, verticalPanValue, verticalScrollbarThumbPct])
+
+  const beginVerticalScrollbarDrag = useCallback((event: React.PointerEvent) => {
+    const track = verticalPanTrackRef.current
+    const viewport = studentViewportRef.current
+    if (!track) return
+    if (!viewport) return
+    const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+    const rect = track.getBoundingClientRect()
+    const trackHeight = Math.max(1, rect.height)
+    const thumbPx = trackHeight * Math.max(0, Math.min(1, verticalPanThumbRatio))
+    const usableTrackHeight = Math.max(1, trackHeight - thumbPx)
+    verticalPanDragRef.current.active = true
+    verticalPanDragRef.current.pointerId = event.pointerId
+    verticalPanDragRef.current.startY = event.clientY
+    verticalPanDragRef.current.startScrollTop = viewport.scrollTop
+    verticalPanDragRef.current.usableTrackHeight = usableTrackHeight
+    verticalPanDragRef.current.maxScroll = maxScroll
+    setVerticalScrollbarActive(true)
+    try {
+      track.setPointerCapture(event.pointerId)
+    } catch {}
+  }, [verticalPanThumbRatio])
+
+  const endVerticalScrollbarDrag = useCallback((event: React.PointerEvent) => {
+    if (!verticalPanDragRef.current.active) return
+    verticalPanDragRef.current.active = false
+    const track = verticalPanTrackRef.current
+    try {
+      track?.releasePointerCapture(event.pointerId)
+    } catch {}
+    verticalPanDragRef.current.pointerId = null
+    setVerticalScrollbarActive(false)
   }, [])
+
+  const updateVerticalScrollbarDrag = useCallback((event: React.PointerEvent) => {
+    if (!verticalPanDragRef.current.active) return
+    const track = verticalPanTrackRef.current
+    const viewport = studentViewportRef.current
+    if (!track || !viewport) return
+    const usableTrackHeight = Math.max(1, verticalPanDragRef.current.usableTrackHeight)
+    const maxScroll = Math.max(0, verticalPanDragRef.current.maxScroll)
+    const dy = event.clientY - verticalPanDragRef.current.startY
+    const ratioDy = dy / usableTrackHeight
+    const target = verticalPanDragRef.current.startScrollTop + ratioDy * maxScroll * manualScrollGain
+    viewport.scrollTop = Math.max(0, Math.min(target, maxScroll))
+  }, [manualScrollGain])
+
+  const showSideSliders = Boolean(useStackedStudentLayout && isCompactViewport)
+
+  // Keep side sliders short and docked above the bottom horizontal scrollbar.
+  const sideSliderBottomCss = useMemo(
+    () => `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + 28px)`,
+    [viewportBottomOffsetPx]
+  )
+
+  const leftVerticalScrollbar = showSideSliders ? (
+    <div
+      className="fixed left-0 z-[520] pointer-events-none"
+      style={{ bottom: sideSliderBottomCss, height: '40vh', maxHeight: '45vh' } as any}
+    >
+      <div
+        ref={verticalPanTrackRef}
+        className="h-full w-3 flex items-end justify-center pointer-events-auto"
+        onPointerMove={updateVerticalScrollbarDrag}
+        onPointerUp={event => {
+          endVerticalScrollbarDrag(event)
+          setVerticalScrollbarActive(false)
+        }}
+        onPointerCancel={event => {
+          endVerticalScrollbarDrag(event)
+          setVerticalScrollbarActive(false)
+        }}
+        onPointerDown={event => {
+          event.preventDefault()
+          setVerticalScrollbarActive(true)
+          const track = verticalPanTrackRef.current
+          const viewport = studentViewportRef.current
+          if (!track || !viewport) return
+          const rect = track.getBoundingClientRect()
+          const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
+          const ratio = rect.height > 0 ? y / rect.height : 0
+          viewport.scrollTop = ratio * Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+          beginVerticalScrollbarDrag(event)
+        }}
+      >
+        <div className={`h-full w-1.5 bg-slate-200 rounded-full relative transition-all duration-150 ${verticalScrollbarActive ? 'opacity-100' : 'opacity-80'}`}>
+          <div
+            className="absolute left-0 right-0 bg-slate-400 rounded-full"
+            style={{
+              height: `${verticalScrollbarThumbPct}%`,
+              top: `${verticalScrollbarTopPct}%`,
+              cursor: 'grab',
+            }}
+            onPointerDown={event => {
+              event.preventDefault()
+              event.stopPropagation()
+              beginVerticalScrollbarDrag(event)
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  const masterGainPct = useMemo(() => {
+    const min = 1
+    const max = 6
+    const clamped = Math.max(min, Math.min(max, manualScrollGain))
+    return ((clamped - min) / (max - min)) * 100
+  }, [manualScrollGain])
+
+  const beginMasterGainDrag = useCallback((event: React.PointerEvent) => {
+    const track = masterGainTrackRef.current
+    if (!track) return
+    const rect = track.getBoundingClientRect()
+    masterGainDragRef.current.active = true
+    masterGainDragRef.current.pointerId = event.pointerId
+    masterGainDragRef.current.startY = event.clientY
+    masterGainDragRef.current.startValue = manualScrollGain
+    masterGainDragRef.current.trackHeight = Math.max(1, rect.height)
+    try {
+      track.setPointerCapture(event.pointerId)
+    } catch {}
+  }, [manualScrollGain])
+
+  const updateMasterGainDrag = useCallback((event: React.PointerEvent) => {
+    if (!masterGainDragRef.current.active) return
+    const trackHeight = Math.max(1, masterGainDragRef.current.trackHeight)
+    const dy = event.clientY - masterGainDragRef.current.startY
+    // Invert so dragging up increases gain.
+    const ratio = -dy / trackHeight
+    const min = 1
+    const max = 6
+    const next = masterGainDragRef.current.startValue + ratio * (max - min)
+    setManualScrollGain(Math.max(min, Math.min(max, next)))
+  }, [])
+
+  const endMasterGainDrag = useCallback((event: React.PointerEvent) => {
+    if (!masterGainDragRef.current.active) return
+    masterGainDragRef.current.active = false
+    const track = masterGainTrackRef.current
+    try {
+      track?.releasePointerCapture(event.pointerId)
+    } catch {}
+    masterGainDragRef.current.pointerId = null
+  }, [])
+
+  const rightMasterGainSlider = showSideSliders ? (
+    <div
+      className="fixed right-0 z-[520] pointer-events-none"
+      style={{ bottom: sideSliderBottomCss, height: '40vh', maxHeight: '45vh' } as any}
+    >
+      <div
+        ref={masterGainTrackRef}
+        className="h-full w-3 flex items-end justify-center pointer-events-auto"
+        onPointerMove={updateMasterGainDrag}
+        onPointerUp={endMasterGainDrag}
+        onPointerCancel={endMasterGainDrag}
+        onPointerDown={event => {
+          event.preventDefault()
+          const track = masterGainTrackRef.current
+          if (track) {
+            const rect = track.getBoundingClientRect()
+            const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
+            const ratio = rect.height > 0 ? 1 - y / rect.height : 0
+            const min = 1
+            const max = 6
+            setManualScrollGain(min + ratio * (max - min))
+          }
+          beginMasterGainDrag(event)
+        }}
+      >
+        <div className="h-full w-1.5 bg-slate-200 rounded-full relative opacity-80">
+          <div
+            className="absolute left-0 right-0 bg-slate-400 rounded-full"
+            style={{
+              height: '14%',
+              top: `${Math.max(0, Math.min(86, 100 - masterGainPct - 7))}%`,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null
 
   const showBottomHorizontalScrollbar = Boolean(useStackedStudentLayout && isCompactViewport)
 
   const horizontalScrollbar = showBottomHorizontalScrollbar ? (
     <div
       ref={horizontalPanTrackRef}
-      className="fixed left-0 right-0 z-[500]"
+      className="fixed left-0 right-0 z-[500] pointer-events-none"
       style={{ bottom: `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px)` } as any}
-      onPointerMove={updateHorizontalScrollbarDrag}
-      onPointerUp={event => {
-        endHorizontalScrollbarDrag(event)
-        setHorizontalScrollbarActive(false)
-      }}
-      onPointerCancel={event => {
-        endHorizontalScrollbarDrag(event)
-        setHorizontalScrollbarActive(false)
-      }}
-      onPointerDown={event => {
-        event.preventDefault()
-        setHorizontalScrollbarActive(true)
-        const track = horizontalPanTrackRef.current
-        const viewport = studentViewportRef.current
-        if (!track || !viewport) return
-        const rect = track.getBoundingClientRect()
-        const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-        const ratio = rect.width > 0 ? x / rect.width : 0
-        viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-        // Allow continuous drag even when starting from the track (not just the thumb).
-        beginHorizontalScrollbarDrag(event)
-      }}
     >
-      <div className={`px-4 flex items-center bg-white transition-all duration-150 ${horizontalScrollbarActive ? 'h-10' : 'h-8'}`}>
-        <div className={`w-full bg-slate-200 rounded-full relative transition-all duration-150 ${horizontalScrollbarActive ? 'h-5' : 'h-4'}`}>
+      <div className="px-3 pb-1 flex items-end justify-center">
+        <div
+          className={`w-[92vw] max-w-[760px] bg-slate-200 rounded-full relative pointer-events-auto transition-all duration-150 ${horizontalScrollbarActive ? 'h-4' : 'h-3'}`}
+          onPointerMove={updateHorizontalScrollbarDrag}
+          onPointerUp={event => {
+            endHorizontalScrollbarDrag(event)
+            setHorizontalScrollbarActive(false)
+          }}
+          onPointerCancel={event => {
+            endHorizontalScrollbarDrag(event)
+            setHorizontalScrollbarActive(false)
+          }}
+          onPointerDown={event => {
+            event.preventDefault()
+            setHorizontalScrollbarActive(true)
+            const track = horizontalPanTrackRef.current
+            const viewport = studentViewportRef.current
+            if (!track || !viewport) return
+            const rect = event.currentTarget.getBoundingClientRect()
+            const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+            const ratio = rect.width > 0 ? x / rect.width : 0
+            viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+            beginHorizontalScrollbarDrag(event)
+          }}
+        >
           <div
             className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
             style={{
@@ -4907,11 +5166,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     Preparing collaborative canvas…
                   </div>
                 )}
-                {status === 'ready' && (
-                  <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
-                    Ready
-                  </div>
-                )}
                 {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
@@ -4971,6 +5225,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         )}
 
         {hasMounted && horizontalScrollbar}
+        {hasMounted && leftVerticalScrollbar}
+        {hasMounted && rightMasterGainSlider}
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
@@ -5819,7 +6075,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </div>
           )}
           {transientError && status === 'ready' && (
-            <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm">
+            <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm pointer-events-none">
               {transientError}
             </div>
           )}

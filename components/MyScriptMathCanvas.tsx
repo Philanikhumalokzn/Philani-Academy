@@ -283,6 +283,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [hasMounted, setHasMounted] = useState(false)
+  const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
@@ -544,7 +546,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [])
 
-  // (Bottom viewport offset logic removed; scrollbar now lives in the separator strip.)
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const compute = () => {
+      const vv = (window as any).visualViewport as VisualViewport | undefined
+      if (!vv) {
+        setViewportBottomOffsetPx(0)
+        return
+      }
+      const bottomGap = window.innerHeight - (vv.height + vv.offsetTop)
+      setViewportBottomOffsetPx(Math.max(0, Math.round(bottomGap)))
+    }
+
+    compute()
+    window.addEventListener('resize', compute)
+    const vv = (window as any).visualViewport as VisualViewport | undefined
+    vv?.addEventListener('resize', compute)
+    vv?.addEventListener('scroll', compute)
+    return () => {
+      window.removeEventListener('resize', compute)
+      vv?.removeEventListener('resize', compute)
+      vv?.removeEventListener('scroll', compute)
+    }
+  }, [])
 
   useEffect(() => {
     clientIdRef.current = clientId
@@ -4043,6 +4072,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return Math.round(((clamped - min) / (max - min)) * 100)
   }, [horizontalScrollSpeed])
 
+  const showBottomHorizontalScrollbar = Boolean(useStackedStudentLayout && isCompactViewport)
+
+  const horizontalScrollbar = showBottomHorizontalScrollbar ? (
+    <div
+      ref={horizontalPanTrackRef}
+      className="fixed left-0 right-0 z-[500]"
+      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px)` } as any}
+      onPointerMove={updateHorizontalScrollbarDrag}
+      onPointerUp={event => {
+        endHorizontalScrollbarDrag(event)
+        setHorizontalScrollbarActive(false)
+      }}
+      onPointerCancel={event => {
+        endHorizontalScrollbarDrag(event)
+        setHorizontalScrollbarActive(false)
+      }}
+      onPointerDown={event => {
+        event.preventDefault()
+        setHorizontalScrollbarActive(true)
+        const track = horizontalPanTrackRef.current
+        const viewport = studentViewportRef.current
+        if (!track || !viewport) return
+        const rect = track.getBoundingClientRect()
+        const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+        const ratio = rect.width > 0 ? x / rect.width : 0
+        viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      }}
+    >
+      <div className={`px-4 flex items-center bg-white transition-all duration-150 ${horizontalScrollbarActive ? 'h-5' : 'h-3'}`}>
+        <div className={`w-full bg-slate-200 rounded-full relative transition-all duration-150 ${horizontalScrollbarActive ? 'h-2' : 'h-1'}`}>
+          <div
+            className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
+            style={{
+              width: `${horizontalScrollbarThumbPct}%`,
+              left: `${horizontalScrollbarLeftPct}%`,
+              cursor: 'grab',
+            }}
+            onPointerDown={event => {
+              event.preventDefault()
+              event.stopPropagation()
+              beginHorizontalScrollbarDrag(event)
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null
+
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
   // Persist LaTeX strictly against the scheduled session id.
@@ -4508,7 +4585,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className="flex items-center justify-center px-4 py-1 bg-white cursor-row-resize select-none"
+              className="flex items-center justify-center px-4 py-0.5 bg-white cursor-row-resize select-none"
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
@@ -4531,38 +4608,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 document.body.style.userSelect = 'none'
               }}
             >
-              <div
-                ref={horizontalPanTrackRef}
-                className={`w-full bg-slate-200 rounded-full relative transition-all duration-150 ${horizontalScrollbarActive ? 'h-2' : 'h-1'}`}
-                onPointerMove={updateHorizontalScrollbarDrag}
-                onPointerUp={endHorizontalScrollbarDrag}
-                onPointerCancel={endHorizontalScrollbarDrag}
-                onPointerDown={event => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setHorizontalScrollbarActive(true)
-                  const track = horizontalPanTrackRef.current
-                  const viewport = studentViewportRef.current
-                  if (!track || !viewport) return
-                  const rect = track.getBoundingClientRect()
-                  const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-                  const ratio = rect.width > 0 ? x / rect.width : 0
-                  viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-                }}
-              >
-                <div
-                  className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
-                  style={{
-                    width: `${horizontalScrollbarThumbPct}%`,
-                    left: `${horizontalScrollbarLeftPct}%`,
-                    cursor: 'grab',
-                  }}
-                  onPointerDown={event => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    beginHorizontalScrollbarDrag(event)
-                  }}
-                />
+              <div className="w-full h-0.5 bg-slate-200 relative">
+                <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
               </div>
             </div>
             <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
@@ -4901,6 +4948,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </div>
           </div>
         )}
+
+        {hasMounted && horizontalScrollbar}
 
         {/* Right-edge vertical slider: adjusts horizontal scroll speed. */}
         {useStackedStudentLayout && (

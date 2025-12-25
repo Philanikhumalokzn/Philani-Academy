@@ -4665,156 +4665,163 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 )}
               </div>
 
+              {showSideControls && (canPersistLatex || isAdmin) && (
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="absolute inset-0 flex items-start justify-between px-2 py-2">
+                    {canPersistLatex ? (
+                      <div className="pointer-events-auto flex flex-col gap-2">
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Save notes"
+                          onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
+                          disabled={isSavingLatex}
+                        >
+                          <span className="sr-only">Save notes</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
+                            <path d="M7 12h10v8H7z" opacity="0.2" />
+                            <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Undo"
+                          onClick={() => runCanvasAction(handleUndo)}
+                          disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                        >
+                          <span className="sr-only">Undo</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Redo"
+                          onClick={() => runCanvasAction(handleRedo)}
+                          disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                        >
+                          <span className="sr-only">Redo</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+
+                    {isAdmin ? (
+                      <div className="pointer-events-auto flex flex-col gap-2">
+                        <button
+                          type="button"
+                          className="p-2 text-slate-700 disabled:opacity-50"
+                          title="Send step"
+                          onClick={async () => {
+                            const editor = editorInstanceRef.current
+                            if (!editor) return
+                            if (lockedOutRef.current) return
+                            if (adminSendingStep) return
+                            setAdminSendingStep(true)
+
+                            try {
+                              try {
+                                if (typeof editor.waitForIdle === 'function') {
+                                  await editor.waitForIdle()
+                                }
+                              } catch {}
+
+                              let step = adminDraftLatex
+                              if (!step) {
+                                const modelLatex = getLatexFromEditorModel()
+                                const normalizedModel = normalizeStepLatex(modelLatex)
+                                if (normalizedModel) {
+                                  step = normalizedModel
+                                  setLatexOutput(modelLatex)
+                                  setAdminDraftLatex(normalizedModel)
+                                }
+                              }
+                              if (!step) {
+                                for (let i = 0; i < 3 && !step; i += 1) {
+                                  const exported = await exportLatexFromEditor()
+                                  const normalized = normalizeStepLatex(exported)
+                                  if (normalized) {
+                                    step = normalized
+                                    setLatexOutput(exported)
+                                    setAdminDraftLatex(normalized)
+                                    break
+                                  }
+                                  await new Promise<void>(resolve => setTimeout(resolve, 250))
+                                }
+                              }
+                              if (!step) return
+
+                              const snapshot = captureFullSnapshot()
+                              const symbols = snapshot?.symbols ?? null
+                              setAdminSteps(prev => {
+                                const next = [...prev]
+                                if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
+                                  next[adminEditIndex] = { latex: step, symbols }
+                                } else {
+                                  next.push({ latex: step, symbols })
+                                }
+                                return next
+                              })
+                              setAdminDraftLatex('')
+                              setAdminEditIndex(null)
+                              setLatexOutput('')
+
+                              suppressBroadcastUntilTsRef.current = Date.now() + 1200
+                              try {
+                                editor.clear?.()
+                              } catch {}
+                              lastSymbolCountRef.current = 0
+                              lastBroadcastBaseCountRef.current = 0
+                            } finally {
+                              setAdminSendingStep(false)
+                            }
+                          }}
+                          disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
+                        >
+                          <span className="sr-only">Send</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                            <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                          </svg>
+                        </button>
+
+                        {isOverlayMode && (
+                          <button
+                            type="button"
+                            className="p-2 text-slate-700 disabled:opacity-50"
+                            title="Canvas controls"
+                            onClick={() => {
+                              openOverlayControls()
+                            }}
+                            disabled={status !== 'ready' || Boolean(fatalError)}
+                          >
+                            <span className="sr-only">Canvas controls</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                              <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.06 7.06 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.65.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.25.1.52.01.65-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         )}
 
-        {/* Side controls (compact stacked): left = save/undo/redo, right = send + gear. */}
-        {showSideControls && (
-          <>
-            {canPersistLatex && (
-              <div className="fixed left-2 top-1/2 -translate-y-1/2 z-[500] flex flex-col gap-2">
-                <button
-                  type="button"
-                  className="p-2 text-slate-700 disabled:opacity-50"
-                  title="Save notes"
-                  onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
-                  disabled={isSavingLatex}
-                >
-                  <span className="sr-only">Save notes</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                    <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
-                    <path d="M7 12h10v8H7z" opacity="0.2" />
-                    <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
-                  </svg>
-                </button>
 
-                <button
-                  type="button"
-                  className="p-2 text-slate-700 disabled:opacity-50"
-                  title="Undo"
-                  onClick={() => runCanvasAction(handleUndo)}
-                  disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                >
-                  <span className="sr-only">Undo</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                    <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  className="p-2 text-slate-700 disabled:opacity-50"
-                  title="Redo"
-                  onClick={() => runCanvasAction(handleRedo)}
-                  disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                >
-                  <span className="sr-only">Redo</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                    <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
-                  </svg>
-                </button>
-              </div>
-            )}
-
-            {isAdmin && (
-              <div className="fixed right-2 top-1/2 -translate-y-1/2 z-[500] flex flex-col gap-2">
-                <button
-                  type="button"
-                  className="p-2 text-slate-700 disabled:opacity-50"
-                  title="Send step"
-                  onClick={async () => {
-                    const editor = editorInstanceRef.current
-                    if (!editor) return
-                    if (lockedOutRef.current) return
-                    if (adminSendingStep) return
-                    setAdminSendingStep(true)
-
-                    try {
-                      try {
-                        if (typeof editor.waitForIdle === 'function') {
-                          await editor.waitForIdle()
-                        }
-                      } catch {}
-
-                      let step = adminDraftLatex
-                      if (!step) {
-                        const modelLatex = getLatexFromEditorModel()
-                        const normalizedModel = normalizeStepLatex(modelLatex)
-                        if (normalizedModel) {
-                          step = normalizedModel
-                          setLatexOutput(modelLatex)
-                          setAdminDraftLatex(normalizedModel)
-                        }
-                      }
-                      if (!step) {
-                        for (let i = 0; i < 3 && !step; i += 1) {
-                          const exported = await exportLatexFromEditor()
-                          const normalized = normalizeStepLatex(exported)
-                          if (normalized) {
-                            step = normalized
-                            setLatexOutput(exported)
-                            setAdminDraftLatex(normalized)
-                            break
-                          }
-                          await new Promise<void>(resolve => setTimeout(resolve, 250))
-                        }
-                      }
-                      if (!step) return
-
-                      const snapshot = captureFullSnapshot()
-                      const symbols = snapshot?.symbols ?? null
-                      setAdminSteps(prev => {
-                        const next = [...prev]
-                        if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
-                          next[adminEditIndex] = { latex: step, symbols }
-                        } else {
-                          next.push({ latex: step, symbols })
-                        }
-                        return next
-                      })
-                      setAdminDraftLatex('')
-                      setAdminEditIndex(null)
-                      setLatexOutput('')
-
-                      suppressBroadcastUntilTsRef.current = Date.now() + 1200
-                      try {
-                        editor.clear?.()
-                      } catch {}
-                      lastSymbolCountRef.current = 0
-                      lastBroadcastBaseCountRef.current = 0
-                    } finally {
-                      setAdminSendingStep(false)
-                    }
-                  }}
-                  disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
-                >
-                  <span className="sr-only">Send</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                    <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                  </svg>
-                </button>
-
-                {isOverlayMode && (
-                  <button
-                    type="button"
-                    className="p-2 text-slate-700 disabled:opacity-50"
-                    title="Canvas controls"
-                    onClick={() => {
-                      openOverlayControls()
-                    }}
-                    disabled={status !== 'ready' || Boolean(fatalError)}
-                  >
-                    <span className="sr-only">Canvas controls</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                      <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.06 7.06 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.65.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.25.1.52.01.65-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        )}
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>

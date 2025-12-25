@@ -4452,7 +4452,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className="flex items-center justify-center px-4 py-1 bg-white cursor-row-resize select-none"
+              className="flex items-center justify-center px-4 py-0 bg-white cursor-row-resize select-none"
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
@@ -4576,147 +4576,145 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
               )}
 
-              <div
-                className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
-              >
-                <div
-                  ref={studentViewportRef}
-                  className="relative flex-1 min-h-0 overflow-auto"
-                  style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
-                >
-                  <div
-                    style={{
-                      transform: `scale(${studentViewScale})`,
-                      transformOrigin: 'top left',
-                      width: `${(100 * inkSurfaceWidthFactor) / studentViewScale}%`,
-                      height: `${100 / studentViewScale}%`,
-                    }}
-                  >
-                    <div
-                      ref={editorHostRef}
-                      className={editorHostClass}
-                      style={{ ...editorHostStyle, height: '100%' }}
-                      data-orientation={canvasOrientation}
-                    />
-                  </div>
-                </div>
-
-                {(status === 'loading' || status === 'idle') && (
-                  <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
-                    Preparing collaborative canvas…
-                  </div>
-                )}
-                {status === 'ready' && (
-                  <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
-                    Ready
-                  </div>
-                )}
-                {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
-                  <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
-                    {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
-                  </div>
-                )}
-                {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
-                  <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
-                    {latexProjectionMarkup ? (
-                      <div
-                        className="text-slate-900 leading-relaxed max-w-3xl"
-                        style={latexOverlayStyle}
-                        dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
-                      />
-                    ) : (
-                      <p className="text-slate-500 text-sm">Waiting for teacher notes…</p>
+              <div className={`h-full ${showSideControls ? 'flex gap-2' : ''}`}>
+                {showSideControls && (canPersistLatex || isAdmin) && (
+                  <div className="w-10 flex flex-col items-center gap-2 pt-2">
+                    {canPersistLatex && (
+                      <button
+                        type="button"
+                        className="p-2 text-slate-700 disabled:opacity-50"
+                        title="Save notes"
+                        onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
+                        disabled={isSavingLatex}
+                      >
+                        <span className="sr-only">Save notes</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                          <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
+                          <path d="M7 12h10v8H7z" opacity="0.2" />
+                          <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
+                        </svg>
+                      </button>
                     )}
+
+                    <button
+                      type="button"
+                      className="p-2 text-slate-700 disabled:opacity-50"
+                      title="Undo"
+                      onClick={() => runCanvasAction(handleUndo)}
+                      disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                    >
+                      <span className="sr-only">Undo</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                        <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="p-2 text-slate-700 disabled:opacity-50"
+                      title="Redo"
+                      onClick={() => runCanvasAction(handleRedo)}
+                      disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                    >
+                      <span className="sr-only">Redo</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                        <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
+                      </svg>
+                    </button>
                   </div>
                 )}
-                {!isOverlayMode && (
-                  <button
-                    type="button"
-                    onClick={toggleFullscreen}
-                    className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
-                  >
-                    {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                  </button>
-                )}
 
-                {isOverlayMode && (
+                <div className="border rounded bg-white relative h-full overflow-hidden flex-1 flex flex-col">
                   <div
-                    className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
-                    style={{
-                      pointerEvents: overlayControlsVisible ? 'auto' : 'none',
-                      cursor: overlayControlsVisible ? 'default' : undefined,
-                    }}
-                    onClick={closeOverlayControls}
+                    ref={studentViewportRef}
+                    className="relative flex-1 min-h-0 overflow-auto"
+                    style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
                   >
                     <div
-                      className="canvas-overlay-controls__panel"
-                      onClick={event => {
-                        event.stopPropagation()
-                        kickOverlayAutoHide()
+                      style={{
+                        transform: `scale(${studentViewScale})`,
+                        transformOrigin: 'top left',
+                        width: `${(100 * inkSurfaceWidthFactor) / studentViewScale}%`,
+                        height: `${100 / studentViewScale}%`,
                       }}
                     >
-                      <p className="canvas-overlay-controls__title">Canvas controls</p>
-                      {renderToolbarBlock()}
-                      <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
-                        Return to drawing
-                      </button>
+                      <div
+                        ref={editorHostRef}
+                        className={editorHostClass}
+                        style={{ ...editorHostStyle, height: '100%' }}
+                        data-orientation={canvasOrientation}
+                      />
                     </div>
                   </div>
-                )}
-              </div>
 
-              {showSideControls && (canPersistLatex || isAdmin) && (
-                <div className="pointer-events-none absolute inset-0">
-                  <div className="absolute inset-0 flex items-start justify-between px-2 py-2">
-                    {canPersistLatex ? (
-                      <div className="pointer-events-auto flex flex-col gap-2">
-                        <button
-                          type="button"
-                          className="p-2 text-slate-700 disabled:opacity-50"
-                          title="Save notes"
-                          onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
-                          disabled={isSavingLatex}
-                        >
-                          <span className="sr-only">Save notes</span>
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                            <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
-                            <path d="M7 12h10v8H7z" opacity="0.2" />
-                            <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
-                          </svg>
-                        </button>
+                  {(status === 'loading' || status === 'idle') && (
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
+                      Preparing collaborative canvas…
+                    </div>
+                  )}
+                  {status === 'ready' && (
+                    <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
+                      Ready
+                    </div>
+                  )}
+                  {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+                    <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
+                      {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
+                    </div>
+                  )}
+                  {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
+                    <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
+                      {latexProjectionMarkup ? (
+                        <div
+                          className="text-slate-900 leading-relaxed max-w-3xl"
+                          style={latexOverlayStyle}
+                          dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                        />
+                      ) : (
+                        <p className="text-slate-500 text-sm">Waiting for teacher notes…</p>
+                      )}
+                    </div>
+                  )}
+                  {!isOverlayMode && (
+                    <button
+                      type="button"
+                      onClick={toggleFullscreen}
+                      className="absolute top-2 left-2 text-xs bg-white/80 px-2 py-1 rounded border"
+                    >
+                      {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    </button>
+                  )}
 
-                        <button
-                          type="button"
-                          className="p-2 text-slate-700 disabled:opacity-50"
-                          title="Undo"
-                          onClick={() => runCanvasAction(handleUndo)}
-                          disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                        >
-                          <span className="sr-only">Undo</span>
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                            <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
-                          </svg>
-                        </button>
-
-                        <button
-                          type="button"
-                          className="p-2 text-slate-700 disabled:opacity-50"
-                          title="Redo"
-                          onClick={() => runCanvasAction(handleRedo)}
-                          disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                        >
-                          <span className="sr-only">Redo</span>
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="text-slate-700" aria-hidden="true">
-                            <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
-                          </svg>
+                  {isOverlayMode && (
+                    <div
+                      className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+                      style={{
+                        pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+                        cursor: overlayControlsVisible ? 'default' : undefined,
+                      }}
+                      onClick={closeOverlayControls}
+                    >
+                      <div
+                        className="canvas-overlay-controls__panel"
+                        onClick={event => {
+                          event.stopPropagation()
+                          kickOverlayAutoHide()
+                        }}
+                      >
+                        <p className="canvas-overlay-controls__title">Canvas controls</p>
+                        {renderToolbarBlock()}
+                        <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                          Return to drawing
                         </button>
                       </div>
-                    ) : (
-                      <div />
-                    )}
+                    </div>
+                  )}
+                </div>
 
+                {showSideControls && (canPersistLatex || isAdmin) && (
+                  <div className="w-10 flex flex-col items-center gap-2 pt-2">
                     {isAdmin ? (
-                      <div className="pointer-events-auto flex flex-col gap-2">
+                      <>
                         <button
                           type="button"
                           className="p-2 text-slate-700 disabled:opacity-50"
@@ -4809,13 +4807,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             </svg>
                           </button>
                         )}
-                      </div>
+                      </>
                     ) : (
-                      <div />
+                      <div className="h-[1px]" />
                     )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
             </div>
           </div>

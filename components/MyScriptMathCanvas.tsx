@@ -3774,7 +3774,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!isCompactViewport) return 1
     // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
     // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
-    return 6
+    return 12
   }, [isCompactViewport, useStackedStudentLayout])
 
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
@@ -3782,8 +3782,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
   const horizontalPanRafRef = useRef<number | null>(null)
   const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)
-  const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; trackWidth: number; maxScroll: number }>(
-    { active: false, pointerId: null, startX: 0, startScrollLeft: 0, trackWidth: 1, maxScroll: 0 }
+  const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; usableTrackWidth: number; maxScroll: number }>(
+    { active: false, pointerId: null, startX: 0, startScrollLeft: 0, usableTrackWidth: 1, maxScroll: 0 }
   )
   const [horizontalScrollbarActive, setHorizontalScrollbarActive] = useState(false)
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
@@ -4018,17 +4018,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!viewport) return
     const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
     const rect = track.getBoundingClientRect()
+    const trackWidth = Math.max(1, rect.width)
+    // Drag feels more natural when scaled by the usable width (track minus thumb).
+    const thumbPx = trackWidth * Math.max(0, Math.min(1, horizontalPanThumbRatio))
+    const usableTrackWidth = Math.max(1, trackWidth - thumbPx)
     horizontalPanDragRef.current.active = true
     horizontalPanDragRef.current.pointerId = event.pointerId
     horizontalPanDragRef.current.startX = event.clientX
     horizontalPanDragRef.current.startScrollLeft = viewport.scrollLeft
-    horizontalPanDragRef.current.trackWidth = Math.max(1, rect.width)
+    horizontalPanDragRef.current.usableTrackWidth = usableTrackWidth
     horizontalPanDragRef.current.maxScroll = maxScroll
     setHorizontalScrollbarActive(true)
     try {
       track.setPointerCapture(event.pointerId)
     } catch {}
-  }, [])
+  }, [horizontalPanThumbRatio])
 
   const endHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
     if (!horizontalPanDragRef.current.active) return
@@ -4046,11 +4050,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const track = horizontalPanTrackRef.current
     const viewport = studentViewportRef.current
     if (!track || !viewport) return
-    const trackWidth = Math.max(1, horizontalPanDragRef.current.trackWidth)
+    const usableTrackWidth = Math.max(1, horizontalPanDragRef.current.usableTrackWidth)
     const maxScroll = Math.max(0, horizontalPanDragRef.current.maxScroll)
     const dx = event.clientX - horizontalPanDragRef.current.startX
-    const ratioDx = dx / trackWidth
-    const dragSensitivity = 2.5
+    const ratioDx = dx / usableTrackWidth
+    const dragSensitivity = 3.5
     const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * dragSensitivity
     viewport.scrollLeft = Math.max(0, Math.min(target, maxScroll))
   }, [])
@@ -4081,6 +4085,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
         const ratio = rect.width > 0 ? x / rect.width : 0
         viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+        // Allow continuous drag even when starting from the track (not just the thumb).
+        beginHorizontalScrollbarDrag(event)
       }}
     >
       <div className={`px-4 flex items-center bg-white transition-all duration-150 ${horizontalScrollbarActive ? 'h-10' : 'h-8'}`}>

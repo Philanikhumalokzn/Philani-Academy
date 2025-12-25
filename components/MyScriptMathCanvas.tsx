@@ -277,6 +277,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [status, setStatus] = useState<CanvasStatus>('idle')
   const [fatalError, setFatalError] = useState<string | null>(null)
   const [transientError, setTransientError] = useState<string | null>(null)
+  const [editorReinitNonce, setEditorReinitNonce] = useState(0)
+  const [editorReconnecting, setEditorReconnecting] = useState(false)
+  const suppressNextLoadingOverlayRef = useRef(false)
+  const editorReconnectingRef = useRef(false)
   const [latexOutput, setLatexOutput] = useState('')
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
@@ -2269,6 +2273,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
   const editorInitLayoutKey = isAdmin ? (isCompactViewport ? 'admin-compact' : 'admin-wide') : 'learner'
+  const editorInitKey = `${editorInitLayoutKey}:${editorReinitNonce}`
+
+  const triggerEditorReinit = useCallback((reason?: string) => {
+    if (editorReconnectingRef.current) return
+    editorReconnectingRef.current = true
+    suppressNextLoadingOverlayRef.current = true
+    setEditorReconnecting(true)
+    setFatalError(null)
+    // Intentionally do not show the raw engine error text here.
+    // This path is used for the iink "session expired" / max-duration cases and should be seamless.
+    setEditorReinitNonce(n => n + 1)
+  }, [])
+
+  useEffect(() => {
+    if (!editorReconnecting) return
+    if (status === 'ready') {
+      setEditorReconnecting(false)
+      editorReconnectingRef.current = false
+      suppressNextLoadingOverlayRef.current = false
+      return
+    }
+    if (status === 'error') {
+      setEditorReconnecting(false)
+      editorReconnectingRef.current = false
+      suppressNextLoadingOverlayRef.current = false
+    }
+  }, [editorReconnecting, status])
 
   useEffect(() => {
     let cancelled = false
@@ -2289,7 +2320,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return
     }
 
-    setStatus('loading')
+    if (!suppressNextLoadingOverlayRef.current) {
+      setStatus('loading')
+    }
   setFatalError(null)
 
     let resizeHandler: (() => void) | null = null
@@ -2430,10 +2463,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const handleError = (evt: any) => {
           const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
           const lower = String(raw).toLowerCase()
-          const isSessionTooLong = /session too long/.test(lower)
+          const isSessionTooLong = /(session too long|max session duration|session is too old)/.test(lower)
           const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
           const isSymbolsUndefined = /cannot read properties of undefined.*symbols/i.test(raw)
-          const fatal = isSessionTooLong || isAuthMissing
+          const shouldAutoReconnect = isSessionTooLong
+          const fatal = isAuthMissing
+
+          if (shouldAutoReconnect) {
+            triggerEditorReinit(raw)
+            return
+          }
 
           if (fatal) {
             setFatalError(raw)
@@ -2497,7 +2536,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         editorInstanceRef.current = null
       }
     }
-  }, [broadcastSnapshot, editorInitLayoutKey, exportLatexFromEditor, normalizeStepLatex, useAdminStepComposer])
+  }, [broadcastSnapshot, editorInitKey, exportLatexFromEditor, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
 
   useEffect(() => {
     if (!useAdminStepComposer) return
@@ -5757,10 +5796,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               {transientError}
             </div>
           )}
-          {status === 'ready' && (
-            <div className="absolute top-2 right-2 z-20 pointer-events-none select-none text-xs text-green-600 bg-white/80 px-2 py-1 rounded">
-              Ready
-            </div>
+          {editorReconnecting && (
+            <div className="absolute inset-0 z-20 pointer-events-auto bg-transparent" aria-hidden="true" />
           )}
           {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">

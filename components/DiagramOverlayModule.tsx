@@ -1949,7 +1949,85 @@ export default function DiagramOverlayModule(props: {
                   : 'absolute inset-0 cursor-crosshair'
               : 'absolute inset-0 pointer-events-none'
             }
-            onPointerDown={onPointerDown}
+            // Long-press context menu for mobile
+            onPointerDown={e => {
+              onPointerDown(e);
+              // Only on touch, only if admin and diagram open
+              if (!isAdmin || !activeDiagram?.id || !diagramState.isOpen) return;
+              // If context menu is open and tap is outside, close it
+              if (contextMenu) {
+                const menuEl = document.querySelector('.absolute.z-50');
+                if (menuEl && e.target instanceof Node && menuEl.contains(e.target)) return;
+                setContextMenu(null);
+                return;
+              }
+              // Pinch-zoom for select tool
+              if (tool === 'select' && e.pointerType === 'touch') {
+                let pinchStartDist = null;
+                let pinchStartScale = diagramZoomRef?.current || 1;
+                let pinchCenter = null;
+                const host = containerRef.current;
+                if (!host) return;
+                const rect = host.getBoundingClientRect();
+                const handleTouchMove = (te) => {
+                  if (te.touches && te.touches.length === 2) {
+                    const t1 = te.touches[0];
+                    const t2 = te.touches[1];
+                    const dx = t2.clientX - t1.clientX;
+                    const dy = t2.clientY - t1.clientY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (pinchStartDist === null) {
+                      pinchStartDist = dist;
+                      pinchCenter = {
+                        x: ((t1.clientX + t2.clientX) / 2 - rect.left) / Math.max(rect.width, 1),
+                        y: ((t1.clientY + t2.clientY) / 2 - rect.top) / Math.max(rect.height, 1),
+                      };
+                    } else {
+                      let scale = pinchStartScale * (dist / pinchStartDist);
+                      scale = Math.max(0.5, Math.min(2.5, scale));
+                      if (diagramZoomRef) diagramZoomRef.current = scale;
+                      if (setDiagramZoom) setDiagramZoom(scale);
+                      if (setDiagramZoomCenter) setDiagramZoomCenter(pinchCenter);
+                      if (typeof redraw === 'function') redraw();
+                    }
+                  }
+                };
+                const handleTouchEnd = () => {
+                  window.removeEventListener('touchmove', handleTouchMove, { passive: false });
+                  window.removeEventListener('touchend', handleTouchEnd, { passive: false });
+                  window.removeEventListener('touchcancel', handleTouchEnd, { passive: false });
+                };
+                if (e.nativeEvent instanceof TouchEvent && e.nativeEvent.touches.length === 2) {
+                  window.addEventListener('touchmove', handleTouchMove, { passive: false });
+                  window.addEventListener('touchend', handleTouchEnd, { passive: false });
+                  window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+                  return;
+                }
+              }
+              // Long-press context menu
+              if (e.pointerType === 'touch') {
+                let longPressTimer: any = null;
+                const host = containerRef.current;
+                if (!host) return;
+                const rect = host.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const pt = mapClientToImageSpace(e.clientX, e.clientY);
+                const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null;
+                if (!hit) return;
+                longPressTimer = setTimeout(() => {
+                  setSelection(hit);
+                  setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt });
+                }, 450);
+                const clear = () => {
+                  if (longPressTimer) clearTimeout(longPressTimer);
+                  window.removeEventListener('pointerup', clear, true);
+                  window.removeEventListener('pointercancel', clear, true);
+                };
+                window.addEventListener('pointerup', clear, true);
+                window.addEventListener('pointercancel', clear, true);
+              }
+            }}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}

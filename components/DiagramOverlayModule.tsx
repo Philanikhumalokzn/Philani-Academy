@@ -205,17 +205,28 @@ export default function DiagramOverlayModule(props: {
     }
   }, [isAdmin, persistState, publish])
 
+  // Pop the tray over the middle separator: raise z-index, and position higher (about 50% up from the bottom, but still above the bottom bar).
+  const trayPopOverSeparatorCss = useMemo(
+    () => ({
+      left: 0,
+      right: 0,
+      position: 'fixed',
+      zIndex: 600, // higher than separator and scrollbars
+      bottom: `calc(50vh - 44px)`, // 44px = approx separator + icon row height
+      pointerEvents: 'auto',
+    }),
+    []
+  )
   const mobileDiagramTray = isAdmin && mobileTrayOpen ? (
     <div
-      className="fixed left-0 right-0 z-[220] sm:hidden"
-      style={{ bottom: mobileTrayBottomCss } as any}
+      className="sm:hidden"
+      style={trayPopOverSeparatorCss as any}
       onClick={e => {
-        // Only close if the click is on the backdrop, not inside the tray content.
         if (e.target === e.currentTarget) setMobileTrayOpen(false)
       }}
     >
       <div
-        className="mx-3 mb-2 bg-white border border-slate-200 rounded-lg shadow-sm px-2 py-2"
+        className="mx-3 mb-2 bg-white border border-slate-200 rounded-lg shadow-lg px-2 py-2"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex gap-2 overflow-x-auto">

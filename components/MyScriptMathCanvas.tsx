@@ -197,6 +197,7 @@ type MyScriptMathCanvasProps = {
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
   onLatexOutputChange?: (latex: string) => void
+  lessonAuthoring?: { phaseKey: string; pointId: string }
 }
 
 type LessonScriptPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
@@ -293,7 +294,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -958,14 +959,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const payload = await res.json().catch(() => null)
         setLessonScriptResolved(null)
         setLessonScriptError(payload?.message || `Failed to load lesson script (${res.status})`)
-        return
+        return null
       }
       const payload = await res.json().catch(() => null)
-      setLessonScriptResolved(payload?.resolved ?? null)
+      const resolved = payload?.resolved ?? null
+      setLessonScriptResolved(resolved)
       setLessonScriptError(null)
+      return resolved
     } catch (err: any) {
       setLessonScriptResolved(null)
       setLessonScriptError(err?.message || 'Failed to load lesson script')
+      return null
     } finally {
       setLessonScriptLoading(false)
     }
@@ -2355,6 +2359,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     },
     [clearLessonModules, getLessonScriptV2, isAdmin, lessonScriptResolved, publishLatexDisplayState]
   )
+
+  const startLessonFromScript = useCallback(async () => {
+    if (!isAdmin) return
+    if (!boardId) return
+
+    const resolved = (await loadLessonScript()) ?? lessonScriptResolved
+    if (!resolved || typeof resolved !== 'object') return
+
+    // v2: start at the first phase/point/module that exists, preferring Engage.
+    if ((resolved as any).schemaVersion === 2) {
+      const v2 = getLessonScriptV2(resolved)
+      if (!v2) return
+      const ordered = [...LESSON_SCRIPT_PHASES.map(p => p.key)]
+      const phases = v2.phases || []
+
+      const findInPhase = (key: LessonScriptPhaseKey) => {
+        const phase = phases.find(p => p.key === key)
+        if (!phase) return null
+        const points = Array.isArray(phase.points) ? phase.points : []
+        for (let pi = 0; pi < points.length; pi++) {
+          const mods = Array.isArray(points[pi]?.modules) ? points[pi].modules : []
+          if (mods.length > 0) return { phaseKey: key, pointIndex: pi, moduleIndex: 0 }
+        }
+        return null
+      }
+
+      let start = findInPhase('engage')
+      if (!start) {
+        for (const key of ordered) {
+          start = findInPhase(key)
+          if (start) break
+        }
+      }
+
+      if (!start) return
+      setLessonScriptPhaseKey(start.phaseKey)
+      setLessonScriptStepIndex(-1)
+      setLessonScriptPointIndex(start.pointIndex)
+      setLessonScriptModuleIndex(start.moduleIndex)
+      await applyLessonScriptPlaybackV2(start.phaseKey, start.pointIndex, start.moduleIndex)
+      return
+    }
+
+    // v1: start at first phase with steps.
+    for (const phase of LESSON_SCRIPT_PHASES) {
+      const steps = getLessonScriptPhaseSteps(resolved, phase.key)
+      if (steps.length > 0) {
+        setLessonScriptPhaseKey(phase.key)
+        setLessonScriptStepIndex(0)
+        await applyLessonScriptPlayback(phase.key, 0)
+        return
+      }
+    }
+  }, [applyLessonScriptPlayback, applyLessonScriptPlaybackV2, boardId, getLessonScriptPhaseSteps, getLessonScriptV2, isAdmin, lessonScriptResolved, loadLessonScript])
 
   const stackedNotesBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastStackedNotesBroadcastRef = useRef<{ latex: string; ts: number }>({ latex: '', ts: 0 })
@@ -4789,6 +4847,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
+  const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
+  const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
+
+  const saveLatexIntoLessonDraft = useCallback((latexValue: string) => {
+    if (!isLessonAuthoring) return false
+    if (typeof window === 'undefined') return false
+    try {
+      const raw = window.localStorage.getItem(LESSON_AUTHORING_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      const draft = parsed?.draft
+      if (!draft || typeof draft !== 'object') return false
+
+      const phaseKey = String(lessonAuthoring!.phaseKey)
+      const pointId = String(lessonAuthoring!.pointId)
+      const phasePoints = Array.isArray((draft as any)[phaseKey]) ? (draft as any)[phaseKey] : null
+      if (!phasePoints) return false
+
+      const nextPhasePoints = phasePoints.map((p: any) => (String(p?.id) === pointId ? { ...p, latex: latexValue } : p))
+      const next = { ...(draft as any), [phaseKey]: nextPhasePoints }
+      window.localStorage.setItem(LESSON_AUTHORING_STORAGE_KEY, JSON.stringify({ updatedAt: Date.now(), draft: next }))
+      return true
+    } catch {
+      return false
+    }
+  }, [isLessonAuthoring, lessonAuthoring])
+
   // Persist LaTeX strictly against the scheduled session id.
   // We only persist when a real session id is provided (boardId).
   const sessionKey = boardId
@@ -4800,6 +4884,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const fetchLatexSaves = useCallback(async () => {
+    if (isLessonAuthoring) return
     if (!canPersistLatex || !sessionKey) return
     try {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves`)
@@ -4812,11 +4897,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to fetch saved notes', err)
     }
-  }, [canPersistLatex, sessionKey])
+  }, [canPersistLatex, isLessonAuthoring, sessionKey])
 
   const saveLatexSnapshot = useCallback(
     async (options?: { shared?: boolean; auto?: boolean }) => {
       const isAuto = Boolean(options?.auto)
+      if (isLessonAuthoring) {
+        if (isAuto) return
+        const latexValue = (latexDisplayStateRef.current.latex || latexOutput || '').trim()
+        if (!latexValue) return
+        const ok = saveLatexIntoLessonDraft(latexValue)
+        if (!ok) {
+          setLatexSaveError('Failed to save into lesson script draft.')
+          return
+        }
+        setLatexSaveError(null)
+        return
+      }
       if (!canPersistLatex || !sessionKey) {
         if (!isAuto) {
           setLatexSaveError('Saving is only available inside a scheduled session.')
@@ -4860,7 +4957,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (!isAuto) setIsSavingLatex(false)
       }
     },
-    [canPersistLatex, isAdmin, latexOutput, sessionKey]
+    [canPersistLatex, isAdmin, isLessonAuthoring, latexOutput, saveLatexIntoLessonDraft, sessionKey]
   )
 
   useEffect(() => {
@@ -4881,6 +4978,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [canPersistLatex])
 
   useEffect(() => {
+    if (isLessonAuthoring) return
     if (!canPersistLatex) return
     const latexValue = (latexDisplayState.latex || latexOutput || '').trim()
     if (!latexValue) return
@@ -4895,7 +4993,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         clearTimeout(autosaveTimeoutRef.current)
       }
     }
-  }, [canPersistLatex, isAdmin, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
+  }, [canPersistLatex, isAdmin, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
@@ -5062,6 +5160,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {boardId && hasLessonScriptSteps && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold">Lesson script</span>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => runCanvasAction(startLessonFromScript)}
+                disabled={lessonScriptLoading || Boolean(fatalError)}
+              >
+                Start lesson
+              </button>
               <select
                 className="input"
                 value={lessonScriptPhaseKey}

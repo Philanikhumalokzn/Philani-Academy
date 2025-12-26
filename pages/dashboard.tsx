@@ -12,7 +12,6 @@ import BrandLogo from '../components/BrandLogo'
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
 const TextOverlayModule = dynamic(() => import('../components/TextOverlayModule'), { ssr: false })
-const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 const WINDOW_PADDING_X = 0
 const WINDOW_PADDING_Y = 12
 const MOBILE_HERO_BG_MIN_WIDTH = 1280
@@ -105,31 +104,10 @@ export default function Dashboard() {
     latex: string
   }
 
-  type LessonAuthoringEditor =
-    | { kind: 'diagram'; phaseKey: LessonPhaseKey; pointId: string }
-    | { kind: 'latex'; phaseKey: LessonPhaseKey; pointId: string }
-
-  const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
-  const makeChannelName = (boardId: string) => `myscript:${sanitizeIdentifier(boardId).toLowerCase()}`
-
-  const lessonDraftIdRef = useRef<string>(`${Date.now()}-${Math.random().toString(36).slice(2, 10)}`)
-  const [lessonAuthoringEditor, setLessonAuthoringEditor] = useState<LessonAuthoringEditor | null>(null)
-  const [lessonAuthoringLatex, setLessonAuthoringLatex] = useState('')
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!lessonAuthoringEditor) return
-
-    if (lessonAuthoringEditor.kind === 'diagram') {
-      // Ensure the DiagramOverlayModule is mounted and has registered listeners.
-      const t = window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { open: true } }))
-      }, 0)
-      return () => window.clearTimeout(t)
-    }
-
-    return
-  }, [lessonAuthoringEditor])
+  const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
+  const buildLessonAuthoringBoardId = (kind: 'diagram' | 'latex', phaseKey: LessonPhaseKey, pointId: string) => {
+    return `lesson-author-${kind}-${phaseKey}-${pointId}`
+  }
 
   const newPointDraft = (): LessonPointDraft => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -146,6 +124,44 @@ export default function Dashboard() {
     elaborate: [],
     evaluate: [],
   })
+
+  const persistLessonScriptDraftToStorage = useCallback((draft: Record<LessonPhaseKey, LessonPointDraft[]>) => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(LESSON_AUTHORING_STORAGE_KEY, JSON.stringify({ updatedAt: Date.now(), draft }))
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const loadLessonScriptDraftFromStorage = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(LESSON_AUTHORING_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      const next = parsed?.draft
+      if (!next || typeof next !== 'object') return
+      setLessonScriptDraft(curr => {
+        // Replace with stored draft to reflect edits saved from the authoring board.
+        return next
+      })
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    loadLessonScriptDraftFromStorage()
+    if (typeof window === 'undefined') return
+    const onFocus = () => loadLessonScriptDraftFromStorage()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [loadLessonScriptDraftFromStorage])
+
+  useEffect(() => {
+    persistLessonScriptDraftToStorage(lessonScriptDraft)
+  }, [lessonScriptDraft, persistLessonScriptDraftToStorage])
   const [minStartsAt, setMinStartsAt] = useState('')
   const [minEndsAt, setMinEndsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
@@ -186,6 +202,16 @@ export default function Dashboard() {
   const [latexSavesLoading, setLatexSavesLoading] = useState(false)
   const [latexSavesError, setLatexSavesError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
+    useEffect(() => {
+      if (!router.isReady) return
+      const section = router.query.section
+      if (typeof section !== 'string') return
+      const valid = (DASHBOARD_SECTIONS as readonly any[]).some(s => s?.id === section)
+      if (valid) {
+        setActiveSection(section as SectionId)
+      }
+    }, [router.isReady, router.query.section])
+
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
@@ -1999,122 +2025,6 @@ export default function Dashboard() {
     const canCreateSession = Boolean(session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher'))
     const canAuthorLessonModules = canCreateSession
 
-    const buildAuthoringBoardId = (kind: 'diagram' | 'latex', phaseKey: LessonPhaseKey, pointId: string) => {
-      const base = `lesson-draft-${lessonDraftIdRef.current}-${kind}-${phaseKey}-${pointId}`
-      // keep short to avoid sessionKey limits after sanitization
-      return base.slice(0, 90)
-    }
-
-    const closeLessonAuthoringEditor = () => {
-      setLessonAuthoringEditor(null)
-      setLessonAuthoringLatex('')
-    }
-
-    const saveActiveDiagramToPoint = async (phaseKey: LessonPhaseKey, pointId: string) => {
-      const boardId = buildAuthoringBoardId('diagram', phaseKey, pointId)
-      const sessionKey = makeChannelName(boardId)
-      const res = await fetch(`/api/diagrams?sessionKey=${encodeURIComponent(sessionKey)}`, { credentials: 'same-origin' })
-      const payload = await res.json().catch(() => null)
-      const diagrams = Array.isArray(payload?.diagrams) ? payload.diagrams : []
-      const state = payload?.state
-      const activeId = typeof state?.activeDiagramId === 'string' ? state.activeDiagramId : (diagrams[0]?.id ? String(diagrams[0].id) : null)
-      const active = activeId ? diagrams.find((d: any) => String(d?.id) === String(activeId)) : null
-      if (!active) {
-        alert('No diagram found yet. Please upload/select a diagram first.')
-        return
-      }
-      const snapshot: LessonDiagramSnapshot = {
-        title: typeof active.title === 'string' ? active.title : '',
-        imageUrl: typeof active.imageUrl === 'string' ? active.imageUrl : '',
-        annotations: active.annotations ?? null,
-      }
-      if (!snapshot.title || !snapshot.imageUrl) {
-        alert('Selected diagram is missing title or image.')
-        return
-      }
-      setLessonScriptDraft(prev => ({
-        ...prev,
-        [phaseKey]: (prev[phaseKey] || []).map(p => (p.id === pointId ? { ...p, diagramSnapshot: snapshot } : p)),
-      }))
-      closeLessonAuthoringEditor()
-    }
-
-    const saveLatexToPoint = (phaseKey: LessonPhaseKey, pointId: string) => {
-      const latex = (lessonAuthoringLatex || '').trim()
-      setLessonScriptDraft(prev => ({
-        ...prev,
-        [phaseKey]: (prev[phaseKey] || []).map(p => (p.id === pointId ? { ...p, latex } : p)),
-      }))
-      closeLessonAuthoringEditor()
-    }
-
-    const lessonAuthoringOverlay = lessonAuthoringEditor && canAuthorLessonModules ? (
-      <div className="fixed inset-0 z-[900] bg-black/60">
-        <div className="absolute inset-3 md:inset-10">
-          <div className="card h-full p-3 flex flex-col gap-3 overflow-hidden">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="font-semibold truncate">
-                  {lessonAuthoringEditor.kind === 'diagram' ? 'Diagram module' : 'LaTeX module'}
-                </div>
-                <div className="text-xs muted truncate">
-                  {lessonAuthoringEditor.kind === 'diagram'
-                    ? 'Upload/annotate using the Diagram module, then Save to point.'
-                    : 'Write in the canvas, then Save to point.'}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {lessonAuthoringEditor.kind === 'diagram' ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => saveActiveDiagramToPoint(lessonAuthoringEditor.phaseKey, lessonAuthoringEditor.pointId)}
-                  >
-                    Save to point
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => saveLatexToPoint(lessonAuthoringEditor.phaseKey, lessonAuthoringEditor.pointId)}
-                  >
-                    Save to point
-                  </button>
-                )}
-                <button type="button" className="btn btn-ghost" onClick={closeLessonAuthoringEditor}>Close</button>
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 relative">
-              {lessonAuthoringEditor.kind === 'diagram' ? (
-                <div className="absolute inset-0">
-                  <DiagramOverlayModule
-                    boardId={buildAuthoringBoardId('diagram', lessonAuthoringEditor.phaseKey, lessonAuthoringEditor.pointId)}
-                    gradeLabel={null}
-                    userId={realtimeUserId}
-                    userDisplayName={realtimeDisplayName}
-                    isAdmin={canAuthorLessonModules}
-                  />
-                </div>
-              ) : (
-                <div className="absolute inset-0">
-                  <MyScriptMathCanvas
-                    gradeLabel={null}
-                    roomId={buildAuthoringBoardId('latex', lessonAuthoringEditor.phaseKey, lessonAuthoringEditor.pointId)}
-                    boardId={buildAuthoringBoardId('latex', lessonAuthoringEditor.phaseKey, lessonAuthoringEditor.pointId)}
-                    userId={realtimeUserId}
-                    userDisplayName={realtimeDisplayName}
-                    isAdmin={canAuthorLessonModules}
-                    onLatexOutputChange={setLessonAuthoringLatex}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    ) : null
-
     const nowMs = Date.now()
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
     const getEndMs = (s: any) => {
@@ -2229,7 +2139,20 @@ export default function Dashboard() {
                                   type="button"
                                   className="btn btn-ghost"
                                   onClick={() => {
-                                    setLessonAuthoringEditor({ kind: 'diagram', phaseKey: phase.key, pointId: point.id })
+                                    if (typeof window !== 'undefined') {
+                                      persistLessonScriptDraftToStorage(lessonScriptDraft)
+                                    }
+                                    void router.push({
+                                      pathname: '/board',
+                                      query: {
+                                        lessonAuthoring: '1',
+                                        module: 'diagram',
+                                        phase: phase.key,
+                                        pointId: point.id,
+                                        boardId: buildLessonAuthoringBoardId('diagram', phase.key, point.id),
+                                        returnTo: '/dashboard?section=sessions',
+                                      },
+                                    })
                                   }}
                                   disabled={!canAuthorLessonModules}
                                 >
@@ -2263,8 +2186,20 @@ export default function Dashboard() {
                                   type="button"
                                   className="btn btn-ghost"
                                   onClick={() => {
-                                    setLessonAuthoringLatex(point.latex || '')
-                                    setLessonAuthoringEditor({ kind: 'latex', phaseKey: phase.key, pointId: point.id })
+                                    if (typeof window !== 'undefined') {
+                                      persistLessonScriptDraftToStorage(lessonScriptDraft)
+                                    }
+                                    void router.push({
+                                      pathname: '/board',
+                                      query: {
+                                        lessonAuthoring: '1',
+                                        module: 'latex',
+                                        phase: phase.key,
+                                        pointId: point.id,
+                                        boardId: buildLessonAuthoringBoardId('latex', phase.key, point.id),
+                                        returnTo: '/dashboard?section=sessions',
+                                      },
+                                    })
                                   }}
                                   disabled={!canAuthorLessonModules}
                                 >
@@ -2316,7 +2251,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {lessonAuthoringOverlay}
+        {/* Lesson authoring happens on /board (no wrapped overlays here). */}
 
         {isAdmin && selectedGrade && (
           <div className="card space-y-3">

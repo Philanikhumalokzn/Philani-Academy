@@ -53,8 +53,42 @@ export default function DiagramOverlayModule(props: {
   userId: string
   userDisplayName?: string
   isAdmin: boolean
+  lessonAuthoring?: { phaseKey: string; pointId: string }
 }) {
-  const { boardId, gradeLabel, userId, userDisplayName, isAdmin } = props
+  const { boardId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring } = props
+
+  const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
+  const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
+
+  const saveDiagramIntoLessonDraft = useCallback(() => {
+    if (!isLessonAuthoring) return false
+    if (typeof window === 'undefined') return false
+    const active = (() => {
+      const state = diagramStateRef.current
+      if (!state?.activeDiagramId) return null
+      return diagramsRef.current.find(d => d.id === state.activeDiagramId) || null
+    })()
+    if (!active?.title || !active?.imageUrl) return false
+    try {
+      const raw = window.localStorage.getItem(LESSON_AUTHORING_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      const draft = parsed?.draft
+      if (!draft || typeof draft !== 'object') return false
+
+      const phaseKey = String(lessonAuthoring!.phaseKey)
+      const pointId = String(lessonAuthoring!.pointId)
+      const phasePoints = Array.isArray((draft as any)[phaseKey]) ? (draft as any)[phaseKey] : null
+      if (!phasePoints) return false
+
+      const snapshot = { title: active.title, imageUrl: active.imageUrl, annotations: active.annotations ?? null }
+      const nextPhasePoints = phasePoints.map((p: any) => (String(p?.id) === pointId ? { ...p, diagramSnapshot: snapshot } : p))
+      const next = { ...(draft as any), [phaseKey]: nextPhasePoints }
+      window.localStorage.setItem(LESSON_AUTHORING_STORAGE_KEY, JSON.stringify({ updatedAt: Date.now(), draft: next }))
+      return true
+    } catch {
+      return false
+    }
+  }, [isLessonAuthoring, lessonAuthoring])
 
   const [mobileTrayOpen, setMobileTrayOpen] = useState(false)
   const [mobileTrayBottomOffsetPx, setMobileTrayBottomOffsetPx] = useState(0)
@@ -1698,6 +1732,21 @@ export default function DiagramOverlayModule(props: {
             <p className="text-sm font-semibold truncate">{activeDiagram.title || 'Untitled diagram'}</p>
           </div>
           <div className="flex items-center gap-2">
+            {isAdmin && isLessonAuthoring && (
+              <button
+                type="button"
+                className="btn"
+                title="Save diagram to lesson point"
+                onClick={() => {
+                  const ok = saveDiagramIntoLessonDraft()
+                  if (!ok) {
+                    alert('Failed to save diagram into lesson script draft. Ensure a diagram is selected and has an image.')
+                  }
+                }}
+              >
+                Save
+              </button>
+            )}
             {isAdmin && (
               <select
                 className="input"
@@ -1716,7 +1765,15 @@ export default function DiagramOverlayModule(props: {
               <button
                 type="button"
                 className="btn"
-                onClick={() => setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })}
+                onClick={() => {
+                  if (isLessonAuthoring && typeof window !== 'undefined') {
+                    try {
+                      window.dispatchEvent(new Event('philani-lesson-authoring:close'))
+                    } catch {}
+                    return
+                  }
+                  void setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })
+                }}
               >
                 Close
               </button>

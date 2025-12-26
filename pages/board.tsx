@@ -9,6 +9,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 const FloatingJitsiWindow = dynamic(() => import('../components/FloatingJitsiWindow'), { ssr: false })
 const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
+const TextOverlayModule = dynamic(() => import('../components/TextOverlayModule'), { ssr: false })
 
 const useIsMobile = (maxWidth = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
@@ -176,6 +177,15 @@ export default function BoardPage() {
         {renderCanvas()}
         {status === 'authenticated' && selectedGrade && (
           <DiagramOverlayModule
+            boardId={undefined}
+            gradeLabel={activeGradeLabel}
+            userId={realtimeUserId}
+            userDisplayName={realtimeDisplayName}
+            isAdmin={isOwnerUser}
+          />
+        )}
+        {status === 'authenticated' && selectedGrade && (
+          <TextOverlayModule
             boardId={undefined}
             gradeLabel={activeGradeLabel}
             userId={realtimeUserId}

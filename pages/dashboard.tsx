@@ -11,6 +11,7 @@ import BrandLogo from '../components/BrandLogo'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
+const TextOverlayModule = dynamic(() => import('../components/TextOverlayModule'), { ssr: false })
 const WINDOW_PADDING_X = 0
 const WINDOW_PADDING_Y = 12
 const MOBILE_HERO_BG_MIN_WIDTH = 1280
@@ -3599,6 +3600,15 @@ export default function Dashboard() {
             <div className="live-call-overlay__video relative">
               {activeSessionId && (
                 <DiagramOverlayModule
+                  boardId={String(activeSessionId)}
+                  gradeLabel={selectedGrade ? activeGradeLabel : null}
+                  userId={realtimeUserId}
+                  userDisplayName={realtimeDisplayName}
+                  isAdmin={isOwnerUser}
+                />
+              )}
+              {activeSessionId && (
+                <TextOverlayModule
                   boardId={String(activeSessionId)}
                   gradeLabel={selectedGrade ? activeGradeLabel : null}
                   userId={realtimeUserId}

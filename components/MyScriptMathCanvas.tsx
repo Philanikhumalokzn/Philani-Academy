@@ -3965,6 +3965,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       )
     } catch {}
   }, [viewportBottomOffsetPx])
+
+  const toggleMobileTextTray = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.dispatchEvent(new CustomEvent('philani-text:toggle-tray'))
+    } catch {}
+  }, [])
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
@@ -5246,6 +5253,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           <path d="M8 15l2.5-3 2 2.4L15 12l3 4H8z" opacity="0.25" />
                           <path d="M8 15l2.5-3 2 2.4L15 12l3 4H8z" />
                           <circle cx="9" cy="9" r="1.4" />
+                        </svg>
+                      </button>
+                    )}
+
+                    {isCompactViewport && (
+                      <button
+                        type="button"
+                        className="px-2 py-1"
+                        title="Text"
+                        onClick={toggleMobileTextTray}
+                        disabled={Boolean(fatalError)}
+                      >
+                        <span className="sr-only">Text</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="currentColor"
+                          className="text-slate-700"
+                          aria-hidden="true"
+                        >
+                          <path d="M5 4h14v3h-5v13h-4V7H5V4z" />
                         </svg>
                       </button>
                     )}

@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = token.role as string | undefined
   if (!role || (role !== 'admin' && role !== 'teacher')) return res.status(403).json({ message: 'Forbidden' })
 
-  const { title, joinUrl, startsAt, endsAt, grade } = req.body
+  const { title, joinUrl, startsAt, endsAt, grade, lessonScriptOverrideContent } = req.body
   if (!title || !joinUrl || !startsAt || !endsAt) return res.status(400).json({ message: 'Missing fields' })
 
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
@@ -48,6 +48,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     grade: normalizedGrade,
     createdBy: (token?.email as string) || 'unknown'
   } as any })
+
+  if (lessonScriptOverrideContent && typeof lessonScriptOverrideContent === 'object' && !Array.isArray(lessonScriptOverrideContent)) {
+    try {
+      await prisma.sessionLessonScript.create({
+        data: {
+          sessionId: rec.id,
+          overrideContent: lessonScriptOverrideContent,
+          createdBy: (token?.email as string) || null,
+          updatedBy: (token?.email as string) || null,
+        },
+      })
+    } catch {
+      // If script creation fails, still return the session. (Teacher can attach later.)
+    }
+  }
 
   res.status(201).json(rec)
 }

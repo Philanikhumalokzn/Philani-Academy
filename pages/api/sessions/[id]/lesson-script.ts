@@ -4,13 +4,7 @@ import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
-const safeId = (value: unknown) => {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  return trimmed ? trimmed : null
-}
-
-const isObject = (value: any) => Boolean(value) && typeof value === 'object'
+type LessonScriptSource = 'override' | 'template-version' | 'template-current' | 'none'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -20,18 +14,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const authUserId = ((token as any)?.id || (token as any)?.sub || '') as string
   const tokenGrade = normalizeGradeInput((token as any).grade as string | undefined)
 
-  const sessionId = safeId(Array.isArray(req.query.id) ? req.query.id[0] : req.query.id)
-  if (!sessionId) return res.status(400).json({ message: 'Missing session id' })
+  const sessionId = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
+  const safeSessionId = String(sessionId || '').trim()
+  if (!safeSessionId) return res.status(400).json({ message: 'Missing session id' })
 
-  const session = await prisma.sessionRecord.findUnique({ where: { id: sessionId }, select: { id: true, grade: true } })
+  const session = await prisma.sessionRecord.findUnique({
+    where: { id: safeSessionId },
+    include: {
+      lessonScript: {
+        include: {
+          template: { include: { currentVersion: true } },
+          templateVersion: true,
+        },
+      },
+    },
+  })
+
   if (!session) return res.status(404).json({ message: 'Session not found' })
 
-  const sessionGrade = normalizeGradeInput((session as any).grade as string | undefined)
-
-  // Grade/role gate
+  // Authorization: students/teachers are constrained to their grade.
   if (role === 'teacher' || role === 'student') {
     if (!tokenGrade) return res.status(403).json({ message: 'Grade not configured' })
-    if (sessionGrade && tokenGrade !== sessionGrade) return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+    if (session.grade !== tokenGrade) return res.status(403).json({ message: 'Forbidden for this grade' })
   }
 
   if (role === 'student') {
@@ -46,126 +50,87 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'GET') {
-    const assignment = await prisma.sessionLessonScript.findUnique({
-      where: { sessionId },
-      select: {
-        id: true,
-        sessionId: true,
-        templateId: true,
-        templateVersionId: true,
-        overrideContent: true,
-        updatedAt: true,
-        template: { select: { id: true, title: true, grade: true, subject: true, topic: true, currentVersionId: true } },
-        templateVersion: { select: { id: true, version: true, createdAt: true } },
-      },
+    const assignment = session.lessonScript
+
+    let resolved: any | null = null
+    let source: LessonScriptSource = 'none'
+
+    if (assignment?.overrideContent) {
+      resolved = assignment.overrideContent
+      source = 'override'
+    } else if (assignment?.templateVersion?.content) {
+      resolved = assignment.templateVersion.content
+      source = 'template-version'
+    } else if (assignment?.template?.currentVersion?.content) {
+      resolved = assignment.template.currentVersion.content
+      source = 'template-current'
+    }
+
+    return res.status(200).json({
+      resolved,
+      assignment: assignment
+        ? {
+            id: assignment.id,
+            sessionId: assignment.sessionId,
+            templateId: assignment.templateId,
+            templateVersionId: assignment.templateVersionId,
+            overrideContent: assignment.overrideContent,
+            updatedAt: assignment.updatedAt,
+          }
+        : null,
+      source,
     })
-
-    if (!assignment) {
-      return res.status(200).json({ sessionId, resolved: null, source: 'none' as const })
-    }
-
-    if (assignment.overrideContent) {
-      return res.status(200).json({
-        sessionId,
-        source: 'override' as const,
-        resolved: assignment.overrideContent,
-        assignment,
-      })
-    }
-
-    // If pinned version exists, use it; else use template current.
-    let resolved: any = null
-    let source: 'template-version' | 'template-current' | 'none' = 'none'
-
-    if (assignment.templateVersionId) {
-      const version = await prisma.lessonScriptVersion.findUnique({ where: { id: assignment.templateVersionId }, select: { content: true, version: true, id: true, templateId: true } })
-      if (version) {
-        resolved = version.content
-        source = 'template-version'
-      }
-    }
-
-    if (!resolved && assignment.templateId) {
-      const template = await prisma.lessonScriptTemplate.findUnique({
-        where: { id: assignment.templateId },
-        select: {
-          currentVersion: { select: { id: true, version: true, content: true } },
-        },
-      })
-      if (template?.currentVersion?.content) {
-        resolved = template.currentVersion.content
-        source = 'template-current'
-      }
-    }
-
-    return res.status(200).json({ sessionId, source, resolved, assignment })
   }
 
   if (req.method === 'PUT') {
-    if (role !== 'admin' && role !== 'teacher') return res.status(403).json({ message: 'Forbidden' })
+    if (!role || (role !== 'admin' && role !== 'teacher')) return res.status(403).json({ message: 'Forbidden' })
 
-    // Teachers may only modify sessions in their grade.
-    if (role === 'teacher') {
-      if (!tokenGrade) return res.status(403).json({ message: 'Teacher grade not configured' })
-      if (sessionGrade && tokenGrade !== sessionGrade) return res.status(403).json({ message: 'Forbidden: grade mismatch' })
+    const templateIdRaw = req.body?.templateId
+    const templateVersionIdRaw = req.body?.templateVersionId
+    const overrideContent = req.body?.overrideContent
+
+    const templateId = templateIdRaw ? String(templateIdRaw).trim() : null
+    const templateVersionId = templateVersionIdRaw ? String(templateVersionIdRaw).trim() : null
+
+    if (overrideContent !== undefined && overrideContent !== null) {
+      if (typeof overrideContent !== 'object' || Array.isArray(overrideContent)) {
+        return res.status(400).json({ message: 'overrideContent must be a JSON object' })
+      }
     }
 
-    const templateId = safeId(req.body?.templateId)
-    const templateVersionId = safeId(req.body?.templateVersionId)
-    const hasOverride = Object.prototype.hasOwnProperty.call(req.body || {}, 'overrideContent')
-    const overrideContent = hasOverride ? req.body.overrideContent : undefined
-
-    if (hasOverride && overrideContent !== null && overrideContent !== undefined && !isObject(overrideContent)) {
-      return res.status(400).json({ message: 'overrideContent must be an object, null, or omitted' })
-    }
-
-    // If templateVersionId is provided, validate it and derive templateId if missing.
-    let resolvedTemplateId = templateId
+    // Basic referential validation if ids are provided.
     if (templateVersionId) {
-      const v = await prisma.lessonScriptVersion.findUnique({ where: { id: templateVersionId }, select: { id: true, templateId: true } })
-      if (!v) return res.status(400).json({ message: 'Invalid templateVersionId' })
-      if (resolvedTemplateId && resolvedTemplateId !== v.templateId) {
+      const version = await prisma.lessonScriptVersion.findUnique({ where: { id: templateVersionId } })
+      if (!version) return res.status(400).json({ message: 'Invalid templateVersionId' })
+      if (templateId && version.templateId !== templateId) {
         return res.status(400).json({ message: 'templateVersionId does not belong to templateId' })
       }
-      resolvedTemplateId = v.templateId
+    }
+    if (templateId) {
+      const template = await prisma.lessonScriptTemplate.findUnique({ where: { id: templateId } })
+      if (!template) return res.status(400).json({ message: 'Invalid templateId' })
     }
 
-    if (resolvedTemplateId) {
-      const t = await prisma.lessonScriptTemplate.findUnique({ where: { id: resolvedTemplateId }, select: { id: true } })
-      if (!t) return res.status(400).json({ message: 'Invalid templateId' })
-    }
-
-    const updatedBy = ((token as any)?.email as string | undefined) || ((token as any)?.sub as string | undefined) || 'unknown'
-
-    const assignment = await prisma.sessionLessonScript.upsert({
-      where: { sessionId },
+    const updated = await prisma.sessionLessonScript.upsert({
+      where: { sessionId: safeSessionId },
       create: {
-        sessionId,
-        templateId: resolvedTemplateId ?? null,
-        templateVersionId: templateVersionId ?? null,
-        overrideContent: hasOverride ? (overrideContent as any) : null,
-        createdBy: updatedBy,
-        updatedBy,
+        sessionId: safeSessionId,
+        templateId,
+        templateVersionId,
+        overrideContent: overrideContent === undefined ? null : overrideContent,
+        createdBy: (token as any)?.email || null,
+        updatedBy: (token as any)?.email || null,
       },
       update: {
-        templateId: resolvedTemplateId ?? null,
-        templateVersionId: templateVersionId ?? null,
-        ...(hasOverride ? { overrideContent: overrideContent as any } : {}),
-        updatedBy,
-      },
-      select: {
-        id: true,
-        sessionId: true,
-        templateId: true,
-        templateVersionId: true,
-        overrideContent: true,
-        updatedAt: true,
+        templateId,
+        templateVersionId,
+        overrideContent: overrideContent === undefined ? undefined : overrideContent,
+        updatedBy: (token as any)?.email || null,
       },
     })
 
-    return res.status(200).json({ assignment })
+    return res.status(200).json({ assignment: updated })
   }
 
-  res.setHeader('Allow', ['GET', 'PUT'])
-  return res.status(405).end('Method not allowed')
+  return res.status(405).end()
 }

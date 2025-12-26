@@ -198,6 +198,16 @@ type MyScriptMathCanvasProps = {
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
 }
 
+type LessonScriptPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
+
+const LESSON_SCRIPT_PHASES: Array<{ key: LessonScriptPhaseKey; label: string }> = [
+  { key: 'engage', label: 'Engage' },
+  { key: 'explore', label: 'Explore' },
+  { key: 'explain', label: 'Explain' },
+  { key: 'elaborate', label: 'Elaborate' },
+  { key: 'evaluate', label: 'Evaluate' },
+]
+
 const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
 const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
@@ -348,6 +358,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
+
+  const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
+  const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
+  const [lessonScriptError, setLessonScriptError] = useState<string | null>(null)
+  const [lessonScriptPhaseKey, setLessonScriptPhaseKey] = useState<LessonScriptPhaseKey>('engage')
+  const [lessonScriptStepIndex, setLessonScriptStepIndex] = useState(-1)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
@@ -781,6 +797,63 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [clearOverlayAutoHide, isOverlayMode])
 
+  const getLessonScriptPhaseSteps = useCallback(
+    (resolved: any, phaseKey: LessonScriptPhaseKey): string[] => {
+      if (!resolved || typeof resolved !== 'object') return []
+      const phases = (resolved as any).phases
+      if (!phases || typeof phases !== 'object') return []
+      const phase = (phases as any)[phaseKey]
+      const stepsRaw = phase?.steps
+      if (!Array.isArray(stepsRaw)) return []
+      return stepsRaw
+        .map((step: any) => (typeof step === 'string' ? step.trim() : String(step ?? '').trim()))
+        .filter(Boolean)
+    },
+    []
+  )
+
+  const lessonScriptPhaseSteps = useMemo(
+    () => getLessonScriptPhaseSteps(lessonScriptResolved, lessonScriptPhaseKey),
+    [getLessonScriptPhaseSteps, lessonScriptPhaseKey, lessonScriptResolved]
+  )
+
+  const hasLessonScriptSteps = useMemo(() => {
+    if (!lessonScriptResolved || typeof lessonScriptResolved !== 'object') return false
+    return LESSON_SCRIPT_PHASES.some(phase => getLessonScriptPhaseSteps(lessonScriptResolved, phase.key).length > 0)
+  }, [getLessonScriptPhaseSteps, lessonScriptResolved])
+
+  const loadLessonScript = useCallback(async () => {
+    if (!isAdmin) return
+    if (!boardId) return
+
+    setLessonScriptLoading(true)
+    setLessonScriptError(null)
+
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/lesson-script`, { credentials: 'same-origin' })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null)
+        setLessonScriptResolved(null)
+        setLessonScriptError(payload?.message || `Failed to load lesson script (${res.status})`)
+        return
+      }
+      const payload = await res.json().catch(() => null)
+      setLessonScriptResolved(payload?.resolved ?? null)
+      setLessonScriptError(null)
+    } catch (err: any) {
+      setLessonScriptResolved(null)
+      setLessonScriptError(err?.message || 'Failed to load lesson script')
+    } finally {
+      setLessonScriptLoading(false)
+    }
+  }, [boardId, isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!boardId) return
+    void loadLessonScript()
+  }, [boardId, isAdmin, loadLessonScript])
+
   const channelName = useMemo(() => {
     // Force a single shared board across instances unless a specific boardId is provided.
     // Prefer per-grade board scoping if gradeLabel is present.
@@ -791,6 +864,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       : 'shared'
     return `myscript:${base}`
   }, [boardId, gradeLabel])
+
+  const buildLessonScriptLatex = useCallback((steps: string[], stepIndex: number) => {
+    if (!Array.isArray(steps) || steps.length === 0) return ''
+    const index = Math.min(Math.max(stepIndex, -1), steps.length - 1)
+    if (index < 0) return ''
+    return steps
+      .slice(0, index + 1)
+      .map(step => (step || '').trim())
+      .filter(Boolean)
+      .join(' \\\\ ')
+      .trim()
+  }, [])
 
   const activeDiagram = useMemo(() => {
     if (!diagramState.activeDiagramId) return null
@@ -1999,6 +2084,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     },
     [isAdmin, userDisplayName]
+  )
+
+  const applyLessonScriptPlayback = useCallback(
+    async (phaseKey: LessonScriptPhaseKey, nextStepIndex: number) => {
+      if (!isAdmin) return
+      const options = latexProjectionOptionsRef.current
+      const steps = getLessonScriptPhaseSteps(lessonScriptResolved, phaseKey)
+      const clampedIndex = Math.min(Math.max(nextStepIndex, -1), Math.max(steps.length - 1, -1))
+
+      setLessonScriptStepIndex(clampedIndex)
+
+      if (clampedIndex < 0) {
+        setLatexDisplayState({ enabled: false, latex: '', options })
+        await publishLatexDisplayState(false, '', options)
+        return
+      }
+
+      const latex = buildLessonScriptLatex(steps, clampedIndex)
+      setLatexDisplayState({ enabled: true, latex, options })
+      await publishLatexDisplayState(true, latex, options)
+    },
+    [buildLessonScriptLatex, getLessonScriptPhaseSteps, isAdmin, lessonScriptResolved, publishLatexDisplayState]
   )
 
   const stackedNotesBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -4697,6 +4804,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           >
             {isStudentPublishEnabled ? 'Disable Student Publishing' : 'Enable Student Publishing'}
           </button>
+          {boardId && hasLessonScriptSteps && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold">Lesson script</span>
+              <select
+                className="input"
+                value={lessonScriptPhaseKey}
+                onChange={e => {
+                  const next = e.target.value as LessonScriptPhaseKey
+                  setLessonScriptPhaseKey(next)
+                  void applyLessonScriptPlayback(next, -1)
+                }}
+                disabled={lessonScriptLoading || Boolean(fatalError)}
+                aria-label="Choose lesson phase"
+              >
+                {LESSON_SCRIPT_PHASES.map(p => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => runCanvasAction(() => applyLessonScriptPlayback(lessonScriptPhaseKey, lessonScriptStepIndex - 1))}
+                disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptStepIndex < 0}
+              >
+                Prev step
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => runCanvasAction(() => applyLessonScriptPlayback(lessonScriptPhaseKey, lessonScriptStepIndex + 1))}
+                disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptPhaseSteps.length === 0 || lessonScriptStepIndex >= lessonScriptPhaseSteps.length - 1}
+              >
+                Next step
+              </button>
+              <span className="text-xs muted">
+                {lessonScriptPhaseSteps.length === 0
+                  ? 'No steps'
+                  : `Step ${Math.max(lessonScriptStepIndex + 1, 0)} / ${lessonScriptPhaseSteps.length}`}
+              </span>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => runCanvasAction(loadLessonScript)}
+                disabled={lessonScriptLoading || Boolean(fatalError)}
+              >
+                {lessonScriptLoading ? 'Loading…' : 'Reload'}
+              </button>
+              {lessonScriptError && <span className="text-xs text-red-600">{lessonScriptError}</span>}
+            </div>
+          )}
           {ENABLE_EMBEDDED_DIAGRAMS && (
             <button
               className="btn"

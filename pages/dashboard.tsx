@@ -93,6 +93,15 @@ export default function Dashboard() {
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
+  type LessonPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
+  type LessonPhaseDraft = { text: string; diagramUrls: string; steps: string }
+  const [lesson5EDraft, setLesson5EDraft] = useState<Record<LessonPhaseKey, LessonPhaseDraft>>({
+    engage: { text: '', diagramUrls: '', steps: '' },
+    explore: { text: '', diagramUrls: '', steps: '' },
+    explain: { text: '', diagramUrls: '', steps: '' },
+    elaborate: { text: '', diagramUrls: '', steps: '' },
+    evaluate: { text: '', diagramUrls: '', steps: '' },
+  })
   const [minStartsAt, setMinStartsAt] = useState('')
   const [minEndsAt, setMinEndsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
@@ -782,6 +791,49 @@ export default function Dashboard() {
       alert('Select a grade before creating a session')
       return
     }
+
+    const parseLines = (raw: string) =>
+      (raw || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+
+    const parseDiagramUrlLines = (raw: string) => {
+      const lines = parseLines(raw)
+      return lines.map(line => {
+        const parts = line.split('|').map(p => p.trim()).filter(Boolean)
+        if (parts.length >= 2) {
+          const [title, url] = parts
+          return { title, url }
+        }
+        return { title: '', url: line }
+      })
+    }
+
+    const buildLessonScriptOverride = () => {
+      const phases: any = {}
+      ;(['engage', 'explore', 'explain', 'elaborate', 'evaluate'] as LessonPhaseKey[]).forEach(key => {
+        const d = lesson5EDraft[key]
+        const text = (d.text || '').trim()
+        const diagrams = parseDiagramUrlLines(d.diagramUrls)
+        const steps = parseLines(d.steps)
+        if (!text && diagrams.length === 0 && steps.length === 0) return
+        phases[key] = {
+          text,
+          diagrams,
+          steps,
+        }
+      })
+      if (Object.keys(phases).length === 0) return null
+      return {
+        schemaVersion: 1,
+        model: '5E',
+        title: (title || '').trim() || 'Lesson',
+        grade: selectedGrade,
+        phases,
+      }
+    }
+
     try {
       // convert local datetime-local value to an ISO UTC string before sending
       let startsAtIso = startsAt
@@ -799,7 +851,14 @@ export default function Dashboard() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, joinUrl, startsAt: startsAtIso, endsAt: endsAtIso, grade: selectedGrade })
+        body: JSON.stringify({
+          title,
+          joinUrl,
+          startsAt: startsAtIso,
+          endsAt: endsAtIso,
+          grade: selectedGrade,
+          lessonScriptOverrideContent: buildLessonScriptOverride(),
+        })
       })
 
       if (res.ok) {
@@ -808,6 +867,13 @@ export default function Dashboard() {
         setJoinUrl('')
         setStartsAt('')
         setEndsAt('')
+        setLesson5EDraft({
+          engage: { text: '', diagramUrls: '', steps: '' },
+          explore: { text: '', diagramUrls: '', steps: '' },
+          explain: { text: '', diagramUrls: '', steps: '' },
+          elaborate: { text: '', diagramUrls: '', steps: '' },
+          evaluate: { text: '', diagramUrls: '', steps: '' },
+        })
         fetchSessionsForGrade(selectedGrade)
         return
       }
@@ -1924,6 +1990,57 @@ export default function Dashboard() {
                 <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
                 <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
                 <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
+
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
+                  <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
+                  <p className="text-xs muted">Fill any phases you want. Diagram URLs can be one per line, or “Title | URL”. Steps should be one line per reveal.</p>
+
+                  {([
+                    { key: 'engage', label: 'Engage' },
+                    { key: 'explore', label: 'Explore' },
+                    { key: 'explain', label: 'Explain' },
+                    { key: 'elaborate', label: 'Elaborate' },
+                    { key: 'evaluate', label: 'Evaluate' },
+                  ] as Array<{ key: LessonPhaseKey; label: string }>).map(phase => (
+                    <div key={phase.key} className="space-y-2">
+                      <p className="text-sm font-medium">{phase.label}</p>
+                      <textarea
+                        className="input min-h-[90px]"
+                        placeholder={`${phase.label} text (prompts, recap, explanations)`}
+                        value={lesson5EDraft[phase.key].text}
+                        onChange={e =>
+                          setLesson5EDraft(prev => ({
+                            ...prev,
+                            [phase.key]: { ...prev[phase.key], text: e.target.value },
+                          }))
+                        }
+                      />
+                      <textarea
+                        className="input min-h-[70px]"
+                        placeholder={`${phase.label} diagram URLs (one per line)`}
+                        value={lesson5EDraft[phase.key].diagramUrls}
+                        onChange={e =>
+                          setLesson5EDraft(prev => ({
+                            ...prev,
+                            [phase.key]: { ...prev[phase.key], diagramUrls: e.target.value },
+                          }))
+                        }
+                      />
+                      <textarea
+                        className="input min-h-[90px]"
+                        placeholder={`${phase.label} steps (one line per reveal)`}
+                        value={lesson5EDraft[phase.key].steps}
+                        onChange={e =>
+                          setLesson5EDraft(prev => ({
+                            ...prev,
+                            [phase.key]: { ...prev[phase.key], steps: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+
                 <div>
                   <button className="btn btn-primary" type="submit">Create</button>
                 </div>

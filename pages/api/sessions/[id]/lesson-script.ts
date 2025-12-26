@@ -6,6 +6,65 @@ import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionReq
 
 type LessonScriptSource = 'override' | 'template-version' | 'template-current' | 'none'
 
+const VALID_PHASE_KEYS = new Set(['engage', 'explore', 'explain', 'elaborate', 'evaluate'])
+
+const isPlainObject = (value: any) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const validateLessonScriptOverride = (value: any): { ok: true } | { ok: false; message: string } => {
+  if (value === undefined || value === null) return { ok: true }
+  if (!isPlainObject(value)) return { ok: false, message: 'overrideContent must be a JSON object' }
+
+  const schemaVersion = typeof (value as any).schemaVersion === 'number' ? (value as any).schemaVersion : null
+
+  // Legacy schemaVersion 1: keep permissive to avoid breaking old sessions.
+  if (schemaVersion === 1) {
+    return { ok: true }
+  }
+
+  // schemaVersion 2: Phase -> Points -> Modules
+  if (schemaVersion === 2) {
+    const phases = (value as any).phases
+    if (!Array.isArray(phases)) return { ok: false, message: 'schemaVersion 2 requires phases[]' }
+
+    for (const phase of phases) {
+      if (!isPlainObject(phase)) return { ok: false, message: 'Each phase must be an object' }
+      const key = (phase as any).key
+      if (typeof key !== 'string' || !VALID_PHASE_KEYS.has(key)) return { ok: false, message: `Invalid phase key: ${String(key)}` }
+
+      const points = (phase as any).points
+      if (!Array.isArray(points)) return { ok: false, message: `Phase ${key} requires points[]` }
+
+      for (const point of points) {
+        if (!isPlainObject(point)) return { ok: false, message: `Phase ${key} point must be an object` }
+        const modules = (point as any).modules
+        if (!Array.isArray(modules)) return { ok: false, message: `Phase ${key} point requires modules[]` }
+        if (modules.length > 3) return { ok: false, message: `Phase ${key} point has too many modules (max 3)` }
+
+        for (const mod of modules) {
+          if (!isPlainObject(mod)) return { ok: false, message: `Phase ${key} module must be an object` }
+          const type = (mod as any).type
+          if (type !== 'text' && type !== 'diagram' && type !== 'latex') return { ok: false, message: `Invalid module type: ${String(type)}` }
+
+          if (type === 'text') {
+            if (typeof (mod as any).text !== 'string') return { ok: false, message: 'Text module requires text:string' }
+          }
+          if (type === 'diagram') {
+            if (typeof (mod as any).title !== 'string') return { ok: false, message: 'Diagram module requires title:string' }
+          }
+          if (type === 'latex') {
+            if (typeof (mod as any).latex !== 'string') return { ok: false, message: 'LaTeX module requires latex:string' }
+          }
+        }
+      }
+    }
+
+    return { ok: true }
+  }
+
+  // Unknown schema: allow only if it's clearly the old shape (to be safe, require explicit schemaVersion).
+  return { ok: false, message: 'Unknown lesson script schemaVersion. Expected 1 or 2.' }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
@@ -92,10 +151,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const templateId = templateIdRaw ? String(templateIdRaw).trim() : null
     const templateVersionId = templateVersionIdRaw ? String(templateVersionIdRaw).trim() : null
 
-    if (overrideContent !== undefined && overrideContent !== null) {
-      if (typeof overrideContent !== 'object' || Array.isArray(overrideContent)) {
-        return res.status(400).json({ message: 'overrideContent must be a JSON object' })
-      }
+    if (overrideContent !== undefined) {
+      const validated = validateLessonScriptOverride(overrideContent)
+      if (validated.ok === false) return res.status(400).json({ message: validated.message })
     }
 
     // Basic referential validation if ids are provided.

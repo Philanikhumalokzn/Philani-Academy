@@ -23,6 +23,11 @@ type TextRealtimeMessage =
   | { kind: 'state'; state: TextOverlayState; ts?: number; sender?: string }
   | { kind: 'boxes'; boxes: TextBoxRecord[]; ts?: number; sender?: string }
 
+type ScriptTextEventDetail = {
+  text?: string | null
+  visible?: boolean
+}
+
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
 const makeChannelName = (boardId?: string, gradeLabel?: string | null) => {
@@ -37,6 +42,8 @@ const makeChannelName = (boardId?: string, gradeLabel?: string | null) => {
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 
 const randomId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+const SCRIPT_BOX_ID = 'lesson-script-text'
 
 export default function TextOverlayModule(props: {
   boardId?: string
@@ -223,6 +230,61 @@ export default function TextOverlayModule(props: {
     if (!isAdmin) return
     await publish({ kind: 'boxes', boxes: nextBoxes })
   }, [isAdmin, publish])
+
+  const upsertScriptBox = useCallback(async (detail: ScriptTextEventDetail) => {
+    if (!isAdmin) return
+    const text = typeof detail?.text === 'string' ? detail.text : (detail?.text === null ? '' : undefined)
+    const wantsVisible = typeof detail?.visible === 'boolean' ? detail.visible : undefined
+
+    const existing = boxesRef.current.find(b => b.id === SCRIPT_BOX_ID) || null
+    const maxZ = boxesRef.current.reduce((m, b) => Math.max(m, b.z), 0)
+
+    // Hide/remove
+    if (text !== undefined && text.trim().length === 0 && (wantsVisible === false || detail?.text === null)) {
+      if (!existing) return
+      const nextBoxes = boxesRef.current.map(b => (b.id === SCRIPT_BOX_ID ? { ...b, visible: false } : b))
+      await setBoxesAndBroadcast(nextBoxes)
+      return
+    }
+
+    // Show/update
+    const nextRecord: TextBoxRecord = existing
+      ? {
+          ...existing,
+          text: text !== undefined ? text : existing.text,
+          visible: wantsVisible !== undefined ? wantsVisible : true,
+          z: Math.max(existing.z, maxZ + 1),
+        }
+      : {
+          id: SCRIPT_BOX_ID,
+          text: text !== undefined ? text : ' ',
+          x: 0.06,
+          y: 0.06,
+          w: 0.72,
+          h: 0.2,
+          z: maxZ + 1,
+          surface: 'stage',
+          visible: wantsVisible !== undefined ? wantsVisible : true,
+        }
+
+    const nextBoxes = existing
+      ? boxesRef.current.map(b => (b.id === SCRIPT_BOX_ID ? nextRecord : b))
+      : [...boxesRef.current, nextRecord]
+    await setBoxesAndBroadcast(nextBoxes)
+  }, [isAdmin, setBoxesAndBroadcast])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      if (!isAdmin) return
+      const detail = (event as CustomEvent)?.detail as ScriptTextEventDetail
+      void upsertScriptBox(detail || {})
+    }
+
+    window.addEventListener('philani-text:script-apply', handler as any)
+    return () => window.removeEventListener('philani-text:script-apply', handler as any)
+  }, [isAdmin, upsertScriptBox])
 
   const addBox = useCallback(async () => {
     if (!isAdmin) return

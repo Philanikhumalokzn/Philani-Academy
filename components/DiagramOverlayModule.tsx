@@ -31,6 +31,11 @@ type DiagramRealtimeMessage =
   | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
   | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
 
+type ScriptDiagramEventDetail = {
+  title?: string | null
+  open?: boolean
+}
+
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
 const makeChannelName = (boardId?: string, gradeLabel?: string | null) => {
@@ -279,6 +284,39 @@ export default function DiagramOverlayModule(props: {
       window.removeEventListener('philani-diagrams:toggle-tray', handler as any)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      if (!isAdmin) return
+      const detail = (event as CustomEvent)?.detail as ScriptDiagramEventDetail
+      const wantsOpen = typeof detail?.open === 'boolean' ? detail.open : true
+      const title = typeof detail?.title === 'string' ? detail.title.trim() : ''
+
+      if (!wantsOpen) {
+        void setOverlayState({ ...diagramStateRef.current, isOpen: false })
+        return
+      }
+
+      if (!title) {
+        void setOverlayState({ ...diagramStateRef.current, isOpen: true })
+        return
+      }
+
+      const match = diagramsRef.current.find(d => (d.title || '').trim().toLowerCase() === title.toLowerCase())
+      if (!match) {
+        // If not found, at least open whatever is currently active.
+        void setOverlayState({ ...diagramStateRef.current, isOpen: true })
+        return
+      }
+
+      void setOverlayState({ activeDiagramId: match.id, isOpen: true })
+    }
+
+    window.addEventListener('philani-diagrams:script-apply', handler as any)
+    return () => window.removeEventListener('philani-diagrams:script-apply', handler as any)
+  }, [isAdmin, setOverlayState])
 
   useEffect(() => {
     if (diagramState.isOpen) {

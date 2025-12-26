@@ -200,6 +200,28 @@ type MyScriptMathCanvasProps = {
 
 type LessonScriptPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
 
+type LessonScriptV2Module =
+  | { type: 'text'; text: string }
+  | { type: 'diagram'; title: string }
+  | { type: 'latex'; latex: string }
+
+type LessonScriptV2Point = {
+  id: string
+  title?: string
+  modules: LessonScriptV2Module[]
+}
+
+type LessonScriptV2Phase = {
+  key: LessonScriptPhaseKey
+  label?: string
+  points: LessonScriptV2Point[]
+}
+
+type LessonScriptV2 = {
+  schemaVersion: 2
+  phases: LessonScriptV2Phase[]
+}
+
 const LESSON_SCRIPT_PHASES: Array<{ key: LessonScriptPhaseKey; label: string }> = [
   { key: 'engage', label: 'Engage' },
   { key: 'explore', label: 'Explore' },
@@ -364,6 +386,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [lessonScriptError, setLessonScriptError] = useState<string | null>(null)
   const [lessonScriptPhaseKey, setLessonScriptPhaseKey] = useState<LessonScriptPhaseKey>('engage')
   const [lessonScriptStepIndex, setLessonScriptStepIndex] = useState(-1)
+
+  const [lessonScriptPointIndex, setLessonScriptPointIndex] = useState(0)
+  const [lessonScriptModuleIndex, setLessonScriptModuleIndex] = useState(-1)
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
@@ -812,15 +837,87 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     []
   )
 
+  const getLessonScriptV2 = useCallback((resolved: any): LessonScriptV2 | null => {
+    if (!resolved || typeof resolved !== 'object') return null
+    if ((resolved as any).schemaVersion !== 2) return null
+    const phasesRaw = (resolved as any).phases
+    if (!Array.isArray(phasesRaw)) return null
+
+    const phases: LessonScriptV2Phase[] = phasesRaw
+      .map((p: any) => {
+        const key = p?.key as LessonScriptPhaseKey
+        if (key !== 'engage' && key !== 'explore' && key !== 'explain' && key !== 'elaborate' && key !== 'evaluate') return null
+        const pointsRaw = Array.isArray(p?.points) ? p.points : []
+        const points: LessonScriptV2Point[] = pointsRaw
+          .map((pt: any, idx: number) => {
+            const modulesRaw = Array.isArray(pt?.modules) ? pt.modules : []
+            const modules: LessonScriptV2Module[] = modulesRaw
+              .map((m: any) => {
+                const t = m?.type
+                if (t === 'text') return { type: 'text', text: typeof m.text === 'string' ? m.text : '' }
+                if (t === 'diagram') return { type: 'diagram', title: typeof m.title === 'string' ? m.title : '' }
+                if (t === 'latex') return { type: 'latex', latex: typeof m.latex === 'string' ? m.latex : '' }
+                return null
+              })
+              .filter(Boolean) as LessonScriptV2Module[]
+              
+            const cleaned = modules
+              .map(mod => {
+                if (mod.type === 'text') return { ...mod, text: (mod.text || '').trim() }
+                if (mod.type === 'diagram') return { ...mod, title: (mod.title || '').trim() }
+                return { ...mod, latex: (mod.latex || '').trim() }
+              })
+              .filter(mod => {
+                if (mod.type === 'text') return Boolean(mod.text)
+                if (mod.type === 'diagram') return Boolean(mod.title)
+                return Boolean(mod.latex)
+              })
+
+            if (cleaned.length === 0) return null
+            const id = typeof pt?.id === 'string' && pt.id.trim() ? pt.id.trim() : `${key}-${idx}`
+            const title = typeof pt?.title === 'string' ? pt.title : ''
+            return { id, title, modules: cleaned }
+          })
+          .filter(Boolean) as LessonScriptV2Point[]
+
+        return { key, label: typeof p?.label === 'string' ? p.label : undefined, points }
+      })
+      .filter(Boolean) as LessonScriptV2Phase[]
+
+    return { schemaVersion: 2, phases }
+  }, [])
+
   const lessonScriptPhaseSteps = useMemo(
     () => getLessonScriptPhaseSteps(lessonScriptResolved, lessonScriptPhaseKey),
     [getLessonScriptPhaseSteps, lessonScriptPhaseKey, lessonScriptResolved]
   )
 
+  const lessonScriptV2 = useMemo(() => getLessonScriptV2(lessonScriptResolved), [getLessonScriptV2, lessonScriptResolved])
+
+  const lessonScriptV2Phase = useMemo(() => {
+    if (!lessonScriptV2) return null
+    return lessonScriptV2.phases.find(p => p.key === lessonScriptPhaseKey) || null
+  }, [lessonScriptPhaseKey, lessonScriptV2])
+
+  const lessonScriptV2Points = useMemo(() => lessonScriptV2Phase?.points ?? [], [lessonScriptV2Phase])
+
+  const lessonScriptV2ActivePoint = useMemo(() => {
+    if (!lessonScriptV2Points.length) return null
+    const idx = Math.max(0, Math.min(lessonScriptPointIndex, lessonScriptV2Points.length - 1))
+    return lessonScriptV2Points[idx] ?? null
+  }, [lessonScriptPointIndex, lessonScriptV2Points])
+
+  const lessonScriptV2ActiveModules = useMemo(() => lessonScriptV2ActivePoint?.modules ?? [], [lessonScriptV2ActivePoint])
+
   const hasLessonScriptSteps = useMemo(() => {
     if (!lessonScriptResolved || typeof lessonScriptResolved !== 'object') return false
+    if ((lessonScriptResolved as any).schemaVersion === 2 && Array.isArray((lessonScriptResolved as any).phases)) {
+      const v2 = getLessonScriptV2(lessonScriptResolved)
+      if (!v2) return false
+      return v2.phases.some(p => Array.isArray(p.points) && p.points.some(pt => Array.isArray(pt.modules) && pt.modules.length > 0))
+    }
     return LESSON_SCRIPT_PHASES.some(phase => getLessonScriptPhaseSteps(lessonScriptResolved, phase.key).length > 0)
-  }, [getLessonScriptPhaseSteps, lessonScriptResolved])
+  }, [getLessonScriptPhaseSteps, getLessonScriptV2, lessonScriptResolved])
 
   const loadLessonScript = useCallback(async () => {
     if (!isAdmin) return
@@ -2086,9 +2183,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [isAdmin, userDisplayName]
   )
 
+  const clearLessonModules = useCallback(async () => {
+    if (!isAdmin) return
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('philani-text:script-apply', { detail: { text: null, visible: false } }))
+      } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { open: false } }))
+      } catch {}
+    }
+    const options = latexProjectionOptionsRef.current
+    setLatexDisplayState({ enabled: false, latex: '', options })
+    await publishLatexDisplayState(false, '', options)
+  }, [isAdmin, publishLatexDisplayState])
+
   const applyLessonScriptPlayback = useCallback(
     async (phaseKey: LessonScriptPhaseKey, nextStepIndex: number) => {
       if (!isAdmin) return
+      // If we have schema v2, this legacy function is only used for old scripts.
       const options = latexProjectionOptionsRef.current
       const steps = getLessonScriptPhaseSteps(lessonScriptResolved, phaseKey)
       const clampedIndex = Math.min(Math.max(nextStepIndex, -1), Math.max(steps.length - 1, -1))
@@ -2106,6 +2219,69 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       await publishLatexDisplayState(true, latex, options)
     },
     [buildLessonScriptLatex, getLessonScriptPhaseSteps, isAdmin, lessonScriptResolved, publishLatexDisplayState]
+  )
+
+  const applyLessonScriptPlaybackV2 = useCallback(
+    async (phaseKey: LessonScriptPhaseKey, nextPointIndex: number, nextModuleIndex: number) => {
+      if (!isAdmin) return
+      const v2 = getLessonScriptV2(lessonScriptResolved)
+      if (!v2) return
+
+      const phase = v2.phases.find(p => p.key === phaseKey) || null
+      const points = phase?.points ?? []
+      const pointIndex = points.length ? Math.max(0, Math.min(nextPointIndex, points.length - 1)) : 0
+      const point = points[pointIndex] ?? null
+      const modules = point?.modules ?? []
+
+      const moduleIndex = Math.min(Math.max(nextModuleIndex, -1), Math.max(modules.length - 1, -1))
+
+      setLessonScriptPointIndex(pointIndex)
+      setLessonScriptModuleIndex(moduleIndex)
+
+      if (moduleIndex < 0) {
+        await clearLessonModules()
+        return
+      }
+
+      const mod = modules[moduleIndex] ?? null
+      if (!mod) {
+        await clearLessonModules()
+        return
+      }
+
+      // Show only the active module to keep delivery unambiguous.
+      if (mod.type === 'text') {
+        await clearLessonModules()
+        try {
+          window.dispatchEvent(new CustomEvent('philani-text:script-apply', { detail: { text: mod.text, visible: true } }))
+        } catch {}
+        return
+      }
+
+      if (mod.type === 'diagram') {
+        await clearLessonModules()
+        try {
+          window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { title: mod.title, open: true } }))
+        } catch {}
+        return
+      }
+
+      if (mod.type === 'latex') {
+        // Only clear other modules, keep latex via control channel.
+        if (typeof window !== 'undefined') {
+          try {
+            window.dispatchEvent(new CustomEvent('philani-text:script-apply', { detail: { text: null, visible: false } }))
+          } catch {}
+          try {
+            window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { open: false } }))
+          } catch {}
+        }
+        const options = latexProjectionOptionsRef.current
+        setLatexDisplayState({ enabled: true, latex: mod.latex, options })
+        await publishLatexDisplayState(true, mod.latex, options)
+      }
+    },
+    [clearLessonModules, getLessonScriptV2, isAdmin, lessonScriptResolved, publishLatexDisplayState]
   )
 
   const stackedNotesBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -4820,7 +4996,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 onChange={e => {
                   const next = e.target.value as LessonScriptPhaseKey
                   setLessonScriptPhaseKey(next)
-                  void applyLessonScriptPlayback(next, -1)
+                  setLessonScriptStepIndex(-1)
+                  setLessonScriptPointIndex(0)
+                  setLessonScriptModuleIndex(-1)
+                  if ((lessonScriptResolved as any)?.schemaVersion === 2) {
+                    void applyLessonScriptPlaybackV2(next, 0, -1)
+                  } else {
+                    void applyLessonScriptPlayback(next, -1)
+                  }
                 }}
                 disabled={lessonScriptLoading || Boolean(fatalError)}
                 aria-label="Choose lesson phase"
@@ -4831,27 +5014,131 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </option>
                 ))}
               </select>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => runCanvasAction(() => applyLessonScriptPlayback(lessonScriptPhaseKey, lessonScriptStepIndex - 1))}
-                disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptStepIndex < 0}
-              >
-                Prev step
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => runCanvasAction(() => applyLessonScriptPlayback(lessonScriptPhaseKey, lessonScriptStepIndex + 1))}
-                disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptPhaseSteps.length === 0 || lessonScriptStepIndex >= lessonScriptPhaseSteps.length - 1}
-              >
-                Next step
-              </button>
-              <span className="text-xs muted">
-                {lessonScriptPhaseSteps.length === 0
-                  ? 'No steps'
-                  : `Step ${Math.max(lessonScriptStepIndex + 1, 0)} / ${lessonScriptPhaseSteps.length}`}
-              </span>
+              {lessonScriptV2 ? (
+                <>
+                  <select
+                    className="input"
+                    value={lessonScriptPointIndex}
+                    onChange={e => {
+                      const nextPoint = Number(e.target.value)
+                      setLessonScriptPointIndex(Number.isFinite(nextPoint) ? nextPoint : 0)
+                      setLessonScriptModuleIndex(-1)
+                      void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, Number.isFinite(nextPoint) ? nextPoint : 0, -1)
+                    }}
+                    disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptV2Points.length === 0}
+                    aria-label="Choose lesson point"
+                  >
+                    {lessonScriptV2Points.length === 0 ? (
+                      <option value={0}>No points</option>
+                    ) : (
+                      lessonScriptV2Points.map((pt, idx) => (
+                        <option key={pt.id} value={idx}>
+                          {pt.title ? `${idx + 1}. ${pt.title}` : `Point ${idx + 1}`}
+                        </option>
+                      ))
+                    )}
+                  </select>
+
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => runCanvasAction(async () => {
+                      if (!lessonScriptV2ActivePoint) {
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, 0, -1)
+                        return
+                      }
+                      const modules = lessonScriptV2ActiveModules
+                      const idx = lessonScriptModuleIndex
+                      if (idx > -1) {
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, idx - 1)
+                        return
+                      }
+                      // at -1, jump to previous point's last module if possible
+                      if (lessonScriptPointIndex > 0) {
+                        const prevPointIdx = lessonScriptPointIndex - 1
+                        const prevPoint = lessonScriptV2Points[prevPointIdx]
+                        const lastIdx = (prevPoint?.modules?.length ?? 0) - 1
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, prevPointIdx, Math.max(lastIdx, -1))
+                      }
+                    })}
+                    disabled={lessonScriptLoading || Boolean(fatalError) || (lessonScriptPointIndex === 0 && lessonScriptModuleIndex < 0)}
+                  >
+                    Prev
+                  </button>
+
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => runCanvasAction(async () => {
+                      if (!lessonScriptV2ActivePoint) {
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, 0, -1)
+                        return
+                      }
+                      const modules = lessonScriptV2ActiveModules
+                      const idx = lessonScriptModuleIndex
+                      if (modules.length === 0) {
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, -1)
+                        return
+                      }
+                      if (idx < modules.length - 1) {
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, idx + 1)
+                        return
+                      }
+                      // Move to next point
+                      if (lessonScriptPointIndex < lessonScriptV2Points.length - 1) {
+                        await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex + 1, -1)
+                      }
+                    })}
+                    disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptV2Points.length === 0 || (lessonScriptPointIndex >= lessonScriptV2Points.length - 1 && lessonScriptModuleIndex >= lessonScriptV2ActiveModules.length - 1)}
+                  >
+                    Next
+                  </button>
+
+                  <span className="text-xs muted">
+                    {lessonScriptV2Points.length === 0
+                      ? 'No points'
+                      : `Point ${Math.min(lessonScriptPointIndex + 1, lessonScriptV2Points.length)} / ${lessonScriptV2Points.length} • Module ${Math.max(lessonScriptModuleIndex + 1, 0)} / ${lessonScriptV2ActiveModules.length}`}
+                  </span>
+
+                  {lessonScriptV2ActiveModules.length > 0 && (
+                    <span className="text-xs text-slate-600">
+                      {lessonScriptV2ActiveModules.map((m, idx) => {
+                        const label = m.type === 'latex' ? 'LaTeX' : (m.type === 'diagram' ? 'Diagram' : 'Text')
+                        const isActive = idx === lessonScriptModuleIndex
+                        return (
+                          <span key={`${lessonScriptV2ActivePoint?.id || 'point'}-${idx}`} className={isActive ? 'font-semibold text-slate-800' : undefined}>
+                            {idx === 0 ? '' : ' → '}{label}
+                          </span>
+                        )
+                      })}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => runCanvasAction(() => applyLessonScriptPlayback(lessonScriptPhaseKey, lessonScriptStepIndex - 1))}
+                    disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptStepIndex < 0}
+                  >
+                    Prev step
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => runCanvasAction(() => applyLessonScriptPlayback(lessonScriptPhaseKey, lessonScriptStepIndex + 1))}
+                    disabled={lessonScriptLoading || Boolean(fatalError) || lessonScriptPhaseSteps.length === 0 || lessonScriptStepIndex >= lessonScriptPhaseSteps.length - 1}
+                  >
+                    Next step
+                  </button>
+                  <span className="text-xs muted">
+                    {lessonScriptPhaseSteps.length === 0
+                      ? 'No steps'
+                      : `Step ${Math.max(lessonScriptStepIndex + 1, 0)} / ${lessonScriptPhaseSteps.length}`}
+                  </span>
+                </>
+              )}
               <button
                 className="btn btn-ghost"
                 type="button"
@@ -4859,6 +5146,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 disabled={lessonScriptLoading || Boolean(fatalError)}
               >
                 {lessonScriptLoading ? 'Loading…' : 'Reload'}
+              </button>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => runCanvasAction(async () => {
+                  if ((lessonScriptResolved as any)?.schemaVersion === 2) {
+                    await applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, -1)
+                  } else {
+                    await applyLessonScriptPlayback(lessonScriptPhaseKey, -1)
+                  }
+                })}
+                disabled={lessonScriptLoading || Boolean(fatalError)}
+              >
+                Clear
               </button>
               {lessonScriptError && <span className="text-xs text-red-600">{lessonScriptError}</span>}
             </div>

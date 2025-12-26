@@ -95,13 +95,28 @@ export default function Dashboard() {
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
   type LessonPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
-  type LessonPhaseDraft = { text: string; diagramUrls: string; steps: string }
-  const [lesson5EDraft, setLesson5EDraft] = useState<Record<LessonPhaseKey, LessonPhaseDraft>>({
-    engage: { text: '', diagramUrls: '', steps: '' },
-    explore: { text: '', diagramUrls: '', steps: '' },
-    explain: { text: '', diagramUrls: '', steps: '' },
-    elaborate: { text: '', diagramUrls: '', steps: '' },
-    evaluate: { text: '', diagramUrls: '', steps: '' },
+  type LessonPointDraft = {
+    id: string
+    title: string
+    text: string
+    diagramTitle: string
+    latex: string
+  }
+
+  const newPointDraft = (): LessonPointDraft => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    text: '',
+    diagramTitle: '',
+    latex: '',
+  })
+
+  const [lessonScriptDraft, setLessonScriptDraft] = useState<Record<LessonPhaseKey, LessonPointDraft[]>>({
+    engage: [],
+    explore: [],
+    explain: [],
+    elaborate: [],
+    evaluate: [],
   })
   const [minStartsAt, setMinStartsAt] = useState('')
   const [minEndsAt, setMinEndsAt] = useState('')
@@ -799,35 +814,44 @@ export default function Dashboard() {
         .map(line => line.trim())
         .filter(Boolean)
 
-    const parseDiagramUrlLines = (raw: string) => {
-      const lines = parseLines(raw)
-      return lines.map(line => {
-        const parts = line.split('|').map(p => p.trim()).filter(Boolean)
-        if (parts.length >= 2) {
-          const [title, url] = parts
-          return { title, url }
-        }
-        return { title: '', url: line }
-      })
-    }
-
     const buildLessonScriptOverride = () => {
-      const phases: any = {}
-      ;(['engage', 'explore', 'explain', 'elaborate', 'evaluate'] as LessonPhaseKey[]).forEach(key => {
-        const d = lesson5EDraft[key]
-        const text = (d.text || '').trim()
-        const diagrams = parseDiagramUrlLines(d.diagramUrls)
-        const steps = parseLines(d.steps)
-        if (!text && diagrams.length === 0 && steps.length === 0) return
-        phases[key] = {
-          text,
-          diagrams,
-          steps,
-        }
-      })
-      if (Object.keys(phases).length === 0) return null
+      const phaseOrder: LessonPhaseKey[] = ['engage', 'explore', 'explain', 'elaborate', 'evaluate']
+      const phases = phaseOrder
+        .map(key => {
+          const points = (lessonScriptDraft[key] || [])
+            .map((p, idx) => {
+              const text = (p.text || '').trim()
+              const diagramTitle = (p.diagramTitle || '').trim()
+              const latexLines = parseLines(p.latex || '')
+              const latex = latexLines.join(' \\\\ ').trim()
+
+              const modules: any[] = []
+              if (text) modules.push({ type: 'text', text })
+              if (diagramTitle) modules.push({ type: 'diagram', title: diagramTitle })
+              if (latex) modules.push({ type: 'latex', latex })
+              if (modules.length === 0) return null
+
+              return {
+                id: String(p.id || `${key}-${idx}`),
+                title: (p.title || '').trim(),
+                modules,
+              }
+            })
+            .filter(Boolean)
+
+          if (points.length === 0) return null
+          return {
+            key,
+            label: key.charAt(0).toUpperCase() + key.slice(1),
+            points,
+          }
+        })
+        .filter(Boolean)
+
+      if (phases.length === 0) return null
+
       return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         model: '5E',
         title: (title || '').trim() || 'Lesson',
         grade: selectedGrade,
@@ -868,13 +892,7 @@ export default function Dashboard() {
         setJoinUrl('')
         setStartsAt('')
         setEndsAt('')
-        setLesson5EDraft({
-          engage: { text: '', diagramUrls: '', steps: '' },
-          explore: { text: '', diagramUrls: '', steps: '' },
-          explain: { text: '', diagramUrls: '', steps: '' },
-          elaborate: { text: '', diagramUrls: '', steps: '' },
-          evaluate: { text: '', diagramUrls: '', steps: '' },
-        })
+        setLessonScriptDraft({ engage: [], explore: [], explain: [], elaborate: [], evaluate: [] })
         fetchSessionsForGrade(selectedGrade)
         return
       }
@@ -1994,7 +2012,7 @@ export default function Dashboard() {
 
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
                   <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
-                  <p className="text-xs muted">Fill any phases you want. Diagram URLs can be one per line, or “Title | URL”. Steps should be one line per reveal.</p>
+                  <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
 
                   {([
                     { key: 'engage', label: 'Engage' },
@@ -2005,39 +2023,91 @@ export default function Dashboard() {
                   ] as Array<{ key: LessonPhaseKey; label: string }>).map(phase => (
                     <div key={phase.key} className="space-y-2">
                       <p className="text-sm font-medium">{phase.label}</p>
-                      <textarea
-                        className="input min-h-[90px]"
-                        placeholder={`${phase.label} text (prompts, recap, explanations)`}
-                        value={lesson5EDraft[phase.key].text}
-                        onChange={e =>
-                          setLesson5EDraft(prev => ({
+
+                      {(lessonScriptDraft[phase.key] || []).length === 0 ? (
+                        <div className="text-xs muted">No points yet.</div>
+                      ) : null}
+
+                      {(lessonScriptDraft[phase.key] || []).map((point, pointIndex) => (
+                        <div key={point.id} className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold">Point {pointIndex + 1}</p>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => {
+                                setLessonScriptDraft(prev => ({
+                                  ...prev,
+                                  [phase.key]: (prev[phase.key] || []).filter(p => p.id !== point.id),
+                                }))
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                          <input
+                            className="input"
+                            placeholder="Point title (optional)"
+                            value={point.title}
+                            onChange={e => {
+                              const value = e.target.value
+                              setLessonScriptDraft(prev => ({
+                                ...prev,
+                                [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, title: value } : p)),
+                              }))
+                            }}
+                          />
+                          <textarea
+                            className="input min-h-[80px]"
+                            placeholder="Text module (headings, prompts, explanations)"
+                            value={point.text}
+                            onChange={e => {
+                              const value = e.target.value
+                              setLessonScriptDraft(prev => ({
+                                ...prev,
+                                [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, text: value } : p)),
+                              }))
+                            }}
+                          />
+                          <input
+                            className="input"
+                            placeholder="Diagram module: diagram title to show (must match a created diagram title)"
+                            value={point.diagramTitle}
+                            onChange={e => {
+                              const value = e.target.value
+                              setLessonScriptDraft(prev => ({
+                                ...prev,
+                                [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, diagramTitle: value } : p)),
+                              }))
+                            }}
+                          />
+                          <textarea
+                            className="input min-h-[80px]"
+                            placeholder="LaTeX module (one line per row; lines will be joined)"
+                            value={point.latex}
+                            onChange={e => {
+                              const value = e.target.value
+                              setLessonScriptDraft(prev => ({
+                                ...prev,
+                                [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, latex: value } : p)),
+                              }))
+                            }}
+                          />
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          setLessonScriptDraft(prev => ({
                             ...prev,
-                            [phase.key]: { ...prev[phase.key], text: e.target.value },
+                            [phase.key]: [...(prev[phase.key] || []), newPointDraft()],
                           }))
-                        }
-                      />
-                      <textarea
-                        className="input min-h-[70px]"
-                        placeholder={`${phase.label} diagram URLs (one per line)`}
-                        value={lesson5EDraft[phase.key].diagramUrls}
-                        onChange={e =>
-                          setLesson5EDraft(prev => ({
-                            ...prev,
-                            [phase.key]: { ...prev[phase.key], diagramUrls: e.target.value },
-                          }))
-                        }
-                      />
-                      <textarea
-                        className="input min-h-[90px]"
-                        placeholder={`${phase.label} steps (one line per reveal)`}
-                        value={lesson5EDraft[phase.key].steps}
-                        onChange={e =>
-                          setLesson5EDraft(prev => ({
-                            ...prev,
-                            [phase.key]: { ...prev[phase.key], steps: e.target.value },
-                          }))
-                        }
-                      />
+                        }}
+                      >
+                        Add point
+                      </button>
                     </div>
                   ))}
                 </div>

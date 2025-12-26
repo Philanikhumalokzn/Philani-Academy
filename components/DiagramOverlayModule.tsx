@@ -219,7 +219,7 @@ export default function DiagramOverlayModule(props: {
   )
   const mobileDiagramTray = isAdmin && mobileTrayOpen ? (
     <div
-      className="sm:hidden"
+      className="md:hidden"
       style={trayPopOverSeparatorCss as any}
       onClick={e => {
         if (e.target === e.currentTarget) setMobileTrayOpen(false)

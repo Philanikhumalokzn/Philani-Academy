@@ -52,120 +52,84 @@ function loadIinkRuntime(): Promise<void> {
 
       if (existing) {
         if (existing.getAttribute('data-loaded') === 'true' && hasValidRuntime()) {
-                    <canvas
-                      ref={diagramCanvasRef}
-                      className={`absolute inset-0 ${isAdmin ? (diagramTool === 'select' ? 'cursor-default' : diagramTool === 'eraser' ? 'cursor-cell' : 'cursor-crosshair') : 'pointer-events-none'}`}
-                      onPointerDown={async e => {
-                        if (!isAdmin) return;
-                        if (!activeDiagram?.id) return;
-                        if (diagramDrawingRef.current) return;
-                        const stage = diagramStageRef.current;
-                        if (!stage) return;
-                        const rect = stage.getBoundingClientRect();
-                        const x = (e.clientX - rect.left) / Math.max(rect.width, 1);
-                        const y = (e.clientY - rect.top) / Math.max(rect.height, 1);
-                        const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+          resolve()
+          return
+        }
+        existing.remove()
+      }
 
-                        const tool = diagramToolRef.current;
-                        // Pinch-zoom logic for select tool
-                        if (tool === 'select') {
-                          let pinchStartDist = null;
-                          let pinchStartScale = diagramZoomRef.current || 1;
-                          let pinchCenter = null;
-                          const handleTouchMove = (te) => {
-                            if (te.touches && te.touches.length === 2) {
-                              const t1 = te.touches[0];
-                              const t2 = te.touches[1];
-                              const dx = t2.clientX - t1.clientX;
-                              const dy = t2.clientY - t1.clientY;
-                              const dist = Math.sqrt(dx * dx + dy * dy);
-                              if (pinchStartDist === null) {
-                                pinchStartDist = dist;
-                                pinchCenter = {
-                                  x: ((t1.clientX + t2.clientX) / 2 - rect.left) / Math.max(rect.width, 1),
-                                  y: ((t1.clientY + t2.clientY) / 2 - rect.top) / Math.max(rect.height, 1),
-                                };
-                              } else {
-                                let scale = pinchStartScale * (dist / pinchStartDist);
-                                scale = Math.max(0.5, Math.min(2.5, scale));
-                                diagramZoomRef.current = scale;
-                                setDiagramZoom(scale);
-                                setDiagramZoomCenter(pinchCenter);
-                                redrawDiagramCanvas();
-                              }
-                            }
-                          };
-                          const handleTouchEnd = () => {
-                            window.removeEventListener('touchmove', handleTouchMove, { passive: false });
-                            window.removeEventListener('touchend', handleTouchEnd, { passive: false });
-                            window.removeEventListener('touchcancel', handleTouchEnd, { passive: false });
-                          };
-                          if (e.nativeEvent instanceof TouchEvent && e.nativeEvent.touches.length === 2) {
-                            window.addEventListener('touchmove', handleTouchMove, { passive: false });
-                            window.addEventListener('touchend', handleTouchEnd, { passive: false });
-                            window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
-                            return;
-                          }
-                          // ...existing code for selection/move/scale...
-                          const diagramId = activeDiagram.id;
-                          const existing = diagramSelectionRef.current;
-                          const bbox = existing ? selectionBbox(diagramId, existing) : null;
-                          const handle = (() => {
-                            if (!existing || !bbox) return null;
-                            const w = Math.max(rect.width, 1);
-                            const h = Math.max(rect.height, 1);
-                            return hitTestHandle(point, bbox, w, h);
-                          })();
-                          const hit = hitTestAnnotation(diagramId, point);
-                          if (handle && existing && bbox) {
-                            {
-                              const annNow = diagramAnnotationsForRender(diagramId);
-                              if (isSelectionLockedInAnnotations(annNow, existing)) {
-                                return;
-                              }
-                            }
-                            const base = diagramAnnotationsForRender(diagramId);
-                            const corners = bboxCornerPoints(bbox);
-                            const anchorHandle = oppositeHandle(handle);
-                            const anchorPoint = corners[anchorHandle];
-                            diagramEditRef.current = {
-                              diagramId,
-                              selection: existing,
-                              mode: 'scale',
-                              handle,
-                              startPoint: point,
-                              base,
-                              baseBbox: bbox,
-                              anchorPoint,
-                            };
-                          } else if (hit) {
-                            if (!existing || existing.id !== hit.id || existing.kind !== hit.kind) {
-                              setDiagramSelection(hit);
-                            }
-                            {
-                              const annNow = diagramAnnotationsForRender(diagramId);
-                              if (isSelectionLockedInAnnotations(annNow, hit)) {
-                                return;
-                              }
-                            }
-                            const startBBox = selectionBbox(diagramId, hit);
-                            if (!startBBox) return;
-                            const base = diagramAnnotationsForRender(diagramId);
-                            diagramEditRef.current = {
-                              diagramId,
-                              selection: hit,
-                              mode: 'move',
-                              startPoint: point,
-                              base,
-                              baseBbox: startBBox,
-                            };
-                          } else {
-                            setDiagramSelection(null);
-                            diagramEditRef.current = null;
-                          }
-                          redrawDiagramCanvas();
-                          return;
-                        }
+      const script = document.createElement('script')
+      script.id = id
+      script.src = src
+      script.async = true
+      script.defer = true
+      script.crossOrigin = 'anonymous'
+      script.addEventListener(
+        'load',
+        () => {
+          script.setAttribute('data-loaded', 'true')
+          resolve()
+        },
+        { once: true }
+      )
+      script.addEventListener('error', handleError, { once: true })
+      document.head.appendChild(script)
+    })
+
+  scriptPromise = (async () => {
+    let lastError: unknown = null
+
+    const tryLoad = async (id: string, src: string) => {
+      try {
+        await loadScript(id, src)
+        return true
+      } catch (err) {
+        lastError = err
+        document.getElementById(id)?.remove()
+        return false
+      }
+    }
+
+    const primaryOk = await tryLoad(SCRIPT_ID, SCRIPT_URL)
+
+    if (!window.iink?.Editor?.load) {
+      console.warn('Primary MyScript CDN did not expose the expected API, retrying pinned fallback.')
+      await tryLoad(`${SCRIPT_ID}-fallback`, SCRIPT_FALLBACK_URL)
+    }
+
+    if (!window.iink?.Editor?.load) {
+      if (lastError instanceof Error) {
+        throw lastError
+      }
+      throw new Error('MyScript iink runtime did not expose the expected API.')
+    }
+  })()
+    .catch(err => {
+      scriptPromise = null
+      throw err
+    })
+    .then(() => {
+      scriptPromise = null
+    })
+
+  return scriptPromise ?? Promise.resolve()
+}
+
+type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+type SnapshotPayload = {
+  symbols: any[] | null
+  latex?: string
+  jiix?: string | null
+  version: number
+  snapshotId: string
+  baseSymbolCount?: number
+}
+
+type SnapshotRecord = {
+  snapshot: SnapshotPayload
+  ts: number
+  reason: 'update' | 'clear'
 }
 
 type SnapshotMessage = {
@@ -433,25 +397,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const diagramCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const diagramImageRef = useRef<HTMLImageElement | null>(null)
   const diagramDrawingRef = useRef(false)
-  // Pinch-zoom state for diagram overlay
-  const diagramZoomRef = useRef(1)
-  const [diagramZoom, setDiagramZoom] = useState(1)
-  const [diagramZoomCenter, setDiagramZoomCenter] = useState<{x: number, y: number} | null>(null)
-    // Utility: scale and translate point for zoom
-    function applyZoomToPoint(pt: {x: number, y: number}) {
-      if (!diagramZoomCenter) return pt;
-      const z = diagramZoom;
-      return {
-        x: diagramZoomCenter.x + (pt.x - diagramZoomCenter.x) * z,
-        y: diagramZoomCenter.y + (pt.y - diagramZoomCenter.y) * z,
-      };
-    }
-
-    // Patch: update drawing/rendering logic to use zoom (example for strokes/arrows)
-    // In your redrawDiagramCanvas, when rendering strokes/arrows, map all points through applyZoomToPoint
-    // Example:
-    // const zoomedPoints = stroke.points.map(applyZoomToPoint)
-    // ... then render using zoomedPoints
   const diagramCurrentStrokeRef = useRef<DiagramStroke | null>(null)
   const diagramCurrentArrowRef = useRef<DiagramArrow | null>(null)
   const diagramLastPublishTsRef = useRef(0)
@@ -5641,47 +5586,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       const clampedY = Math.max(8, Math.min(py, rect.height - menuHeight - 8))
                       setDiagramContextMenu({ diagramId, selection, xPx: clampedX, yPx: clampedY, point })
                     }}
-                    // Long-press context menu for mobile
                     onPointerDownCapture={e => {
-                      if (!isAdmin) return;
-                      if (!activeDiagram?.id) return;
-                      // If context menu is open and tap is outside, close it
-                      if (diagramContextMenu) {
-                        const menuEl = diagramContextMenuRef.current;
-                        if (menuEl && e.target instanceof Node && menuEl.contains(e.target)) return;
-                        setDiagramContextMenu(null);
-                        return;
-                      }
-                      // Long-press detection
-                      if (e.pointerType === 'touch') {
-                        let longPressTimer: any = null;
-                        const stage = diagramStageRef.current;
-                        if (!stage) return;
-                        const rect = stage.getBoundingClientRect();
-                        const x = (e.clientX - rect.left) / Math.max(rect.width, 1);
-                        const y = (e.clientY - rect.top) / Math.max(rect.height, 1);
-                        const point = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
-                        const diagramId = activeDiagram.id;
-                        const hit = hitTestAnnotation(diagramId, point);
-                        if (!hit) return;
-                        longPressTimer = setTimeout(() => {
-                          setDiagramSelection(hit);
-                          const menuWidth = 224;
-                          const menuHeight = 420;
-                          const px = e.clientX - rect.left;
-                          const py = e.clientY - rect.top;
-                          const clampedX = Math.max(8, Math.min(px, rect.width - menuWidth - 8));
-                          const clampedY = Math.max(8, Math.min(py, rect.height - menuHeight - 8));
-                          setDiagramContextMenu({ diagramId, selection: hit, xPx: clampedX, yPx: clampedY, point });
-                        }, 450); // 450ms for long-press
-                        const clear = () => {
-                          if (longPressTimer) clearTimeout(longPressTimer);
-                          window.removeEventListener('pointerup', clear, true);
-                          window.removeEventListener('pointercancel', clear, true);
-                        };
-                        window.addEventListener('pointerup', clear, true);
-                        window.addEventListener('pointercancel', clear, true);
-                      }
+                      if (!diagramContextMenu) return
+                      const menuEl = diagramContextMenuRef.current
+                      if (menuEl && e.target instanceof Node && menuEl.contains(e.target)) return
+                      setDiagramContextMenu(null)
                     }}
                   >
                     {isAdmin && (

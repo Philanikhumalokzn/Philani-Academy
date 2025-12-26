@@ -49,7 +49,17 @@ const validateLessonScriptOverride = (value: any): { ok: true } | { ok: false; m
             if (typeof (mod as any).text !== 'string') return { ok: false, message: 'Text module requires text:string' }
           }
           if (type === 'diagram') {
-            if (typeof (mod as any).title !== 'string') return { ok: false, message: 'Diagram module requires title:string' }
+            const titleOk = typeof (mod as any).title === 'string' && Boolean(String((mod as any).title).trim())
+            const diagram = (mod as any).diagram
+            const diagramOk = isPlainObject(diagram)
+              && typeof diagram.title === 'string'
+              && Boolean(String(diagram.title).trim())
+              && typeof diagram.imageUrl === 'string'
+              && Boolean(String(diagram.imageUrl).trim())
+
+            if (!titleOk && !diagramOk) {
+              return { ok: false, message: 'Diagram module requires title:string or diagram:{title,imageUrl,annotations?}' }
+            }
           }
           if (type === 'latex') {
             if (typeof (mod as any).latex !== 'string') return { ok: false, message: 'LaTeX module requires latex:string' }

@@ -196,13 +196,14 @@ type MyScriptMathCanvasProps = {
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
+  onLatexOutputChange?: (latex: string) => void
 }
 
 type LessonScriptPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
 
 type LessonScriptV2Module =
   | { type: 'text'; text: string }
-  | { type: 'diagram'; title: string }
+  | { type: 'diagram'; title?: string; diagram?: { title: string; imageUrl: string; annotations?: any } }
   | { type: 'latex'; latex: string }
 
 type LessonScriptV2Point = {
@@ -292,7 +293,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -329,6 +330,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
   const [isCompactViewport, setIsCompactViewport] = useState(false)
+
+  useEffect(() => {
+    if (typeof onLatexOutputChange !== 'function') return
+    onLatexOutputChange(latexOutput)
+  }, [latexOutput, onLatexOutputChange])
 
   const isStudentView = !isAdmin
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
@@ -855,7 +861,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               .map((m: any) => {
                 const t = m?.type
                 if (t === 'text') return { type: 'text', text: typeof m.text === 'string' ? m.text : '' }
-                if (t === 'diagram') return { type: 'diagram', title: typeof m.title === 'string' ? m.title : '' }
+                if (t === 'diagram') {
+                  const title = typeof m.title === 'string' ? m.title : ''
+                  const diagram = m.diagram && typeof m.diagram === 'object' && !Array.isArray(m.diagram)
+                    ? {
+                        title: typeof m.diagram.title === 'string' ? m.diagram.title : '',
+                        imageUrl: typeof m.diagram.imageUrl === 'string' ? m.diagram.imageUrl : '',
+                        annotations: m.diagram.annotations,
+                      }
+                    : undefined
+                  return { type: 'diagram', title, diagram }
+                }
                 if (t === 'latex') return { type: 'latex', latex: typeof m.latex === 'string' ? m.latex : '' }
                 return null
               })
@@ -864,12 +880,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             const cleaned = modules
               .map(mod => {
                 if (mod.type === 'text') return { ...mod, text: (mod.text || '').trim() }
-                if (mod.type === 'diagram') return { ...mod, title: (mod.title || '').trim() }
+                if (mod.type === 'diagram') {
+                  const title = (mod.title || '').trim()
+                  const diagram = mod.diagram
+                    ? {
+                        title: (mod.diagram.title || '').trim(),
+                        imageUrl: (mod.diagram.imageUrl || '').trim(),
+                        annotations: mod.diagram.annotations,
+                      }
+                    : undefined
+                  return { ...mod, title, diagram }
+                }
                 return { ...mod, latex: (mod.latex || '').trim() }
               })
               .filter(mod => {
                 if (mod.type === 'text') return Boolean(mod.text)
-                if (mod.type === 'diagram') return Boolean(mod.title)
+                if (mod.type === 'diagram') return Boolean(mod.diagram?.title && mod.diagram?.imageUrl) || Boolean(mod.title)
                 return Boolean(mod.latex)
               })
 
@@ -2260,9 +2286,55 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       if (mod.type === 'diagram') {
         await clearLessonModules()
-        try {
-          window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { title: mod.title, open: true } }))
-        } catch {}
+
+        const openByTitle = async (title: string) => {
+          const safe = (title || '').trim()
+          if (!safe) return
+          try {
+            window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { title: safe, open: true } }))
+          } catch {}
+        }
+
+        // If we have a full diagram snapshot from authoring, ensure it exists in this session's diagram store.
+        const authored = mod.diagram
+        if (authored && authored.title && authored.imageUrl) {
+          try {
+            const listRes = await fetch(`/api/diagrams?sessionKey=${encodeURIComponent(channelName)}`, { credentials: 'same-origin' })
+            const listPayload = await listRes.json().catch(() => null)
+            const existing = Array.isArray(listPayload?.diagrams) ? listPayload.diagrams : []
+            const match = existing.find((d: any) => String(d?.title || '').trim().toLowerCase() === authored.title.trim().toLowerCase())
+
+            let diagramId: string | null = match?.id ? String(match.id) : null
+            if (!diagramId) {
+              const createRes = await fetch('/api/diagrams', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionKey: channelName, title: authored.title, imageUrl: authored.imageUrl }),
+              })
+              const createPayload = await createRes.json().catch(() => null)
+              if (createRes.ok && createPayload?.diagram?.id) {
+                diagramId = String(createPayload.diagram.id)
+              }
+            }
+
+            if (diagramId && authored.annotations !== undefined) {
+              await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
+                method: 'PATCH',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ annotations: authored.annotations ?? null }),
+              })
+            }
+          } catch {
+            // ignore
+          }
+
+          await openByTitle(authored.title)
+          return
+        }
+
+        await openByTitle(mod.title || '')
         return
       }
 

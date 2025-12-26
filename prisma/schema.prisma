@@ -87,6 +87,72 @@ model SessionRecord {
   createdBy String
   createdAt DateTime @default(now())
   materials LessonMaterial[]
+  lessonScript SessionLessonScript?
+}
+
+model LessonScriptTemplate {
+  id              String   @id @default(cuid())
+  title           String
+  grade           Grade?
+  subject         String?
+  topic           String?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  versions        LessonScriptVersion[]
+
+  // Points to the version currently used by default.
+  currentVersionId String?
+  currentVersion   LessonScriptVersion? @relation("CurrentLessonScriptVersion", fields: [currentVersionId], references: [id])
+
+  sessionAssignments SessionLessonScript[]
+
+  @@index([grade])
+}
+
+model LessonScriptVersion {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    LessonScriptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Incrementing version number per template.
+  version     Int
+  content     Json
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  // Back-reference for the template's currentVersion pointer.
+  currentFor  LessonScriptTemplate[] @relation("CurrentLessonScriptVersion")
+
+  // Back-reference for session assignments pinned to a specific version.
+  sessionAssignments SessionLessonScript[] @relation("SessionLessonScriptVersion")
+
+  @@unique([templateId, version])
+  @@index([templateId])
+}
+
+model SessionLessonScript {
+  id               String   @id @default(cuid())
+  sessionId        String   @unique
+  session          SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  templateId       String?
+  template         LessonScriptTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  templateVersionId String?
+  templateVersion   LessonScriptVersion? @relation("SessionLessonScriptVersion", fields: [templateVersionId], references: [id], onDelete: SetNull)
+
+  // Optional full override content (stored as JSON). If set, it becomes the resolved script.
+  overrideContent  Json?
+
+  createdBy        String?
+  updatedBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([templateVersionId])
 }
 
 model Announcement {

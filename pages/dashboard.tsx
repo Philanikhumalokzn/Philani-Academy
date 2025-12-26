@@ -191,6 +191,32 @@ export default function Dashboard() {
   const [sessionDetailsIndex, setSessionDetailsIndex] = useState(0)
   const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
   const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex'>('materials')
+  const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
+  const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
+  const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
+  const [lessonScriptVersions, setLessonScriptVersions] = useState<any[]>([])
+  const [lessonScriptVersionsLoading, setLessonScriptVersionsLoading] = useState(false)
+  const [lessonScriptVersionsError, setLessonScriptVersionsError] = useState<string | null>(null)
+  const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
+  const [lessonScriptAssignment, setLessonScriptAssignment] = useState<any | null>(null)
+  const [lessonScriptSource, setLessonScriptSource] = useState<string>('none')
+  const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
+  const [lessonScriptError, setLessonScriptError] = useState<string | null>(null)
+  const [lessonScriptSelectedTemplateId, setLessonScriptSelectedTemplateId] = useState('')
+  const [lessonScriptSelectedVersionId, setLessonScriptSelectedVersionId] = useState('')
+  const [lessonScriptOverrideText, setLessonScriptOverrideText] = useState('')
+  const [lessonScriptSaving, setLessonScriptSaving] = useState(false)
+  const lessonScriptLastLoadedSessionIdRef = useRef<string | null>(null)
+
+  const [newLessonScriptTitle, setNewLessonScriptTitle] = useState('')
+  const [newLessonScriptSubject, setNewLessonScriptSubject] = useState('')
+  const [newLessonScriptTopic, setNewLessonScriptTopic] = useState('')
+  const [newLessonScriptContentText, setNewLessonScriptContentText] = useState(
+    '{\n  "schemaVersion": 1,\n  "title": "New lesson",\n  "phases": []\n}'
+  )
+  const [newLessonScriptVersionContentText, setNewLessonScriptVersionContentText] = useState(
+    '{\n  "schemaVersion": 1,\n  "title": "Updated lesson",\n  "phases": []\n}'
+  )
 
   const overlayBounds = useMemo(() => {
     const fallbackWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
@@ -1052,6 +1078,140 @@ export default function Dashboard() {
   const sessionDetailsSessionId = sessionDetailsIds[sessionDetailsIndex] || null
   const sessionDetailsSession = sessionDetailsSessionId ? sessionById.get(sessionDetailsSessionId) : null
 
+  const safeParseJsonObject = (raw: string) => {
+    const trimmed = (raw || '').trim()
+    if (!trimmed) throw new Error('JSON is empty')
+    let parsed: any
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      throw new Error('Invalid JSON')
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('JSON must be an object')
+    return parsed
+  }
+
+  const fetchLessonScriptTemplates = useCallback(async () => {
+    setLessonScriptTemplatesLoading(true)
+    setLessonScriptTemplatesError(null)
+    try {
+      const q = selectedGrade ? `?grade=${encodeURIComponent(selectedGrade)}` : ''
+      const res = await fetch(`/api/lesson-scripts/templates${q}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLessonScriptTemplates([])
+        setLessonScriptTemplatesError(data?.message || `Failed to load templates (${res.status})`)
+        return
+      }
+      const templates = Array.isArray(data?.templates) ? data.templates : []
+      setLessonScriptTemplates(templates)
+    } catch (err: any) {
+      setLessonScriptTemplates([])
+      setLessonScriptTemplatesError(err?.message || 'Network error')
+    } finally {
+      setLessonScriptTemplatesLoading(false)
+    }
+  }, [selectedGrade])
+
+  const fetchLessonScriptVersions = useCallback(async (templateId: string) => {
+    const safeId = String(templateId || '').trim()
+    if (!safeId) {
+      setLessonScriptVersions([])
+      setLessonScriptVersionsError(null)
+      return
+    }
+    setLessonScriptVersionsLoading(true)
+    setLessonScriptVersionsError(null)
+    try {
+      const res = await fetch(`/api/lesson-scripts/templates/${encodeURIComponent(safeId)}/versions`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLessonScriptVersions([])
+        setLessonScriptVersionsError(data?.message || `Failed to load versions (${res.status})`)
+        return
+      }
+      setLessonScriptVersions(Array.isArray(data?.versions) ? data.versions : [])
+    } catch (err: any) {
+      setLessonScriptVersions([])
+      setLessonScriptVersionsError(err?.message || 'Network error')
+    } finally {
+      setLessonScriptVersionsLoading(false)
+    }
+  }, [])
+
+  const fetchResolvedLessonScript = useCallback(async (sessionId: string) => {
+    const safeSessionId = String(sessionId || '').trim()
+    if (!safeSessionId) return
+    setLessonScriptLoading(true)
+    setLessonScriptError(null)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(safeSessionId)}/lesson-script`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLessonScriptResolved(null)
+        setLessonScriptAssignment(null)
+        setLessonScriptSource('none')
+        setLessonScriptError(data?.message || `Failed to load lesson script (${res.status})`)
+        return
+      }
+
+      setLessonScriptResolved(data?.resolved ?? null)
+      setLessonScriptAssignment(data?.assignment ?? null)
+      setLessonScriptSource(typeof data?.source === 'string' ? data.source : 'none')
+
+      // Initialize form defaults once per session selection.
+      if (lessonScriptLastLoadedSessionIdRef.current !== safeSessionId) {
+        lessonScriptLastLoadedSessionIdRef.current = safeSessionId
+        const assignment = data?.assignment ?? null
+        const templateId = assignment?.templateId ? String(assignment.templateId) : ''
+        const versionId = assignment?.templateVersionId ? String(assignment.templateVersionId) : ''
+        setLessonScriptSelectedTemplateId(templateId)
+        setLessonScriptSelectedVersionId(versionId)
+        if (assignment?.overrideContent) {
+          try {
+            setLessonScriptOverrideText(JSON.stringify(assignment.overrideContent, null, 2))
+          } catch {
+            setLessonScriptOverrideText('')
+          }
+        } else {
+          setLessonScriptOverrideText('')
+        }
+      }
+    } catch (err: any) {
+      setLessonScriptResolved(null)
+      setLessonScriptAssignment(null)
+      setLessonScriptSource('none')
+      setLessonScriptError(err?.message || 'Network error')
+    } finally {
+      setLessonScriptLoading(false)
+    }
+  }, [])
+
+  const saveLessonScriptAssignment = useCallback(async (sessionId: string, payload: { templateId: string | null; templateVersionId: string | null; overrideContent?: any }) => {
+    const safeSessionId = String(sessionId || '').trim()
+    if (!safeSessionId) return
+    setLessonScriptSaving(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(safeSessionId)}/lesson-script`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to save (${res.status})`)
+        return
+      }
+      await fetchResolvedLessonScript(safeSessionId)
+      await fetchLessonScriptTemplates()
+    } catch (err: any) {
+      alert(err?.message || 'Network error')
+    } finally {
+      setLessonScriptSaving(false)
+    }
+  }, [fetchLessonScriptTemplates, fetchResolvedLessonScript])
+
   useEffect(() => {
     if (!sessionDetailsOpen) return
     const prevOverflow = document.body.style.overflow
@@ -1074,7 +1234,23 @@ export default function Dashboard() {
     resetMaterialForm()
     fetchMaterials(sessionDetailsSessionId)
     fetchLatexSaves(sessionDetailsSessionId)
+    fetchResolvedLessonScript(sessionDetailsSessionId)
   }, [sessionDetailsOpen, sessionDetailsView, sessionDetailsSessionId])
+
+  useEffect(() => {
+    if (!sessionDetailsOpen) return
+    // Templates are used in the materials overlay; refresh when opening or switching grade.
+    fetchLessonScriptTemplates()
+  }, [sessionDetailsOpen, fetchLessonScriptTemplates])
+
+  useEffect(() => {
+    if (!lessonScriptSelectedTemplateId) {
+      setLessonScriptVersions([])
+      setLessonScriptVersionsError(null)
+      return
+    }
+    fetchLessonScriptVersions(lessonScriptSelectedTemplateId)
+  }, [fetchLessonScriptVersions, lessonScriptSelectedTemplateId])
 
   async function uploadMaterial(e: React.FormEvent) {
     e.preventDefault()
@@ -2203,6 +2379,314 @@ export default function Dashboard() {
                     <div className="flex-1 overflow-y-auto p-3">
                       {sessionDetailsTab === 'materials' ? (
                         <div className="space-y-2">
+                          <div className="p-3 border rounded bg-slate-50 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="font-semibold text-sm">Lesson Script</div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost text-xs"
+                                  onClick={() => {
+                                    if (sessionDetailsSessionId) fetchResolvedLessonScript(sessionDetailsSessionId)
+                                    fetchLessonScriptTemplates()
+                                  }}
+                                  disabled={lessonScriptLoading || lessonScriptTemplatesLoading}
+                                >
+                                  Refresh
+                                </button>
+                              </div>
+                            </div>
+
+                            {lessonScriptError ? (
+                              <div className="text-sm text-red-600">{lessonScriptError}</div>
+                            ) : lessonScriptLoading ? (
+                              <div className="text-sm muted">Loading lesson script…</div>
+                            ) : (
+                              <div className="text-sm">
+                                <div>
+                                  <span className="font-medium">Source:</span> {lessonScriptSource || 'none'}
+                                </div>
+                                {lessonScriptAssignment?.template ? (
+                                  <div className="text-xs muted">
+                                    Template: {lessonScriptAssignment.template.title}
+                                    {lessonScriptAssignment?.templateVersion?.version
+                                      ? ` • v${lessonScriptAssignment.templateVersion.version}`
+                                      : lessonScriptAssignment?.template?.currentVersionId
+                                      ? ' • current'
+                                      : ''}
+                                    {lessonScriptAssignment?.overrideContent ? ' • override active' : ''}
+                                  </div>
+                                ) : lessonScriptAssignment ? (
+                                  <div className="text-xs muted">Assigned (no template metadata)</div>
+                                ) : (
+                                  <div className="text-xs muted">No script assigned yet.</div>
+                                )}
+                              </div>
+                            )}
+
+                            {canUploadMaterials && !isSubscriptionBlocked && sessionDetailsSessionId && (
+                              <div className="space-y-3">
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <div className="text-xs uppercase tracking-wide muted">Template</div>
+                                    {lessonScriptTemplatesError ? (
+                                      <div className="text-sm text-red-600">{lessonScriptTemplatesError}</div>
+                                    ) : null}
+                                    <select
+                                      className="input"
+                                      value={lessonScriptSelectedTemplateId}
+                                      onChange={(e) => {
+                                        const next = e.target.value
+                                        setLessonScriptSelectedTemplateId(next)
+                                        setLessonScriptSelectedVersionId('')
+                                      }}
+                                      disabled={lessonScriptTemplatesLoading || lessonScriptSaving}
+                                    >
+                                      <option value="">None</option>
+                                      {lessonScriptTemplates.map(t => (
+                                        <option key={t.id} value={t.id}>
+                                          {t.title}{t.grade ? ` (${t.grade})` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <div className="text-xs uppercase tracking-wide muted">Version</div>
+                                    {lessonScriptVersionsError ? (
+                                      <div className="text-sm text-red-600">{lessonScriptVersionsError}</div>
+                                    ) : null}
+                                    <select
+                                      className="input"
+                                      value={lessonScriptSelectedVersionId}
+                                      onChange={(e) => setLessonScriptSelectedVersionId(e.target.value)}
+                                      disabled={!lessonScriptSelectedTemplateId || lessonScriptVersionsLoading || lessonScriptSaving}
+                                    >
+                                      <option value="">Use template current</option>
+                                      {lessonScriptVersions.map(v => (
+                                        <option key={v.id} value={v.id}>v{v.version}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={() => saveLessonScriptAssignment(sessionDetailsSessionId, {
+                                      templateId: lessonScriptSelectedTemplateId ? lessonScriptSelectedTemplateId : null,
+                                      templateVersionId: lessonScriptSelectedVersionId ? lessonScriptSelectedVersionId : null,
+                                    })}
+                                    disabled={lessonScriptSaving}
+                                  >
+                                    Save assignment
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost"
+                                    onClick={() => {
+                                      setLessonScriptSelectedTemplateId('')
+                                      setLessonScriptSelectedVersionId('')
+                                      setLessonScriptOverrideText('')
+                                      saveLessonScriptAssignment(sessionDetailsSessionId, {
+                                        templateId: null,
+                                        templateVersionId: null,
+                                        overrideContent: null,
+                                      })
+                                    }}
+                                    disabled={lessonScriptSaving}
+                                  >
+                                    Clear all
+                                  </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div className="text-xs uppercase tracking-wide muted">Session override (JSON object)</div>
+                                  <textarea
+                                    className="input min-h-[140px] font-mono text-xs"
+                                    value={lessonScriptOverrideText}
+                                    onChange={(e) => setLessonScriptOverrideText(e.target.value)}
+                                    placeholder="Paste JSON here to override this session"
+                                    disabled={lessonScriptSaving}
+                                  />
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      className="btn"
+                                      onClick={() => {
+                                        try {
+                                          const overrideObj = safeParseJsonObject(lessonScriptOverrideText)
+                                          saveLessonScriptAssignment(sessionDetailsSessionId, {
+                                            templateId: lessonScriptSelectedTemplateId ? lessonScriptSelectedTemplateId : null,
+                                            templateVersionId: lessonScriptSelectedVersionId ? lessonScriptSelectedVersionId : null,
+                                            overrideContent: overrideObj,
+                                          })
+                                        } catch (err: any) {
+                                          alert(err?.message || 'Invalid JSON')
+                                        }
+                                      }}
+                                      disabled={lessonScriptSaving}
+                                    >
+                                      Set override
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost"
+                                      onClick={() => saveLessonScriptAssignment(sessionDetailsSessionId, {
+                                        templateId: lessonScriptSelectedTemplateId ? lessonScriptSelectedTemplateId : null,
+                                        templateVersionId: lessonScriptSelectedVersionId ? lessonScriptSelectedVersionId : null,
+                                        overrideContent: null,
+                                      })}
+                                      disabled={lessonScriptSaving}
+                                    >
+                                      Clear override
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="border-t pt-3 space-y-3">
+                                  <div className="font-medium text-sm">Create template</div>
+                                  {!selectedGrade ? (
+                                    <div className="text-sm muted">Select a grade first, then create a template.</div>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      <div className="grid gap-2 md:grid-cols-2">
+                                        <input
+                                          className="input"
+                                          placeholder="Title"
+                                          value={newLessonScriptTitle}
+                                          onChange={(e) => setNewLessonScriptTitle(e.target.value)}
+                                          disabled={lessonScriptSaving}
+                                        />
+                                        <input
+                                          className="input"
+                                          placeholder="Subject (optional)"
+                                          value={newLessonScriptSubject}
+                                          onChange={(e) => setNewLessonScriptSubject(e.target.value)}
+                                          disabled={lessonScriptSaving}
+                                        />
+                                        <input
+                                          className="input md:col-span-2"
+                                          placeholder="Topic (optional)"
+                                          value={newLessonScriptTopic}
+                                          onChange={(e) => setNewLessonScriptTopic(e.target.value)}
+                                          disabled={lessonScriptSaving}
+                                        />
+                                      </div>
+                                      <textarea
+                                        className="input min-h-[160px] font-mono text-xs"
+                                        value={newLessonScriptContentText}
+                                        onChange={(e) => setNewLessonScriptContentText(e.target.value)}
+                                        disabled={lessonScriptSaving}
+                                      />
+                                      <div>
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary"
+                                          onClick={async () => {
+                                            try {
+                                              const contentObj = safeParseJsonObject(newLessonScriptContentText)
+                                              const title = newLessonScriptTitle.trim()
+                                              if (!title) {
+                                                alert('Title is required')
+                                                return
+                                              }
+                                              setLessonScriptSaving(true)
+                                              const res = await fetch('/api/lesson-scripts/templates', {
+                                                method: 'POST',
+                                                credentials: 'same-origin',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                  title,
+                                                  grade: selectedGrade,
+                                                  subject: newLessonScriptSubject.trim() || undefined,
+                                                  topic: newLessonScriptTopic.trim() || undefined,
+                                                  content: contentObj,
+                                                }),
+                                              })
+                                              const data = await res.json().catch(() => ({}))
+                                              if (!res.ok) {
+                                                alert(data?.message || `Failed to create template (${res.status})`)
+                                                return
+                                              }
+                                              await fetchLessonScriptTemplates()
+                                              const createdTemplateId = data?.template?.id ? String(data.template.id) : ''
+                                              if (createdTemplateId) {
+                                                setLessonScriptSelectedTemplateId(createdTemplateId)
+                                                setLessonScriptSelectedVersionId('')
+                                              }
+                                              setNewLessonScriptTitle('')
+                                              setNewLessonScriptSubject('')
+                                              setNewLessonScriptTopic('')
+                                              alert('Template created')
+                                            } catch (err: any) {
+                                              alert(err?.message || 'Failed to create template')
+                                            } finally {
+                                              setLessonScriptSaving(false)
+                                            }
+                                          }}
+                                          disabled={lessonScriptSaving || !selectedGrade}
+                                        >
+                                          Create template
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="border-t pt-3 space-y-2">
+                                  <div className="font-medium text-sm">Create version</div>
+                                  {!lessonScriptSelectedTemplateId ? (
+                                    <div className="text-sm muted">Select a template above first.</div>
+                                  ) : (
+                                    <>
+                                      <textarea
+                                        className="input min-h-[160px] font-mono text-xs"
+                                        value={newLessonScriptVersionContentText}
+                                        onChange={(e) => setNewLessonScriptVersionContentText(e.target.value)}
+                                        disabled={lessonScriptSaving}
+                                      />
+                                      <div>
+                                        <button
+                                          type="button"
+                                          className="btn"
+                                          onClick={async () => {
+                                            try {
+                                              const contentObj = safeParseJsonObject(newLessonScriptVersionContentText)
+                                              setLessonScriptSaving(true)
+                                              const res = await fetch(`/api/lesson-scripts/templates/${encodeURIComponent(lessonScriptSelectedTemplateId)}/versions`, {
+                                                method: 'POST',
+                                                credentials: 'same-origin',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ content: contentObj, makeCurrent: true }),
+                                              })
+                                              const data = await res.json().catch(() => ({}))
+                                              if (!res.ok) {
+                                                alert(data?.message || `Failed to create version (${res.status})`)
+                                                return
+                                              }
+                                              await fetchLessonScriptVersions(lessonScriptSelectedTemplateId)
+                                              await fetchLessonScriptTemplates()
+                                              alert('Version created (set as current)')
+                                            } catch (err: any) {
+                                              alert(err?.message || 'Failed to create version')
+                                            } finally {
+                                              setLessonScriptSaving(false)
+                                            }
+                                          }}
+                                          disabled={lessonScriptSaving}
+                                        >
+                                          Create version
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
                           <div className="flex items-center justify-between">
                             <div className="font-semibold text-sm">Materials</div>
                             {expandedSessionId && (

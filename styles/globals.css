@@ -679,8 +679,9 @@ td{color:#f8fafc;}
 .live-shell-card__value{font-size:0.95rem;font-weight:600;color:var(--text);}
 
 .canvas-overlay-controls{
-  position:absolute;
+  position:fixed;
   inset:0;
+  z-index:90;
   display:flex;
   align-items:center;
   justify-content:center;

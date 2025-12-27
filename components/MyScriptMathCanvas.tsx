@@ -4956,17 +4956,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       <div
         ref={verticalPanTrackRef}
         className="h-full w-3 flex items-end justify-center pointer-events-auto"
+        style={{ touchAction: 'none', userSelect: 'none' }}
+        onClick={event => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
         onPointerMove={updateVerticalScrollbarDrag}
         onPointerUp={event => {
+          event.preventDefault()
+          event.stopPropagation()
           endVerticalScrollbarDrag(event)
           setVerticalScrollbarActive(false)
         }}
         onPointerCancel={event => {
+          event.preventDefault()
+          event.stopPropagation()
           endVerticalScrollbarDrag(event)
           setVerticalScrollbarActive(false)
         }}
         onPointerDown={event => {
           event.preventDefault()
+          event.stopPropagation()
           setVerticalScrollbarActive(true)
           const track = verticalPanTrackRef.current
           const viewport = studentViewportRef.current
@@ -4985,6 +4995,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               height: `${verticalScrollbarThumbPct}%`,
               top: `${verticalScrollbarTopPct}%`,
               cursor: 'grab',
+              touchAction: 'none',
+              userSelect: 'none',
+            }}
+            onClick={event => {
+              event.preventDefault()
+              event.stopPropagation()
             }}
             onPointerDown={event => {
               event.preventDefault()
@@ -5048,11 +5064,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       <div
         ref={masterGainTrackRef}
         className="h-full w-3 flex items-end justify-center pointer-events-auto"
+        style={{ touchAction: 'none', userSelect: 'none' }}
+        onClick={event => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
         onPointerMove={updateMasterGainDrag}
-        onPointerUp={endMasterGainDrag}
-        onPointerCancel={endMasterGainDrag}
+        onPointerUp={event => {
+          event.preventDefault()
+          event.stopPropagation()
+          endMasterGainDrag(event)
+        }}
+        onPointerCancel={event => {
+          event.preventDefault()
+          event.stopPropagation()
+          endMasterGainDrag(event)
+        }}
         onPointerDown={event => {
           event.preventDefault()
+          event.stopPropagation()
           const track = masterGainTrackRef.current
           if (track) {
             const rect = track.getBoundingClientRect()
@@ -5071,6 +5101,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             style={{
               height: '14%',
               top: `${Math.max(0, Math.min(86, 100 - masterGainPct - 7))}%`,
+              touchAction: 'none',
+              userSelect: 'none',
             }}
           />
         </div>

@@ -269,6 +269,15 @@ const nextAnimationFrame = () =>
     ? new Promise<void>(resolve => setTimeout(resolve, 16))
     : new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
 
+const swallowUiEvent = (event: any) => {
+  try {
+    event.preventDefault?.()
+  } catch {}
+  try {
+    event.stopPropagation?.()
+  } catch {}
+}
+
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
   const symCount = countSymbols(snapshot.symbols)
@@ -4957,26 +4966,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ref={verticalPanTrackRef}
         className="h-full w-3 flex items-end justify-center pointer-events-auto"
         style={{ touchAction: 'none', userSelect: 'none' }}
-        onClick={event => {
-          event.preventDefault()
-          event.stopPropagation()
-        }}
+        onClick={swallowUiEvent}
+        onClickCapture={swallowUiEvent}
+        onPointerDownCapture={swallowUiEvent}
+        onTouchStartCapture={swallowUiEvent}
         onPointerMove={updateVerticalScrollbarDrag}
         onPointerUp={event => {
-          event.preventDefault()
-          event.stopPropagation()
+          swallowUiEvent(event)
           endVerticalScrollbarDrag(event)
           setVerticalScrollbarActive(false)
         }}
         onPointerCancel={event => {
-          event.preventDefault()
-          event.stopPropagation()
+          swallowUiEvent(event)
           endVerticalScrollbarDrag(event)
           setVerticalScrollbarActive(false)
         }}
         onPointerDown={event => {
-          event.preventDefault()
-          event.stopPropagation()
+          swallowUiEvent(event)
           setVerticalScrollbarActive(true)
           const track = verticalPanTrackRef.current
           const viewport = studentViewportRef.current
@@ -4998,10 +5004,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               touchAction: 'none',
               userSelect: 'none',
             }}
-            onClick={event => {
-              event.preventDefault()
-              event.stopPropagation()
-            }}
+            onClick={swallowUiEvent}
+            onClickCapture={swallowUiEvent}
+            onPointerDownCapture={swallowUiEvent}
+            onTouchStartCapture={swallowUiEvent}
             onPointerDown={event => {
               event.preventDefault()
               event.stopPropagation()
@@ -5065,24 +5071,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ref={masterGainTrackRef}
         className="h-full w-3 flex items-end justify-center pointer-events-auto"
         style={{ touchAction: 'none', userSelect: 'none' }}
-        onClick={event => {
-          event.preventDefault()
-          event.stopPropagation()
-        }}
+        onClick={swallowUiEvent}
+        onClickCapture={swallowUiEvent}
+        onPointerDownCapture={swallowUiEvent}
+        onTouchStartCapture={swallowUiEvent}
         onPointerMove={updateMasterGainDrag}
         onPointerUp={event => {
-          event.preventDefault()
-          event.stopPropagation()
+          swallowUiEvent(event)
           endMasterGainDrag(event)
         }}
         onPointerCancel={event => {
-          event.preventDefault()
-          event.stopPropagation()
+          swallowUiEvent(event)
           endMasterGainDrag(event)
         }}
         onPointerDown={event => {
-          event.preventDefault()
-          event.stopPropagation()
+          swallowUiEvent(event)
           const track = masterGainTrackRef.current
           if (track) {
             const rect = track.getBoundingClientRect()
@@ -5122,27 +5125,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         <div
           className={`w-[92vw] max-w-[760px] bg-slate-200 rounded-full relative pointer-events-auto transition-all duration-150 ${horizontalScrollbarActive ? 'h-4' : 'h-3'}`}
           style={{ touchAction: 'none', userSelect: 'none' }}
-          onClick={event => {
-            // Prevent document-level handlers (e.g. the ink engine) from focusing inputs.
-            event.preventDefault()
-            event.stopPropagation()
-          }}
+          onClick={swallowUiEvent}
+          onClickCapture={swallowUiEvent}
+          onPointerDownCapture={swallowUiEvent}
+          onTouchStartCapture={swallowUiEvent}
           onPointerMove={updateHorizontalScrollbarDrag}
           onPointerUp={event => {
-            event.preventDefault()
-            event.stopPropagation()
+            swallowUiEvent(event)
             endHorizontalScrollbarDrag(event)
             setHorizontalScrollbarActive(false)
           }}
           onPointerCancel={event => {
-            event.preventDefault()
-            event.stopPropagation()
+            swallowUiEvent(event)
             endHorizontalScrollbarDrag(event)
             setHorizontalScrollbarActive(false)
           }}
           onPointerDown={event => {
-            event.preventDefault()
-            event.stopPropagation()
+            swallowUiEvent(event)
             setHorizontalScrollbarActive(true)
             const track = horizontalPanTrackRef.current
             const viewport = studentViewportRef.current
@@ -5163,10 +5162,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               touchAction: 'none',
               userSelect: 'none',
             }}
-            onClick={event => {
-              event.preventDefault()
-              event.stopPropagation()
-            }}
+            onClick={swallowUiEvent}
+            onClickCapture={swallowUiEvent}
+            onPointerDownCapture={swallowUiEvent}
+            onTouchStartCapture={swallowUiEvent}
             onPointerDown={event => {
               event.preventDefault()
               event.stopPropagation()

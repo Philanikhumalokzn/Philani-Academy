@@ -132,18 +132,27 @@ export default function DiagramOverlayModule(props: {
     diagramStateRef.current = diagramState
   }, [diagramState])
 
-  useEffect(() => {
-    if (!isLessonAuthoring) return
-    if (!diagramState.isOpen) return
-    if (!diagramState.activeDiagramId) return
-    // Keep authoring UX identical: no special buttons. Just auto-save the current diagram snapshot.
-    saveDiagramIntoLessonDraft()
-  }, [diagramState.activeDiagramId, diagramState.isOpen, isLessonAuthoring, saveDiagramIntoLessonDraft])
-
   const activeDiagram = useMemo(() => {
     if (!diagramState.activeDiagramId) return null
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
   }, [diagramState.activeDiagramId, diagrams])
+
+  useEffect(() => {
+    if (!isLessonAuthoring) return
+    if (!diagramState.isOpen) return
+    if (!diagramState.activeDiagramId) return
+    if (!activeDiagram) return
+    // Keep authoring UX identical: no special buttons. Just auto-save the current diagram snapshot.
+    saveDiagramIntoLessonDraft()
+  }, [
+    activeDiagram?.annotations,
+    activeDiagram?.imageUrl,
+    activeDiagram?.title,
+    diagramState.activeDiagramId,
+    diagramState.isOpen,
+    isLessonAuthoring,
+    saveDiagramIntoLessonDraft,
+  ])
 
   const normalizeAnnotations = (value: any): DiagramAnnotations => {
     const space = value?.space === 'image' ? 'image' : undefined

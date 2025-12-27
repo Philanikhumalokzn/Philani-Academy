@@ -37,6 +37,11 @@ export default function DiagramPage() {
     return typeof value === 'string' && value.trim() ? value.trim() : null
   }, [router.isReady, router.query.pointId])
 
+  const promptUpload = useMemo(() => {
+    if (!router.isReady) return false
+    return router.query.promptUpload === '1'
+  }, [router.isReady, router.query.promptUpload])
+
   const userId = useMemo(() => {
     const candidate = (session as any)?.user?.id as string | undefined
     if (candidate && typeof candidate === 'string') return candidate
@@ -78,7 +83,7 @@ export default function DiagramPage() {
               ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
               : undefined}
             autoOpen
-            autoPromptUpload
+            autoPromptUpload={promptUpload}
           />
         )}
       </div>

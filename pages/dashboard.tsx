@@ -191,6 +191,17 @@ export default function Dashboard() {
           ),
         }
       })
+
+      // Immediately open the dedicated diagram editor for annotations.
+      void router.push({
+        pathname: '/diagram',
+        query: {
+          boardId: diagramUploadTarget.boardId,
+          phase: diagramUploadTarget.phaseKey,
+          pointId: diagramUploadTarget.pointId,
+          returnTo: '/dashboard?section=sessions',
+        },
+      })
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Diagram upload failed')
     } finally {

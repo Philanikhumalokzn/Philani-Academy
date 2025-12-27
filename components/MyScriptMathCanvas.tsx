@@ -575,6 +575,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const splitDragStartYRef = useRef(0)
   const splitStartRatioRef = useRef(0.55)
   const splitDragPointerIdRef = useRef<number | null>(null)
+  const splitWindowCleanupRef = useRef<null | (() => void)>(null)
 
   const editorResizeRafRef = useRef<number | null>(null)
   const requestEditorResize = useCallback(() => {
@@ -702,13 +703,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [editorReinitNonce, requestEditorResize])
 
-  const handleSplitPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  const updateSplitRatioFromClientY = useCallback((clientY: number) => {
     if (!splitDragActiveRef.current) return
     const stackEl = studentStackRef.current
     if (!stackEl) return
-    event.preventDefault()
     const rect = stackEl.getBoundingClientRect()
-    const delta = event.clientY - splitDragStartYRef.current
+    const delta = clientY - splitDragStartYRef.current
     const nextRatio = splitStartRatioRef.current + delta / Math.max(rect.height, 1)
     const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
     setStudentSplitRatio(clamped)
@@ -716,9 +716,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     requestEditorResize()
   }, [requestEditorResize])
 
+  const handleSplitPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!splitDragActiveRef.current) return
+    event.preventDefault()
+    updateSplitRatioFromClientY(event.clientY)
+  }, [updateSplitRatioFromClientY])
+
   const stopSplitDrag = useCallback(() => {
     if (!splitDragActiveRef.current) return
     splitDragActiveRef.current = false
+
+    if (splitWindowCleanupRef.current) {
+      try {
+        splitWindowCleanupRef.current()
+      } catch {}
+      splitWindowCleanupRef.current = null
+    }
+
     const handle = splitHandleRef.current
     const pointerId = splitDragPointerIdRef.current
     if (handle && pointerId !== null) {
@@ -731,6 +745,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     document.body.style.userSelect = ''
     requestEditorResize()
   }, [requestEditorResize])
+
+  const startSplitDrag = useCallback((pointerId: number, clientY: number) => {
+    splitDragActiveRef.current = true
+    splitDragStartYRef.current = clientY
+    splitStartRatioRef.current = studentSplitRatioRef.current
+    splitDragPointerIdRef.current = pointerId
+    document.body.style.userSelect = 'none'
+
+    // Some browsers/devices can be flaky with pointer capture on thin separators.
+    // Add window-level listeners so dragging keeps working even if the pointer leaves the handle.
+    if (typeof window !== 'undefined') {
+      if (splitWindowCleanupRef.current) {
+        try {
+          splitWindowCleanupRef.current()
+        } catch {}
+        splitWindowCleanupRef.current = null
+      }
+
+      const onMove = (e: PointerEvent) => {
+        if (!splitDragActiveRef.current) return
+        const activeId = splitDragPointerIdRef.current
+        if (activeId !== null && e.pointerId !== activeId) return
+        try {
+          e.preventDefault()
+        } catch {}
+        updateSplitRatioFromClientY(e.clientY)
+      }
+      const onUp = (e: PointerEvent) => {
+        const activeId = splitDragPointerIdRef.current
+        if (activeId !== null && e.pointerId !== activeId) return
+        stopSplitDrag()
+      }
+      const onCancel = (e: PointerEvent) => {
+        const activeId = splitDragPointerIdRef.current
+        if (activeId !== null && e.pointerId !== activeId) return
+        stopSplitDrag()
+      }
+
+      window.addEventListener('pointermove', onMove, { passive: false })
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onCancel)
+
+      splitWindowCleanupRef.current = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onCancel)
+      }
+    }
+  }, [stopSplitDrag, updateSplitRatioFromClientY])
+
+  useEffect(() => {
+    return () => {
+      if (splitWindowCleanupRef.current) {
+        try {
+          splitWindowCleanupRef.current()
+        } catch {}
+        splitWindowCleanupRef.current = null
+      }
+    }
+  }, [])
 
   const broadcastDebounceMs = useMemo(() => getBroadcastDebounce(), [])
 
@@ -5716,14 +5790,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               }}
               onPointerDown={event => {
                 event.preventDefault()
-                splitDragActiveRef.current = true
-                splitDragStartYRef.current = event.clientY
-                splitStartRatioRef.current = studentSplitRatioRef.current
-                splitDragPointerIdRef.current = event.pointerId
+                startSplitDrag(event.pointerId, event.clientY)
                 try {
                   event.currentTarget.setPointerCapture(event.pointerId)
                 } catch {}
-                document.body.style.userSelect = 'none'
               }}
             >
               <div className="w-full h-0.5 bg-slate-200 relative">

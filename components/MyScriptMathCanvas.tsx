@@ -4300,6 +4300,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const [mobileLatexTrayOpen, setMobileLatexTrayOpen] = useState(false)
+  const [sessionLatexSelection, setSessionLatexSelection] = useState<{ moduleIndex: number; latex: string } | null>(null)
 
   const [mobileModulePicker, setMobileModulePicker] = useState<null | { type: MobileModulePickerType }>(null)
 
@@ -5023,6 +5024,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setAuthoringLatexExpanded(true)
     loadAuthoringLatexEntries()
   }, [isLessonAuthoring, loadAuthoringLatexEntries, mobileLatexTrayOpen])
+
+  useEffect(() => {
+    if (!mobileLatexTrayOpen) return
+    if (isLessonAuthoring) return
+    // Reset selection when opening the tray in session mode so the user can
+    // intentionally choose what to preview/share.
+    setSessionLatexSelection(null)
+  }, [isLessonAuthoring, mobileLatexTrayOpen])
 
   // Persist LaTeX strictly against the scheduled session id.
   // We only persist when a real session id is provided (boardId).
@@ -6132,6 +6141,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   }
                                   return (
                                     <div className="flex flex-col">
+                                      <div className="px-3 py-2 border-b border-slate-200">
+                                        <div className="text-[12px] text-slate-700 font-medium">Selected</div>
+                                        {sessionLatexSelection?.latex ? (
+                                          <div className="mt-1">
+                                            <div className="text-[12px] text-slate-900 truncate">{sessionLatexSelection.latex}</div>
+                                            <div className="mt-2 flex items-center gap-2">
+                                              {isAdmin && (
+                                                <button
+                                                  type="button"
+                                                  className="px-2 py-1 rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                                  disabled={sessionLatexSelection.moduleIndex < 0}
+                                                  onClick={() => {
+                                                    void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, sessionLatexSelection.moduleIndex)
+                                                    setMobileLatexTrayOpen(false)
+                                                  }}
+                                                >
+                                                  Add to display
+                                                </button>
+                                              )}
+                                              <button
+                                                type="button"
+                                                className="px-2 py-1 rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                                onClick={() => {
+                                                  if (isAdmin) {
+                                                    void clearLessonModules()
+                                                  } else {
+                                                    setLatexDisplayState(curr => ({ ...curr, enabled: false }))
+                                                  }
+                                                  setMobileLatexTrayOpen(false)
+                                                }}
+                                              >
+                                                Don’t add
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="mt-1 text-slate-500">Tap a line below to preview it in the top panel.</div>
+                                        )}
+                                      </div>
                                       {latexModules.map(({ index, mod }, idx) => {
                                         const value = mod.type === 'latex' ? String(mod.latex || '').trim() : ''
                                         const label = value || `LaTeX ${idx + 1}`
@@ -6141,14 +6189,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                             type="button"
                                             className="text-left px-3 py-2 border-b border-slate-200 last:border-b-0 hover:bg-slate-50"
                                             onClick={() => {
-                                              setMobileLatexTrayOpen(false)
-                                              if (value) {
-                                                applyLoadedLatex(value)
-                                              }
-                                              // If a scripted module index exists, apply it so delivery stays consistent.
-                                              if (typeof applyLessonScriptPlaybackV2 === 'function') {
-                                                void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, index)
-                                              }
+                                              if (!value) return
+                                              // Preview locally (top panel) without implicitly broadcasting.
+                                              applyLoadedLatex(value)
+                                              setSessionLatexSelection({ moduleIndex: index, latex: value })
                                             }}
                                           >
                                             <div className="text-[12px] text-slate-900 truncate">{label}</div>

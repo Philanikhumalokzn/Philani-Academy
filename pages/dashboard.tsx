@@ -75,6 +75,11 @@ type LiveWindowConfig = {
   kind: LiveWindowKind
   title: string
   subtitle?: string
+  roomIdOverride?: string
+  boardIdOverride?: string
+  isAdminOverride?: boolean
+  lessonAuthoring?: { phaseKey: string; pointId: string }
+  autoOpenDiagramTray?: boolean
   position: { x: number; y: number }
   size: { width: number; height: number }
   minimized: boolean
@@ -105,7 +110,7 @@ export default function Dashboard() {
   }
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
-  const buildLessonAuthoringBoardId = (kind: 'diagram' | 'latex', phaseKey: LessonPhaseKey, pointId: string) => {
+  const buildLessonAuthoringBoardId = (kind: 'diagram' | 'latex' | 'canvas', phaseKey: LessonPhaseKey, pointId: string) => {
     return `lesson-author-${kind}-${phaseKey}-${pointId}`
   }
 
@@ -113,66 +118,6 @@ export default function Dashboard() {
   const boardIdToSessionKey = (boardId: string) => `myscript:${sanitizeIdentifier(boardId).toLowerCase()}`
 
   const isTeacherOrAdminUser = Boolean(session && (session as any)?.user?.role && (((session as any).user.role === 'admin') || ((session as any).user.role === 'teacher')))
-
-  const [lessonAuthoringOverlay, setLessonAuthoringOverlay] = useState<null | {
-    kind: 'latex' | 'diagram'
-    phaseKey: LessonPhaseKey
-    pointId: string
-    boardId: string
-    roomId: string
-    autoOpenDiagramTray?: boolean
-  }>(null)
-  const [lessonAuthoringOverlayChromeVisible, setLessonAuthoringOverlayChromeVisible] = useState(false)
-  const [lessonAuthoringWin, setLessonAuthoringWin] = useState<{
-    id: string
-    position: { x: number; y: number }
-    size: { width: number; height: number }
-    minimized: boolean
-    z: number
-    mode: 'windowed' | 'fullscreen'
-  }>(() => ({
-    id: 'lesson-authoring-canvas',
-    position: { x: 24, y: 64 },
-    size: { width: 980, height: 760 },
-    minimized: false,
-    z: 50,
-    mode: 'windowed',
-  }))
-
-  const authoringStageRef = useRef<HTMLDivElement | null>(null)
-  const [authoringBounds, setAuthoringBounds] = useState({ width: 1200, height: 800 })
-  useEffect(() => {
-    if (!lessonAuthoringOverlay) return
-    if (typeof window === 'undefined') return
-    const update = () => {
-      const host = authoringStageRef.current
-      if (host) {
-        setAuthoringBounds({ width: host.clientWidth || window.innerWidth, height: host.clientHeight || window.innerHeight })
-      } else {
-        setAuthoringBounds({ width: window.innerWidth, height: window.innerHeight })
-      }
-    }
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [lessonAuthoringOverlay])
-
-  const openLessonAuthoringCanvas = useCallback((opts: { kind: 'latex' | 'diagram'; phaseKey: LessonPhaseKey; pointId: string; boardId: string; autoOpenDiagramTray?: boolean }) => {
-    const roomId = boardIdToSessionKey(opts.boardId)
-    setLessonAuthoringOverlay({ ...opts, boardId: opts.boardId, roomId, autoOpenDiagramTray: opts.autoOpenDiagramTray })
-    setLessonAuthoringWin(prev => {
-      const isMobileViewport = typeof window !== 'undefined' ? window.innerWidth < 768 : false
-      if (isMobileViewport) {
-        return { ...prev, minimized: false, mode: 'fullscreen' as const, position: { x: 0, y: 0 } }
-      }
-      return { ...prev, minimized: false, mode: 'windowed' as const }
-    })
-  }, [boardIdToSessionKey])
-
-  const closeLessonAuthoringCanvas = useCallback(() => {
-    setLessonAuthoringOverlay(null)
-    setLessonAuthoringOverlayChromeVisible(false)
-  }, [])
 
   const newPointDraft = (): LessonPointDraft => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -265,13 +210,15 @@ export default function Dashboard() {
         return next
       })
 
-      // Open the same canvas UI used in live delivery so the diagram icon/tray behaves identically.
-      openLessonAuthoringCanvas({
-        kind: 'diagram',
-        phaseKey: diagramUploadTarget.phaseKey,
-        pointId: diagramUploadTarget.pointId,
-        boardId: diagramUploadTarget.boardId,
-        autoOpenDiagramTray: true,
+      // Diagram authoring is diagram-only: open the standalone editor (no canvas underneath).
+      router.push({
+        pathname: '/diagram',
+        query: {
+          boardId: diagramUploadTarget.boardId,
+          phase: diagramUploadTarget.phaseKey,
+          pointId: diagramUploadTarget.pointId,
+          returnTo: '/dashboard?section=sessions'
+        }
       })
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Diagram upload failed')
@@ -279,7 +226,7 @@ export default function Dashboard() {
       setDiagramUploading(false)
       setDiagramUploadTarget(null)
     }
-  }, [diagramUploadTarget, openLessonAuthoringCanvas, persistLessonScriptDraftToStorage])
+  }, [diagramUploadTarget, persistLessonScriptDraftToStorage, router])
 
   const loadLessonScriptDraftFromStorage = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -865,6 +812,66 @@ export default function Dashboard() {
       return [...prev, baseWindow]
     })
   }, [canLaunchCanvasOverlay, isSubscriptionBlocked, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ, activeSessionId])
+
+  const showLessonAuthoringCanvasWindow = useCallback((opts: { phaseKey: LessonPhaseKey; pointId: string }) => {
+    if (!isTeacherOrAdminUser) {
+      alert('You do not have permission to author lesson modules.')
+      return
+    }
+
+    setLiveOverlayDismissed(false)
+    setLiveOverlayOpen(true)
+
+    const boardId = buildLessonAuthoringBoardId('canvas', opts.phaseKey, opts.pointId)
+    const roomId = boardIdToSessionKey(boardId)
+    const windowId = 'canvas-lesson-authoring-window'
+
+    setLiveWindows(prev => {
+      const existing = prev.find(win => win.id === windowId)
+      if (existing) {
+        return prev.map(win => {
+          if (win.id !== windowId) return win
+          return {
+            ...win,
+            minimized: false,
+            z: getNextWindowZ(),
+            boardIdOverride: boardId,
+            roomIdOverride: roomId,
+            isAdminOverride: isTeacherOrAdminUser,
+            lessonAuthoring: { phaseKey: opts.phaseKey, pointId: opts.pointId }
+          }
+        })
+      }
+
+      const stageWidth = overlayBounds.width || (typeof window !== 'undefined' ? window.innerWidth : 1024)
+      const stageHeight = overlayBounds.height || (typeof window !== 'undefined' ? window.innerHeight : 768)
+      const windowedWidth = Math.max(Math.round(stageWidth * 0.65), 420)
+      const windowedHeight = Math.max(Math.round(stageHeight * 0.6), 320)
+      const windowedPosition = {
+        x: Math.max((stageWidth - windowedWidth) / 2, WINDOW_PADDING_X),
+        y: Math.max((stageHeight - windowedHeight) / 2, WINDOW_PADDING_Y)
+      }
+
+      const baseWindow: LiveWindowConfig = {
+        id: windowId,
+        kind: 'canvas',
+        title: gradeReady ? activeGradeLabel : 'Canvas',
+        subtitle: 'Canvas',
+        boardIdOverride: boardId,
+        roomIdOverride: roomId,
+        isAdminOverride: isTeacherOrAdminUser,
+        lessonAuthoring: { phaseKey: opts.phaseKey, pointId: opts.pointId },
+        position: { x: 0, y: 0 },
+        size: { width: stageWidth, height: stageHeight },
+        minimized: false,
+        z: getNextWindowZ(),
+        mode: 'fullscreen',
+        windowedSnapshot: { position: windowedPosition, size: { width: windowedWidth, height: windowedHeight } }
+      }
+
+      return [...prev, baseWindow]
+    })
+  }, [activeGradeLabel, boardIdToSessionKey, buildLessonAuthoringBoardId, getNextWindowZ, gradeReady, isTeacherOrAdminUser, overlayBounds.height, overlayBounds.width])
 
   const pickCurrentOrNextSessionId = useCallback(() => {
     const activeId = activeSessionId ? String(activeSessionId) : null
@@ -2332,12 +2339,7 @@ export default function Dashboard() {
                                     if (typeof window !== 'undefined') {
                                       persistLessonScriptDraftToStorage(lessonScriptDraft)
                                     }
-                                    openLessonAuthoringCanvas({
-                                      kind: 'latex',
-                                      phaseKey: phase.key,
-                                      pointId: point.id,
-                                      boardId: buildLessonAuthoringBoardId('latex', phase.key, point.id),
-                                    })
+                                    showLessonAuthoringCanvasWindow({ phaseKey: phase.key, pointId: point.id })
                                   }}
                                   disabled={!canAuthorLessonModules}
                                 >
@@ -2389,7 +2391,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Lesson authoring happens on /board (no wrapped overlays here). */}
+  {/* Lesson authoring should mirror delivery: use the same canvas overlay experience. */}
 
         {isAdmin && selectedGrade && (
           <div className="card space-y-3">
@@ -4027,13 +4029,15 @@ export default function Dashboard() {
                     {win.kind === 'canvas' && (
                       <StackedCanvasWindow
                         gradeLabel={selectedGrade ? activeGradeLabel : null}
-                        roomId={activeSessionId ?? boardRoomId}
-                        boardId={activeSessionId ?? undefined}
+                        roomId={win.roomIdOverride ?? (activeSessionId ?? boardRoomId)}
+                        boardId={win.boardIdOverride ?? (activeSessionId ?? undefined)}
                         userId={realtimeUserId}
                         userDisplayName={realtimeDisplayName}
-                        isAdmin={isOwnerUser}
+                        isAdmin={win.isAdminOverride ?? isOwnerUser}
                         isVisible={!win.minimized}
                         defaultOrientation="portrait"
+                        autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}
+                        lessonAuthoring={win.lessonAuthoring}
                         onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
                       />
                     )}
@@ -4041,84 +4045,6 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {lessonAuthoringOverlay && (
-        <div
-          className={`live-call-overlay live-call-overlay--canvas-open${lessonAuthoringOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}`}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="live-call-overlay__backdrop" onClick={closeLessonAuthoringCanvas} />
-          <div className="live-call-overlay__panel" ref={authoringStageRef}>
-            {lessonAuthoringOverlay.kind === 'diagram' && (
-              <DiagramOverlayModule
-                boardId={lessonAuthoringOverlay.boardId}
-                gradeLabel={null}
-                userId={realtimeUserId}
-                userDisplayName={realtimeDisplayName}
-                isAdmin={isTeacherOrAdminUser}
-                lessonAuthoring={{ phaseKey: lessonAuthoringOverlay.phaseKey, pointId: lessonAuthoringOverlay.pointId }}
-              />
-            )}
-
-            <TextOverlayModule
-              boardId={lessonAuthoringOverlay.boardId}
-              gradeLabel={null}
-              userId={realtimeUserId}
-              userDisplayName={realtimeDisplayName}
-              isAdmin={isTeacherOrAdminUser}
-            />
-            <div className="live-overlay-stage">
-              <LiveOverlayWindow
-                id={lessonAuthoringWin.id}
-                title="Canvas"
-                subtitle="Lesson authoring"
-                className={`live-window--canvas${lessonAuthoringOverlayChromeVisible ? ' live-window--chrome-visible' : ''}`}
-                position={lessonAuthoringWin.position}
-                size={lessonAuthoringWin.size}
-                minimized={lessonAuthoringWin.minimized}
-                zIndex={lessonAuthoringWin.z}
-                bounds={authoringBounds}
-                minSize={{ width: 360, height: 320 }}
-                isResizable
-                isFullscreen={lessonAuthoringWin.mode === 'fullscreen'}
-                onFocus={() => {
-                  setLessonAuthoringWin(prev => ({ ...prev, z: 999 }))
-                }}
-                onClose={() => {
-                  closeLessonAuthoringCanvas()
-                }}
-                onToggleMinimize={() => {
-                  setLessonAuthoringWin(prev => ({ ...prev, minimized: !prev.minimized }))
-                }}
-                onRequestFullscreen={() => {
-                  setLessonAuthoringWin(prev => ({ ...prev, mode: prev.mode === 'fullscreen' ? 'windowed' : 'fullscreen' }))
-                }}
-                onPositionChange={(_, position) => {
-                  setLessonAuthoringWin(prev => ({ ...prev, position }))
-                }}
-                onResize={(_, payload) => {
-                  setLessonAuthoringWin(prev => ({ ...prev, size: { width: payload.width, height: payload.height }, position: payload.position }))
-                }}
-              >
-                <StackedCanvasWindow
-                  gradeLabel={null}
-                  roomId={lessonAuthoringOverlay.roomId}
-                  boardId={lessonAuthoringOverlay.boardId}
-                  userId={realtimeUserId}
-                  userDisplayName={realtimeDisplayName}
-                  isAdmin={isTeacherOrAdminUser}
-                  isVisible={!lessonAuthoringWin.minimized}
-                  defaultOrientation="portrait"
-                  autoOpenDiagramTray={Boolean(lessonAuthoringOverlay.autoOpenDiagramTray)}
-                  lessonAuthoring={{ phaseKey: lessonAuthoringOverlay.phaseKey, pointId: lessonAuthoringOverlay.pointId }}
-                  onOverlayChromeVisibilityChange={setLessonAuthoringOverlayChromeVisible}
-                />
-              </LiveOverlayWindow>
-            </div>
           </div>
         </div>
       )}

@@ -4942,14 +4942,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (lessonAuthoring?.phaseKey && lessonAuthoring?.pointId) {
       return { phaseKey: String(lessonAuthoring.phaseKey), pointId: String(lessonAuthoring.pointId) }
     }
-    const raw = typeof boardId === 'string' ? boardId : ''
+    const rawBoardId = typeof boardId === 'string' ? boardId : ''
+    const rawRoomId = typeof roomId === 'string' ? roomId : ''
+    const raw = rawBoardId || (rawRoomId.startsWith('myscript:') ? rawRoomId.slice('myscript:'.length) : rawRoomId)
+
     const match = raw.match(/^lesson-author-(?:canvas|latex|diagram)-([a-zA-Z]+)-(.+)$/)
     if (!match) return null
     const phaseKey = String(match[1] || '').trim()
     const pointId = String(match[2] || '').trim()
     if (!phaseKey || !pointId) return null
     return { phaseKey, pointId }
-  }, [boardId, lessonAuthoring])
+  }, [boardId, lessonAuthoring, roomId])
   const isLessonAuthoring = Boolean(parsedLessonAuthoring?.phaseKey && parsedLessonAuthoring?.pointId)
   const [authoringLatexEntries, setAuthoringLatexEntries] = useState<string[]>([])
   const [authoringLatexExpanded, setAuthoringLatexExpanded] = useState(true)
@@ -6111,32 +6114,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             )}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-600">
-                            <button
-                              type="button"
-                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                              onClick={() => handleLoadSavedLatex('shared')}
-                              disabled={!latestSharedLatex}
-                            >
-                              Load class
-                            </button>
-                            <button
-                              type="button"
-                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                              onClick={() => handleLoadSavedLatex('mine')}
-                              disabled={!latestPersonalLatex}
-                            >
-                              Load my notes
-                            </button>
+                          <div className="text-[11px] text-slate-600">
                             <button
                               type="button"
                               className="px-2 py-1 text-slate-700"
-                              onClick={fetchLatexSaves}
+                              onClick={() => setAuthoringLatexExpanded(v => !v)}
                             >
-                              Refresh
+                              {authoringLatexExpanded ? 'Collapse' : 'Expand'}
                             </button>
-                            {latexSaveError && (
-                              <span className="text-red-600 text-[11px] truncate max-w-[60vw]">{latexSaveError}</span>
+
+                            {authoringLatexExpanded && (
+                              <div className="mt-2 max-h-[32vh] overflow-auto border border-slate-200 rounded-md">
+                                {(() => {
+                                  const latexModules = v2ModuleChoices.filter(({ mod }) => mod.type === 'latex')
+                                  if (latexModules.length === 0) {
+                                    return <div className="px-3 py-2 text-slate-500">No LaTeX modules for this point.</div>
+                                  }
+                                  return (
+                                    <div className="flex flex-col">
+                                      {latexModules.map(({ index, mod }, idx) => {
+                                        const value = mod.type === 'latex' ? String(mod.latex || '').trim() : ''
+                                        const label = value || `LaTeX ${idx + 1}`
+                                        return (
+                                          <button
+                                            key={`session-latex-${index}`}
+                                            type="button"
+                                            className="text-left px-3 py-2 border-b border-slate-200 last:border-b-0 hover:bg-slate-50"
+                                            onClick={() => {
+                                              setMobileLatexTrayOpen(false)
+                                              if (value) {
+                                                applyLoadedLatex(value)
+                                              }
+                                              // If a scripted module index exists, apply it so delivery stays consistent.
+                                              if (typeof applyLessonScriptPlaybackV2 === 'function') {
+                                                void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, index)
+                                              }
+                                            }}
+                                          >
+                                            <div className="text-[12px] text-slate-900 truncate">{label}</div>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                })()}
+                              </div>
                             )}
                           </div>
                         )}

@@ -795,12 +795,9 @@ export default function Dashboard() {
 
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
+    setLiveOverlayChromeVisible(true)
     const windowId = 'canvas-live-window'
     setLiveWindows(prev => {
-      const existing = prev.find(win => win.id === windowId)
-      if (existing) {
-        return prev.map(win => win.id === windowId ? { ...win, minimized: false, z: getNextWindowZ() } : win)
-      }
       const stageWidth = overlayBounds.width || (typeof window !== 'undefined' ? window.innerWidth : 1024)
       const stageHeight = overlayBounds.height || (typeof window !== 'undefined' ? window.innerHeight : 768)
       const windowedWidth = Math.max(Math.round(stageWidth * 0.65), 420)
@@ -808,6 +805,24 @@ export default function Dashboard() {
       const windowedPosition = {
         x: Math.max((stageWidth - windowedWidth) / 2, WINDOW_PADDING_X),
         y: Math.max((stageHeight - windowedHeight) / 2, WINDOW_PADDING_Y)
+      }
+
+      const existing = prev.find(win => win.id === windowId)
+      if (existing) {
+        return prev.map(win => {
+          if (win.id !== windowId) return win
+          // Always reopen the canvas in the standard fullscreen mode for consistency,
+          // regardless of where it was opened from (or whether it was previously resized/windowed).
+          return {
+            ...win,
+            minimized: false,
+            mode: 'fullscreen',
+            position: { x: 0, y: 0 },
+            size: { width: stageWidth, height: stageHeight },
+            z: getNextWindowZ(),
+            windowedSnapshot: win.windowedSnapshot ?? { position: windowedPosition, size: { width: windowedWidth, height: windowedHeight } }
+          }
+        })
       }
       const baseWindow: LiveWindowConfig = {
         id: windowId,
@@ -906,6 +921,7 @@ export default function Dashboard() {
     setActiveSessionId(sessionId)
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
+    setLiveOverlayChromeVisible(true)
   }, [isSubscriptionBlocked])
 
   const openHeroLive = useCallback(() => {

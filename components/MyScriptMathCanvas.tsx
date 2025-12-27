@@ -4374,6 +4374,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; usableTrackWidth: number; maxScroll: number }>(
     { active: false, pointerId: null, startX: 0, startScrollLeft: 0, usableTrackWidth: 1, maxScroll: 0 }
   )
+  const horizontalPanWindowCleanupRef = useRef<null | (() => void)>(null)
   const [horizontalScrollbarActive, setHorizontalScrollbarActive] = useState(false)
 
   const [verticalPanMax, setVerticalPanMax] = useState(0)
@@ -4778,11 +4779,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return horizontalPanMax > 0 ? (horizontalPanValue / horizontalPanMax) * usable : 0
   }, [horizontalPanMax, horizontalPanValue, horizontalScrollbarThumbPct])
 
+  const endHorizontalScrollbarDrag = useCallback((event?: { pointerId?: number } | null) => {
+    if (!horizontalPanDragRef.current.active) return
+    const pointerId = typeof event?.pointerId === 'number' ? event.pointerId : null
+    if (pointerId != null && horizontalPanDragRef.current.pointerId != null && pointerId !== horizontalPanDragRef.current.pointerId) {
+      return
+    }
+
+    horizontalPanDragRef.current.active = false
+    horizontalPanDragRef.current.pointerId = null
+    setHorizontalScrollbarActive(false)
+
+    if (horizontalPanWindowCleanupRef.current) {
+      try {
+        horizontalPanWindowCleanupRef.current()
+      } catch {}
+      horizontalPanWindowCleanupRef.current = null
+    }
+  }, [])
+
   const beginHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
     const track = horizontalPanTrackRef.current
     const viewport = studentViewportRef.current
     if (!track) return
     if (!viewport) return
+
+    if (horizontalPanWindowCleanupRef.current) {
+      try {
+        horizontalPanWindowCleanupRef.current()
+      } catch {}
+      horizontalPanWindowCleanupRef.current = null
+    }
+
     const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
     const rect = track.getBoundingClientRect()
     const trackWidth = Math.max(1, rect.width)
@@ -4797,20 +4825,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     horizontalPanDragRef.current.maxScroll = maxScroll
     setHorizontalScrollbarActive(true)
     try {
-      track.setPointerCapture(event.pointerId)
+      ;(event.currentTarget as any)?.setPointerCapture?.(event.pointerId)
     } catch {}
-  }, [horizontalPanThumbRatio])
 
-  const endHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
-    if (!horizontalPanDragRef.current.active) return
-    horizontalPanDragRef.current.active = false
-    const track = horizontalPanTrackRef.current
-    try {
-      track?.releasePointerCapture(event.pointerId)
-    } catch {}
-    horizontalPanDragRef.current.pointerId = null
-    setHorizontalScrollbarActive(false)
-  }, [])
+    if (typeof window !== 'undefined') {
+      const onMove = (e: PointerEvent) => {
+        if (!horizontalPanDragRef.current.active) return
+        if (horizontalPanDragRef.current.pointerId != null && e.pointerId !== horizontalPanDragRef.current.pointerId) return
+        const viewportNow = studentViewportRef.current
+        if (!viewportNow) return
+        const usable = Math.max(1, horizontalPanDragRef.current.usableTrackWidth)
+        const max = Math.max(0, horizontalPanDragRef.current.maxScroll)
+        const dx = e.clientX - horizontalPanDragRef.current.startX
+        const ratioDx = dx / usable
+        const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * max * manualScrollGain
+        viewportNow.scrollLeft = Math.max(0, Math.min(target, max))
+      }
+
+      const onUpLike = (e: PointerEvent) => {
+        if (!horizontalPanDragRef.current.active) return
+        if (horizontalPanDragRef.current.pointerId != null && e.pointerId !== horizontalPanDragRef.current.pointerId) return
+        endHorizontalScrollbarDrag({ pointerId: e.pointerId })
+      }
+
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUpLike)
+      window.addEventListener('pointercancel', onUpLike)
+
+      horizontalPanWindowCleanupRef.current = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUpLike)
+        window.removeEventListener('pointercancel', onUpLike)
+      }
+    }
+  }, [endHorizontalScrollbarDrag, horizontalPanThumbRatio, manualScrollGain])
 
   const updateHorizontalScrollbarDrag = useCallback((event: React.PointerEvent) => {
     if (!horizontalPanDragRef.current.active) return
@@ -4824,6 +4872,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * maxScroll * manualScrollGain
     viewport.scrollLeft = Math.max(0, Math.min(target, maxScroll))
   }, [manualScrollGain])
+
+  useEffect(() => {
+    return () => {
+      if (horizontalPanWindowCleanupRef.current) {
+        try {
+          horizontalPanWindowCleanupRef.current()
+        } catch {}
+        horizontalPanWindowCleanupRef.current = null
+      }
+      horizontalPanDragRef.current.active = false
+      horizontalPanDragRef.current.pointerId = null
+    }
+  }, [])
 
   const verticalScrollbarThumbPct = useMemo(() => Math.max(8, Math.round(verticalPanThumbRatio * 100)), [verticalPanThumbRatio])
   const verticalScrollbarTopPct = useMemo(() => {
@@ -5028,17 +5089,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       <div className="px-3 pb-1 flex items-end justify-center">
         <div
           className={`w-[92vw] max-w-[760px] bg-slate-200 rounded-full relative pointer-events-auto transition-all duration-150 ${horizontalScrollbarActive ? 'h-4' : 'h-3'}`}
+          style={{ touchAction: 'none', userSelect: 'none' }}
+          onClick={event => {
+            // Prevent document-level handlers (e.g. the ink engine) from focusing inputs.
+            event.preventDefault()
+            event.stopPropagation()
+          }}
           onPointerMove={updateHorizontalScrollbarDrag}
           onPointerUp={event => {
+            event.preventDefault()
+            event.stopPropagation()
             endHorizontalScrollbarDrag(event)
             setHorizontalScrollbarActive(false)
           }}
           onPointerCancel={event => {
+            event.preventDefault()
+            event.stopPropagation()
             endHorizontalScrollbarDrag(event)
             setHorizontalScrollbarActive(false)
           }}
           onPointerDown={event => {
             event.preventDefault()
+            event.stopPropagation()
             setHorizontalScrollbarActive(true)
             const track = horizontalPanTrackRef.current
             const viewport = studentViewportRef.current
@@ -5056,6 +5128,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               width: `${horizontalScrollbarThumbPct}%`,
               left: `${horizontalScrollbarLeftPct}%`,
               cursor: 'grab',
+              touchAction: 'none',
+              userSelect: 'none',
+            }}
+            onClick={event => {
+              event.preventDefault()
+              event.stopPropagation()
             }}
             onPointerDown={event => {
               event.preventDefault()

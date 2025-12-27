@@ -4939,6 +4939,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
+  const [authoringLatexEntries, setAuthoringLatexEntries] = useState<string[]>([])
+  const [authoringLatexExpanded, setAuthoringLatexExpanded] = useState(true)
 
   const saveLatexIntoLessonDraft = useCallback((latexValue: string) => {
     if (!isLessonAuthoring) return false
@@ -4954,7 +4956,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const phasePoints = Array.isArray((draft as any)[phaseKey]) ? (draft as any)[phaseKey] : null
       if (!phasePoints) return false
 
-      const nextPhasePoints = phasePoints.map((p: any) => (String(p?.id) === pointId ? { ...p, latex: latexValue } : p))
+      const nextPhasePoints = phasePoints.map((p: any) => {
+        if (String(p?.id) !== pointId) return p
+        const priorLatex = typeof p?.latex === 'string' ? p.latex : ''
+        const priorHistory = Array.isArray(p?.latexHistory)
+          ? p.latexHistory.filter((v: any) => typeof v === 'string' && v.trim())
+          : (priorLatex ? [priorLatex] : [])
+
+        const trimmed = String(latexValue || '').trim()
+        const last = priorHistory.length ? String(priorHistory[priorHistory.length - 1]).trim() : ''
+        const nextHistory = trimmed && trimmed !== last ? [...priorHistory, trimmed] : priorHistory
+        return { ...p, latex: trimmed, latexHistory: nextHistory }
+      })
       const next = { ...(draft as any), [phaseKey]: nextPhasePoints }
       window.localStorage.setItem(LESSON_AUTHORING_STORAGE_KEY, JSON.stringify({ updatedAt: Date.now(), draft: next }))
       return true
@@ -4962,6 +4975,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return false
     }
   }, [isLessonAuthoring, lessonAuthoring])
+
+  const loadAuthoringLatexEntries = useCallback(() => {
+    if (!isLessonAuthoring) return
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(LESSON_AUTHORING_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      const draft = parsed?.draft
+      if (!draft || typeof draft !== 'object') {
+        setAuthoringLatexEntries([])
+        return
+      }
+      const phaseKey = String(lessonAuthoring!.phaseKey)
+      const pointId = String(lessonAuthoring!.pointId)
+      const phasePoints = Array.isArray((draft as any)[phaseKey]) ? (draft as any)[phaseKey] : []
+      const point = phasePoints.find((p: any) => String(p?.id) === pointId) || null
+      const history = Array.isArray(point?.latexHistory)
+        ? point.latexHistory.filter((v: any) => typeof v === 'string' && v.trim())
+        : (typeof point?.latex === 'string' && point.latex.trim() ? [point.latex.trim()] : [])
+
+      // Show newest first.
+      setAuthoringLatexEntries([...history].reverse())
+    } catch {
+      setAuthoringLatexEntries([])
+    }
+  }, [isLessonAuthoring, lessonAuthoring])
+
+  useEffect(() => {
+    if (!isLessonAuthoring) return
+    if (!mobileLatexTrayOpen) return
+    setAuthoringLatexExpanded(true)
+    loadAuthoringLatexEntries()
+  }, [isLessonAuthoring, loadAuthoringLatexEntries, mobileLatexTrayOpen])
 
   // Persist LaTeX strictly against the scheduled session id.
   // We only persist when a real session id is provided (boardId).
@@ -6007,7 +6053,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         aria-label="LaTeX actions"
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <div className="text-sm text-slate-700 font-medium">LaTeX</div>
+                          <div className="text-sm text-slate-700 font-medium">
+                            {isLessonAuthoring ? 'LaTeX for this point' : 'LaTeX'}
+                          </div>
                           <button
                             type="button"
                             className="px-2 py-1 text-slate-700"
@@ -6016,34 +6064,70 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             Close
                           </button>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-600">
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                            onClick={() => handleLoadSavedLatex('shared')}
-                            disabled={!latestSharedLatex}
-                          >
-                            Load class
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                            onClick={() => handleLoadSavedLatex('mine')}
-                            disabled={!latestPersonalLatex}
-                          >
-                            Load my notes
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700"
-                            onClick={fetchLatexSaves}
-                          >
-                            Refresh
-                          </button>
-                          {latexSaveError && (
-                            <span className="text-red-600 text-[11px] truncate max-w-[60vw]">{latexSaveError}</span>
-                          )}
-                        </div>
+                        {isLessonAuthoring ? (
+                          <div className="text-[11px] text-slate-600">
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700"
+                              onClick={() => setAuthoringLatexExpanded(v => !v)}
+                            >
+                              {authoringLatexExpanded ? 'Collapse' : 'Expand'} ({authoringLatexEntries.length})
+                            </button>
+
+                            {authoringLatexExpanded && (
+                              <div className="mt-2 max-h-[32vh] overflow-auto border border-slate-200 rounded-md">
+                                {authoringLatexEntries.length === 0 ? (
+                                  <div className="px-3 py-2 text-slate-500">No LaTeX saved for this point yet.</div>
+                                ) : (
+                                  <div className="flex flex-col">
+                                    {authoringLatexEntries.map((latex, idx) => (
+                                      <button
+                                        key={`authoring-latex-${idx}`}
+                                        type="button"
+                                        className="text-left px-3 py-2 border-b border-slate-200 last:border-b-0 hover:bg-slate-50"
+                                        onClick={() => {
+                                          applyLoadedLatex(latex)
+                                          setMobileLatexTrayOpen(false)
+                                        }}
+                                      >
+                                        <div className="text-[12px] text-slate-900 truncate">{latex}</div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-600">
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              onClick={() => handleLoadSavedLatex('shared')}
+                              disabled={!latestSharedLatex}
+                            >
+                              Load class
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              onClick={() => handleLoadSavedLatex('mine')}
+                              disabled={!latestPersonalLatex}
+                            >
+                              Load my notes
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 text-slate-700"
+                              onClick={fetchLatexSaves}
+                            >
+                              Refresh
+                            </button>
+                            {latexSaveError && (
+                              <span className="text-red-600 text-[11px] truncate max-w-[60vw]">{latexSaveError}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 

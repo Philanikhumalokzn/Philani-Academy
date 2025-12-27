@@ -107,6 +107,7 @@ export default function Dashboard() {
     text: string
     diagramSnapshot: LessonDiagramSnapshot | null
     latex: string
+    latexHistory?: string[]
   }
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
@@ -125,6 +126,7 @@ export default function Dashboard() {
     text: '',
     diagramSnapshot: null,
     latex: '',
+    latexHistory: [],
   })
 
   const [lessonScriptDraft, setLessonScriptDraft] = useState<Record<LessonPhaseKey, LessonPointDraft[]>>({
@@ -2361,7 +2363,7 @@ export default function Dashboard() {
                                   onClick={() => {
                                     setLessonScriptDraft(prev => ({
                                       ...prev,
-                                      [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, latex: '' } : p)),
+                                      [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, latex: '', latexHistory: [] } : p)),
                                     }))
                                   }}
                                   disabled={!point.latex}

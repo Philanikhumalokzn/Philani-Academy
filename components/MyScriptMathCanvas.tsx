@@ -4938,7 +4938,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
-  const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
+  const parsedLessonAuthoring = useMemo(() => {
+    if (lessonAuthoring?.phaseKey && lessonAuthoring?.pointId) {
+      return { phaseKey: String(lessonAuthoring.phaseKey), pointId: String(lessonAuthoring.pointId) }
+    }
+    const raw = typeof boardId === 'string' ? boardId : ''
+    const match = raw.match(/^lesson-author-(?:canvas|latex|diagram)-([a-zA-Z]+)-(.+)$/)
+    if (!match) return null
+    const phaseKey = String(match[1] || '').trim()
+    const pointId = String(match[2] || '').trim()
+    if (!phaseKey || !pointId) return null
+    return { phaseKey, pointId }
+  }, [boardId, lessonAuthoring])
+  const isLessonAuthoring = Boolean(parsedLessonAuthoring?.phaseKey && parsedLessonAuthoring?.pointId)
   const [authoringLatexEntries, setAuthoringLatexEntries] = useState<string[]>([])
   const [authoringLatexExpanded, setAuthoringLatexExpanded] = useState(true)
 
@@ -4951,8 +4963,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const draft = parsed?.draft
       if (!draft || typeof draft !== 'object') return false
 
-      const phaseKey = String(lessonAuthoring!.phaseKey)
-      const pointId = String(lessonAuthoring!.pointId)
+      const phaseKey = String(parsedLessonAuthoring!.phaseKey)
+      const pointId = String(parsedLessonAuthoring!.pointId)
       const phasePoints = Array.isArray((draft as any)[phaseKey]) ? (draft as any)[phaseKey] : null
       if (!phasePoints) return false
 
@@ -4974,7 +4986,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {
       return false
     }
-  }, [isLessonAuthoring, lessonAuthoring])
+  }, [isLessonAuthoring, parsedLessonAuthoring])
 
   const loadAuthoringLatexEntries = useCallback(() => {
     if (!isLessonAuthoring) return
@@ -4987,8 +4999,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setAuthoringLatexEntries([])
         return
       }
-      const phaseKey = String(lessonAuthoring!.phaseKey)
-      const pointId = String(lessonAuthoring!.pointId)
+      const phaseKey = String(parsedLessonAuthoring!.phaseKey)
+      const pointId = String(parsedLessonAuthoring!.pointId)
       const phasePoints = Array.isArray((draft as any)[phaseKey]) ? (draft as any)[phaseKey] : []
       const point = phasePoints.find((p: any) => String(p?.id) === pointId) || null
       const history = Array.isArray(point?.latexHistory)
@@ -5000,7 +5012,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {
       setAuthoringLatexEntries([])
     }
-  }, [isLessonAuthoring, lessonAuthoring])
+  }, [isLessonAuthoring, parsedLessonAuthoring])
 
   useEffect(() => {
     if (!isLessonAuthoring) return
@@ -5048,7 +5060,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           return
         }
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'latex', phaseKey: lessonAuthoring?.phaseKey, pointId: lessonAuthoring?.pointId } }))
+          window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'latex', phaseKey: parsedLessonAuthoring?.phaseKey, pointId: parsedLessonAuthoring?.pointId } }))
         }
         setLatexSaveError(null)
         return

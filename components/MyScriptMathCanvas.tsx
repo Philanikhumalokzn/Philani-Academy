@@ -333,7 +333,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
-  const [isCompactViewport, setIsCompactViewport] = useState(false)
+  const [isCompactViewport, setIsCompactViewport] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    return Boolean(window.matchMedia('(max-width: 768px)').matches)
+  })
 
   useEffect(() => {
     if (typeof onLatexOutputChange !== 'function') return

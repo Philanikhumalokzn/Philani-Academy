@@ -225,6 +225,8 @@ type LessonScriptV2 = {
   phases: LessonScriptV2Phase[]
 }
 
+type MobileModulePickerType = 'text' | 'diagram' | 'latex'
+
 const LESSON_SCRIPT_PHASES: Array<{ key: LessonScriptPhaseKey; label: string }> = [
   { key: 'engage', label: 'Engage' },
   { key: 'explore', label: 'Explore' },
@@ -4296,6 +4298,76 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       window.dispatchEvent(new CustomEvent('philani-text:toggle-tray'))
     } catch {}
   }, [])
+
+  const [mobileLatexTrayOpen, setMobileLatexTrayOpen] = useState(false)
+
+  const [mobileModulePicker, setMobileModulePicker] = useState<null | { type: MobileModulePickerType }>(null)
+
+  const isLessonAuthoringMode = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
+
+  const toggleMobileLatexTray = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.dispatchEvent(new CustomEvent('philani-latex:toggle-tray'))
+    } catch {}
+  }, [])
+
+  const v2ModuleChoices = useMemo(() => {
+    return (lessonScriptV2ActiveModules || []).map((mod, index) => ({ index, mod }))
+  }, [lessonScriptV2ActiveModules])
+
+  const openPickerOrApplySingle = useCallback(
+    (type: MobileModulePickerType) => {
+      if (!isAdmin) return
+      if (typeof window === 'undefined') return
+      // The icon row that calls this only renders on compact viewports.
+      if (!isCompactViewport) return
+      // In authoring mode there may be no loaded session script; keep behaviour minimal.
+      if (isLessonAuthoringMode) return
+
+      const matches = v2ModuleChoices.filter(({ mod }) => mod.type === type)
+      if (matches.length === 0) return
+
+      if (matches.length === 1) {
+        void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, matches[0].index)
+        setMobileModulePicker(null)
+        return
+      }
+
+      setMobileModulePicker({ type })
+    },
+    [applyLessonScriptPlaybackV2, isAdmin, isCompactViewport, isLessonAuthoringMode, lessonScriptPhaseKey, lessonScriptPointIndex, v2ModuleChoices]
+  )
+
+  const closeMobileModulePicker = useCallback(() => {
+    setMobileModulePicker(null)
+  }, [])
+
+  useEffect(() => {
+    if (!isCompactViewport) {
+      setMobileModulePicker(null)
+    }
+  }, [isCompactViewport])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      if (!isAdmin) return
+      setMobileLatexTrayOpen(prev => !prev)
+    }
+    window.addEventListener('philani-latex:toggle-tray', handler as any)
+    return () => window.removeEventListener('philani-latex:toggle-tray', handler as any)
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setMobileLatexTrayOpen(false)
+      return
+    }
+    if (!isCompactViewport) {
+      setMobileLatexTrayOpen(false)
+    }
+  }, [isAdmin, isCompactViewport])
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
@@ -5733,7 +5805,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         type="button"
                         className="px-2 py-1"
                         title="Diagrams"
-                        onClick={toggleMobileDiagramTray}
+                        onClick={() => {
+                          toggleMobileDiagramTray()
+                          openPickerOrApplySingle('diagram')
+                        }}
                         disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">Diagrams</span>
@@ -5759,7 +5834,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         type="button"
                         className="px-2 py-1"
                         title="Text"
-                        onClick={toggleMobileTextTray}
+                        onClick={() => {
+                          toggleMobileTextTray()
+                          openPickerOrApplySingle('text')
+                        }}
                         disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">Text</span>
@@ -5774,6 +5852,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         >
                           <path d="M5 4h14v3h-5v13h-4V7H5V4z" />
                         </svg>
+                      </button>
+                    )}
+
+                    {isCompactViewport && (
+                      <button
+                        type="button"
+                        className="px-2 py-1"
+                        title="LaTeX"
+                        onClick={() => {
+                          toggleMobileLatexTray()
+                          openPickerOrApplySingle('latex')
+                        }}
+                        disabled={Boolean(fatalError)}
+                      >
+                        <span className="sr-only">LaTeX</span>
+                        <span className="text-slate-700 text-[16px] leading-none font-semibold" aria-hidden="true">Σ</span>
                       </button>
                     )}
 
@@ -5901,6 +5995,102 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
                       </svg>
                     </button>
+
+                    {isCompactViewport && mobileLatexTrayOpen && (
+                      <div
+                        className="fixed left-2 right-2 z-50 rounded-lg border border-slate-200 bg-white shadow-sm p-3"
+                        style={{ bottom: viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8 }}
+                        role="dialog"
+                        aria-label="LaTeX actions"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm text-slate-700 font-medium">LaTeX</div>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-slate-700"
+                            onClick={() => setMobileLatexTrayOpen(false)}
+                          >
+                            Close
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-600">
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                            onClick={() => handleLoadSavedLatex('shared')}
+                            disabled={!latestSharedLatex}
+                          >
+                            Load class
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                            onClick={() => handleLoadSavedLatex('mine')}
+                            disabled={!latestPersonalLatex}
+                          >
+                            Load my notes
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-slate-700"
+                            onClick={fetchLatexSaves}
+                          >
+                            Refresh
+                          </button>
+                          {latexSaveError && (
+                            <span className="text-red-600 text-[11px] truncate max-w-[60vw]">{latexSaveError}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {isCompactViewport && mobileModulePicker && (
+                      <div
+                        className="fixed left-2 right-2 z-50 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+                        style={{ bottom: viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 88 }}
+                        role="dialog"
+                        aria-label="Select module"
+                      >
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200">
+                          <div className="text-sm text-slate-700 font-medium">
+                            {mobileModulePicker.type === 'diagram' ? 'Diagrams' : mobileModulePicker.type === 'text' ? 'Text' : 'LaTeX'} for this point
+                          </div>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-slate-700"
+                            onClick={closeMobileModulePicker}
+                          >
+                            Close
+                          </button>
+                        </div>
+                        <div className="p-2 max-h-[40vh] overflow-auto">
+                          <div className="flex flex-col gap-1">
+                            {v2ModuleChoices
+                              .filter(({ mod }) => mod.type === mobileModulePicker.type)
+                              .map(({ index, mod }) => {
+                                const label = (() => {
+                                  if (mod.type === 'diagram') return (mod.diagram?.title || mod.title || 'Diagram').trim() || 'Diagram'
+                                  if (mod.type === 'text') return (mod.text || '').trim() || 'Text'
+                                  return (mod.latex || '').trim() || 'LaTeX'
+                                })()
+                                return (
+                                  <button
+                                    key={`${mobileModulePicker.type}-${index}`}
+                                    type="button"
+                                    className="text-left px-3 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50"
+                                    onClick={() => {
+                                      closeMobileModulePicker()
+                                      void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, index)
+                                    }}
+                                  >
+                                    <div className="text-[12px] text-slate-900 truncate">{label}</div>
+                                  </button>
+                                )
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>

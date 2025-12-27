@@ -269,15 +269,6 @@ const nextAnimationFrame = () =>
     ? new Promise<void>(resolve => setTimeout(resolve, 16))
     : new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
 
-const swallowUiEvent = (event: any) => {
-  try {
-    event.preventDefault?.()
-  } catch {}
-  try {
-    event.stopPropagation?.()
-  } catch {}
-}
-
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
   const symCount = countSymbols(snapshot.symbols)
@@ -4403,6 +4394,230 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     { active: false, pointerId: null, startY: 0, startValue: 3.5, trackHeight: 1 }
   )
 
+  // Mobile: prevent the canvas engine from treating slider interactions as ink taps (which can
+  // focus hidden inputs and open the on-screen keyboard). We do this with DOM-level capture
+  // listeners and implement the drag interactions there.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const stop = (event: Event) => {
+      try {
+        event.preventDefault()
+      } catch {}
+      try {
+        ;(event as any).stopImmediatePropagation?.()
+      } catch {}
+      try {
+        event.stopPropagation()
+      } catch {}
+    }
+
+    const viewport = studentViewportRef.current
+    const horizontalTrack = horizontalPanTrackRef.current
+    const verticalTrack = verticalPanTrackRef.current
+    const gainTrack = masterGainTrackRef.current
+
+    const windowListeners: Array<{ type: string; handler: any }> = []
+    const addWindow = (type: string, handler: any) => {
+      window.addEventListener(type, handler)
+      windowListeners.push({ type, handler })
+    }
+    const clearWindow = () => {
+      for (const { type, handler } of windowListeners) {
+        window.removeEventListener(type, handler)
+      }
+      windowListeners.length = 0
+    }
+
+    const beginHorizontal = (event: PointerEvent) => {
+      if (!viewport || !horizontalTrack) return
+      stop(event)
+      const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      const rect = horizontalTrack.getBoundingClientRect()
+      const trackWidth = Math.max(1, rect.width)
+      const thumbPx = trackWidth * Math.max(0, Math.min(1, horizontalPanThumbRatio))
+      const usableTrackWidth = Math.max(1, trackWidth - thumbPx)
+      const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
+      const ratio = rect.width > 0 ? x / rect.width : 0
+      viewport.scrollLeft = ratio * maxScroll
+
+      horizontalPanDragRef.current.active = true
+      horizontalPanDragRef.current.pointerId = event.pointerId
+      horizontalPanDragRef.current.startX = event.clientX
+      horizontalPanDragRef.current.startScrollLeft = viewport.scrollLeft
+      horizontalPanDragRef.current.usableTrackWidth = usableTrackWidth
+      horizontalPanDragRef.current.maxScroll = maxScroll
+      setHorizontalScrollbarActive(true)
+
+      try {
+        horizontalTrack.setPointerCapture(event.pointerId)
+      } catch {}
+
+      const onMove = (e: PointerEvent) => {
+        if (!horizontalPanDragRef.current.active) return
+        if (horizontalPanDragRef.current.pointerId != null && e.pointerId !== horizontalPanDragRef.current.pointerId) return
+        stop(e)
+        const usable = Math.max(1, horizontalPanDragRef.current.usableTrackWidth)
+        const max = Math.max(0, horizontalPanDragRef.current.maxScroll)
+        const dx = e.clientX - horizontalPanDragRef.current.startX
+        const ratioDx = dx / usable
+        const target = horizontalPanDragRef.current.startScrollLeft + ratioDx * max * manualScrollGain
+        viewport.scrollLeft = Math.max(0, Math.min(target, max))
+      }
+      const onUpLike = (e: PointerEvent) => {
+        if (!horizontalPanDragRef.current.active) return
+        if (horizontalPanDragRef.current.pointerId != null && e.pointerId !== horizontalPanDragRef.current.pointerId) return
+        stop(e)
+        horizontalPanDragRef.current.active = false
+        horizontalPanDragRef.current.pointerId = null
+        setHorizontalScrollbarActive(false)
+        clearWindow()
+        try {
+          horizontalTrack.releasePointerCapture(e.pointerId)
+        } catch {}
+      }
+
+      clearWindow()
+      addWindow('pointermove', onMove)
+      addWindow('pointerup', onUpLike)
+      addWindow('pointercancel', onUpLike)
+    }
+
+    const beginVertical = (event: PointerEvent) => {
+      if (!viewport || !verticalTrack) return
+      stop(event)
+      const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      const rect = verticalTrack.getBoundingClientRect()
+      const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
+      const ratio = rect.height > 0 ? y / rect.height : 0
+      viewport.scrollTop = ratio * maxScroll
+
+      verticalPanDragRef.current.active = true
+      verticalPanDragRef.current.pointerId = event.pointerId
+      verticalPanDragRef.current.startY = event.clientY
+      verticalPanDragRef.current.startScrollTop = viewport.scrollTop
+      const trackHeight = Math.max(1, rect.height)
+      const thumbPx = trackHeight * Math.max(0, Math.min(1, verticalPanThumbRatio))
+      verticalPanDragRef.current.usableTrackHeight = Math.max(1, trackHeight - thumbPx)
+      verticalPanDragRef.current.maxScroll = maxScroll
+      setVerticalScrollbarActive(true)
+
+      try {
+        verticalTrack.setPointerCapture(event.pointerId)
+      } catch {}
+
+      const onMove = (e: PointerEvent) => {
+        if (!verticalPanDragRef.current.active) return
+        if (verticalPanDragRef.current.pointerId != null && e.pointerId !== verticalPanDragRef.current.pointerId) return
+        stop(e)
+        const usable = Math.max(1, verticalPanDragRef.current.usableTrackHeight)
+        const max = Math.max(0, verticalPanDragRef.current.maxScroll)
+        const dy = e.clientY - verticalPanDragRef.current.startY
+        const ratioDy = dy / usable
+        const target = verticalPanDragRef.current.startScrollTop + ratioDy * max * manualScrollGain
+        viewport.scrollTop = Math.max(0, Math.min(target, max))
+      }
+      const onUpLike = (e: PointerEvent) => {
+        if (!verticalPanDragRef.current.active) return
+        if (verticalPanDragRef.current.pointerId != null && e.pointerId !== verticalPanDragRef.current.pointerId) return
+        stop(e)
+        verticalPanDragRef.current.active = false
+        verticalPanDragRef.current.pointerId = null
+        setVerticalScrollbarActive(false)
+        clearWindow()
+        try {
+          verticalTrack.releasePointerCapture(e.pointerId)
+        } catch {}
+      }
+
+      clearWindow()
+      addWindow('pointermove', onMove)
+      addWindow('pointerup', onUpLike)
+      addWindow('pointercancel', onUpLike)
+    }
+
+    const beginGain = (event: PointerEvent) => {
+      if (!gainTrack) return
+      stop(event)
+      const rect = gainTrack.getBoundingClientRect()
+      const trackHeight = Math.max(1, rect.height)
+      const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
+      const ratio = rect.height > 0 ? 1 - y / rect.height : 0
+      const min = 1
+      const max = 6
+      setManualScrollGain(min + ratio * (max - min))
+
+      masterGainDragRef.current.active = true
+      masterGainDragRef.current.pointerId = event.pointerId
+      masterGainDragRef.current.startY = event.clientY
+      masterGainDragRef.current.startValue = manualScrollGain
+      masterGainDragRef.current.trackHeight = trackHeight
+      try {
+        gainTrack.setPointerCapture(event.pointerId)
+      } catch {}
+
+      const onMove = (e: PointerEvent) => {
+        if (!masterGainDragRef.current.active) return
+        if (masterGainDragRef.current.pointerId != null && e.pointerId !== masterGainDragRef.current.pointerId) return
+        stop(e)
+        const dy = e.clientY - masterGainDragRef.current.startY
+        const ratioMove = -dy / Math.max(1, masterGainDragRef.current.trackHeight)
+        const minV = 1
+        const maxV = 6
+        const next = masterGainDragRef.current.startValue + ratioMove * (maxV - minV)
+        setManualScrollGain(Math.max(minV, Math.min(maxV, next)))
+      }
+      const onUpLike = (e: PointerEvent) => {
+        if (!masterGainDragRef.current.active) return
+        if (masterGainDragRef.current.pointerId != null && e.pointerId !== masterGainDragRef.current.pointerId) return
+        stop(e)
+        masterGainDragRef.current.active = false
+        masterGainDragRef.current.pointerId = null
+        clearWindow()
+        try {
+          gainTrack.releasePointerCapture(e.pointerId)
+        } catch {}
+      }
+
+      clearWindow()
+      addWindow('pointermove', onMove)
+      addWindow('pointerup', onUpLike)
+      addWindow('pointercancel', onUpLike)
+    }
+
+    const optsCapture: AddEventListenerOptions = { capture: true }
+    const optsCaptureActive: AddEventListenerOptions = { capture: true, passive: false }
+
+    if (horizontalTrack) {
+      horizontalTrack.addEventListener('pointerdown', beginHorizontal, optsCapture)
+      horizontalTrack.addEventListener('touchstart', stop as any, optsCaptureActive)
+    }
+    if (verticalTrack) {
+      verticalTrack.addEventListener('pointerdown', beginVertical, optsCapture)
+      verticalTrack.addEventListener('touchstart', stop as any, optsCaptureActive)
+    }
+    if (gainTrack) {
+      gainTrack.addEventListener('pointerdown', beginGain, optsCapture)
+      gainTrack.addEventListener('touchstart', stop as any, optsCaptureActive)
+    }
+
+    return () => {
+      clearWindow()
+      if (horizontalTrack) {
+        horizontalTrack.removeEventListener('pointerdown', beginHorizontal, optsCapture)
+        horizontalTrack.removeEventListener('touchstart', stop as any, optsCaptureActive)
+      }
+      if (verticalTrack) {
+        verticalTrack.removeEventListener('pointerdown', beginVertical, optsCapture)
+        verticalTrack.removeEventListener('touchstart', stop as any, optsCaptureActive)
+      }
+      if (gainTrack) {
+        gainTrack.removeEventListener('pointerdown', beginGain, optsCapture)
+        gainTrack.removeEventListener('touchstart', stop as any, optsCaptureActive)
+      }
+    }
+  }, [horizontalPanThumbRatio, manualScrollGain, verticalPanThumbRatio])
+
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return
     try {
@@ -4966,33 +5181,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ref={verticalPanTrackRef}
         className="h-full w-3 flex items-end justify-center pointer-events-auto"
         style={{ touchAction: 'none', userSelect: 'none' }}
-        onClick={swallowUiEvent}
-        onClickCapture={swallowUiEvent}
-        onPointerDownCapture={swallowUiEvent}
-        onTouchStartCapture={swallowUiEvent}
-        onPointerMove={updateVerticalScrollbarDrag}
-        onPointerUp={event => {
-          swallowUiEvent(event)
-          endVerticalScrollbarDrag(event)
-          setVerticalScrollbarActive(false)
-        }}
-        onPointerCancel={event => {
-          swallowUiEvent(event)
-          endVerticalScrollbarDrag(event)
-          setVerticalScrollbarActive(false)
-        }}
-        onPointerDown={event => {
-          swallowUiEvent(event)
-          setVerticalScrollbarActive(true)
-          const track = verticalPanTrackRef.current
-          const viewport = studentViewportRef.current
-          if (!track || !viewport) return
-          const rect = track.getBoundingClientRect()
-          const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
-          const ratio = rect.height > 0 ? y / rect.height : 0
-          viewport.scrollTop = ratio * Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-          beginVerticalScrollbarDrag(event)
-        }}
       >
         <div className={`h-full w-1.5 bg-slate-200 rounded-full relative transition-all duration-150 ${verticalScrollbarActive ? 'opacity-100' : 'opacity-80'}`}>
           <div
@@ -5003,15 +5191,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               cursor: 'grab',
               touchAction: 'none',
               userSelect: 'none',
-            }}
-            onClick={swallowUiEvent}
-            onClickCapture={swallowUiEvent}
-            onPointerDownCapture={swallowUiEvent}
-            onTouchStartCapture={swallowUiEvent}
-            onPointerDown={event => {
-              event.preventDefault()
-              event.stopPropagation()
-              beginVerticalScrollbarDrag(event)
             }}
           />
         </div>
@@ -5071,32 +5250,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ref={masterGainTrackRef}
         className="h-full w-3 flex items-end justify-center pointer-events-auto"
         style={{ touchAction: 'none', userSelect: 'none' }}
-        onClick={swallowUiEvent}
-        onClickCapture={swallowUiEvent}
-        onPointerDownCapture={swallowUiEvent}
-        onTouchStartCapture={swallowUiEvent}
-        onPointerMove={updateMasterGainDrag}
-        onPointerUp={event => {
-          swallowUiEvent(event)
-          endMasterGainDrag(event)
-        }}
-        onPointerCancel={event => {
-          swallowUiEvent(event)
-          endMasterGainDrag(event)
-        }}
-        onPointerDown={event => {
-          swallowUiEvent(event)
-          const track = masterGainTrackRef.current
-          if (track) {
-            const rect = track.getBoundingClientRect()
-            const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
-            const ratio = rect.height > 0 ? 1 - y / rect.height : 0
-            const min = 1
-            const max = 6
-            setManualScrollGain(min + ratio * (max - min))
-          }
-          beginMasterGainDrag(event)
-        }}
       >
         <div className="h-full w-1.5 bg-slate-200 rounded-full relative opacity-80">
           <div
@@ -5117,41 +5270,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const horizontalScrollbar = showBottomHorizontalScrollbar ? (
     <div
-      ref={horizontalPanTrackRef}
       className="fixed left-0 right-0 z-[500] pointer-events-none"
       style={{ bottom: `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px)` } as any}
     >
       <div className="px-3 pb-1 flex items-end justify-center">
         <div
+          ref={horizontalPanTrackRef}
           className={`w-[92vw] max-w-[760px] bg-slate-200 rounded-full relative pointer-events-auto transition-all duration-150 ${horizontalScrollbarActive ? 'h-4' : 'h-3'}`}
           style={{ touchAction: 'none', userSelect: 'none' }}
-          onClick={swallowUiEvent}
-          onClickCapture={swallowUiEvent}
-          onPointerDownCapture={swallowUiEvent}
-          onTouchStartCapture={swallowUiEvent}
-          onPointerMove={updateHorizontalScrollbarDrag}
-          onPointerUp={event => {
-            swallowUiEvent(event)
-            endHorizontalScrollbarDrag(event)
-            setHorizontalScrollbarActive(false)
-          }}
-          onPointerCancel={event => {
-            swallowUiEvent(event)
-            endHorizontalScrollbarDrag(event)
-            setHorizontalScrollbarActive(false)
-          }}
-          onPointerDown={event => {
-            swallowUiEvent(event)
-            setHorizontalScrollbarActive(true)
-            const track = horizontalPanTrackRef.current
-            const viewport = studentViewportRef.current
-            if (!track || !viewport) return
-            const rect = event.currentTarget.getBoundingClientRect()
-            const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-            const ratio = rect.width > 0 ? x / rect.width : 0
-            viewport.scrollLeft = ratio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-            beginHorizontalScrollbarDrag(event)
-          }}
         >
           <div
             className="absolute top-0 bottom-0 bg-slate-400 rounded-full"
@@ -5161,15 +5287,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               cursor: 'grab',
               touchAction: 'none',
               userSelect: 'none',
-            }}
-            onClick={swallowUiEvent}
-            onClickCapture={swallowUiEvent}
-            onPointerDownCapture={swallowUiEvent}
-            onTouchStartCapture={swallowUiEvent}
-            onPointerDown={event => {
-              event.preventDefault()
-              event.stopPropagation()
-              beginHorizontalScrollbarDrag(event)
             }}
           />
         </div>

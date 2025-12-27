@@ -56,8 +56,10 @@ export default function DiagramOverlayModule(props: {
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpen?: boolean
   autoPromptUpload?: boolean
+  onRequestClose?: () => void
+  closeSignal?: number
 }) {
-  const { boardId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload } = props
+  const { boardId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
@@ -367,6 +369,21 @@ export default function DiagramOverlayModule(props: {
       }
     }
   }, [isAdmin, persistState, publish])
+
+  const handleClose = useCallback(async () => {
+    // Ensure lesson-authoring snapshots are persisted before closing.
+    saveDiagramIntoLessonDraft()
+    await setOverlayState({ activeDiagramId: diagramStateRef.current.activeDiagramId, isOpen: false })
+    onRequestClose?.()
+  }, [onRequestClose, saveDiagramIntoLessonDraft, setOverlayState])
+
+  const closeSignalRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (typeof closeSignal !== 'number') return
+    if (closeSignalRef.current === closeSignal) return
+    closeSignalRef.current = closeSignal
+    void handleClose()
+  }, [closeSignal, handleClose])
 
   const didAutoOpenExplicitRef = useRef(false)
   useEffect(() => {
@@ -1900,7 +1917,7 @@ export default function DiagramOverlayModule(props: {
                     type="button"
                     className="btn"
                     onClick={() => {
-                      void setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })
+                      void handleClose()
                     }}
                   >
                     Close
@@ -1950,7 +1967,7 @@ export default function DiagramOverlayModule(props: {
                 type="button"
                 className="btn"
                 onClick={() => {
-                  void setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })
+                  void handleClose()
                 }}
               >
                 Close

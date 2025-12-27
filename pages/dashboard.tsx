@@ -143,6 +143,7 @@ export default function Dashboard() {
     pointId: string
     boardId: string
   }>(null)
+  const [lessonAuthoringDiagramCloseSignal, setLessonAuthoringDiagramCloseSignal] = useState(0)
 
   const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
     const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
@@ -221,6 +222,7 @@ export default function Dashboard() {
         pointId: diagramUploadTarget.pointId,
         boardId: diagramUploadTarget.boardId
       })
+      setLessonAuthoringDiagramCloseSignal(0)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Diagram upload failed')
     } finally {
@@ -4052,7 +4054,10 @@ export default function Dashboard() {
 
       {lessonAuthoringDiagramOverlay && (
         <div className="live-call-overlay live-call-overlay--dim-backdrop" role="dialog" aria-modal="true">
-          <div className="live-call-overlay__backdrop" onClick={() => setLessonAuthoringDiagramOverlay(null)} />
+          <div
+            className="live-call-overlay__backdrop"
+            onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
+          />
           <div className="live-call-overlay__panel">
             <div className="live-call-overlay__video relative">
               <DiagramOverlayModule
@@ -4063,12 +4068,14 @@ export default function Dashboard() {
                 isAdmin={isTeacherOrAdminUser}
                 lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
                 autoOpen
+                onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}
+                closeSignal={lessonAuthoringDiagramCloseSignal}
               />
               <div className="live-call-overlay__floating-actions">
                 <button
                   type="button"
                   className="live-call-overlay__close"
-                  onClick={() => setLessonAuthoringDiagramOverlay(null)}
+                  onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
                   aria-label="Close diagram editor"
                 >
                   ×

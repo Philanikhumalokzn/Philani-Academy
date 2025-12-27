@@ -46,6 +46,10 @@ body{
 
 /* Used for lesson-authoring modals: keep the underlying page visible. */
 .live-call-overlay--dim-backdrop .live-call-overlay__backdrop{background:rgba(0,0,0,0.45);}
+
+/* Also remove the visible modal "shell" styling so the diagram editor feels standalone. */
+.live-call-overlay--dim-backdrop .live-call-overlay__panel{background:transparent;box-shadow:none;border:none;padding:0;width:min(1200px,96vw);height:min(92vh,820px);}
+.live-call-overlay--dim-backdrop .live-call-overlay__video{background:transparent;box-shadow:none;border-radius:24px;}
 .container-card{
   background: linear-gradient(150deg, rgba(10,16,32,0.95), rgba(5,9,22,0.9));
   color: var(--text);

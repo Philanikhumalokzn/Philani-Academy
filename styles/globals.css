@@ -43,6 +43,9 @@ body{
 }
 
 /* Common containers */
+
+/* Used for lesson-authoring modals: keep the underlying page visible. */
+.live-call-overlay--dim-backdrop .live-call-overlay__backdrop{background:rgba(0,0,0,0.45);}
 .container-card{
   background: linear-gradient(150deg, rgba(10,16,32,0.95), rgba(5,9,22,0.9));
   color: var(--text);

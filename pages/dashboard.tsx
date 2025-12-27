@@ -138,6 +138,11 @@ export default function Dashboard() {
   const diagramUploadInputRef = useRef<HTMLInputElement | null>(null)
   const [diagramUploadTarget, setDiagramUploadTarget] = useState<null | { phaseKey: LessonPhaseKey; pointId: string; boardId: string }>(null)
   const [diagramUploading, setDiagramUploading] = useState(false)
+  const [lessonAuthoringDiagramOverlay, setLessonAuthoringDiagramOverlay] = useState<null | {
+    phaseKey: LessonPhaseKey
+    pointId: string
+    boardId: string
+  }>(null)
 
   const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
     const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
@@ -210,15 +215,11 @@ export default function Dashboard() {
         return next
       })
 
-      // Diagram authoring is diagram-only: open the standalone editor (no canvas underneath).
-      router.push({
-        pathname: '/diagram',
-        query: {
-          boardId: diagramUploadTarget.boardId,
-          phase: diagramUploadTarget.phaseKey,
-          pointId: diagramUploadTarget.pointId,
-          returnTo: '/dashboard?section=sessions'
-        }
+      // Diagram authoring should pop over the current authoring page (no canvas underneath).
+      setLessonAuthoringDiagramOverlay({
+        phaseKey: diagramUploadTarget.phaseKey,
+        pointId: diagramUploadTarget.pointId,
+        boardId: diagramUploadTarget.boardId
       })
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Diagram upload failed')
@@ -226,7 +227,7 @@ export default function Dashboard() {
       setDiagramUploading(false)
       setDiagramUploadTarget(null)
     }
-  }, [diagramUploadTarget, persistLessonScriptDraftToStorage, router])
+  }, [diagramUploadTarget, persistLessonScriptDraftToStorage])
 
   const loadLessonScriptDraftFromStorage = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -4045,6 +4046,35 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {lessonAuthoringDiagramOverlay && (
+        <div className="live-call-overlay live-call-overlay--dim-backdrop" role="dialog" aria-modal="true">
+          <div className="live-call-overlay__backdrop" onClick={() => setLessonAuthoringDiagramOverlay(null)} />
+          <div className="live-call-overlay__panel">
+            <div className="live-call-overlay__video relative">
+              <DiagramOverlayModule
+                boardId={lessonAuthoringDiagramOverlay.boardId}
+                gradeLabel={null}
+                userId={realtimeUserId}
+                userDisplayName={realtimeDisplayName}
+                isAdmin={isTeacherOrAdminUser}
+                lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
+                autoOpen
+              />
+              <div className="live-call-overlay__floating-actions">
+                <button
+                  type="button"
+                  className="live-call-overlay__close"
+                  onClick={() => setLessonAuthoringDiagramOverlay(null)}
+                  aria-label="Close diagram editor"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

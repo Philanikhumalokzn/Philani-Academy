@@ -566,6 +566,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
+  const suppressStackedNotesPreviewUntilTsRef = useRef(0)
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
@@ -4101,7 +4102,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       } else if (adminDraftLatex) {
         lines.push(adminDraftLatex)
       }
-      return lines.filter(Boolean).join(' \\\\ ').trim()
+      const composed = lines.filter(Boolean).join(' \\\\ ').trim()
+      // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
+      // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
+      return composed || (latexDisplayState.latex || '').trim()
     }
     if (isAdmin) {
       return (latexDisplayState.latex || latexOutput || '').trim()
@@ -4150,6 +4154,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     if (!isAdmin) return
     if (!useAdminStepComposer) return
+    if (Date.now() < suppressStackedNotesPreviewUntilTsRef.current) return
     publishStackedNotesPreview(latexRenderSource, latexRenderOptions)
   }, [isAdmin, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
 
@@ -6153,6 +6158,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                                   className="px-2 py-1 rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                                                   disabled={sessionLatexSelection.moduleIndex < 0}
                                                   onClick={() => {
+                                                    suppressStackedNotesPreviewUntilTsRef.current = 0
+                                                    applyLoadedLatex(sessionLatexSelection.latex)
                                                     void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, sessionLatexSelection.moduleIndex)
                                                     setMobileLatexTrayOpen(false)
                                                   }}
@@ -6164,11 +6171,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                                 type="button"
                                                 className="px-2 py-1 rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                                                 onClick={() => {
+                                                  suppressStackedNotesPreviewUntilTsRef.current = 0
                                                   if (isAdmin) {
                                                     void clearLessonModules()
                                                   } else {
                                                     setLatexDisplayState(curr => ({ ...curr, enabled: false }))
                                                   }
+                                                  setSessionLatexSelection(null)
                                                   setMobileLatexTrayOpen(false)
                                                 }}
                                               >
@@ -6191,6 +6200,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                             onClick={() => {
                                               if (!value) return
                                               // Preview locally (top panel) without implicitly broadcasting.
+                                              suppressStackedNotesPreviewUntilTsRef.current = Date.now() + 12000
                                               applyLoadedLatex(value)
                                               setSessionLatexSelection({ moduleIndex: index, latex: value })
                                             }}

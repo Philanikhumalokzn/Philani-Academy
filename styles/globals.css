@@ -313,7 +313,8 @@ body{
 }
 
 .board-fullscreen{
-  height:100svh;
+  height:100vh;
+  height:100dvh;
   display:flex;
   flex-direction:column;
   background:linear-gradient(180deg,#000000 0%,#020920 45%,#03102c 100%);

@@ -2873,22 +2873,68 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         const waitForHostSize = async () => {
           if (typeof window === 'undefined') return
-          for (let attempt = 0; attempt < 10; attempt += 1) {
-            if (cancelled) return
-            const width = host.clientWidth
-            const height = host.clientHeight
-            if (width > 0 && height > 0) return
-            await new Promise<void>(resolve => {
-              if (typeof window.requestAnimationFrame === 'function') {
-                window.requestAnimationFrame(() => resolve())
-              } else {
-                setTimeout(() => resolve(), 0)
+
+          const isSized = () => host.clientWidth > 0 && host.clientHeight > 0
+          if (isSized()) return
+
+          await new Promise<void>(resolve => {
+            let done = false
+            let resizeObserver: ResizeObserver | null = null
+            let intervalHandle: ReturnType<typeof setInterval> | null = null
+
+            const cleanup = () => {
+              if (done) return
+              done = true
+              try {
+                window.removeEventListener('resize', tick)
+              } catch {}
+              if (resizeObserver) {
+                try {
+                  resizeObserver.disconnect()
+                } catch {}
+                resizeObserver = null
               }
-            })
-          }
+              if (intervalHandle) {
+                clearInterval(intervalHandle)
+                intervalHandle = null
+              }
+              resolve()
+            }
+
+            const tick = () => {
+              if (done) return
+              if (cancelled) {
+                cleanup()
+                return
+              }
+              if (isSized()) {
+                cleanup()
+              }
+            }
+
+            window.addEventListener('resize', tick)
+
+            if (typeof ResizeObserver !== 'undefined') {
+              resizeObserver = new ResizeObserver(() => tick())
+              resizeObserver.observe(host)
+            }
+
+            intervalHandle = setInterval(tick, 100)
+
+            // Kick layout once; helpful when the canvas just became visible.
+            setTimeout(() => {
+              if (done || cancelled) return
+              try {
+                window.dispatchEvent(new Event('resize'))
+              } catch {}
+            }, 50)
+
+            tick()
+          })
         }
 
         await waitForHostSize()
+        if (cancelled) return
 
         const options = {
           configuration: {

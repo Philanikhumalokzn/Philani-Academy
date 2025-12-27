@@ -130,6 +130,14 @@ export default function DiagramOverlayModule(props: {
     diagramStateRef.current = diagramState
   }, [diagramState])
 
+  useEffect(() => {
+    if (!isLessonAuthoring) return
+    if (!diagramState.isOpen) return
+    if (!diagramState.activeDiagramId) return
+    // Keep authoring UX identical: no special buttons. Just auto-save the current diagram snapshot.
+    saveDiagramIntoLessonDraft()
+  }, [diagramState.activeDiagramId, diagramState.isOpen, isLessonAuthoring, saveDiagramIntoLessonDraft])
+
   const activeDiagram = useMemo(() => {
     if (!diagramState.activeDiagramId) return null
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
@@ -250,11 +258,17 @@ export default function DiagramOverlayModule(props: {
 
         await loadFromServer()
         setMobileTrayOpen(false)
+
+        if (isLessonAuthoring) {
+          try {
+            saveDiagramIntoLessonDraft()
+          } catch {}
+        }
       } finally {
         setUploading(false)
       }
     },
-    [channelName, isAdmin, loadFromServer]
+    [channelName, isAdmin, isLessonAuthoring, loadFromServer, saveDiagramIntoLessonDraft]
   )
 
   const onFilePicked = useCallback(
@@ -1845,12 +1859,6 @@ export default function DiagramOverlayModule(props: {
                     type="button"
                     className="btn"
                     onClick={() => {
-                      if (isLessonAuthoring && typeof window !== 'undefined') {
-                        try {
-                          window.dispatchEvent(new Event('philani-lesson-authoring:close'))
-                        } catch {}
-                        return
-                      }
                       void setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })
                     }}
                   >
@@ -1877,21 +1885,6 @@ export default function DiagramOverlayModule(props: {
             <p className="text-sm font-semibold truncate">{activeDiagram.title || 'Untitled diagram'}</p>
           </div>
           <div className="flex items-center gap-2">
-            {isAdmin && isLessonAuthoring && (
-              <button
-                type="button"
-                className="btn"
-                title="Save diagram to lesson point"
-                onClick={() => {
-                  const ok = saveDiagramIntoLessonDraft()
-                  if (!ok) {
-                    alert('Failed to save diagram into lesson script draft. Ensure a diagram is selected and has an image.')
-                  }
-                }}
-              >
-                Save
-              </button>
-            )}
             {isAdmin && (
               <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
                 {uploading ? 'Uploading…' : 'Upload'}
@@ -1916,12 +1909,6 @@ export default function DiagramOverlayModule(props: {
                 type="button"
                 className="btn"
                 onClick={() => {
-                  if (isLessonAuthoring && typeof window !== 'undefined') {
-                    try {
-                      window.dispatchEvent(new Event('philani-lesson-authoring:close'))
-                    } catch {}
-                    return
-                  }
                   void setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })
                 }}
               >

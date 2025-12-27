@@ -54,8 +54,10 @@ export default function DiagramOverlayModule(props: {
   userDisplayName?: string
   isAdmin: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
+  autoOpen?: boolean
+  autoPromptUpload?: boolean
 }) {
-  const { boardId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring } = props
+  const { boardId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload } = props
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
@@ -214,6 +216,27 @@ export default function DiagramOverlayModule(props: {
     fileInputRef.current?.click()
   }, [isAdmin])
 
+  const didAutoPromptUploadRef = useRef(false)
+  useEffect(() => {
+    if (!autoPromptUpload) return
+    if (!autoOpen) return
+    if (!isAdmin) return
+    if (didAutoPromptUploadRef.current) return
+    if (uploading) return
+    if (diagrams.length > 0) return
+    if (!diagramState.isOpen) return
+    if (typeof window === 'undefined') return
+
+    // Best-effort: browsers may block file dialogs that aren't a direct user gesture.
+    didAutoPromptUploadRef.current = true
+    const t = window.setTimeout(() => {
+      try {
+        requestUpload()
+      } catch {}
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [autoOpen, autoPromptUpload, diagramState.isOpen, diagrams.length, isAdmin, requestUpload, uploading])
+
   const uploadAndCreateDiagram = useCallback(
     async (file: File, title?: string) => {
       if (!isAdmin) return
@@ -335,6 +358,15 @@ export default function DiagramOverlayModule(props: {
       }
     }
   }, [isAdmin, persistState, publish])
+
+  const didAutoOpenExplicitRef = useRef(false)
+  useEffect(() => {
+    if (!autoOpen) return
+    if (!isAdmin) return
+    if (didAutoOpenExplicitRef.current) return
+    didAutoOpenExplicitRef.current = true
+    void setOverlayState({ ...diagramStateRef.current, isOpen: true })
+  }, [autoOpen, isAdmin, setOverlayState])
 
   useEffect(() => {
     if (!isLessonAuthoring) return

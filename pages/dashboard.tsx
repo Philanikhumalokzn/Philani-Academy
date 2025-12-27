@@ -109,6 +109,9 @@ export default function Dashboard() {
     return `lesson-author-${kind}-${phaseKey}-${pointId}`
   }
 
+  const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
+  const boardIdToSessionKey = (boardId: string) => `myscript:${sanitizeIdentifier(boardId).toLowerCase()}`
+
   const newPointDraft = (): LessonPointDraft => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     title: '',
@@ -124,6 +127,77 @@ export default function Dashboard() {
     elaborate: [],
     evaluate: [],
   })
+
+  const diagramUploadInputRef = useRef<HTMLInputElement | null>(null)
+  const [diagramUploadTarget, setDiagramUploadTarget] = useState<null | { phaseKey: LessonPhaseKey; pointId: string; boardId: string }>(null)
+  const [diagramUploading, setDiagramUploading] = useState(false)
+
+  const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
+    const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
+    setDiagramUploadTarget({ phaseKey, pointId, boardId })
+    try {
+      diagramUploadInputRef.current?.click()
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const onDiagramFilePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!diagramUploadTarget) return
+
+    const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', file.name) : null) ?? file.name
+    setDiagramUploading(true)
+    try {
+      const sessionKey = boardIdToSessionKey(diagramUploadTarget.boardId)
+      const form = new FormData()
+      form.append('file', file)
+      form.append('sessionKey', sessionKey)
+
+      const uploadRes = await fetch('/api/diagrams/upload', {
+        method: 'POST',
+        body: form,
+        credentials: 'same-origin',
+      })
+
+      if (!uploadRes.ok) {
+        const msg = await uploadRes.text().catch(() => '')
+        throw new Error(msg || `Upload failed (${uploadRes.status})`)
+      }
+
+      const uploadJson = (await uploadRes.json().catch(() => null)) as { url?: string } | null
+      const url = uploadJson?.url
+      if (!url) throw new Error('Upload succeeded but returned no URL')
+
+      const createRes = await fetch('/api/diagrams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ sessionKey, imageUrl: url, title }),
+      })
+      if (!createRes.ok) {
+        const msg = await createRes.text().catch(() => '')
+        throw new Error(msg || `Create failed (${createRes.status})`)
+      }
+
+      setLessonScriptDraft(prev => {
+        const snapshot = { title, imageUrl: url, annotations: null }
+        return {
+          ...prev,
+          [diagramUploadTarget.phaseKey]: (prev[diagramUploadTarget.phaseKey] || []).map(p =>
+            p.id === diagramUploadTarget.pointId ? { ...p, diagramSnapshot: snapshot } : p
+          ),
+        }
+      })
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Diagram upload failed')
+    } finally {
+      setDiagramUploading(false)
+      setDiagramUploadTarget(null)
+    }
+  }, [diagramUploadTarget])
 
   const persistLessonScriptDraftToStorage = useCallback((draft: Record<LessonPhaseKey, LessonPointDraft[]>) => {
     if (typeof window === 'undefined') return
@@ -258,6 +332,11 @@ export default function Dashboard() {
   const heroBgEditHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
+
+  // One shared hidden input so the dashboard button can open the file picker as a direct user gesture.
+  // This keeps diagram upload standalone and avoids navigation.
+  // eslint-disable-next-line @next/next/no-img-element
+
   const materialsRequestIdRef = useRef(0)
   const latexSavesRequestIdRef = useRef(0)
 
@@ -2139,24 +2218,15 @@ export default function Dashboard() {
                                   type="button"
                                   className="btn btn-ghost"
                                   onClick={() => {
+                                    if (!canAuthorLessonModules) return
                                     if (typeof window !== 'undefined') {
                                       persistLessonScriptDraftToStorage(lessonScriptDraft)
                                     }
-                                    void router.push({
-                                      pathname: '/board',
-                                      query: {
-                                        lessonAuthoring: '1',
-                                        module: 'diagram',
-                                        phase: phase.key,
-                                        pointId: point.id,
-                                        boardId: buildLessonAuthoringBoardId('diagram', phase.key, point.id),
-                                        returnTo: '/dashboard?section=sessions',
-                                      },
-                                    })
+                                    openDiagramPickerForPoint(phase.key, point.id)
                                   }}
-                                  disabled={!canAuthorLessonModules}
+                                  disabled={!canAuthorLessonModules || diagramUploading}
                                 >
-                                  Open diagram module
+                                  {diagramUploading && diagramUploadTarget?.pointId === point.id ? 'Uploading…' : 'Open diagram module'}
                                 </button>
                                 <button
                                   type="button"
@@ -3496,6 +3566,13 @@ export default function Dashboard() {
             : 'deep-page min-h-screen pb-16'
         }
       >
+      <input
+        ref={diagramUploadInputRef}
+        type="file"
+        accept="image/*"
+        onChange={onDiagramFilePicked}
+        style={{ display: 'none' }}
+      />
       {isMobile && (
         <>
           <div

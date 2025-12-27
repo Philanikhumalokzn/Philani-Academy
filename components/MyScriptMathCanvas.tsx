@@ -743,6 +743,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     splitDragPointerIdRef.current = null
     splitStartRatioRef.current = studentSplitRatioRef.current
     document.body.style.userSelect = ''
+    ;(document.body.style as any).touchAction = ''
+    ;(document.body.style as any).overscrollBehavior = ''
     requestEditorResize()
   }, [requestEditorResize])
 
@@ -752,6 +754,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     splitStartRatioRef.current = studentSplitRatioRef.current
     splitDragPointerIdRef.current = pointerId
     document.body.style.userSelect = 'none'
+    ;(document.body.style as any).touchAction = 'none'
+    ;(document.body.style as any).overscrollBehavior = 'none'
 
     // Some browsers/devices can be flaky with pointer capture on thin separators.
     // Add window-level listeners so dragging keeps working even if the pointer leaves the handle.
@@ -5777,18 +5781,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className="flex items-center justify-center px-4 py-0.5 bg-white cursor-row-resize select-none"
+              className="relative z-20 flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
+                event.stopPropagation()
                 event.preventDefault()
                 stopSplitDrag()
               }}
               onPointerCancel={event => {
+                event.stopPropagation()
                 event.preventDefault()
                 stopSplitDrag()
               }}
               onPointerDown={event => {
+                event.stopPropagation()
                 event.preventDefault()
                 startSplitDrag(event.pointerId, event.clientY)
                 try {

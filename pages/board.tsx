@@ -149,6 +149,7 @@ export default function BoardPage() {
           userDisplayName={realtimeDisplayName}
           isAdmin={isBoardAdmin}
           boardId={lessonAuthoring ? (lessonAuthoringBoardId || undefined) : undefined}
+          autoOpenDiagramTray={Boolean(lessonAuthoring && lessonAuthoringModule === 'diagram')}
           lessonAuthoring={lessonAuthoring && lessonAuthoringPhase && lessonAuthoringPointId
             ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
             : undefined}
@@ -157,16 +158,9 @@ export default function BoardPage() {
     )
   }
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!lessonAuthoring) return
-    if (lessonAuthoringModule !== 'diagram') return
-    // Open the diagram overlay immediately in authoring mode.
-    const t = window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('philani-diagrams:script-apply', { detail: { open: true } }))
-    }, 0)
-    return () => window.clearTimeout(t)
-  }, [lessonAuthoring, lessonAuthoringModule])
+  // Note: do not force-open the diagram overlay here.
+  // The middle-strip diagram icon uses a mobile tray toggle handler; lesson authoring should
+  // trigger that same UX from inside the canvas component to keep behaviour identical.
 
   useEffect(() => {
     if (!router.isReady) return

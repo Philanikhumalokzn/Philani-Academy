@@ -192,6 +192,7 @@ type MyScriptMathCanvasProps = {
   userDisplayName?: string
   isAdmin?: boolean
   boardId?: string
+  autoOpenDiagramTray?: boolean
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
@@ -294,7 +295,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -4271,6 +4272,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       )
     } catch {}
   }, [viewportBottomOffsetPx])
+
+  const didAutoOpenDiagramTrayRef = useRef(false)
+  useEffect(() => {
+    if (!autoOpenDiagramTray) return
+    if (!isAdmin) return
+    if (typeof window === 'undefined') return
+    if (didAutoOpenDiagramTrayRef.current) return
+
+    // This matches the middle-strip diagram icon behaviour: only the compact (mobile) UI uses the tray.
+    if (!isCompactViewport) return
+
+    didAutoOpenDiagramTrayRef.current = true
+    const t = window.setTimeout(() => {
+      toggleMobileDiagramTray()
+    }, 0)
+    return () => window.clearTimeout(t)
+  }, [autoOpenDiagramTray, isAdmin, isCompactViewport, toggleMobileDiagramTray])
 
   const toggleMobileTextTray = useCallback(() => {
     if (typeof window === 'undefined') return

@@ -325,6 +325,7 @@ export default function DiagramOverlayModule(props: {
   useEffect(() => {
     if (!isLessonAuthoring) return
     if (didAutoOpenInAuthoringRef.current) return
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return
     didAutoOpenInAuthoringRef.current = true
 
     // When coming from the dashboard's "Open diagram module" button, the board page can dispatch

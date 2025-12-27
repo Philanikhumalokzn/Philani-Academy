@@ -5001,6 +5001,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setLatexSaveError('Failed to save into lesson script draft.')
           return
         }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'latex', phaseKey: lessonAuthoring?.phaseKey, pointId: lessonAuthoring?.pointId } }))
+        }
         setLatexSaveError(null)
         return
       }

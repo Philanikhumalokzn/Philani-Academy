@@ -257,6 +257,13 @@ export default function Dashboard() {
   }, [loadLessonScriptDraftFromStorage])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onDraftUpdated = () => loadLessonScriptDraftFromStorage()
+    window.addEventListener('philani:lesson-authoring:draft-updated', onDraftUpdated as any)
+    return () => window.removeEventListener('philani:lesson-authoring:draft-updated', onDraftUpdated as any)
+  }, [loadLessonScriptDraftFromStorage])
+
+  useEffect(() => {
     persistLessonScriptDraftToStorage(lessonScriptDraft)
   }, [lessonScriptDraft, persistLessonScriptDraftToStorage])
   const [minStartsAt, setMinStartsAt] = useState('')

@@ -372,14 +372,18 @@ export default function DiagramOverlayModule(props: {
 
   const handleClose = useCallback(async () => {
     // Ensure lesson-authoring snapshots are persisted before closing.
-    saveDiagramIntoLessonDraft()
+    const saved = saveDiagramIntoLessonDraft()
     await setOverlayState({ activeDiagramId: diagramStateRef.current.activeDiagramId, isOpen: false })
+    if (saved && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'diagram', phaseKey: lessonAuthoring?.phaseKey, pointId: lessonAuthoring?.pointId } }))
+    }
     onRequestClose?.()
   }, [onRequestClose, saveDiagramIntoLessonDraft, setOverlayState])
 
   const closeSignalRef = useRef<number | null>(null)
   useEffect(() => {
     if (typeof closeSignal !== 'number') return
+    if (closeSignal <= 0) return
     if (closeSignalRef.current === closeSignal) return
     closeSignalRef.current = closeSignal
     void handleClose()

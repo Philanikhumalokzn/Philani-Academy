@@ -70,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
   const role = await getUserRole(req)
-  if (!requireRole('admin', role)) return res.status(403).json({ message: 'Forbidden' })
+  if (!(requireRole('admin', role) || requireRole('teacher', role))) return res.status(403).json({ message: 'Forbidden' })
 
   try {
     const { fields, files } = await parseForm(req)

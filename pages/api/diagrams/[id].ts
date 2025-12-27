@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'PATCH') {
     const role = await getUserRole(req)
-    if (!requireRole('admin', role)) return res.status(403).json({ message: 'Forbidden' })
+    if (!(requireRole('admin', role) || requireRole('teacher', role))) return res.status(403).json({ message: 'Forbidden' })
 
     const updates: any = {}
     if (typeof req.body?.title === 'string') updates.title = req.body.title
@@ -54,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'DELETE') {
     const role = await getUserRole(req)
-    if (!requireRole('admin', role)) return res.status(403).json({ message: 'Forbidden' })
+    if (!(requireRole('admin', role) || requireRole('teacher', role))) return res.status(403).json({ message: 'Forbidden' })
 
     const diagram = await prisma.diagram.findUnique({ where: { id: diagramId } })
     if (!diagram) return res.status(404).json({ message: 'Not found' })

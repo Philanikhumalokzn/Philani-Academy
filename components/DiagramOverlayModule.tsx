@@ -59,6 +59,7 @@ export default function DiagramOverlayModule(props: {
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
+  const didAutoOpenInAuthoringRef = useRef(false)
 
   const saveDiagramIntoLessonDraft = useCallback(() => {
     if (!isLessonAuthoring) return false
@@ -93,6 +94,10 @@ export default function DiagramOverlayModule(props: {
   const [mobileTrayOpen, setMobileTrayOpen] = useState(false)
   const [mobileTrayBottomOffsetPx, setMobileTrayBottomOffsetPx] = useState(0)
   const [mobileTrayReservePx, setMobileTrayReservePx] = useState(28)
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const mobileTrayBottomCss = useMemo(
     () => `calc(env(safe-area-inset-bottom) + ${mobileTrayBottomOffsetPx}px + ${mobileTrayReservePx}px)`,
@@ -195,6 +200,79 @@ export default function DiagramOverlayModule(props: {
     }
   }, [channelName])
 
+  const requestUpload = useCallback(() => {
+    if (!isAdmin) return
+    setUploadError(null)
+    fileInputRef.current?.click()
+  }, [isAdmin])
+
+  const uploadAndCreateDiagram = useCallback(
+    async (file: File, title?: string) => {
+      if (!isAdmin) return
+      if (!channelName) return
+      setUploadError(null)
+      setUploading(true)
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        form.append('sessionKey', channelName)
+
+        const uploadRes = await fetch('/api/diagrams/upload', {
+          method: 'POST',
+          body: form,
+          credentials: 'same-origin',
+        })
+
+        if (!uploadRes.ok) {
+          const msg = await uploadRes.text().catch(() => '')
+          throw new Error(msg || `Upload failed (${uploadRes.status})`)
+        }
+
+        const uploadJson = (await uploadRes.json().catch(() => null)) as { url?: string } | null
+        const url = uploadJson?.url
+        if (!url) throw new Error('Upload succeeded but returned no URL')
+
+        const createRes = await fetch('/api/diagrams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            sessionKey: channelName,
+            imageUrl: url,
+            title: title || file.name,
+          }),
+        })
+
+        if (!createRes.ok) {
+          const msg = await createRes.text().catch(() => '')
+          throw new Error(msg || `Create failed (${createRes.status})`)
+        }
+
+        await loadFromServer()
+        setMobileTrayOpen(false)
+      } finally {
+        setUploading(false)
+      }
+    },
+    [channelName, isAdmin, loadFromServer]
+  )
+
+  const onFilePicked = useCallback(
+    async (e: any) => {
+      const file = e?.target?.files?.[0] as File | undefined
+      if (e?.target) e.target.value = ''
+      if (!file) return
+
+      const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', file.name) : null) ?? undefined
+      try {
+        await uploadAndCreateDiagram(file, title)
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload failed')
+      }
+    },
+    [uploadAndCreateDiagram]
+  )
+
   useEffect(() => {
     if (!userId) return
     void loadFromServer()
@@ -244,6 +322,16 @@ export default function DiagramOverlayModule(props: {
     }
   }, [isAdmin, persistState, publish])
 
+  useEffect(() => {
+    if (!isLessonAuthoring) return
+    if (didAutoOpenInAuthoringRef.current) return
+    didAutoOpenInAuthoringRef.current = true
+
+    // When coming from the dashboard's "Open diagram module" button, the board page can dispatch
+    // events before this module is mounted. Auto-open here to avoid landing on a blank canvas.
+    void setOverlayState({ ...diagramStateRef.current, isOpen: true })
+  }, [isLessonAuthoring, setOverlayState])
+
   // Pop the tray over the middle separator: raise z-index, and position higher (about 50% up from the bottom, but still above the bottom bar).
   const trayPopOverSeparatorCss = useMemo(
     () => ({
@@ -268,7 +356,19 @@ export default function DiagramOverlayModule(props: {
         className="mx-3 mb-2 bg-white border border-slate-200 rounded-lg shadow-lg px-2 py-2"
         onClick={e => e.stopPropagation()}
       >
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
+
         <div className="flex gap-2 overflow-x-auto">
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            disabled={uploading}
+            onClick={requestUpload}
+            title="Upload a new diagram"
+          >
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+
           {diagrams.length === 0 ? (
             <div className="text-[11px] text-slate-500 px-2 py-2">No diagrams yet.</div>
           ) : (
@@ -293,6 +393,8 @@ export default function DiagramOverlayModule(props: {
             ))
           )}
         </div>
+
+        {uploadError ? <div className="mt-2 text-[11px] text-red-600 px-1">{uploadError}</div> : null}
       </div>
     </div>
   ) : null
@@ -1722,6 +1824,48 @@ export default function DiagramOverlayModule(props: {
   return (
     <>
       {mobileDiagramTray}
+      {diagramState.isOpen && !activeDiagram ? (
+        <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
+          <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+          <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900">
+            <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
+              <div className="min-w-0">
+                <p className="text-xs text-slate-500">Diagram</p>
+                <p className="text-sm font-semibold truncate">No diagrams yet</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                    {uploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      if (isLessonAuthoring && typeof window !== 'undefined') {
+                        try {
+                          window.dispatchEvent(new Event('philani-lesson-authoring:close'))
+                        } catch {}
+                        return
+                      }
+                      void setOverlayState({ activeDiagramId: diagramState.activeDiagramId, isOpen: false })
+                    }}
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-slate-700">Upload an image to start a diagram.</p>
+              {uploadError ? <p className="mt-2 text-sm text-red-600">{uploadError}</p> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {diagramState.isOpen && activeDiagram ? (
         <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
           <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
@@ -1745,6 +1889,11 @@ export default function DiagramOverlayModule(props: {
                 }}
               >
                 Save
+              </button>
+            )}
+            {isAdmin && (
+              <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                {uploading ? 'Uploading…' : 'Upload'}
               </button>
             )}
             {isAdmin && (

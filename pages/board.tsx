@@ -93,13 +93,15 @@ export default function BoardPage() {
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || (session as any)?.user?.role === 'admin')
 
+  const isTeacherUser = Boolean((session as any)?.user?.role === 'teacher')
+
   const isLessonAuthoringTeacher = Boolean(
     lessonAuthoring &&
       (session as any)?.user?.role &&
       (((session as any).user.role === 'admin') || ((session as any).user.role === 'teacher'))
   )
 
-  const isBoardAdmin = lessonAuthoring ? isLessonAuthoringTeacher : isOwnerUser
+  const isBoardAdmin = lessonAuthoring ? isLessonAuthoringTeacher : (isOwnerUser || isTeacherUser)
   const realtimeUserId = useMemo(() => {
     const candidate = (session as any)?.user?.id as string | undefined
     if (candidate && typeof candidate === 'string') return candidate

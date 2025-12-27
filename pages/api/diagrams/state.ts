@@ -20,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const role = await getUserRole(req)
-  if (!requireRole('admin', role)) return res.status(403).json({ message: 'Forbidden' })
+  if (!(requireRole('admin', role) || requireRole('teacher', role))) return res.status(403).json({ message: 'Forbidden' })
 
   const sessionKey = normalizeSessionKey(req.body?.sessionKey)
   if (!sessionKey) return res.status(400).json({ message: 'Missing sessionKey' })

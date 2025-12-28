@@ -323,6 +323,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastBroadcastBaseCountRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const studentQuizPreviewExportInFlightRef = useRef(false)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
@@ -3062,6 +3064,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 })
             }, 450)
           }
+
+          // Student quiz mode: show a live LaTeX preview while the learner writes.
+          // (The normal student view doesn't continuously export LaTeX, so we add it only for active quizzes.)
+          if (!isAdmin && quizActiveRef.current) {
+            if (studentQuizPreviewExportRef.current) {
+              clearTimeout(studentQuizPreviewExportRef.current)
+            }
+            studentQuizPreviewExportRef.current = setTimeout(() => {
+              studentQuizPreviewExportRef.current = null
+              if (studentQuizPreviewExportInFlightRef.current) return
+              studentQuizPreviewExportInFlightRef.current = true
+              ;(async () => {
+                let latexValue = getLatexFromEditorModel()
+                if (!latexValue || latexValue.trim().length === 0) {
+                  const exported = await exportLatexFromEditor()
+                  latexValue = typeof exported === 'string' ? exported : ''
+                }
+                if (cancelled) return
+                setLatexOutput(latexValue)
+              })()
+                .finally(() => {
+                  studentQuizPreviewExportInFlightRef.current = false
+                })
+            }, 350)
+          }
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
@@ -4406,6 +4433,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return ''
     }
   }, [latexRenderOptions.alignAtEquals, latexProjectionRenderSource])
+
+  const studentQuizLatexPreviewMarkup = useMemo(() => {
+    if (isAdmin) return ''
+    if (!quizActive) return ''
+    const latexString = (latexOutput || '').trim()
+    if (!latexString) return ''
+    try {
+      return renderToString(latexString, {
+        throwOnError: false,
+        displayMode: true,
+      })
+    } catch (err) {
+      console.warn('Failed to render student quiz preview', err)
+      return ''
+    }
+  }, [isAdmin, latexOutput, quizActive])
 
   const latexOverlayStyle = useMemo<CSSProperties>(
     () => ({
@@ -6905,6 +6948,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div
                 className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
               >
+                {!isAdmin && quizActive && (
+                  <div className="px-3 py-2 border-b border-slate-200 bg-slate-50">
+                    {studentQuizLatexPreviewMarkup ? (
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={{ fontSize: '1.05rem' }}
+                        dangerouslySetInnerHTML={{ __html: studentQuizLatexPreviewMarkup }}
+                      />
+                    ) : (
+                      <div className="text-slate-500 text-sm">Your LaTeX preview will appear here as you write.</div>
+                    )}
+                  </div>
+                )}
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"

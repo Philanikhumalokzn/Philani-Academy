@@ -3377,11 +3377,11 @@ export default function Dashboard() {
                           ) : (
                             <div className="space-y-2">
                               {myResponses.map((r: any) => (
-                                <div key={r.id} className="p-3 border rounded bg-slate-50 space-y-1">
+                                <div key={r.id} className="p-3 border rounded bg-white space-y-1">
                                   {r?.updatedAt ? (
-                                    <div className="text-xs muted">{new Date(r.updatedAt).toLocaleString()}</div>
+                                    <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
                                   ) : null}
-                                  <div className="text-xs font-mono whitespace-pre-wrap break-words">{r?.latex || ''}</div>
+                                  <div className="text-xs font-mono text-slate-900 whitespace-pre-wrap break-words">{r?.latex || ''}</div>
                                 </div>
                               ))}
                             </div>

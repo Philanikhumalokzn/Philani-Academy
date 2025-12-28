@@ -2214,8 +2214,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!canPublish) {
         return
       }
-      // In student quiz mode we do NOT publish live ink. Students work privately.
-      if (!isAdmin && isQuizMode && quizActiveRef.current) {
+      // During quizzes, students work privately (no live ink publishing).
+      if (!isAdmin && quizActiveRef.current) {
         return
       }
       if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
@@ -2614,8 +2614,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const editor = editorInstanceRef.current
     if (!editor) return
 
-    // During student quiz mode, freeze teacher steps: ignore incoming remote snapshots.
-    if (!isAdmin && isQuizMode && quizActiveRef.current) {
+    // During quizzes, freeze teacher steps: ignore incoming remote snapshots.
+    if (!isAdmin && quizActiveRef.current) {
       return
     }
 
@@ -3348,7 +3348,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             }
 
             // Students: enter/exit quiz mode via teacher broadcast.
-            if (!isAdmin && isQuizMode) {
+            if (!isAdmin) {
               if (phase === 'active') {
                 // Capture baseline (the teacher's last visible state) and clear the work area.
                 const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
@@ -4750,7 +4750,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const studentQuizCommitOrSubmit = useCallback(async () => {
     if (isAdmin) return
-    if (!isQuizMode) return
     if (!quizActiveRef.current) return
     if (quizSubmitting) return
     if (!boardId) {
@@ -4867,7 +4866,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, boardId, captureFullSnapshot, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, isQuizMode, normalizeStepLatex, quizSubmitting, setQuizActiveState, userDisplayName, userId])
+  }, [applyPageSnapshot, boardId, captureFullSnapshot, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, quizSubmitting, setQuizActiveState, userDisplayName, userId])
 
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -6491,7 +6490,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(isAdmin || isQuizMode) ? (
+                {(isAdmin || quizActive) ? (
                   <div className="flex items-center gap-2">
                     {isCompactViewport && (
                       <button
@@ -6606,7 +6605,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       className="px-2 py-1"
                       title="Send step"
                       onClick={async () => {
-                      if (!isAdmin && isQuizMode) {
+                      if (!isAdmin && quizActiveRef.current) {
                         if (lockedOutRef.current) return
                         await studentQuizCommitOrSubmit()
                         return
@@ -6691,7 +6690,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (isQuizMode ? (quizSubmitting || !quizActive) : true))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || !quizActive))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

@@ -34,9 +34,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  // Some environments may have a stale/generated Prisma client type surface.
+  // The schema contains `LearnerResponse`, but TS may not see `prisma.learnerResponse` yet.
+  const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+
   if (req.method === 'GET') {
     // Learners only fetch their own responses.
-    const records = await prisma.learnerResponse.findMany({
+    const records = await learnerResponse.findMany({
       where: { sessionKey, userId },
       orderBy: { updatedAt: 'desc' },
       take: 25,
@@ -54,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      const record = await prisma.learnerResponse.upsert({
+      const record = await learnerResponse.upsert({
         where: {
           sessionKey_userId: {
             sessionKey,

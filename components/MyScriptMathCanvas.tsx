@@ -148,6 +148,18 @@ type ControlState = {
   ts: number
 } | null
 
+type QuizControlMessage = {
+  clientId?: string
+  author?: string
+  action: 'quiz'
+  phase: 'active' | 'inactive' | 'submit'
+  enabled?: boolean
+  combinedLatex?: string
+  fromUserId?: string
+  fromName?: string
+  ts?: number
+}
+
 type LatexDisplayOptions = {
   fontScale: number
   textAlign: 'left' | 'center' | 'right'
@@ -350,6 +362,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
 
   const [quizSubmitting, setQuizSubmitting] = useState(false)
+  const [quizActive, setQuizActive] = useState(false)
+  const quizActiveRef = useRef(false)
+  const quizBaselineSnapshotRef = useRef<SnapshotPayload | null>(null)
+  const quizHasCommittedRef = useRef(false)
+  const quizCombinedLatexRef = useRef('')
+
+  const setQuizActiveState = useCallback((enabled: boolean) => {
+    setQuizActive(enabled)
+    quizActiveRef.current = enabled
+  }, [])
 
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 
@@ -2192,6 +2214,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!canPublish) {
         return
       }
+      // In student quiz mode we do NOT publish live ink. Students work privately.
+      if (!isAdmin && isQuizMode && quizActiveRef.current) {
+        return
+      }
       if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
         return
       }
@@ -2587,6 +2613,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   if (message.originClientId && message.originClientId === clientIdRef.current && !targetClientId) return
     const editor = editorInstanceRef.current
     if (!editor) return
+
+    // During student quiz mode, freeze teacher steps: ignore incoming remote snapshots.
+    if (!isAdmin && isQuizMode && quizActiveRef.current) {
+      return
+    }
 
     const rebuildFromSnapshot = async (count: number) => {
       try {
@@ -3291,12 +3322,68 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz'
             targetClientId?: string
             snapshot?: SnapshotPayload | null
             enabled?: boolean
             latex?: string
             options?: Partial<LatexDisplayOptions>
+            phase?: 'active' | 'inactive' | 'submit'
+            combinedLatex?: string
+            fromUserId?: string
+            fromName?: string
+          }
+          if (data?.action === 'quiz') {
+            const phase = data.phase
+            // Teacher sees incoming submissions in realtime; minimal UX for now.
+            if (isAdmin && phase === 'submit') {
+              const who = (data.fromName || 'Student').trim()
+              const combined = (data.combinedLatex || '').trim()
+              if (combined) {
+                console.log(`[quiz submit] ${who}:`, combined)
+              } else {
+                console.log(`[quiz submit] ${who}: (empty)`)
+              }
+              return
+            }
+
+            // Students: enter/exit quiz mode via teacher broadcast.
+            if (!isAdmin && isQuizMode) {
+              if (phase === 'active') {
+                // Capture baseline (the teacher's last visible state) and clear the work area.
+                const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
+                quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
+                quizCombinedLatexRef.current = ''
+                quizHasCommittedRef.current = false
+                setQuizActiveState(true)
+                suppressBroadcastUntilTsRef.current = Date.now() + 800
+                try {
+                  editor?.clear?.()
+                } catch {}
+                lastSymbolCountRef.current = 0
+                lastBroadcastBaseCountRef.current = 0
+                setLatexOutput('')
+                return
+              }
+              if (phase === 'inactive') {
+                setQuizActiveState(false)
+                quizCombinedLatexRef.current = ''
+                quizHasCommittedRef.current = false
+                // Restore baseline snapshot (so student returns to pre-quiz view).
+                const baseline = quizBaselineSnapshotRef.current
+                quizBaselineSnapshotRef.current = null
+                if (baseline) {
+                  void applyPageSnapshot(baseline)
+                } else {
+                  // Best effort: request sync.
+                  channel
+                    ?.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
+                    .catch(() => {})
+                }
+                return
+              }
+            }
+            return
           }
           if (data?.action === 'student-broadcast') {
             const enabled = Boolean(data.enabled)
@@ -4622,6 +4709,166 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [horizontalPanThumbRatio, manualScrollGain, verticalPanThumbRatio])
 
+  const publishQuizState = useCallback(async (enabled: boolean) => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    try {
+      if (enabled) {
+        // Students must be able to write privately during quizzes.
+        // Unlock to all students and explicitly disable publishing.
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          locked: false,
+          controllerId: ALL_STUDENTS_ID,
+          controllerName: 'All Students',
+          ts: Date.now(),
+        })
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'student-broadcast',
+          enabled: false,
+          controllerId: ALL_STUDENTS_ID,
+          controllerName: 'All Students',
+          ts: Date.now() + 1,
+        })
+      }
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'quiz',
+        phase: enabled ? 'active' : 'inactive',
+        enabled,
+        ts: Date.now(),
+      } satisfies QuizControlMessage)
+    } catch (err) {
+      console.warn('Failed to publish quiz state', err)
+    }
+  }, [isAdmin, userDisplayName])
+
+  const studentQuizCommitOrSubmit = useCallback(async () => {
+    if (isAdmin) return
+    if (!isQuizMode) return
+    if (!quizActiveRef.current) return
+    if (quizSubmitting) return
+    if (!boardId) {
+      alert('This quiz session is missing a session id (boardId).')
+      return
+    }
+    const editor = editorInstanceRef.current
+    if (!editor) return
+
+    setQuizSubmitting(true)
+    try {
+      try {
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
+      } catch {}
+
+      // Determine if canvas currently has ink.
+      const snap = captureFullSnapshot()
+      const symbolCount = countSymbols(snap?.symbols)
+      const hasInk = symbolCount > 0
+
+      const getStepLatex = async () => {
+        let step = ''
+        try {
+          const modelLatex = getLatexFromEditorModel()
+          const normalizedModel = normalizeStepLatex(modelLatex)
+          if (normalizedModel) step = normalizedModel
+        } catch {}
+        if (!step) {
+          for (let i = 0; i < 3 && !step; i += 1) {
+            const exported = await exportLatexFromEditor()
+            const normalized = normalizeStepLatex(exported)
+            if (normalized) {
+              step = normalized
+              break
+            }
+            await new Promise<void>(resolve => setTimeout(resolve, 200))
+          }
+        }
+        return step
+      }
+
+      if (hasInk) {
+        // First-stage send: commit this line into combined latex and clear bottom canvas.
+        const step = await getStepLatex()
+        if (!step) return
+
+        const existing = quizCombinedLatexRef.current
+        const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
+        quizCombinedLatexRef.current = nextCombined
+        quizHasCommittedRef.current = true
+
+        suppressBroadcastUntilTsRef.current = Date.now() + 1200
+        try {
+          editor.clear?.()
+        } catch {}
+        lastSymbolCountRef.current = 0
+        lastBroadcastBaseCountRef.current = 0
+        setLatexOutput('')
+        return
+      }
+
+      // Second-stage send: if blank, prompt to submit (only after at least one commit).
+      if (!quizHasCommittedRef.current || !quizCombinedLatexRef.current.trim()) {
+        return
+      }
+
+      const ok = typeof window !== 'undefined'
+        ? window.confirm('Submit your quiz response?')
+        : true
+      if (!ok) return
+
+      const combined = quizCombinedLatexRef.current.trim()
+
+      // Persist under the session responses (dashboard Quizzes folder).
+      const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latex: combined }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to submit response (${res.status})`)
+        return
+      }
+
+      // Notify teacher immediately with the combined latex string.
+      try {
+        await channelRef.current?.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'quiz',
+          phase: 'submit',
+          combinedLatex: combined,
+          fromUserId: userId,
+          fromName: userDisplayName,
+          ts: Date.now(),
+        } satisfies QuizControlMessage)
+      } catch {}
+
+      // Restore pre-quiz canvas view.
+      const baseline = quizBaselineSnapshotRef.current
+      quizBaselineSnapshotRef.current = null
+      quizCombinedLatexRef.current = ''
+      quizHasCommittedRef.current = false
+      setQuizActiveState(false)
+      if (baseline) {
+        await applyPageSnapshot(baseline)
+      } else {
+        await channelRef.current?.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
+      }
+    } finally {
+      setQuizSubmitting(false)
+    }
+  }, [applyPageSnapshot, boardId, captureFullSnapshot, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, isQuizMode, normalizeStepLatex, quizSubmitting, setQuizActiveState, userDisplayName, userId])
+
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return
     try {
@@ -5595,6 +5842,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       </div>
       {isAdmin && (
         <div className="canvas-toolbar__buttons">
+          <button
+            className={`btn ${quizActive ? 'btn-secondary' : ''}`}
+            type="button"
+            onClick={() => runCanvasAction(async () => {
+              await publishQuizState(!quizActiveRef.current)
+              // Keep local admin indicator in sync.
+              setQuizActiveState(!quizActiveRef.current)
+            })}
+            disabled={status !== 'ready' || Boolean(fatalError)}
+          >
+            {quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}
+          </button>
           {ENABLE_EMBEDDED_DIAGRAMS && (
             <>
               <button
@@ -6348,59 +6607,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       title="Send step"
                       onClick={async () => {
                       if (!isAdmin && isQuizMode) {
-                        if (quizSubmitting) return
                         if (lockedOutRef.current) return
-                        if (!boardId) {
-                          alert('This quiz session is missing a session id (boardId).')
-                          return
-                        }
-
-                        const editor = editorInstanceRef.current
-                        if (!editor) return
-
-                        setQuizSubmitting(true)
-                        try {
-                          try {
-                            if (typeof editor.waitForIdle === 'function') {
-                              await editor.waitForIdle()
-                            }
-                          } catch {}
-
-                          let step = ''
-                          try {
-                            const modelLatex = getLatexFromEditorModel()
-                            const normalizedModel = normalizeStepLatex(modelLatex)
-                            if (normalizedModel) step = normalizedModel
-                          } catch {}
-
-                          if (!step) {
-                            for (let i = 0; i < 3 && !step; i += 1) {
-                              const exported = await exportLatexFromEditor()
-                              const normalized = normalizeStepLatex(exported)
-                              if (normalized) {
-                                step = normalized
-                                break
-                              }
-                              await new Promise<void>(resolve => setTimeout(resolve, 250))
-                            }
-                          }
-
-                          if (!step) return
-
-                          const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
-                            method: 'POST',
-                            credentials: 'same-origin',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ latex: step }),
-                          })
-                          if (!res.ok) {
-                            const data = await res.json().catch(() => ({}))
-                            alert(data?.message || `Failed to submit response (${res.status})`)
-                            return
-                          }
-                        } finally {
-                          setQuizSubmitting(false)
-                        }
+                        await studentQuizCommitOrSubmit()
                         return
                       }
 
@@ -6483,7 +6691,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || !boardId))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (isQuizMode ? (quizSubmitting || !quizActive) : true))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

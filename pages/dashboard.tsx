@@ -1416,14 +1416,14 @@ export default function Dashboard() {
     resetMaterialForm()
   }, [])
 
-  const openSessionDetails = useCallback((ids: string[], initialIndex = 0) => {
+  const openSessionDetails = useCallback((ids: string[], initialIndex = 0, initialTab: 'materials' | 'latex' | 'responses' = 'materials') => {
     const safeIds = (ids || []).map(String).filter(Boolean)
     if (!safeIds.length) return
     const idx = Math.max(0, Math.min(initialIndex, safeIds.length - 1))
     setSessionDetailsIds(safeIds)
     setSessionDetailsIndex(idx)
     setSessionDetailsView('details')
-    setSessionDetailsTab('materials')
+    setSessionDetailsTab(initialTab)
     setSessionDetailsOpen(true)
   }, [])
 
@@ -2117,20 +2117,9 @@ export default function Dashboard() {
               >
                 {canJoinLiveClass ? 'Open live view' : 'Join class'}
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => showCanvasWindow(activeSessionId)}
-                disabled={!canLaunchCanvasOverlay}
-              >
-                Canvas window
-              </button>
             </div>
           </div>
-          <p className="text-xs text-white">The live view takes over the screen for video, and canvases layer on top as draggable windows.</p>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-            {liveStatusMessage()}
-          </div>
+          <div className="text-sm muted">{liveStatusMessage()}</div>
         </div>
       </div>
     )
@@ -2564,7 +2553,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: true })}
+                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
                     disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                   >
                     Quizzes
@@ -2605,7 +2594,7 @@ export default function Dashboard() {
                       <button
                         type="button"
                         className="btn"
-                        onClick={() => showCanvasWindow(s.id, { quizMode: true })}
+                        onClick={() => openSessionDetails([String(s.id)], 0, 'responses')}
                         disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
                         Quizzes
@@ -2881,7 +2870,7 @@ export default function Dashboard() {
                               if (sessionDetailsSessionId) fetchMyResponses(sessionDetailsSessionId)
                             }}
                           >
-                            My responses
+                            Quizzes
                           </button>
                         )}
                       </div>
@@ -3366,7 +3355,7 @@ export default function Dashboard() {
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">My responses</div>
+                            <div className="font-semibold text-sm">Quizzes</div>
                             {expandedSessionId && (
                               <button
                                 type="button"

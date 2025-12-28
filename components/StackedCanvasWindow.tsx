@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
+
+const TextOverlayModule = dynamic(() => import('./TextOverlayModule'), { ssr: false })
 
 type CanvasOrientation = 'portrait' | 'landscape'
 
@@ -44,7 +47,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           <span className="live-canvas-window__badge">{gradeLabel || 'Shared board'}</span>
         </div>
       </div>
-      <div className="live-canvas-window__body">
+      <div className="live-canvas-window__body relative">
         <MyScriptMathCanvas
           uiMode="overlay"
           gradeLabel={gradeLabel || undefined}
@@ -62,6 +65,16 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
             onOverlayChromeVisibilityChange?.(visible)
           }}
         />
+
+        {boardId && (
+          <TextOverlayModule
+            boardId={boardId}
+            gradeLabel={gradeLabel || null}
+            userId={userId}
+            userDisplayName={userDisplayName}
+            isAdmin={Boolean(isAdmin)}
+          />
+        )}
       </div>
     </div>
   )

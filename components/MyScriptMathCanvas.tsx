@@ -154,6 +154,8 @@ type QuizControlMessage = {
   action: 'quiz'
   phase: 'active' | 'inactive' | 'submit'
   enabled?: boolean
+  quizId?: string
+  prompt?: string
   combinedLatex?: string
   fromUserId?: string
   fromName?: string
@@ -369,6 +371,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizBaselineSnapshotRef = useRef<SnapshotPayload | null>(null)
   const quizHasCommittedRef = useRef(false)
   const quizCombinedLatexRef = useRef('')
+  const quizIdRef = useRef<string>('')
+  const quizPromptRef = useRef<string>('')
 
   const setQuizActiveState = useCallback((enabled: boolean) => {
     setQuizActive(enabled)
@@ -3353,6 +3357,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             targetClientId?: string
             snapshot?: SnapshotPayload | null
             enabled?: boolean
+            quizId?: string
+            prompt?: string
             latex?: string
             options?: Partial<LatexDisplayOptions>
             phase?: 'active' | 'inactive' | 'submit'
@@ -3377,6 +3383,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             // Students: enter/exit quiz mode via teacher broadcast.
             if (!isAdmin) {
               if (phase === 'active') {
+                quizIdRef.current = typeof data.quizId === 'string' ? data.quizId : ''
+                quizPromptRef.current = typeof data.prompt === 'string' ? data.prompt : ''
                 // Capture baseline (the teacher's last visible state) and clear the work area.
                 const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
                 quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
@@ -3396,6 +3404,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 setQuizActiveState(false)
                 quizCombinedLatexRef.current = ''
                 quizHasCommittedRef.current = false
+                quizIdRef.current = ''
+                quizPromptRef.current = ''
                 // Restore baseline snapshot (so student returns to pre-quiz view).
                 const baseline = quizBaselineSnapshotRef.current
                 quizBaselineSnapshotRef.current = null
@@ -4757,6 +4767,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const channel = channelRef.current
     if (!channel) return
     try {
+      let quizId = quizIdRef.current
+      let promptText = quizPromptRef.current
+
+      if (enabled) {
+        // Teacher enters the quiz prompt at the moment quiz mode starts.
+        if (typeof window !== 'undefined') {
+          const entered = window.prompt('Quiz question / instructions (shown to students):', promptText || '')
+          if (entered === null) {
+            return
+          }
+          const trimmed = entered.trim()
+          if (!trimmed) {
+            return
+          }
+          promptText = trimmed
+        }
+
+        // Create a new quiz instance id each time quiz mode starts.
+        try {
+          quizId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+            ? (crypto as any).randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        } catch {
+          quizId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        }
+        quizIdRef.current = quizId
+        quizPromptRef.current = promptText
+
+        // Show the quiz prompt via the floating text module.
+        try {
+          window.dispatchEvent(new CustomEvent('philani-text:script-apply', {
+            detail: { id: 'quiz-prompt', text: promptText, visible: true },
+          }))
+        } catch {}
+      } else {
+        // Hide the quiz prompt box when the quiz ends.
+        try {
+          window.dispatchEvent(new CustomEvent('philani-text:script-apply', {
+            detail: { id: 'quiz-prompt', visible: false },
+          }))
+        } catch {}
+        quizIdRef.current = ''
+        quizPromptRef.current = ''
+      }
+
       if (enabled) {
         // Students must be able to write privately during quizzes.
         // Unlock to all students and explicitly disable publishing.
@@ -4784,6 +4839,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         action: 'quiz',
         phase: enabled ? 'active' : 'inactive',
         enabled,
+        quizId: enabled ? quizId : undefined,
+        prompt: enabled ? promptText : undefined,
         ts: Date.now(),
       } satisfies QuizControlMessage)
     } catch (err) {
@@ -4873,7 +4930,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latex: combined }),
+        body: JSON.stringify({
+          latex: combined,
+          quizId: quizIdRef.current || undefined,
+          prompt: quizPromptRef.current || undefined,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))

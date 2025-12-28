@@ -4,6 +4,8 @@ import prisma from '../../../../lib/prisma'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 const MAX_LATEX_LENGTH = 50000
+const MAX_PROMPT_LENGTH = 5000
+const MAX_QUIZ_ID_LENGTH = 80
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionKeyParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
@@ -43,13 +45,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const records = await learnerResponse.findMany({
       where: { sessionKey, userId },
       orderBy: { updatedAt: 'desc' },
-      take: 25,
+      take: 50,
     })
     return res.status(200).json({ responses: records })
   }
 
   if (req.method === 'POST') {
-    const { latex } = req.body || {}
+    const { latex, quizId, prompt } = req.body || {}
     if (!latex || typeof latex !== 'string') {
       return res.status(400).json({ message: 'Latex is required' })
     }
@@ -57,22 +59,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: 'Latex is too large' })
     }
 
+    const safeQuizId = (typeof quizId === 'string' && quizId.trim().length > 0)
+      ? quizId.trim().slice(0, MAX_QUIZ_ID_LENGTH)
+      : 'default'
+    const safePrompt = (typeof prompt === 'string' && prompt.trim().length > 0)
+      ? prompt.trim().slice(0, MAX_PROMPT_LENGTH)
+      : null
+
     try {
       const record = await learnerResponse.upsert({
         where: {
-          sessionKey_userId: {
+          sessionKey_userId_quizId: {
             sessionKey,
             userId,
+            quizId: safeQuizId,
           },
         },
         update: {
           latex,
           userEmail,
+          quizId: safeQuizId,
+          prompt: safePrompt,
         },
         create: {
           sessionKey,
           userId,
           userEmail,
+          quizId: safeQuizId,
+          prompt: safePrompt,
           latex,
         },
       })

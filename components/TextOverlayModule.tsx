@@ -25,6 +25,7 @@ type TextRealtimeMessage =
   | { kind: 'boxes'; boxes: TextBoxRecord[]; ts?: number; sender?: string }
 
 type ScriptTextEventDetail = {
+  id?: string
   text?: string | null
   visible?: boolean
 }
@@ -45,6 +46,7 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 const randomId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 const SCRIPT_BOX_ID = 'lesson-script-text'
+const QUIZ_BOX_ID = 'quiz-prompt'
 
 export default function TextOverlayModule(props: {
   boardId?: string
@@ -253,16 +255,20 @@ export default function TextOverlayModule(props: {
 
   const upsertScriptBox = useCallback(async (detail: ScriptTextEventDetail) => {
     if (!isAdmin) return
+    const targetIdRaw = typeof detail?.id === 'string' ? detail.id : ''
+    const targetId = targetIdRaw.trim().length > 0 ? targetIdRaw.trim() : SCRIPT_BOX_ID
+    // Backwards-compat + safety: if an unknown id is passed, allow it, but cap length.
+    const resolvedId = targetId.length > 64 ? targetId.slice(0, 64) : targetId
     const text = typeof detail?.text === 'string' ? detail.text : (detail?.text === null ? '' : undefined)
     const wantsVisible = typeof detail?.visible === 'boolean' ? detail.visible : undefined
 
-    const existing = boxesRef.current.find(b => b.id === SCRIPT_BOX_ID) || null
+    const existing = boxesRef.current.find(b => b.id === resolvedId) || null
     const maxZ = boxesRef.current.reduce((m, b) => Math.max(m, b.z), 0)
 
     // Hide/remove
     if (text !== undefined && text.trim().length === 0 && (wantsVisible === false || detail?.text === null)) {
       if (!existing) return
-      const nextBoxes = boxesRef.current.map(b => (b.id === SCRIPT_BOX_ID ? { ...b, visible: false } : b))
+      const nextBoxes = boxesRef.current.map(b => (b.id === resolvedId ? { ...b, visible: false } : b))
       await setBoxesAndBroadcast(nextBoxes)
       return
     }
@@ -277,7 +283,7 @@ export default function TextOverlayModule(props: {
           locked: Boolean(existing.locked),
         }
       : {
-          id: SCRIPT_BOX_ID,
+          id: resolvedId,
           text: text !== undefined ? text : ' ',
           x: 0.06,
           y: 0.06,
@@ -290,7 +296,7 @@ export default function TextOverlayModule(props: {
         }
 
     const nextBoxes = existing
-      ? boxesRef.current.map(b => (b.id === SCRIPT_BOX_ID ? nextRecord : b))
+      ? boxesRef.current.map(b => (b.id === resolvedId ? nextRecord : b))
       : [...boxesRef.current, nextRecord]
     await setBoxesAndBroadcast(nextBoxes)
   }, [isAdmin, setBoxesAndBroadcast])

@@ -3381,6 +3381,11 @@ export default function Dashboard() {
                                   {r?.updatedAt ? (
                                     <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
                                   ) : null}
+                                  {r?.prompt ? (
+                                    <div className="text-sm text-slate-900 font-medium whitespace-pre-wrap break-words">
+                                      {r.prompt}
+                                    </div>
+                                  ) : null}
                                   <div className="text-xs font-mono text-slate-900 whitespace-pre-wrap break-words">{r?.latex || ''}</div>
                                 </div>
                               ))}

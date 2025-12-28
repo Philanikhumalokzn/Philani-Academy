@@ -6,6 +6,9 @@ import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionReq
 const MAX_LATEX_LENGTH = 50000
 const MAX_PROMPT_LENGTH = 5000
 const MAX_QUIZ_ID_LENGTH = 80
+const MAX_QUIZ_LABEL_LENGTH = 40
+const MAX_PHASE_KEY_LENGTH = 20
+const MAX_POINT_ID_LENGTH = 80
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionKeyParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
@@ -51,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { latex, quizId, prompt } = req.body || {}
+    const { latex, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex } = req.body || {}
     if (!latex || typeof latex !== 'string') {
       return res.status(400).json({ message: 'Latex is required' })
     }
@@ -64,6 +67,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : 'default'
     const safePrompt = (typeof prompt === 'string' && prompt.trim().length > 0)
       ? prompt.trim().slice(0, MAX_PROMPT_LENGTH)
+      : null
+
+    const safeQuizLabel = (typeof quizLabel === 'string' && quizLabel.trim().length > 0)
+      ? quizLabel.trim().slice(0, MAX_QUIZ_LABEL_LENGTH)
+      : null
+
+    const safeQuizPhaseKey = (typeof quizPhaseKey === 'string' && quizPhaseKey.trim().length > 0)
+      ? quizPhaseKey.trim().slice(0, MAX_PHASE_KEY_LENGTH)
+      : null
+
+    const safeQuizPointId = (typeof quizPointId === 'string' && quizPointId.trim().length > 0)
+      ? quizPointId.trim().slice(0, MAX_POINT_ID_LENGTH)
+      : null
+
+    const safeQuizPointIndex = (typeof quizPointIndex === 'number' && Number.isFinite(quizPointIndex))
+      ? Math.max(0, Math.min(9999, Math.trunc(quizPointIndex)))
       : null
 
     try {
@@ -80,6 +99,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           userEmail,
           quizId: safeQuizId,
           prompt: safePrompt,
+          quizLabel: safeQuizLabel,
+          quizPhaseKey: safeQuizPhaseKey,
+          quizPointId: safeQuizPointId,
+          quizPointIndex: safeQuizPointIndex,
         },
         create: {
           sessionKey,
@@ -87,6 +110,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           userEmail,
           quizId: safeQuizId,
           prompt: safePrompt,
+          quizLabel: safeQuizLabel,
+          quizPhaseKey: safeQuizPhaseKey,
+          quizPointId: safeQuizPointId,
+          quizPointIndex: safeQuizPointIndex,
           latex,
         },
       })
@@ -114,6 +141,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 userEmail,
                 quizId: safeQuizId,
                 prompt: safePrompt,
+                quizLabel: safeQuizLabel,
+                quizPhaseKey: safeQuizPhaseKey,
+                quizPointId: safeQuizPointId,
+                quizPointIndex: safeQuizPointIndex,
               },
             })
             return res.status(200).json(updated)

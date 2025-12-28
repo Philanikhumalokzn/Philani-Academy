@@ -1,10 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
+import prisma from '../../../lib/prisma'
 
 type Body = {
   gradeLabel?: string | null
   teacherLatex?: string
   previousPrompt?: string
+  sessionId?: string
+  phaseKey?: string
+  pointId?: string
+  pointIndex?: number
+  pointTitle?: string
 }
 
 const MAX_LATEX = 20000
@@ -12,6 +18,7 @@ const MAX_PROMPT = 4000
 
 // We want the quiz prompt to be extremely concise in UI.
 const TARGET_PROMPT_MAX_CHARS = 220
+const MAX_LABEL_CHARS = 20
 
 function countUnescapedDollars(s: string) {
   let count = 0
@@ -106,13 +113,60 @@ function ensureKatexDelimiters(value: string) {
   return out.join('\n')
 }
 
+function clampLabel(label: string) {
+  const s = (label || '').trim().replace(/^Quiz\s*/i, '').trim()
+  const normalized = s ? `Quiz ${s}` : ''
+  if (!normalized) return ''
+  return normalized.length > MAX_LABEL_CHARS ? normalized.slice(0, MAX_LABEL_CHARS).trim() : normalized
+}
+
+function phaseNumber(phaseKey: string | null) {
+  const key = (phaseKey || '').toLowerCase()
+  if (key === 'engage') return 1
+  if (key === 'explore') return 2
+  if (key === 'explain') return 3
+  if (key === 'elaborate') return 4
+  if (key === 'evaluate') return 5
+  return 1
+}
+
+function fallbackQuizLabel(opts: { phaseKey: string | null; pointIndex: number | null; priorQuizCount: number; priorInPointCount: number }) {
+  const p = phaseNumber(opts.phaseKey)
+  // If we know a point index, increment within the point: Phase.(quiz# within point)
+  if (typeof opts.pointIndex === 'number' && Number.isFinite(opts.pointIndex) && opts.pointIndex >= 0) {
+    return clampLabel(`${p}.${opts.priorInPointCount + 1}`)
+  }
+  // Otherwise, just increment within the session.
+  return clampLabel(String(opts.priorQuizCount + 1))
+}
+
+function parseJsonPackage(text: string): { label?: string; prompt?: string } {
+  const raw = (text || '').trim()
+  if (!raw) return {}
+  const withoutFences = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+  try {
+    const obj = JSON.parse(withoutFences)
+    return {
+      label: typeof obj?.label === 'string' ? obj.label : undefined,
+      prompt: typeof obj?.prompt === 'string' ? obj.prompt : undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
 async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
   const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
   const sys =
     'You write quiz prompts for learners. ' +
-    'Return ONLY the prompt text (no quotes, no markdown). ' +
-    `Be extremely concise: ideally 1 short line, maximum ${TARGET_PROMPT_MAX_CHARS} characters. ` +
-    'If you include any math, wrap it in $...$ (inline) or $$...$$ (standalone line), so it renders with KaTeX.'
+    'Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ' +
+    `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
+    'The label should be short like "Quiz 1.1" and reflect phase/point context if provided. ' +
+    'You may use very light emphasis in the prompt using **bold** or _italic_ (no markdown headings/lists). ' +
+    'If you include any math, wrap it in $...$ or $$...$$ for KaTeX.'
   const user =
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
@@ -150,8 +204,10 @@ async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLa
 async function generateWithAnthropic(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
   const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
   const prompt =
-    `You write quiz prompts for learners. Return ONLY the prompt text (no quotes, no markdown). ` +
-    `Be extremely concise: ideally 1 short line, maximum ${TARGET_PROMPT_MAX_CHARS} characters. ` +
+    `You write quiz prompts for learners. Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ` +
+    `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
+    `The label should be short like "Quiz 1.1" and reflect phase/point context if provided. ` +
+    `You may use very light emphasis in the prompt using **bold** or _italic_ (no markdown headings/lists). ` +
     `If you include any math, wrap it in $...$ or $$...$$ so it renders with KaTeX.\n\n` +
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
@@ -188,8 +244,10 @@ async function generateWithAnthropic(opts: { apiKey: string; model: string; grad
 async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
   const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
   const prompt =
-    `You write quiz prompts for learners. Return ONLY the prompt text (no quotes, no markdown). ` +
-    `Be extremely concise: ideally 1 short line, maximum ${TARGET_PROMPT_MAX_CHARS} characters. ` +
+    `You write quiz prompts for learners. Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ` +
+    `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
+    `The label should be short like "Quiz 1.1" and reflect phase/point context if provided. ` +
+    `You may use very light emphasis in the prompt using **bold** or _italic_ (no markdown headings/lists). ` +
     `If you include any math, wrap it in $...$ or $$...$$ so it renders with KaTeX.\n\n` +
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
@@ -240,48 +298,108 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const gradeLabel = (typeof body.gradeLabel === 'string' ? body.gradeLabel : null)
   const teacherLatex = clampText(body.teacherLatex, MAX_LATEX)
   const previousPrompt = clampText(body.previousPrompt, MAX_PROMPT)
+  const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
+  const phaseKey = typeof body.phaseKey === 'string' ? body.phaseKey.trim() : ''
+  const pointId = typeof body.pointId === 'string' ? body.pointId.trim() : ''
+  const pointTitle = typeof body.pointTitle === 'string' ? body.pointTitle.trim() : ''
+  const pointIndex = (typeof body.pointIndex === 'number' && Number.isFinite(body.pointIndex)) ? Math.max(0, Math.min(9999, Math.trunc(body.pointIndex))) : null
+
+  // Pull a small summary of existing quizzes for this session (distinct quizId).
+  let priorQuizCount = 0
+  let priorInPointCount = 0
+  let priorLabelsSample = ''
+  try {
+    if (sessionId) {
+      const learnerResponse = (prisma as any).learnerResponse as any
+      const rows = await learnerResponse.findMany({
+        where: { sessionKey: sessionId },
+        orderBy: { createdAt: 'asc' },
+        select: { quizId: true, quizLabel: true, quizPhaseKey: true, quizPointIndex: true },
+        take: 250,
+      })
+      const seen = new Set<string>()
+      const distinct: any[] = []
+      for (const r of rows) {
+        const q = typeof r?.quizId === 'string' ? r.quizId : ''
+        if (!q || seen.has(q)) continue
+        seen.add(q)
+        distinct.push(r)
+      }
+      priorQuizCount = distinct.length
+      if (phaseKey && typeof pointIndex === 'number') {
+        priorInPointCount = distinct.filter(r => (r?.quizPhaseKey || '') === phaseKey && r?.quizPointIndex === pointIndex).length
+      }
+      priorLabelsSample = distinct
+        .slice(Math.max(0, distinct.length - 10))
+        .map((r: any) => `${r.quizLabel || '(unlabeled)'} [${r.quizPhaseKey || '?'}:${typeof r.quizPointIndex === 'number' ? r.quizPointIndex + 1 : '?'}]`)
+        .join(', ')
+    }
+  } catch {
+    // ignore
+  }
 
   // Provider selection (optional). If not configured, fall back to heuristics.
   const provider = (process.env.AI_PROVIDER || '').toLowerCase() // 'openai' | 'anthropic' | 'gemini'
 
   try {
-    let prompt = ''
+    let raw = ''
+
+    const contextSuffix =
+      `\n\nNumbering context (use this to choose a new unique label):\n` +
+      `Session quiz count so far: ${priorQuizCount}\n` +
+      `Phase: ${phaseKey || 'unknown'}\n` +
+      `Point index: ${typeof pointIndex === 'number' ? pointIndex + 1 : 'unknown'}\n` +
+      `Point id: ${pointId || 'unknown'}\n` +
+      (pointTitle ? `Point title: ${pointTitle}\n` : '') +
+      (priorLabelsSample ? `Recent quiz labels: ${priorLabelsSample}\n` : '')
 
     if (provider === 'openai' && process.env.OPENAI_API_KEY) {
-      prompt = await generateWithOpenAI({
+      raw = await generateWithOpenAI({
         apiKey: process.env.OPENAI_API_KEY,
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         gradeLabel,
-        teacherLatex,
+        teacherLatex: teacherLatex + contextSuffix,
         previousPrompt,
       })
     } else if ((provider === 'anthropic' || provider === 'claude') && process.env.ANTHROPIC_API_KEY) {
-      prompt = await generateWithAnthropic({
+      raw = await generateWithAnthropic({
         apiKey: process.env.ANTHROPIC_API_KEY,
         model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
         gradeLabel,
-        teacherLatex,
+        teacherLatex: teacherLatex + contextSuffix,
         previousPrompt,
       })
     } else if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
-      prompt = await generateWithGemini({
+      raw = await generateWithGemini({
         apiKey: process.env.GEMINI_API_KEY,
         model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
         gradeLabel,
-        teacherLatex,
+        teacherLatex: teacherLatex + contextSuffix,
         previousPrompt,
       })
     } else {
-      prompt = heuristicPrompt(gradeLabel, teacherLatex)
+      raw = ''
     }
 
-    const finalPrompt = clampText(prompt, MAX_PROMPT)
-    const shortened = shortenPrompt(finalPrompt || '')
-    const withKatex = shortenPrompt(ensureKatexDelimiters(shortened))
-    if (!withKatex) return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))) })
-    return res.status(200).json({ prompt: withKatex })
+    const parsed = raw ? parseJsonPackage(raw) : {}
+    const fallbackLabel = fallbackQuizLabel({ phaseKey: phaseKey || null, pointIndex, priorQuizCount, priorInPointCount })
+    const label = clampLabel(typeof parsed.label === 'string' ? parsed.label : '') || fallbackLabel
+
+    const rawLooksLikeJson = raw.trim().startsWith('{') || raw.trim().startsWith('```')
+    const finalPromptRaw = clampText(
+      typeof parsed.prompt === 'string'
+        ? parsed.prompt
+        : (rawLooksLikeJson ? '' : (raw || '')),
+      MAX_PROMPT
+    )
+    const promptShort = shortenPrompt(finalPromptRaw || '')
+    const promptKatex = shortenPrompt(ensureKatexDelimiters(promptShort))
+    const prompt = promptKatex || shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex)))
+
+    return res.status(200).json({ prompt, label })
   } catch (err: any) {
     console.warn('AI quiz prompt generation failed; falling back', err?.message || err)
-    return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))) })
+    const label = fallbackQuizLabel({ phaseKey: phaseKey || null, pointIndex, priorQuizCount, priorInPointCount })
+    return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))), label })
   }
 }

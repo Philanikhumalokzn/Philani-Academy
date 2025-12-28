@@ -155,6 +155,10 @@ type QuizControlMessage = {
   phase: 'active' | 'inactive' | 'submit'
   enabled?: boolean
   quizId?: string
+  quizLabel?: string
+  quizPhaseKey?: string
+  quizPointId?: string
+  quizPointIndex?: number
   prompt?: string
   combinedLatex?: string
   fromUserId?: string
@@ -373,6 +377,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizCombinedLatexRef = useRef('')
   const quizIdRef = useRef<string>('')
   const quizPromptRef = useRef<string>('')
+  const quizLabelRef = useRef<string>('')
+  const quizPhaseKeyRef = useRef<string>('')
+  const quizPointIdRef = useRef<string>('')
+  const quizPointIndexRef = useRef<number>(-1)
 
   const setQuizActiveState = useCallback((enabled: boolean) => {
     setQuizActive(enabled)
@@ -3358,6 +3366,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             snapshot?: SnapshotPayload | null
             enabled?: boolean
             quizId?: string
+            quizLabel?: string
+            quizPhaseKey?: string
+            quizPointId?: string
+            quizPointIndex?: number
             prompt?: string
             latex?: string
             options?: Partial<LatexDisplayOptions>
@@ -3385,6 +3397,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               if (phase === 'active') {
                 quizIdRef.current = typeof data.quizId === 'string' ? data.quizId : ''
                 quizPromptRef.current = typeof data.prompt === 'string' ? data.prompt : ''
+                quizLabelRef.current = typeof data.quizLabel === 'string' ? data.quizLabel : ''
+                quizPhaseKeyRef.current = typeof data.quizPhaseKey === 'string' ? data.quizPhaseKey : ''
+                quizPointIdRef.current = typeof data.quizPointId === 'string' ? data.quizPointId : ''
+                quizPointIndexRef.current = (typeof data.quizPointIndex === 'number' && Number.isFinite(data.quizPointIndex)) ? Math.trunc(data.quizPointIndex) : -1
                 // Capture baseline (the teacher's last visible state) and clear the work area.
                 const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
                 quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
@@ -3406,6 +3422,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 quizHasCommittedRef.current = false
                 quizIdRef.current = ''
                 quizPromptRef.current = ''
+                quizLabelRef.current = ''
+                quizPhaseKeyRef.current = ''
+                quizPointIdRef.current = ''
+                quizPointIndexRef.current = -1
                 // Restore baseline snapshot (so student returns to pre-quiz view).
                 const baseline = quizBaselineSnapshotRef.current
                 quizBaselineSnapshotRef.current = null
@@ -4769,6 +4789,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       let quizId = quizIdRef.current
       let promptText = quizPromptRef.current
+      let quizLabel = quizLabelRef.current
+
+      const phaseKey = lessonScriptPhaseKey
+      const pointIndex = lessonScriptPointIndex
+      const pointId = lessonScriptV2ActivePoint?.id || ''
+      const pointTitle = lessonScriptV2ActivePoint?.title || ''
 
       if (enabled) {
         // Attempt to suggest a prompt from the teacher's current context.
@@ -4789,6 +4815,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               gradeLabel: gradeLabel || undefined,
               teacherLatex: teacherLatexContext || undefined,
               previousPrompt: promptText || undefined,
+              sessionId: boardId || undefined,
+              phaseKey: phaseKey || undefined,
+              pointId: pointId || undefined,
+              pointIndex: Number.isFinite(pointIndex) ? pointIndex : undefined,
+              pointTitle: pointTitle || undefined,
             }),
           })
           if (aiRes.ok) {
@@ -4796,6 +4827,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             const suggested = typeof data?.prompt === 'string' ? data.prompt.trim() : ''
             if (suggested) {
               promptText = suggested
+            }
+            const suggestedLabel = typeof data?.label === 'string' ? data.label.trim() : ''
+            if (suggestedLabel) {
+              quizLabel = suggestedLabel
             }
           }
         } catch {
@@ -4825,11 +4860,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         quizIdRef.current = quizId
         quizPromptRef.current = promptText
+        quizLabelRef.current = quizLabel
+        quizPhaseKeyRef.current = phaseKey
+        quizPointIdRef.current = pointId
+        quizPointIndexRef.current = Number.isFinite(pointIndex) ? Math.trunc(pointIndex) : -1
 
         // Show the quiz prompt via the floating text module.
         try {
+          const overlayText = `${quizLabel ? `${quizLabel}\n` : ''}${promptText}`
           window.dispatchEvent(new CustomEvent('philani-text:script-apply', {
-            detail: { id: 'quiz-prompt', text: promptText, visible: true },
+            detail: { id: 'quiz-prompt', text: overlayText, visible: true },
           }))
         } catch {}
       } else {
@@ -4841,6 +4881,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         } catch {}
         quizIdRef.current = ''
         quizPromptRef.current = ''
+        quizLabelRef.current = ''
+        quizPhaseKeyRef.current = ''
+        quizPointIdRef.current = ''
+        quizPointIndexRef.current = -1
       }
 
       if (enabled) {
@@ -4871,13 +4915,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         phase: enabled ? 'active' : 'inactive',
         enabled,
         quizId: enabled ? quizId : undefined,
+        quizLabel: enabled ? quizLabel : undefined,
+        quizPhaseKey: enabled ? phaseKey : undefined,
+        quizPointId: enabled ? pointId : undefined,
+        quizPointIndex: enabled ? pointIndex : undefined,
         prompt: enabled ? promptText : undefined,
         ts: Date.now(),
       } satisfies QuizControlMessage)
     } catch (err) {
       console.warn('Failed to publish quiz state', err)
     }
-  }, [adminDraftLatex, adminSteps, gradeLabel, isAdmin, latexOutput, useAdminStepComposer, userDisplayName])
+  }, [adminDraftLatex, adminSteps, boardId, gradeLabel, isAdmin, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, useAdminStepComposer, userDisplayName])
 
   const studentQuizCommitOrSubmit = useCallback(async () => {
     if (isAdmin) return
@@ -4965,6 +5013,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           latex: combined,
           quizId: quizIdRef.current || undefined,
           prompt: quizPromptRef.current || undefined,
+          quizLabel: quizLabelRef.current || undefined,
+          quizPhaseKey: quizPhaseKeyRef.current || undefined,
+          quizPointId: quizPointIdRef.current || undefined,
+          quizPointIndex: quizPointIndexRef.current >= 0 ? quizPointIndexRef.current : undefined,
         }),
       })
       if (!res.ok) {

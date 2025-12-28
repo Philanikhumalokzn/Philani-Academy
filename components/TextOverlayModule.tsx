@@ -56,6 +56,64 @@ const MAX_BOX_FRAC = 0.98
 const MAX_MATH_SEGMENTS = 24
 const MAX_MATH_CHARS = 2000
 
+function renderInlineEmphasis(text: string, keyPrefix: string) {
+  const input = typeof text === 'string' ? text : ''
+  if (!input) return input
+
+  const out: any[] = []
+  let i = 0
+  let k = 0
+
+  const pushText = (s: string) => {
+    if (!s) return
+    out.push(<span key={`${keyPrefix}-p-${k++}`}>{s}</span>)
+  }
+
+  while (i < input.length) {
+    if (input.startsWith('**', i)) {
+      const end = input.indexOf('**', i + 2)
+      if (end > i + 2) {
+        const inner = input.slice(i + 2, end)
+        out.push(<strong key={`${keyPrefix}-b-${k++}`}>{inner}</strong>)
+        i = end + 2
+        continue
+      }
+    }
+
+    if (input[i] === '_' && (i === 0 || input[i - 1] !== '\\')) {
+      const end = input.indexOf('_', i + 1)
+      if (end > i + 1) {
+        const inner = input.slice(i + 1, end)
+        out.push(<em key={`${keyPrefix}-i-${k++}`}>{inner}</em>)
+        i = end + 1
+        continue
+      }
+    }
+
+    if (input[i] === '*' && input[i + 1] !== '*' && (i === 0 || input[i - 1] !== '\\')) {
+      const end = input.indexOf('*', i + 1)
+      if (end > i + 1) {
+        const inner = input.slice(i + 1, end)
+        out.push(<em key={`${keyPrefix}-it-${k++}`}>{inner}</em>)
+        i = end + 1
+        continue
+      }
+    }
+
+    // Consume plain text until the next potential emphasis marker.
+    let j = i + 1
+    while (j < input.length) {
+      const c = input[j]
+      if (c === '*' || c === '_') break
+      j += 1
+    }
+    pushText(input.slice(i, j))
+    i = j
+  }
+
+  return out
+}
+
 function renderTextWithKatex(text: string) {
   const input = typeof text === 'string' ? text : ''
   if (!input) return [input]
@@ -160,7 +218,9 @@ function renderTextWithKatex(text: string) {
   }
 
   return nodes.map((n, idx) => {
-    if (typeof n === 'string') return <span key={`t-${idx}`}>{n}</span>
+    if (typeof n === 'string') {
+      return <span key={`t-${idx}`}>{renderInlineEmphasis(n, `t-${idx}`)}</span>
+    }
     try {
       const html = katex.renderToString(n.expr, { displayMode: n.display, throwOnError: false, strict: 'ignore' })
       return (

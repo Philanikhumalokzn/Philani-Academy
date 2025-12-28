@@ -91,6 +91,63 @@ type LiveWindowConfig = {
 }
 
 export default function Dashboard() {
+  const renderInlineEmphasis = useCallback((text: string, keyPrefix: string) => {
+    const input = typeof text === 'string' ? text : ''
+    if (!input) return input
+
+    const out: any[] = []
+    let i = 0
+    let k = 0
+
+    const pushText = (s: string) => {
+      if (!s) return
+      out.push(<span key={`${keyPrefix}-p-${k++}`}>{s}</span>)
+    }
+
+    while (i < input.length) {
+      if (input.startsWith('**', i)) {
+        const end = input.indexOf('**', i + 2)
+        if (end > i + 2) {
+          const inner = input.slice(i + 2, end)
+          out.push(<strong key={`${keyPrefix}-b-${k++}`}>{inner}</strong>)
+          i = end + 2
+          continue
+        }
+      }
+
+      if (input[i] === '_' && (i === 0 || input[i - 1] !== '\\')) {
+        const end = input.indexOf('_', i + 1)
+        if (end > i + 1) {
+          const inner = input.slice(i + 1, end)
+          out.push(<em key={`${keyPrefix}-i-${k++}`}>{inner}</em>)
+          i = end + 1
+          continue
+        }
+      }
+
+      if (input[i] === '*' && input[i + 1] !== '*' && (i === 0 || input[i - 1] !== '\\')) {
+        const end = input.indexOf('*', i + 1)
+        if (end > i + 1) {
+          const inner = input.slice(i + 1, end)
+          out.push(<em key={`${keyPrefix}-it-${k++}`}>{inner}</em>)
+          i = end + 1
+          continue
+        }
+      }
+
+      let j = i + 1
+      while (j < input.length) {
+        const c = input[j]
+        if (c === '*' || c === '_') break
+        j += 1
+      }
+      pushText(input.slice(i, j))
+      i = j
+    }
+
+    return out
+  }, [])
+
   const renderKatexDisplayHtml = useCallback((latex: unknown) => {
     const value = typeof latex === 'string' ? latex.trim() : ''
     if (!value) return ''
@@ -172,7 +229,7 @@ export default function Dashboard() {
     }
 
     return nodes.map((n, idx) => {
-      if (typeof n === 'string') return <span key={`t-${idx}`}>{n}</span>
+      if (typeof n === 'string') return <span key={`t-${idx}`}>{renderInlineEmphasis(n, `t-${idx}`)}</span>
       try {
         const html = katex.renderToString(n.expr, { displayMode: n.display, throwOnError: false, strict: 'ignore' })
         return (
@@ -186,7 +243,7 @@ export default function Dashboard() {
         return <span key={`f-${idx}`}>{n.expr}</span>
       }
     })
-  }, [])
+  }, [renderInlineEmphasis])
   const router = useRouter()
   const { data: session, status } = useSession()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
@@ -3477,6 +3534,9 @@ export default function Dashboard() {
                                 <div key={r.id} className="p-3 border rounded bg-white space-y-1">
                                   {r?.updatedAt ? (
                                     <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
+                                  ) : null}
+                                  {r?.quizLabel ? (
+                                    <div className="text-sm font-semibold text-slate-900">{String(r.quizLabel)}</div>
                                   ) : null}
                                   {r?.prompt ? (
                                     <div className="text-sm text-slate-900 font-medium whitespace-pre-wrap break-words">

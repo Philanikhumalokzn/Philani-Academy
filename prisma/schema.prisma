@@ -201,6 +201,10 @@ model LearnerResponse {
   userId     String
   userEmail  String?
   quizId     String   @default("default")
+  quizLabel  String?
+  quizPhaseKey String?
+  quizPointId String?
+  quizPointIndex Int?
   prompt     String?
   latex      String
   createdAt  DateTime @default(now())
@@ -212,6 +216,7 @@ model LearnerResponse {
   @@index([sessionKey])
   @@index([sessionKey, updatedAt])
   @@index([sessionKey, userId, updatedAt])
+  @@index([sessionKey, quizPhaseKey, quizPointIndex, updatedAt])
 }
 
 model Diagram {

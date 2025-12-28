@@ -45,11 +45,12 @@ function heuristicPrompt(gradeLabel: string | null, teacherLatex: string) {
 
   const compact = latex.replace(/\s+/g, ' ').trim()
   const equalsCount = (compact.match(/=/g) || []).length
-  const hasLineBreaks = /\\\\|\n/.test(latex)
   const hasX = /(^|[^a-zA-Z])x([^a-zA-Z]|$)/i.test(compact)
   const hasY = /(^|[^a-zA-Z])y([^a-zA-Z]|$)/i.test(compact)
   const hasUnknowns = hasX || hasY || /\b[a-z]\b/i.test(compact)
-  const looksLikeSystem = equalsCount >= 2 && hasUnknowns && (hasLineBreaks || compact.includes(';') || compact.includes(','))
+  // Systems of equations often come through as a single line with multiple '='.
+  // Prefer class-typical instruction when it looks like two unknowns.
+  const looksLikeSystem = equalsCount >= 2 && hasX && hasY
   const looksLikeQuadratic = /(x\^2|\bx\^2\b|\bquadratic\b)/i.test(compact)
   const looksLikeFactorise = /(factor|factorise|factorize|\\cdot)/i.test(compact)
   const looksLikeSimplify = /(simplify|\\frac|\\sqrt|\\left|\\right)/i.test(compact) && !looksLikeSystem
@@ -369,6 +370,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     let raw = ''
+    let source: 'ai' | 'heuristic' = 'heuristic'
+    let providerUsed: string | null = null
 
     const numberingContext =
       `Numbering context (use this to choose a new unique label):\n` +
@@ -388,6 +391,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         previousPrompt,
         numberingContext,
       })
+      source = 'ai'
+      providerUsed = 'openai'
     } else if ((provider === 'anthropic' || provider === 'claude') && process.env.ANTHROPIC_API_KEY) {
       raw = await generateWithAnthropic({
         apiKey: process.env.ANTHROPIC_API_KEY,
@@ -397,6 +402,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         previousPrompt,
         numberingContext,
       })
+      source = 'ai'
+      providerUsed = 'anthropic'
     } else if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
       raw = await generateWithGemini({
         apiKey: process.env.GEMINI_API_KEY,
@@ -406,6 +413,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         previousPrompt,
         numberingContext,
       })
+      source = 'ai'
+      providerUsed = 'gemini'
     } else {
       raw = ''
     }
@@ -425,10 +434,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const promptKatex = shortenPrompt(ensureKatexDelimiters(promptShort))
     const prompt = promptKatex || shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex)))
 
-    return res.status(200).json({ prompt, label })
+    return res.status(200).json({ prompt, label, source, providerUsed })
   } catch (err: any) {
     console.warn('AI quiz prompt generation failed; falling back', err?.message || err)
     const label = fallbackQuizLabel({ phaseKey: phaseKey || null, pointIndex, priorQuizCount, priorInPointCount })
-    return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))), label })
+    return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))), label, source: 'heuristic', providerUsed: null })
   }
 }

@@ -4771,6 +4771,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       let promptText = quizPromptRef.current
 
       if (enabled) {
+        // Attempt to suggest a prompt from the teacher's current context.
+        // This keeps UX unchanged: we still show a simple prompt dialog, but prefill it.
+        try {
+          const teacherLatexContext = (useAdminStepComposer
+            ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
+            : latexDisplayStateRef.current?.enabled
+              ? (latexDisplayStateRef.current?.latex || '')
+              : (latexOutput || '')
+          ).trim()
+
+          const aiRes = await fetch('/api/ai/quiz-prompt', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gradeLabel: gradeLabel || undefined,
+              teacherLatex: teacherLatexContext || undefined,
+              previousPrompt: promptText || undefined,
+            }),
+          })
+          if (aiRes.ok) {
+            const data = await aiRes.json().catch(() => null)
+            const suggested = typeof data?.prompt === 'string' ? data.prompt.trim() : ''
+            if (suggested) {
+              promptText = suggested
+            }
+          }
+        } catch {
+          // Safe fallback: proceed with existing promptText.
+        }
+
         // Teacher enters the quiz prompt at the moment quiz mode starts.
         if (typeof window !== 'undefined') {
           const entered = window.prompt('Quiz question / instructions (shown to students):', promptText || '')
@@ -4846,7 +4877,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to publish quiz state', err)
     }
-  }, [isAdmin, userDisplayName])
+  }, [adminDraftLatex, adminSteps, gradeLabel, isAdmin, latexOutput, useAdminStepComposer, userDisplayName])
 
   const studentQuizCommitOrSubmit = useCallback(async () => {
     if (isAdmin) return

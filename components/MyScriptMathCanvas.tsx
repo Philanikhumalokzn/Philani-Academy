@@ -425,6 +425,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   type StudentResponseState = { lines: string[]; lastSubmittedTs?: number }
   const [studentResponseState, setStudentResponseState] = useState<StudentResponseState>({ lines: [] })
+  const [studentDraftLatex, setStudentDraftLatex] = useState('')
+  const pendingStudentDraftExportRef = useRef<any>(null)
+  const studentDraftExportInFlightRef = useRef(false)
 
   type StudentSubmission = {
     id: string
@@ -1160,6 +1163,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [isAdmin, latexProjectionOptions.alignAtEquals, studentResponseState.lines])
 
+  const studentResponseLiveMarkup = useMemo(() => {
+    if (isAdmin) return ''
+    if (!isStudentResponseMode) return ''
+    const lines = [...studentResponseState.lines]
+    const draft = (studentDraftLatex || '').trim()
+    if (draft) lines.push(draft)
+    if (!lines.length) return ''
+    const combined = `\\ ${lines.join(' \\\\ ')}`
+    let latexString = combined
+    if (latexProjectionOptions.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
+      const processed = lines
+        .map(line => String(line || '').trim())
+        .filter(Boolean)
+        .map(line => {
+          const equalsIndex = line.indexOf('=')
+          if (equalsIndex === -1) {
+            return /(^|\s)&/.test(line) ? line : `& ${line}`
+          }
+          const left = line.slice(0, equalsIndex).trim()
+          const right = line.slice(equalsIndex + 1).trim()
+          return `${left} &= ${right}`
+        })
+      latexString = `\\begin{aligned}${processed.join(' \\\\ ')}\\end{aligned}`
+    }
+    try {
+      return renderToString(latexString, { throwOnError: false, displayMode: true })
+    } catch {
+      return ''
+    }
+  }, [isAdmin, isStudentResponseMode, latexProjectionOptions.alignAtEquals, studentDraftLatex, studentResponseState.lines])
+
   const handleStudentPaperplane = useCallback(async () => {
     if (isAdmin) return
     const editor = editorInstanceRef.current
@@ -1195,6 +1229,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // First function: send current line to the student's local display and clear.
     if (lineLatex) {
       setStudentResponseState(prev => ({ ...prev, lines: [...prev.lines, lineLatex] }))
+      setStudentDraftLatex('')
       suppressBroadcastUntilTsRef.current = Date.now() + 1200
       try {
         editor.clear?.()
@@ -1232,6 +1267,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         lines: studentResponseState.lines,
         ts,
       })
+      setStudentDraftLatex('')
       setStudentResponseState({ lines: [], lastSubmittedTs: ts })
     } catch (err) {
       console.warn('Failed to submit student response', err)
@@ -3278,6 +3314,49 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   previewExportInFlightRef.current = false
                 })
             }, 450)
+          }
+
+          // Student response mode: keep a live draft LaTeX preview updated.
+          if (!isAdmin && isStudentResponseMode) {
+            if (pendingStudentDraftExportRef.current) {
+              clearTimeout(pendingStudentDraftExportRef.current)
+            }
+            pendingStudentDraftExportRef.current = setTimeout(() => {
+              pendingStudentDraftExportRef.current = null
+              if (studentDraftExportInFlightRef.current) return
+              studentDraftExportInFlightRef.current = true
+              ;(async () => {
+                // If there's no ink, clear draft quickly.
+                if (lastSymbolCountRef.current <= 0) {
+                  setStudentDraftLatex('')
+                  return
+                }
+
+                let latexValue = ''
+                try {
+                  const modelLatex = getLatexFromEditorModel()
+                  latexValue = typeof modelLatex === 'string' ? modelLatex : ''
+                } catch {}
+                const normalizedModel = normalizeStepLatex(latexValue)
+                if (normalizedModel !== null) {
+                  // Allow empty to reflect scratch-to-erase.
+                  setStudentDraftLatex(normalizedModel)
+                  return
+                }
+
+                // Fallback: export if model isn't ready yet.
+                try {
+                  const exported = await exportLatexFromEditor()
+                  const normalized = normalizeStepLatex(exported)
+                  setStudentDraftLatex(normalized || '')
+                } catch {
+                  setStudentDraftLatex('')
+                }
+              })()
+                .finally(() => {
+                  studentDraftExportInFlightRef.current = false
+                })
+            }, 350)
           }
         }
         const handleExported = (evt: any) => {
@@ -6373,7 +6452,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </div>
                     )
                   ) : useStackedStudentLayout ? (
-                    latexProjectionMarkup ? (
+                    isStudentResponseMode && studentResponseLiveMarkup ? (
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={latexOverlayStyle}
+                        dangerouslySetInnerHTML={{ __html: studentResponseLiveMarkup }}
+                      />
+                    ) : latexProjectionMarkup ? (
                       <div
                         className="text-slate-900 leading-relaxed"
                         style={latexOverlayStyle}
@@ -6473,7 +6558,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || (isViewOnly && !isStudentResponseMode)}
                             >
                               <span className="sr-only">Undo</span>
                               <svg
@@ -6494,7 +6579,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || (isViewOnly && !isStudentResponseMode)}
                             >
                               <span className="sr-only">Redo</span>
                               <svg
@@ -6515,7 +6600,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Clear"
                               onClick={() => runCanvasAction(handleClear)}
-                              disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              disabled={!canClear || status !== 'ready' || Boolean(fatalError) || (isViewOnly && !isStudentResponseMode)}
                             >
                               <span className="sr-only">Clear</span>
                               <svg
@@ -6530,6 +6615,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                 <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
                               </svg>
                             </button>
+
+                            {!isAdmin && isStudentResponseMode && (
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                                title="Send line / Submit response"
+                                onClick={() => {
+                                  void handleStudentPaperplane()
+                                }}
+                                disabled={status !== 'ready' || Boolean(fatalError)}
+                              >
+                                <span className="sr-only">Send line / Submit response</span>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  width="18"
+                                  height="18"
+                                  fill="currentColor"
+                                  className="text-slate-700"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                                </svg>
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <button
@@ -7015,11 +7125,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           {studentResponseState.lines.length ? `${studentResponseState.lines.length} line${studentResponseState.lines.length === 1 ? '' : 's'}` : 'No lines yet'}
                         </div>
                       </div>
-                      {studentResponseMarkup ? (
+                      {studentResponseLiveMarkup || studentResponseMarkup ? (
                         <div
                           className="text-slate-900 leading-relaxed"
                           style={latexOverlayStyle}
-                          dangerouslySetInnerHTML={{ __html: studentResponseMarkup }}
+                          dangerouslySetInnerHTML={{ __html: studentResponseLiveMarkup || studentResponseMarkup }}
                         />
                       ) : (
                         <div className="text-slate-500 text-sm">Write a line below, then tap the paperplane to add it here.</div>

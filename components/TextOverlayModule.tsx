@@ -12,6 +12,7 @@ type TextBoxRecord = {
   z: number
   surface: TextSurface
   visible: boolean
+  locked?: boolean
 }
 
 type TextOverlayState = {
@@ -80,6 +81,23 @@ export default function TextOverlayModule(props: {
   useEffect(() => {
     boxesRef.current = boxes
   }, [boxes])
+
+  const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; boxId: string }>(null)
+  useEffect(() => {
+    if (!contextMenu) return
+    if (typeof window === 'undefined') return
+
+    const onDown = () => setContextMenu(null)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null)
+    }
+    window.addEventListener('pointerdown', onDown, { capture: true })
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, { capture: true } as any)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu])
 
   const activeBox = useMemo(() => {
     if (!overlayState.activeId) return null
@@ -162,6 +180,7 @@ export default function TextOverlayModule(props: {
                   z: typeof b.z === 'number' && Number.isFinite(b.z) ? b.z : 0,
                   surface: 'stage',
                   visible: typeof b.visible === 'boolean' ? b.visible : true,
+                  locked: typeof b.locked === 'boolean' ? b.locked : false,
                 } as TextBoxRecord
               })
               .filter(Boolean) as TextBoxRecord[]
@@ -227,6 +246,7 @@ export default function TextOverlayModule(props: {
 
   const setBoxesAndBroadcast = useCallback(async (nextBoxes: TextBoxRecord[]) => {
     setBoxes(nextBoxes)
+    boxesRef.current = nextBoxes
     if (!isAdmin) return
     await publish({ kind: 'boxes', boxes: nextBoxes })
   }, [isAdmin, publish])
@@ -254,6 +274,7 @@ export default function TextOverlayModule(props: {
           text: text !== undefined ? text : existing.text,
           visible: wantsVisible !== undefined ? wantsVisible : true,
           z: Math.max(existing.z, maxZ + 1),
+          locked: Boolean(existing.locked),
         }
       : {
           id: SCRIPT_BOX_ID,
@@ -265,6 +286,7 @@ export default function TextOverlayModule(props: {
           z: maxZ + 1,
           surface: 'stage',
           visible: wantsVisible !== undefined ? wantsVisible : true,
+          locked: false,
         }
 
     const nextBoxes = existing
@@ -300,21 +322,55 @@ export default function TextOverlayModule(props: {
       z: maxZ + 1,
       surface: 'stage',
       visible: true,
+      locked: false,
     }
     const nextBoxes = [...boxesRef.current, next]
     await setBoxesAndBroadcast(nextBoxes)
     await setStateAndBroadcast({ isOpen: true, activeId: id })
   }, [isAdmin, setBoxesAndBroadcast, setStateAndBroadcast])
 
+  const deleteBoxById = useCallback(async (boxId: string) => {
+    if (!isAdmin) return
+    const nextBoxes = boxesRef.current.filter(b => b.id !== boxId)
+    const nextActive = nextBoxes[0]?.id ?? null
+    await setBoxesAndBroadcast(nextBoxes)
+    if (overlayStateRef.current.activeId === boxId) {
+      await setStateAndBroadcast({ ...overlayStateRef.current, activeId: nextActive })
+    }
+  }, [isAdmin, setBoxesAndBroadcast, setStateAndBroadcast])
+
+  const toggleBoxVisibilityById = useCallback(async (boxId: string) => {
+    if (!isAdmin) return
+    const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, visible: !b.visible } : b))
+    await setBoxesAndBroadcast(nextBoxes)
+  }, [isAdmin, setBoxesAndBroadcast])
+
+  const toggleBoxLockById = useCallback(async (boxId: string) => {
+    if (!isAdmin) return
+    const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, locked: !Boolean(b.locked) } : b))
+    await setBoxesAndBroadcast(nextBoxes)
+  }, [isAdmin, setBoxesAndBroadcast])
+
+  const bringBoxToFrontById = useCallback(async (boxId: string) => {
+    if (!isAdmin) return
+    const maxZ = boxesRef.current.reduce((m, b) => Math.max(m, b.z), 0)
+    const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, z: maxZ + 1 } : b))
+    await setBoxesAndBroadcast(nextBoxes)
+  }, [isAdmin, setBoxesAndBroadcast])
+
+  const sendBoxToBackById = useCallback(async (boxId: string) => {
+    if (!isAdmin) return
+    const minZ = boxesRef.current.reduce((m, b) => Math.min(m, b.z), 0)
+    const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, z: minZ - 1 } : b))
+    await setBoxesAndBroadcast(nextBoxes)
+  }, [isAdmin, setBoxesAndBroadcast])
+
   const deleteActive = useCallback(async () => {
     if (!isAdmin) return
     const targetId = overlayStateRef.current.activeId
     if (!targetId) return
-    const nextBoxes = boxesRef.current.filter(b => b.id !== targetId)
-    const nextActive = nextBoxes[0]?.id ?? null
-    await setBoxesAndBroadcast(nextBoxes)
-    await setStateAndBroadcast({ ...overlayStateRef.current, activeId: nextActive })
-  }, [isAdmin, setBoxesAndBroadcast, setStateAndBroadcast])
+    await deleteBoxById(targetId)
+  }, [deleteBoxById, isAdmin])
 
   const updateActiveText = useCallback(async (text: string) => {
     if (!isAdmin) return
@@ -328,9 +384,15 @@ export default function TextOverlayModule(props: {
     if (!isAdmin) return
     const targetId = overlayStateRef.current.activeId
     if (!targetId) return
-    const nextBoxes = boxesRef.current.map(b => (b.id === targetId ? { ...b, visible: !b.visible } : b))
-    await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+    await toggleBoxVisibilityById(targetId)
+  }, [isAdmin, toggleBoxVisibilityById])
+
+  const toggleActiveLock = useCallback(async () => {
+    if (!isAdmin) return
+    const targetId = overlayStateRef.current.activeId
+    if (!targetId) return
+    await toggleBoxLockById(targetId)
+  }, [isAdmin, toggleBoxLockById])
 
   const dragRef = useRef<{
     id: string
@@ -338,42 +400,97 @@ export default function TextOverlayModule(props: {
     startClientY: number
     startX: number
     startY: number
+    hostWidth: number
+    hostHeight: number
+    didMove: boolean
   } | null>(null)
+
+  const longPressRef = useRef<null | { timer: number; pointerId: number; startX: number; startY: number; boxId: string }>(null)
+
+  const openBoxContextMenu = useCallback((boxId: string, clientX: number, clientY: number, host: HTMLElement | null) => {
+    if (!isAdmin) return
+    if (!host) return
+    const rect = host.getBoundingClientRect()
+    const x = Math.max(0, Math.round(clientX - rect.left))
+    const y = Math.max(0, Math.round(clientY - rect.top))
+    setContextMenu({ x, y, boxId })
+  }, [isAdmin])
 
   const onBoxPointerDown = useCallback((box: TextBoxRecord, event: React.PointerEvent<HTMLDivElement>) => {
     if (!isAdmin) return
     event.stopPropagation()
-    const host = (event.currentTarget.parentElement as HTMLElement | null)?.getBoundingClientRect()
-    if (!host) return
 
+    void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
+
+    // Long-press opens context menu (similar to diagram module behaviour).
+    if (typeof window !== 'undefined') {
+      if (longPressRef.current?.timer) {
+        window.clearTimeout(longPressRef.current.timer)
+      }
+      const pointerId = event.pointerId
+      const startX = event.clientX
+      const startY = event.clientY
+      const timer = window.setTimeout(() => {
+        // Only open if still pending and pointer hasn't moved much.
+        const pending = longPressRef.current
+        if (!pending) return
+        if (pending.pointerId !== pointerId) return
+        openBoxContextMenu(box.id, startX, startY, (event.currentTarget.parentElement as HTMLElement | null))
+        longPressRef.current = null
+        dragRef.current = null
+      }, 520)
+      longPressRef.current = { timer, pointerId, startX, startY, boxId: box.id }
+    }
+
+    const hostEl = (event.currentTarget.parentElement as HTMLElement | null)
+    const hostRect = hostEl?.getBoundingClientRect()
+    if (!hostRect) return
+
+    // Start drag immediately, but if the box is locked we won't move it.
     dragRef.current = {
       id: box.id,
       startClientX: event.clientX,
       startClientY: event.clientY,
       startX: box.x,
       startY: box.y,
+      hostWidth: Math.max(1, hostRect.width),
+      hostHeight: Math.max(1, hostRect.height),
+      didMove: false,
     }
 
     try {
       ;(event.currentTarget as any).setPointerCapture?.(event.pointerId)
     } catch {}
-
-    void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
-  }, [isAdmin, setStateAndBroadcast])
+  }, [isAdmin, openBoxContextMenu, setStateAndBroadcast])
 
   const onBoxPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!isAdmin) return
     const drag = dragRef.current
     if (!drag) return
 
-    const host = (event.currentTarget.parentElement as HTMLElement | null)?.getBoundingClientRect()
-    if (!host) return
+    // Cancel long press if user moves.
+    const pending = longPressRef.current
+    if (pending && pending.pointerId === event.pointerId) {
+      const dx = event.clientX - pending.startX
+      const dy = event.clientY - pending.startY
+      if ((dx * dx + dy * dy) > 36) {
+        if (typeof window !== 'undefined') window.clearTimeout(pending.timer)
+        longPressRef.current = null
+      }
+    }
+
+    const target = boxesRef.current.find(b => b.id === drag.id)
+    if (!target || Boolean(target.locked)) return
 
     const dxPx = event.clientX - drag.startClientX
     const dyPx = event.clientY - drag.startClientY
 
-    const dx = dxPx / Math.max(host.width, 1)
-    const dy = dyPx / Math.max(host.height, 1)
+    // Require a tiny movement before we consider it a drag (prevents accidental nudges).
+    if (!drag.didMove && (dxPx * dxPx + dyPx * dyPx) < 9) return
+    drag.didMove = true
+
+    const dx = dxPx / Math.max(drag.hostWidth, 1)
+    const dy = dyPx / Math.max(drag.hostHeight, 1)
 
     const nextBoxes = boxesRef.current.map(b => {
       if (b.id !== drag.id) return b
@@ -384,16 +501,32 @@ export default function TextOverlayModule(props: {
       }
     })
 
-    // Local update only while moving; broadcast on pointer up.
+    // Local update while moving.
+    boxesRef.current = nextBoxes
     setBoxes(nextBoxes)
   }, [isAdmin])
 
   const onBoxPointerUp = useCallback(async () => {
     if (!isAdmin) return
-    if (!dragRef.current) return
+    if (typeof window !== 'undefined' && longPressRef.current?.timer) {
+      window.clearTimeout(longPressRef.current.timer)
+    }
+    longPressRef.current = null
+
+    const drag = dragRef.current
+    if (!drag) return
     dragRef.current = null
+    if (!drag.didMove) return
     await publish({ kind: 'boxes', boxes: boxesRef.current })
   }, [isAdmin, publish])
+
+  const onBoxContextMenu = useCallback((box: TextBoxRecord, event: React.MouseEvent<HTMLDivElement>) => {
+    if (!isAdmin) return
+    event.preventDefault()
+    event.stopPropagation()
+    void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
+    openBoxContextMenu(box.id, event.clientX, event.clientY, (event.currentTarget.parentElement as HTMLElement | null))
+  }, [isAdmin, openBoxContextMenu, setStateAndBroadcast])
 
   const tray = overlayState.isOpen && isAdmin ? (
     <div className="fixed inset-x-2 bottom-16 z-[650] md:hidden">
@@ -408,6 +541,7 @@ export default function TextOverlayModule(props: {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button type="button" className="btn btn-primary btn-xs" onClick={addBox}>Add text</button>
           <button type="button" className="btn btn-ghost btn-xs" onClick={toggleActiveVisibility} disabled={!activeBox}>Toggle</button>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={toggleActiveLock} disabled={!activeBox}>Lock</button>
           <button type="button" className="btn btn-ghost btn-xs" onClick={deleteActive} disabled={!activeBox}>Delete</button>
         </div>
 
@@ -473,6 +607,7 @@ export default function TextOverlayModule(props: {
               onPointerMove={onBoxPointerMove}
               onPointerUp={onBoxPointerUp}
               onPointerCancel={onBoxPointerUp}
+              onContextMenu={event => onBoxContextMenu(box, event)}
             >
               <div
                 className="rounded-2xl border p-3"
@@ -481,9 +616,11 @@ export default function TextOverlayModule(props: {
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
                   color: 'white',
                   backdropFilter: 'blur(10px)',
-                  cursor: isAdmin ? 'grab' : 'default',
+                  cursor: isAdmin ? (box.locked ? 'default' : 'grab') : 'default',
                   height: '100%',
                   overflow: 'auto',
+                  touchAction: 'none',
+                  userSelect: 'none',
                 }}
               >
                 <div className="text-sm whitespace-pre-wrap">{box.text}</div>
@@ -491,6 +628,80 @@ export default function TextOverlayModule(props: {
             </div>
           )
         })}
+
+        {isAdmin && contextMenu && (
+          <div
+            className="pointer-events-auto absolute z-[900]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onMouseDown={e => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            onPointerDown={e => {
+              e.stopPropagation()
+            }}
+          >
+            <div className="min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden text-slate-900">
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onClick={() => {
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void deleteBoxById(boxId)
+                }}
+              >
+                Delete
+              </button>
+              <div className="h-px bg-slate-200" />
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onClick={() => {
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void bringBoxToFrontById(boxId)
+                }}
+              >
+                Bring to front
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onClick={() => {
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void sendBoxToBackById(boxId)
+                }}
+              >
+                Send to back
+              </button>
+              <div className="h-px bg-slate-200" />
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onClick={() => {
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void toggleBoxVisibilityById(boxId)
+                }}
+              >
+                Toggle visibility
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onClick={() => {
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void toggleBoxLockById(boxId)
+                }}
+              >
+                Toggle lock
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       {tray}
     </>

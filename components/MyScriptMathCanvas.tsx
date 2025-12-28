@@ -391,24 +391,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [adminSendingStep, setAdminSendingStep] = useState(false)
   const [adminEditIndex, setAdminEditIndex] = useState<number | null>(null)
   const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
-  const adminLastTapRef = useRef<{ ts: number; x: number; y: number; scrollTop: number } | null>(null)
+  const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
-
-  type StudentResponseState = null | {
-    active: true
-    anchorIndex: number
-    baseTeacherLatex: string
-    committed: AdminStep[]
-    awaitingFinalSubmit: boolean
-  }
-  const [studentResponseState, setStudentResponseState] = useState<StudentResponseState>(null)
-  const studentResponseStateRef = useRef<StudentResponseState>(null)
-  useEffect(() => {
-    studentResponseStateRef.current = studentResponseState
-  }, [studentResponseState])
-  const pendingStackedNotesRef = useRef<null | { latex: string; options: LatexDisplayOptions; ts: number }>(null)
-  const studentLastTapRef = useRef<{ ts: number; x: number; y: number; scrollTop: number } | null>(null)
-  const [studentSendingResponse, setStudentSendingResponse] = useState(false)
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -425,10 +409,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [latestPersonalLatex, setLatestPersonalLatex] = useState<string | null>(null)
   const [isSavingLatex, setIsSavingLatex] = useState(false)
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
-
-  const [evaluateResponses, setEvaluateResponses] = useState<any[]>([])
-  const [evaluateResponsesLoading, setEvaluateResponsesLoading] = useState(false)
-  const [evaluateResponsesError, setEvaluateResponsesError] = useState<string | null>(null)
 
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
@@ -1107,36 +1087,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       .filter(Boolean)
       .join(' \\\\ ')
       .trim()
-  }, [])
-
-  const splitLatexDisplayLines = useCallback((latex: string) => {
-    const raw = (latex || '').trim()
-    if (!raw) return []
-    return raw
-      .split(/\\\\/g)
-      .map(s => (s || '').trim())
-      .filter(Boolean)
-  }, [])
-
-  const joinLatexDisplayLines = useCallback((lines: string[]) => {
-    return (Array.isArray(lines) ? lines : [])
-      .map(s => (s || '').trim())
-      .filter(Boolean)
-      .join(' \\\\ ')
-      .trim()
-  }, [])
-
-  const getStackedPanelLineIndexFromClientY = useCallback((panelEl: HTMLElement | null, clientY: number, lineCount: number) => {
-    if (!panelEl) return 0
-    const count = Number.isFinite(lineCount) ? Math.max(1, Math.floor(lineCount)) : 1
-    const y = Number.isFinite(clientY) ? clientY : 0
-
-    const rect = panelEl.getBoundingClientRect()
-    const scrollTop = Number((panelEl as any).scrollTop || 0)
-    const localY = (y - rect.top) + scrollTop
-    const totalHeight = Math.max(Number(panelEl.scrollHeight || 0), Number(panelEl.clientHeight || 0), 1)
-    const perLine = Math.max(1, totalHeight / count)
-    return Math.max(0, Math.min(count - 1, Math.floor(localY / perLine)))
   }, [])
 
   const activeDiagram = useMemo(() => {
@@ -3396,13 +3346,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
             const ts = data?.ts ?? Date.now()
-
-            // Student response mode: hide subsequent teacher lines until the learner submits.
-            if (!isAdmin && studentResponseStateRef.current?.active) {
-              pendingStackedNotesRef.current = { latex, options, ts }
-              return
-            }
-
             setStackedNotesState(prev => {
               if (ts < prev.ts) return prev
               return { latex, options, ts }
@@ -4295,18 +4238,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
     if (useStackedStudentLayout) {
-      if (studentResponseState?.active) {
-        const teacherLines = splitLatexDisplayLines(studentResponseState.baseTeacherLatex)
-        const anchorMax = Math.max(teacherLines.length - 1, 0)
-        const anchor = Math.max(0, Math.min(studentResponseState.anchorIndex, anchorMax))
-        const visibleTeacherLines = teacherLines.length ? teacherLines.slice(0, anchor + 1) : []
-        const responseLines = (studentResponseState.committed || []).map(s => (s?.latex || '').trim()).filter(Boolean)
-        return joinLatexDisplayLines([...visibleTeacherLines, ...responseLines])
-      }
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, joinLatexDisplayLines, latexDisplayState.latex, latexOutput, splitLatexDisplayLines, stackedNotesState.latex, studentResponseState, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexDisplayState.latex, latexOutput, stackedNotesState.latex, useAdminStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -5555,38 +5490,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [fetchLatexSaves])
 
-  const fetchEvaluateResponses = useCallback(async () => {
-    if (!isAdmin) return
-    if (!sessionKey) return
-    if (isLessonAuthoring) return
-    setEvaluateResponsesError(null)
-    setEvaluateResponsesLoading(true)
-    try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setEvaluateResponses([])
-        setEvaluateResponsesError(data?.message || `Failed to load responses (${res.status})`)
-        return
-      }
-      const responses = Array.isArray(data?.responses) ? data.responses : []
-      setEvaluateResponses(responses)
-    } catch (err: any) {
-      setEvaluateResponses([])
-      setEvaluateResponsesError(err?.message || 'Network error')
-    } finally {
-      setEvaluateResponsesLoading(false)
-    }
-  }, [isAdmin, isLessonAuthoring, sessionKey])
-
-  useEffect(() => {
-    if (!isAdmin) return
-    if (!sessionKey) return
-    if (isLessonAuthoring) return
-    if (lessonScriptPhaseKey !== 'evaluate') return
-    fetchEvaluateResponses()
-  }, [fetchEvaluateResponses, isAdmin, isLessonAuthoring, lessonScriptPhaseKey, sessionKey])
-
   useEffect(() => {
     if (canPersistLatex) return
     setLatestSharedLatex(null)
@@ -5958,45 +5861,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 Clear
               </button>
               {lessonScriptError && <span className="text-xs text-red-600">{lessonScriptError}</span>}
-
-              {lessonScriptPhaseKey === 'evaluate' && sessionKey && !isLessonAuthoring && (
-                <div className="w-full mt-2 rounded border bg-white p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold">Responses</div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost text-xs"
-                      onClick={() => fetchEvaluateResponses()}
-                      disabled={evaluateResponsesLoading}
-                    >
-                      {evaluateResponsesLoading ? 'Refreshing…' : 'Refresh'}
-                    </button>
-                  </div>
-
-                  {evaluateResponsesError ? (
-                    <div className="text-xs text-red-600 mt-2">{evaluateResponsesError}</div>
-                  ) : evaluateResponsesLoading ? (
-                    <div className="text-xs muted mt-2">Loading responses…</div>
-                  ) : evaluateResponses.length === 0 ? (
-                    <div className="text-xs muted mt-2">No learner responses yet.</div>
-                  ) : (
-                    <div className="mt-2 max-h-52 overflow-auto space-y-2">
-                      {evaluateResponses.map((r: any) => (
-                        <div key={r.id} className="border rounded p-2 bg-slate-50">
-                          <div className="text-xs font-medium">
-                            {r?.user?.firstName || r?.user?.name || r?.userEmail || 'Learner'}
-                            {r?.user?.lastName ? ` ${r.user.lastName}` : ''}
-                          </div>
-                          {r?.updatedAt ? (
-                            <div className="text-[11px] muted">{new Date(r.updatedAt).toLocaleString()}</div>
-                          ) : null}
-                          <div className="mt-1 text-xs font-mono whitespace-pre-wrap break-words">{r?.latex || ''}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
           {ENABLE_EMBEDDED_DIAGRAMS && (
@@ -6103,18 +5967,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                     const last = adminLastTapRef.current
                     const y = (e as any).clientY ?? 0
-                    const x = (e as any).clientX ?? 0
-                    const scrollTop = Number((adminTopPanelRef.current as any)?.scrollTop || 0)
-                    const within = last
-                      && (now - last.ts) < 350
-                      && Math.abs(x - last.x) < 26
-                      && Math.abs(y - last.y) < 22
-                      && Math.abs(scrollTop - last.scrollTop) < 10
-                    adminLastTapRef.current = { ts: now, x, y, scrollTop }
+                    const within = last && (now - last.ts) < 350 && Math.abs(y - last.y) < 22
+                    adminLastTapRef.current = { ts: now, y }
                     if (!within) return
 
                     // Double-tap: pick the row and load it for editing.
-                    const index = getStackedPanelLineIndexFromClientY(adminTopPanelRef.current, y, adminSteps.length)
+                    const localY = y - box.top
+                    const approxRowHeight = 34
+                    const index = Math.max(0, Math.min(adminSteps.length - 1, Math.floor(localY / approxRowHeight)))
 
                     // Commit current draft first (if any), mirroring paper-plane behavior.
                     const editor = editorInstanceRef.current
@@ -6146,50 +6006,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     }
                     setAdminEditIndex(index)
                     setAdminDraftLatex(adminSteps[index]?.latex || '')
-                  } : (useStackedStudentLayout ? (e) => {
-                    if (studentResponseStateRef.current?.active) return
-                    const teacherLatex = (stackedNotesState.latex || '').trim()
-                    if (!teacherLatex) return
-
-                    const now = Date.now()
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                    const y = (e as any).clientY ?? 0
-                    const x = (e as any).clientX ?? 0
-                    const scrollTop = Number(((e.currentTarget as any)?.scrollTop) || 0)
-
-                    const last = studentLastTapRef.current
-                    const within = last
-                      && (now - last.ts) < 350
-                      && Math.abs(x - last.x) < 26
-                      && Math.abs(y - last.y) < 22
-                      && Math.abs(scrollTop - last.scrollTop) < 10
-                    studentLastTapRef.current = { ts: now, x, y, scrollTop }
-                    if (!within) return
-
-                    const lines = splitLatexDisplayLines(teacherLatex)
-                    if (!lines.length) return
-
-                    const index = getStackedPanelLineIndexFromClientY(e.currentTarget as HTMLElement, y, lines.length)
-
-                    setStudentResponseState({
-                      active: true,
-                      anchorIndex: index,
-                      baseTeacherLatex: teacherLatex,
-                      committed: [],
-                      awaitingFinalSubmit: false,
-                    })
-
-                    const editor = editorInstanceRef.current
-                    if (editor) {
-                      suppressBroadcastUntilTsRef.current = Date.now() + 1200
-                      try {
-                        editor.clear?.()
-                      } catch {}
-                      lastSymbolCountRef.current = 0
-                      lastBroadcastBaseCountRef.current = 0
-                      setLatexOutput('')
-                    }
-                  } : undefined)}
+                  } : undefined}
                 >
                   {isAdmin ? (
                     latexProjectionMarkup ? (
@@ -6411,9 +6228,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(isAdmin || (!isAdmin && studentResponseState?.active)) ? (
+                {isAdmin ? (
                   <div className="flex items-center gap-2">
-                    {isAdmin && isCompactViewport && (
+                    {isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -6442,7 +6259,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && isCompactViewport && (
+                    {isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -6468,7 +6285,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && isCompactViewport && (
+                    {isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -6484,7 +6301,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && isOverlayMode && (
+                    {isOverlayMode && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -6509,232 +6326,107 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin ? (
-                      <button
-                        type="button"
-                        className="px-2 py-1"
-                        title="Send step"
-                        onClick={async () => {
-                        const editor = editorInstanceRef.current
-                        if (!editor) return
-                        if (lockedOutRef.current) return
-                        if (adminSendingStep) return
+                    <button
+                      type="button"
+                      className="px-2 py-1"
+                      title="Send step"
+                      onClick={async () => {
+                      const editor = editorInstanceRef.current
+                      if (!editor) return
+                      if (lockedOutRef.current) return
+                      if (adminSendingStep) return
 
-                        // Reset the manual horizontal scrollbar to the start whenever a step is sent.
-                        // (Keeps the next step starting from the left.)
+                      // Reset the manual horizontal scrollbar to the start whenever a step is sent.
+                      // (Keeps the next step starting from the left.)
+                      try {
+                        const viewport = studentViewportRef.current
+                        if (viewport) {
+                          viewport.scrollLeft = 0
+                        }
+                        setHorizontalPanValue(0)
+                      } catch {}
+
+                      setAdminSendingStep(true)
+
+                      try {
+                        // Ensure we have the latest preview before committing.
+                        // Let recognition catch up before committing.
                         try {
-                          const viewport = studentViewportRef.current
-                          if (viewport) {
-                            viewport.scrollLeft = 0
+                          if (typeof editor.waitForIdle === 'function') {
+                            await editor.waitForIdle()
                           }
-                          setHorizontalPanValue(0)
                         } catch {}
 
-                        setAdminSendingStep(true)
-
-                        try {
-                          // Ensure we have the latest preview before committing.
-                          // Let recognition catch up before committing.
-                          try {
-                            if (typeof editor.waitForIdle === 'function') {
-                              await editor.waitForIdle()
-                            }
-                          } catch {}
-
-                          let step = adminDraftLatex
-                          if (!step) {
-                            const modelLatex = getLatexFromEditorModel()
-                            const normalizedModel = normalizeStepLatex(modelLatex)
-                            if (normalizedModel) {
-                              step = normalizedModel
-                              setLatexOutput(modelLatex)
-                              setAdminDraftLatex(normalizedModel)
-                            }
+                        let step = adminDraftLatex
+                        if (!step) {
+                          const modelLatex = getLatexFromEditorModel()
+                          const normalizedModel = normalizeStepLatex(modelLatex)
+                          if (normalizedModel) {
+                            step = normalizedModel
+                            setLatexOutput(modelLatex)
+                            setAdminDraftLatex(normalizedModel)
                           }
-                          if (!step) {
-                            // Retry export a few times in case recognition is still catching up.
-                            for (let i = 0; i < 3 && !step; i += 1) {
-                              const exported = await exportLatexFromEditor()
-                              const normalized = normalizeStepLatex(exported)
-                              if (normalized) {
-                                step = normalized
-                                setLatexOutput(exported)
-                                setAdminDraftLatex(normalized)
-                                break
-                              }
-                              await new Promise<void>(resolve => setTimeout(resolve, 250))
-                            }
-                          }
-                          // If still empty (e.g., everything scratched away), do not commit.
-                          if (!step) return
-
-                          const snapshot = captureFullSnapshot()
-                          const symbols = snapshot?.symbols ?? null
-                          setAdminSteps(prev => {
-                            const next = [...prev]
-                            if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
-                              next[adminEditIndex] = { latex: step, symbols }
-                            } else {
-                              next.push({ latex: step, symbols })
-                            }
-                            return next
-                          })
-                          setAdminDraftLatex('')
-                          setAdminEditIndex(null)
-                          setLatexOutput('')
-
-                          // Clear handwriting for next step without broadcasting a global clear.
-                          suppressBroadcastUntilTsRef.current = Date.now() + 1200
-                          try {
-                            editor.clear?.()
-                          } catch {}
-                          lastSymbolCountRef.current = 0
-                          lastBroadcastBaseCountRef.current = 0
-                        } finally {
-                          setAdminSendingStep(false)
                         }
-                        }}
-                        disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
-                      >
-                        <span className="sr-only">Send</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="currentColor"
-                          className="text-slate-700"
-                          aria-hidden="true"
-                        >
-                          <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                        </svg>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="px-2 py-1"
-                        title="Send response"
-                        onClick={async () => {
-                          const editor = editorInstanceRef.current
-                          if (!editor) return
-                          if (lockedOutRef.current) return
-                          const curr = studentResponseStateRef.current
-                          if (!curr?.active) return
-                          if (studentSendingResponse) return
-
-                          // Reset horizontal scroll, same as teacher.
-                          try {
-                            const viewport = studentViewportRef.current
-                            if (viewport) {
-                              viewport.scrollLeft = 0
+                        if (!step) {
+                          // Retry export a few times in case recognition is still catching up.
+                          for (let i = 0; i < 3 && !step; i += 1) {
+                            const exported = await exportLatexFromEditor()
+                            const normalized = normalizeStepLatex(exported)
+                            if (normalized) {
+                              step = normalized
+                              setLatexOutput(exported)
+                              setAdminDraftLatex(normalized)
+                              break
                             }
-                            setHorizontalPanValue(0)
-                          } catch {}
-
-                          setStudentSendingResponse(true)
-                          try {
-                            try {
-                              if (typeof editor.waitForIdle === 'function') {
-                                await editor.waitForIdle()
-                              }
-                            } catch {}
-
-                            const hasInk = Boolean(canClear) || (lastSymbolCountRef.current > 0)
-
-                            if (!hasInk) {
-                              // Second click while blank: submit response and return to live teacher notes.
-                              const current = studentResponseStateRef.current
-                              if (!current?.active) return
-                              if (!current.awaitingFinalSubmit) return
-
-                              const responseLatex = joinLatexDisplayLines((current.committed || []).map(s => s?.latex || '').filter(Boolean))
-                              if (responseLatex && sessionKey) {
-                                try {
-                                  await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    credentials: 'same-origin',
-                                    body: JSON.stringify({ latex: responseLatex }),
-                                  })
-                                } catch (err) {
-                                  console.warn('Failed to save learner response', err)
-                                }
-                              }
-
-                              const pending = pendingStackedNotesRef.current
-                              setStudentResponseState(null)
-                              pendingStackedNotesRef.current = null
-                              if (pending) {
-                                setStackedNotesState(prev => {
-                                  if (pending.ts < prev.ts) return prev
-                                  return { latex: pending.latex, options: pending.options, ts: pending.ts }
-                                })
-                              }
-                              return
-                            }
-
-                            let step = ''
-                            const modelLatex = getLatexFromEditorModel()
-                            const normalizedModel = normalizeStepLatex(modelLatex)
-                            if (normalizedModel) {
-                              step = normalizedModel
-                              setLatexOutput(modelLatex)
-                            }
-                            if (!step) {
-                              for (let i = 0; i < 3 && !step; i += 1) {
-                                const exported = await exportLatexFromEditor()
-                                const normalized = normalizeStepLatex(exported)
-                                if (normalized) {
-                                  step = normalized
-                                  setLatexOutput(exported)
-                                  break
-                                }
-                                await new Promise<void>(resolve => setTimeout(resolve, 250))
-                              }
-                            }
-                            if (!step) return
-
-                            const snapshot = captureFullSnapshot()
-                            const symbols = snapshot?.symbols ?? null
-                            setStudentResponseState(prev => {
-                              if (!prev?.active) return prev
-                              return {
-                                ...prev,
-                                committed: [...prev.committed, { latex: step, symbols }],
-                                awaitingFinalSubmit: true,
-                              }
-                            })
-
-                            // Clear handwriting for the next response line.
-                            suppressBroadcastUntilTsRef.current = Date.now() + 1200
-                            try {
-                              editor.clear?.()
-                            } catch {}
-                            lastSymbolCountRef.current = 0
-                            lastBroadcastBaseCountRef.current = 0
-                            setLatexOutput('')
-                          } finally {
-                            setStudentSendingResponse(false)
+                            await new Promise<void>(resolve => setTimeout(resolve, 250))
                           }
-                        }}
-                        disabled={status !== 'ready' || Boolean(fatalError) || studentSendingResponse}
-                      >
-                        <span className="sr-only">Send</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="currentColor"
-                          className="text-slate-700"
-                          aria-hidden="true"
-                        >
-                          <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                        </svg>
-                      </button>
-                    )}
+                        }
+                        // If still empty (e.g., everything scratched away), do not commit.
+                        if (!step) return
 
-                    {isAdmin && isCompactViewport && mobileLatexTrayOpen && (
+                        const snapshot = captureFullSnapshot()
+                        const symbols = snapshot?.symbols ?? null
+                        setAdminSteps(prev => {
+                          const next = [...prev]
+                          if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
+                            next[adminEditIndex] = { latex: step, symbols }
+                          } else {
+                            next.push({ latex: step, symbols })
+                          }
+                          return next
+                        })
+                        setAdminDraftLatex('')
+                        setAdminEditIndex(null)
+                        setLatexOutput('')
+
+                        // Clear handwriting for next step without broadcasting a global clear.
+                        suppressBroadcastUntilTsRef.current = Date.now() + 1200
+                        try {
+                          editor.clear?.()
+                        } catch {}
+                        lastSymbolCountRef.current = 0
+                        lastBroadcastBaseCountRef.current = 0
+                      } finally {
+                        setAdminSendingStep(false)
+                      }
+                      }}
+                      disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
+                    >
+                      <span className="sr-only">Send</span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="18"
+                        height="18"
+                        fill="currentColor"
+                        className="text-slate-700"
+                        aria-hidden="true"
+                      >
+                        <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                      </svg>
+                    </button>
+
+                    {isCompactViewport && mobileLatexTrayOpen && (
                       <div
                         className="fixed left-2 right-2 z-50 rounded-lg border border-slate-200 bg-white shadow-sm p-3"
                         style={{ bottom: viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8 }}

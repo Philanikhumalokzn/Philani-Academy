@@ -307,6 +307,9 @@ export default function Dashboard() {
   const [latexSaves, setLatexSaves] = useState<{ shared: LatexSave[]; mine: LatexSave[] }>({ shared: [], mine: [] })
   const [latexSavesLoading, setLatexSavesLoading] = useState(false)
   const [latexSavesError, setLatexSavesError] = useState<string | null>(null)
+  const [myResponses, setMyResponses] = useState<any[]>([])
+  const [myResponsesLoading, setMyResponsesLoading] = useState(false)
+  const [myResponsesError, setMyResponsesError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
     useEffect(() => {
       if (!router.isReady) return
@@ -380,7 +383,7 @@ export default function Dashboard() {
   const [sessionDetailsIds, setSessionDetailsIds] = useState<string[]>([])
   const [sessionDetailsIndex, setSessionDetailsIndex] = useState(0)
   const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
-  const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex'>('materials')
+  const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex' | 'responses'>('materials')
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1298,6 +1301,27 @@ export default function Dashboard() {
     }
   }
 
+  async function fetchMyResponses(sessionId: string) {
+    setMyResponsesError(null)
+    setMyResponsesLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/responses`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        const responses = Array.isArray(data?.responses) ? data.responses : []
+        setMyResponses(responses)
+        return
+      }
+      setMyResponses([])
+      setMyResponsesError(data?.message || `Failed to load responses (${res.status})`)
+    } catch (err: any) {
+      setMyResponses([])
+      setMyResponsesError(err?.message || 'Network error')
+    } finally {
+      setMyResponsesLoading(false)
+    }
+  }
+
   async function renameLatexSave(sessionId: string, saveId: string, currentTitle: string) {
     const nextTitle = prompt(isLearner ? 'Rename saved notes' : 'Rename LaTeX save', currentTitle)
     if (nextTitle === null) return
@@ -1383,6 +1407,8 @@ export default function Dashboard() {
     setMaterialsError(null)
     setLatexSaves({ shared: [], mine: [] })
     setLatexSavesError(null)
+    setMyResponses([])
+    setMyResponsesError(null)
     resetMaterialForm()
   }, [])
 
@@ -2847,7 +2873,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="p-3 border-b">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className={`grid gap-2 ${isLearner ? 'grid-cols-3' : 'grid-cols-2'}`}>
                         <button
                           type="button"
                           className={`btn w-full justify-center ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
@@ -2862,6 +2888,18 @@ export default function Dashboard() {
                         >
                           {learnerNotesLabel}
                         </button>
+                        {isLearner && (
+                          <button
+                            type="button"
+                            className={`btn w-full justify-center ${sessionDetailsTab === 'responses' ? 'btn-primary' : 'btn-ghost'}`}
+                            onClick={() => {
+                              setSessionDetailsTab('responses')
+                              if (sessionDetailsSessionId) fetchMyResponses(sessionDetailsSessionId)
+                            }}
+                          >
+                            My responses
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -3236,7 +3274,7 @@ export default function Dashboard() {
                             </ul>
                           )}
                         </div>
-                      ) : (
+                      ) : sessionDetailsTab === 'latex' ? (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="font-semibold text-sm">{learnerNotesLabel}</div>
@@ -3338,6 +3376,41 @@ export default function Dashboard() {
                                   </ul>
                                 )}
                               </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-sm">My responses</div>
+                            {expandedSessionId && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => fetchMyResponses(expandedSessionId)}
+                                disabled={myResponsesLoading}
+                              >
+                                {myResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                              </button>
+                            )}
+                          </div>
+
+                          {myResponsesError ? (
+                            <div className="text-sm text-red-600">{myResponsesError}</div>
+                          ) : myResponsesLoading ? (
+                            <div className="text-sm muted">Loading responses…</div>
+                          ) : myResponses.length === 0 ? (
+                            <div className="text-sm muted">No responses submitted yet.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {myResponses.map((r: any) => (
+                                <div key={r.id} className="p-3 border rounded bg-slate-50 space-y-1">
+                                  {r?.updatedAt ? (
+                                    <div className="text-xs muted">{new Date(r.updatedAt).toLocaleString()}</div>
+                                  ) : null}
+                                  <div className="text-xs font-mono whitespace-pre-wrap break-words">{r?.latex || ''}</div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>

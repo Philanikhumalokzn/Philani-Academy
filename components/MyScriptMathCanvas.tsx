@@ -426,6 +426,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isSavingLatex, setIsSavingLatex] = useState(false)
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
 
+  const [evaluateResponses, setEvaluateResponses] = useState<any[]>([])
+  const [evaluateResponsesLoading, setEvaluateResponsesLoading] = useState(false)
+  const [evaluateResponsesError, setEvaluateResponsesError] = useState<string | null>(null)
+
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
   type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number; z?: number; locked?: boolean }
@@ -5551,6 +5555,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [fetchLatexSaves])
 
+  const fetchEvaluateResponses = useCallback(async () => {
+    if (!isAdmin) return
+    if (!sessionKey) return
+    if (isLessonAuthoring) return
+    setEvaluateResponsesError(null)
+    setEvaluateResponsesLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setEvaluateResponses([])
+        setEvaluateResponsesError(data?.message || `Failed to load responses (${res.status})`)
+        return
+      }
+      const responses = Array.isArray(data?.responses) ? data.responses : []
+      setEvaluateResponses(responses)
+    } catch (err: any) {
+      setEvaluateResponses([])
+      setEvaluateResponsesError(err?.message || 'Network error')
+    } finally {
+      setEvaluateResponsesLoading(false)
+    }
+  }, [isAdmin, isLessonAuthoring, sessionKey])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!sessionKey) return
+    if (isLessonAuthoring) return
+    if (lessonScriptPhaseKey !== 'evaluate') return
+    fetchEvaluateResponses()
+  }, [fetchEvaluateResponses, isAdmin, isLessonAuthoring, lessonScriptPhaseKey, sessionKey])
+
   useEffect(() => {
     if (canPersistLatex) return
     setLatestSharedLatex(null)
@@ -5922,6 +5958,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 Clear
               </button>
               {lessonScriptError && <span className="text-xs text-red-600">{lessonScriptError}</span>}
+
+              {lessonScriptPhaseKey === 'evaluate' && sessionKey && !isLessonAuthoring && (
+                <div className="w-full mt-2 rounded border bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold">Responses</div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs"
+                      onClick={() => fetchEvaluateResponses()}
+                      disabled={evaluateResponsesLoading}
+                    >
+                      {evaluateResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {evaluateResponsesError ? (
+                    <div className="text-xs text-red-600 mt-2">{evaluateResponsesError}</div>
+                  ) : evaluateResponsesLoading ? (
+                    <div className="text-xs muted mt-2">Loading responses…</div>
+                  ) : evaluateResponses.length === 0 ? (
+                    <div className="text-xs muted mt-2">No learner responses yet.</div>
+                  ) : (
+                    <div className="mt-2 max-h-52 overflow-auto space-y-2">
+                      {evaluateResponses.map((r: any) => (
+                        <div key={r.id} className="border rounded p-2 bg-slate-50">
+                          <div className="text-xs font-medium">
+                            {r?.user?.firstName || r?.user?.name || r?.userEmail || 'Learner'}
+                            {r?.user?.lastName ? ` ${r.user.lastName}` : ''}
+                          </div>
+                          {r?.updatedAt ? (
+                            <div className="text-[11px] muted">{new Date(r.updatedAt).toLocaleString()}</div>
+                          ) : null}
+                          <div className="mt-1 text-xs font-mono whitespace-pre-wrap break-words">{r?.latex || ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {ENABLE_EMBEDDED_DIAGRAMS && (
@@ -6571,6 +6646,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               const current = studentResponseStateRef.current
                               if (!current?.active) return
                               if (!current.awaitingFinalSubmit) return
+
+                              const responseLatex = joinLatexDisplayLines((current.committed || []).map(s => s?.latex || '').filter(Boolean))
+                              if (responseLatex && sessionKey) {
+                                try {
+                                  await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    credentials: 'same-origin',
+                                    body: JSON.stringify({ latex: responseLatex }),
+                                  })
+                                } catch (err) {
+                                  console.warn('Failed to save learner response', err)
+                                }
+                              }
 
                               const pending = pendingStackedNotesRef.current
                               setStudentResponseState(null)

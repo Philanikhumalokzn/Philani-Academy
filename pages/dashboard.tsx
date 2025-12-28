@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import katex from 'katex'
 import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, signOut, useSession } from 'next-auth/react'
@@ -90,6 +91,102 @@ type LiveWindowConfig = {
 }
 
 export default function Dashboard() {
+  const renderKatexDisplayHtml = useCallback((latex: unknown) => {
+    const value = typeof latex === 'string' ? latex.trim() : ''
+    if (!value) return ''
+    try {
+      return katex.renderToString(value, {
+        displayMode: true,
+        throwOnError: false,
+        strict: 'ignore',
+      })
+    } catch {
+      return ''
+    }
+  }, [])
+
+  const renderTextWithKatex = useCallback((text: unknown) => {
+    const input = typeof text === 'string' ? text : ''
+    if (!input) return input
+
+    const nodes: Array<string | { display: boolean; expr: string }> = []
+    let i = 0
+
+    const pushText = (s: string) => {
+      if (!s) return
+      const last = nodes[nodes.length - 1]
+      if (typeof last === 'string') nodes[nodes.length - 1] = last + s
+      else nodes.push(s)
+    }
+
+    const tryReadDelimited = (open: string, close: string, display: boolean) => {
+      if (!input.startsWith(open, i)) return false
+      const start = i + open.length
+      const end = input.indexOf(close, start)
+      if (end < 0) return false
+      const expr = input.slice(start, end).trim()
+      i = end + close.length
+      if (!expr) {
+        pushText(open + close)
+        return true
+      }
+      nodes.push({ display, expr })
+      return true
+    }
+
+    while (i < input.length) {
+      if (tryReadDelimited('$$', '$$', true)) continue
+      if (tryReadDelimited('\\[', '\\]', true)) continue
+      if (tryReadDelimited('\\(', '\\)', false)) continue
+
+      // Inline $...$ (ignore escaped \$)
+      if (input[i] === '$' && (i === 0 || input[i - 1] !== '\\')) {
+        if (input[i + 1] === '$') {
+          pushText('$')
+          i += 1
+          continue
+        }
+        const start = i + 1
+        let end = start
+        while (end < input.length) {
+          if (input[end] === '$' && input[end - 1] !== '\\') break
+          end += 1
+        }
+        if (end < input.length && input[end] === '$') {
+          const expr = input.slice(start, end).trim()
+          i = end + 1
+          if (!expr) {
+            pushText('$$')
+            continue
+          }
+          nodes.push({ display: false, expr })
+          continue
+        }
+        pushText('$')
+        i += 1
+        continue
+      }
+
+      pushText(input[i])
+      i += 1
+    }
+
+    return nodes.map((n, idx) => {
+      if (typeof n === 'string') return <span key={`t-${idx}`}>{n}</span>
+      try {
+        const html = katex.renderToString(n.expr, { displayMode: n.display, throwOnError: false, strict: 'ignore' })
+        return (
+          <span
+            key={`k-${idx}`}
+            className={n.display ? 'block my-1' : 'inline'}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )
+      } catch {
+        return <span key={`f-${idx}`}>{n.expr}</span>
+      }
+    })
+  }, [])
   const router = useRouter()
   const { data: session, status } = useSession()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
@@ -3383,10 +3480,23 @@ export default function Dashboard() {
                                   ) : null}
                                   {r?.prompt ? (
                                     <div className="text-sm text-slate-900 font-medium whitespace-pre-wrap break-words">
-                                      {r.prompt}
+                                      {renderTextWithKatex(r.prompt)}
                                     </div>
                                   ) : null}
-                                  <div className="text-xs font-mono text-slate-900 whitespace-pre-wrap break-words">{r?.latex || ''}</div>
+                                  {(() => {
+                                    const html = renderKatexDisplayHtml(r?.latex)
+                                    if (html) {
+                                      return (
+                                        <div
+                                          className="text-slate-900 leading-relaxed"
+                                          dangerouslySetInnerHTML={{ __html: html }}
+                                        />
+                                      )
+                                    }
+                                    return (
+                                      <div className="text-xs font-mono text-slate-900 whitespace-pre-wrap break-words">{r?.latex || ''}</div>
+                                    )
+                                  })()}
                                 </div>
                               ))}
                             </div>

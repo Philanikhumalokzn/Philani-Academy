@@ -10,6 +10,19 @@ type Body = {
 const MAX_LATEX = 20000
 const MAX_PROMPT = 4000
 
+// We want the quiz prompt to be extremely concise in UI.
+const TARGET_PROMPT_MAX_CHARS = 220
+
+function countUnescapedDollars(s: string) {
+  let count = 0
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '$') continue
+    if (i > 0 && s[i - 1] === '\\') continue
+    count += 1
+  }
+  return count
+}
+
 function clampText(value: unknown, maxLen: number) {
   if (typeof value !== 'string') return ''
   const trimmed = value.trim()
@@ -20,21 +33,86 @@ function heuristicPrompt(gradeLabel: string | null, teacherLatex: string) {
   const grade = gradeLabel ? `Grade ${gradeLabel.replace(/[^0-9]/g, '') || gradeLabel}` : 'your grade'
   const latex = teacherLatex.trim()
   if (!latex) {
-    return `Quiz (${grade}): Answer the question your teacher has given. Show your working clearly.`
+    return `Quiz (${grade}): Show your working.`
   }
   // Very lightweight heuristic: wrap teacher’s latest content as the reference.
-  return (
-    `Quiz (${grade}):\n` +
-    `Use the method shown in class to solve/simplify the following. Show all working.\n\n` +
-    `${latex}`
-  )
+  return `Quiz (${grade}): Solve. Show working.\n${latex}`
+}
+
+function shortenPrompt(value: string) {
+  const s = (value || '').trim().replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+  if (s.length <= TARGET_PROMPT_MAX_CHARS) return s
+
+  // Prefer a single first line.
+  const firstLine = s.split('\n').map(x => x.trim()).find(Boolean) || s
+  if (firstLine.length <= TARGET_PROMPT_MAX_CHARS) return firstLine
+
+  let slice = firstLine.slice(0, TARGET_PROMPT_MAX_CHARS)
+  // Avoid cutting inside an unmatched $...$.
+  if ((countUnescapedDollars(slice) % 2) === 1) {
+    const last = slice.lastIndexOf('$')
+    if (last >= 0) slice = slice.slice(0, last).trim()
+  }
+  const cutAt = Math.max(slice.lastIndexOf('?'), slice.lastIndexOf('.'), slice.lastIndexOf('!'))
+  if (cutAt > 40) return slice.slice(0, cutAt + 1).trim()
+  return slice.trim()
+}
+
+function ensureKatexDelimiters(value: string) {
+  const s = (value || '').trim()
+  if (!s) return s
+  // If the model already used delimiters, don't touch it.
+  if (/[\$]|\\\(|\\\[/.test(s)) {
+    // Note: this is intentionally broad; the goal is to avoid double-wrapping.
+    if (s.includes('$') || s.includes('\\(') || s.includes('\\[')) return s
+  }
+
+  const looksMathy = (t: string) => {
+    const text = t.trim()
+    if (!text) return false
+    const hasCommand = /\\[a-zA-Z]+/.test(text)
+    const hasOps = /[=^_]|\\frac|\\sqrt|\\times|\\div|\\cdot|\\pm|\\leq|\\geq/.test(text)
+    const wordCount = text.split(/\s+/).filter(Boolean).length
+    return (hasCommand || hasOps) && wordCount <= 7
+  }
+
+  const wrapInline = (expr: string) => `$${expr.trim()}$`
+  const wrapDisplay = (expr: string) => `$$${expr.trim()}$$`
+
+  const lines = s.split('\n')
+  const out = lines.map(line => {
+    const trimmed = line.trim()
+    if (!trimmed) return line
+
+    // If it's a single mathy line, wrap it.
+    if (looksMathy(trimmed)) {
+      const shouldDisplay = trimmed.length > 34 || trimmed.includes('\\frac') || trimmed.includes('\\sqrt') || trimmed.includes('\\begin')
+      return shouldDisplay ? wrapDisplay(trimmed) : wrapInline(trimmed)
+    }
+
+    // If the line is like: "Solve: x^2+..." wrap the RHS.
+    const colonIdx = line.indexOf(':')
+    if (colonIdx >= 0) {
+      const left = line.slice(0, colonIdx + 1)
+      const right = line.slice(colonIdx + 1)
+      if (looksMathy(right)) {
+        return `${left} ${wrapInline(right)}`
+      }
+    }
+
+    return line
+  })
+
+  return out.join('\n')
 }
 
 async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
   const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
   const sys =
-    'You are an assistant helping a teacher write a short quiz prompt for learners. ' +
-    'Return ONLY the quiz instructions/question text, no quotes, no markdown fences.'
+    'You write quiz prompts for learners. ' +
+    'Return ONLY the prompt text (no quotes, no markdown). ' +
+    `Be extremely concise: ideally 1 short line, maximum ${TARGET_PROMPT_MAX_CHARS} characters. ` +
+    'If you include any math, wrap it in $...$ (inline) or $$...$$ (standalone line), so it renders with KaTeX.'
   const user =
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
@@ -72,8 +150,9 @@ async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLa
 async function generateWithAnthropic(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
   const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
   const prompt =
-    `You are an assistant helping a teacher write a short quiz prompt for learners. ` +
-    `Return ONLY the quiz instructions/question text, no quotes, no markdown fences.\n\n` +
+    `You write quiz prompts for learners. Return ONLY the prompt text (no quotes, no markdown). ` +
+    `Be extremely concise: ideally 1 short line, maximum ${TARGET_PROMPT_MAX_CHARS} characters. ` +
+    `If you include any math, wrap it in $...$ or $$...$$ so it renders with KaTeX.\n\n` +
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
     `Teacher notes (LaTeX, may include multiple lines):\n${teacherLatex || '(empty)'}\n\n` +
@@ -109,8 +188,9 @@ async function generateWithAnthropic(opts: { apiKey: string; model: string; grad
 async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
   const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
   const prompt =
-    `You are an assistant helping a teacher write a short quiz prompt for learners. ` +
-    `Return ONLY the quiz instructions/question text, no quotes, no markdown fences.\n\n` +
+    `You write quiz prompts for learners. Return ONLY the prompt text (no quotes, no markdown). ` +
+    `Be extremely concise: ideally 1 short line, maximum ${TARGET_PROMPT_MAX_CHARS} characters. ` +
+    `If you include any math, wrap it in $...$ or $$...$$ so it renders with KaTeX.\n\n` +
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
     `Teacher notes (LaTeX, may include multiple lines):\n${teacherLatex || '(empty)'}\n\n` +
@@ -196,13 +276,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const finalPrompt = clampText(prompt, MAX_PROMPT)
-    if (!finalPrompt) {
-      return res.status(200).json({ prompt: heuristicPrompt(gradeLabel, teacherLatex) })
-    }
-
-    return res.status(200).json({ prompt: finalPrompt })
+    const shortened = shortenPrompt(finalPrompt || '')
+    const withKatex = shortenPrompt(ensureKatexDelimiters(shortened))
+    if (!withKatex) return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))) })
+    return res.status(200).json({ prompt: withKatex })
   } catch (err: any) {
     console.warn('AI quiz prompt generation failed; falling back', err?.message || err)
-    return res.status(200).json({ prompt: heuristicPrompt(gradeLabel, teacherLatex) })
+    return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))) })
   }
 }

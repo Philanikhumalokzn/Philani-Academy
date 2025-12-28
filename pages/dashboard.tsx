@@ -4027,6 +4027,13 @@ export default function Dashboard() {
           <div className="live-call-overlay__backdrop" />
           <div className="live-call-overlay__panel" ref={stageRef}>
             <div className="live-call-overlay__video relative">
+              {/** When the canvas window is open, mount overlays inside the canvas to avoid duplicate prompt boxes. */}
+              {/** (Otherwise the same TextOverlayModule renders twice: here and in StackedCanvasWindow.) */}
+              {(() => {
+                const canvasOpen = liveWindows.some(win => win.kind === 'canvas' && !win.minimized)
+                if (canvasOpen) return null
+                return (
+                  <>
               {activeSessionId && (
                 <DiagramOverlayModule
                   boardId={String(activeSessionId)}
@@ -4045,6 +4052,9 @@ export default function Dashboard() {
                   isAdmin={isOwnerUser}
                 />
               )}
+                  </>
+                )
+              })()}
               <div className="live-call-overlay__floating-actions">
                 <button
                   type="button"

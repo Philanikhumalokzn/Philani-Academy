@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import katex from 'katex'
 
 type TextSurface = 'stage'
 
@@ -48,6 +49,138 @@ const randomId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 const SCRIPT_BOX_ID = 'lesson-script-text'
 const QUIZ_BOX_ID = 'quiz-prompt'
 
+const MIN_BOX_PX_W = 140
+const MIN_BOX_PX_H = 56
+const MAX_BOX_FRAC = 0.98
+
+const MAX_MATH_SEGMENTS = 24
+const MAX_MATH_CHARS = 2000
+
+function renderTextWithKatex(text: string) {
+  const input = typeof text === 'string' ? text : ''
+  if (!input) return [input]
+
+  // Basic scanner that supports:
+  // - $$...$$ (display)
+  // - $...$ (inline)
+  // - \[...\] (display)
+  // - \(...\) (inline)
+  // This keeps everything else as plain text.
+  const nodes: Array<string | { kind: 'katex'; display: boolean; expr: string }> = []
+  let i = 0
+  let segments = 0
+
+  const pushText = (s: string) => {
+    if (!s) return
+    const last = nodes[nodes.length - 1]
+    if (typeof last === 'string') {
+      nodes[nodes.length - 1] = last + s
+    } else {
+      nodes.push(s)
+    }
+  }
+
+  const tryReadDelimited = (open: string, close: string, display: boolean) => {
+    if (!input.startsWith(open, i)) return false
+    const start = i + open.length
+    const end = input.indexOf(close, start)
+    if (end < 0) return false
+    const expr = input.slice(start, end)
+    i = end + close.length
+
+    if (segments >= MAX_MATH_SEGMENTS) {
+      pushText(open + expr + close)
+      return true
+    }
+
+    const trimmed = expr.trim()
+    if (!trimmed) {
+      pushText(open + expr + close)
+      return true
+    }
+
+    if (trimmed.length > MAX_MATH_CHARS) {
+      pushText(open + trimmed.slice(0, MAX_MATH_CHARS) + close)
+      return true
+    }
+
+    segments += 1
+    nodes.push({ kind: 'katex', display, expr: trimmed })
+    return true
+  }
+
+  while (i < input.length) {
+    // Prefer longer delimiters first.
+    if (tryReadDelimited('$$', '$$', true)) continue
+    if (tryReadDelimited('\\[', '\\]', true)) continue
+    if (tryReadDelimited('\\(', '\\)', false)) continue
+
+    // Inline $...$ (ignore escaped \$)
+    if (input[i] === '$' && (i === 0 || input[i - 1] !== '\\')) {
+      // Avoid treating $$ as $.
+      if (input[i + 1] === '$') {
+        pushText('$')
+        i += 1
+        continue
+      }
+      const start = i + 1
+      let end = start
+      while (end < input.length) {
+        if (input[end] === '$' && input[end - 1] !== '\\') break
+        end += 1
+      }
+      if (end < input.length && input[end] === '$') {
+        const expr = input.slice(start, end)
+        i = end + 1
+        if (segments >= MAX_MATH_SEGMENTS) {
+          pushText(`$${expr}$`)
+          continue
+        }
+        const trimmed = expr.trim()
+        if (!trimmed) {
+          pushText(`$${expr}$`)
+          continue
+        }
+        if (trimmed.length > MAX_MATH_CHARS) {
+          pushText(`$${trimmed.slice(0, MAX_MATH_CHARS)}$`)
+          continue
+        }
+        segments += 1
+        nodes.push({ kind: 'katex', display: false, expr: trimmed })
+        continue
+      }
+      // No closing $, treat as literal.
+      pushText('$')
+      i += 1
+      continue
+    }
+
+    pushText(input[i])
+    i += 1
+  }
+
+  return nodes.map((n, idx) => {
+    if (typeof n === 'string') return <span key={`t-${idx}`}>{n}</span>
+    try {
+      const html = katex.renderToString(n.expr, { displayMode: n.display, throwOnError: false, strict: 'ignore' })
+      return (
+        <span
+          key={`k-${idx}`}
+          className={n.display ? 'block my-1' : 'inline'}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      )
+    } catch {
+      // If KaTeX fails for any reason, fall back to the raw text.
+      return (
+        <span key={`f-${idx}`}>
+          {n.display ? `\n${n.expr}\n` : n.expr}
+        </span>
+      )
+    }
+  })
+}
+
 export default function TextOverlayModule(props: {
   boardId?: string
   gradeLabel?: string | null
@@ -83,6 +216,16 @@ export default function TextOverlayModule(props: {
   useEffect(() => {
     boxesRef.current = boxes
   }, [boxes])
+
+  // Student-local overrides for the quiz prompt box.
+  // Students should be able to move/resize/close the prompt without affecting others.
+  const [localQuizOverride, setLocalQuizOverride] = useState<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
+  const localQuizOverrideRef = useRef<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
+  useEffect(() => {
+    localQuizOverrideRef.current = localQuizOverride
+  }, [localQuizOverride])
+
+  const lastQuizPromptSignatureRef = useRef<string>('')
 
   const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; boxId: string }>(null)
   useEffect(() => {
@@ -188,6 +331,16 @@ export default function TextOverlayModule(props: {
               .filter(Boolean) as TextBoxRecord[]
             normalized.sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
             setBoxes(normalized)
+
+            // If the quiz prompt content is updated (or re-shown), re-open it for students.
+            if (!isAdmin) {
+              const quiz = normalized.find(b => b.id === QUIZ_BOX_ID) || null
+              const signature = quiz ? `${quiz.visible ? '1' : '0'}|${quiz.text || ''}` : ''
+              if (signature && signature !== lastQuizPromptSignatureRef.current) {
+                lastQuizPromptSignatureRef.current = signature
+                setLocalQuizOverride(prev => (prev?.hidden ? { ...prev, hidden: false } : prev))
+              }
+            }
             return
           }
         }
@@ -411,6 +564,17 @@ export default function TextOverlayModule(props: {
     didMove: boolean
   } | null>(null)
 
+  const resizeRef = useRef<{
+    id: string
+    startClientX: number
+    startClientY: number
+    startW: number
+    startH: number
+    hostWidth: number
+    hostHeight: number
+    didResize: boolean
+  } | null>(null)
+
   const longPressRef = useRef<null | { timer: number; pointerId: number; startX: number; startY: number; boxId: string }>(null)
 
   const openBoxContextMenu = useCallback((boxId: string, clientX: number, clientY: number, host: HTMLElement | null) => {
@@ -423,13 +587,17 @@ export default function TextOverlayModule(props: {
   }, [isAdmin])
 
   const onBoxPointerDown = useCallback((box: TextBoxRecord, event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isAdmin) return
+    const isQuizBox = box.id === QUIZ_BOX_ID
+    const canManipulate = isAdmin || isQuizBox
+    if (!canManipulate) return
     event.stopPropagation()
 
-    void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
+    if (isAdmin) {
+      void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
+    }
 
     // Long-press opens context menu (similar to diagram module behaviour).
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && isAdmin) {
       if (longPressRef.current?.timer) {
         window.clearTimeout(longPressRef.current.timer)
       }
@@ -453,12 +621,19 @@ export default function TextOverlayModule(props: {
     if (!hostRect) return
 
     // Start drag immediately, but if the box is locked we won't move it.
+    const initial = !isAdmin && isQuizBox && localQuizOverrideRef.current
+      ? {
+          x: typeof localQuizOverrideRef.current?.x === 'number' ? localQuizOverrideRef.current.x : box.x,
+          y: typeof localQuizOverrideRef.current?.y === 'number' ? localQuizOverrideRef.current.y : box.y,
+        }
+      : { x: box.x, y: box.y }
+
     dragRef.current = {
       id: box.id,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      startX: box.x,
-      startY: box.y,
+      startX: initial.x,
+      startY: initial.y,
       hostWidth: Math.max(1, hostRect.width),
       hostHeight: Math.max(1, hostRect.height),
       didMove: false,
@@ -469,10 +644,44 @@ export default function TextOverlayModule(props: {
     } catch {}
   }, [isAdmin, openBoxContextMenu, setStateAndBroadcast])
 
+  const onResizeHandlePointerDown = useCallback((box: TextBoxRecord, event: React.PointerEvent<HTMLButtonElement>) => {
+    const isQuizBox = box.id === QUIZ_BOX_ID
+    const canManipulate = isAdmin || isQuizBox
+    if (!canManipulate) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const hostEl = ((event.currentTarget as any).parentElement?.parentElement as HTMLElement | null)?.parentElement as HTMLElement | null
+    const hostRect = hostEl?.getBoundingClientRect()
+    if (!hostRect) return
+
+    const initial = !isAdmin && isQuizBox && localQuizOverrideRef.current
+      ? {
+          w: typeof localQuizOverrideRef.current?.w === 'number' ? localQuizOverrideRef.current.w : box.w,
+          h: typeof localQuizOverrideRef.current?.h === 'number' ? localQuizOverrideRef.current.h : box.h,
+        }
+      : { w: box.w, h: box.h }
+
+    resizeRef.current = {
+      id: box.id,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startW: initial.w,
+      startH: initial.h,
+      hostWidth: Math.max(1, hostRect.width),
+      hostHeight: Math.max(1, hostRect.height),
+      didResize: false,
+    }
+
+    try {
+      ;(event.currentTarget as any).setPointerCapture?.(event.pointerId)
+    } catch {}
+  }, [isAdmin])
+
   const onBoxPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isAdmin) return
     const drag = dragRef.current
-    if (!drag) return
+    const resize = resizeRef.current
+    if (!drag && !resize) return
 
     // Cancel long press if user moves.
     const pending = longPressRef.current
@@ -485,8 +694,50 @@ export default function TextOverlayModule(props: {
       }
     }
 
-    const target = boxesRef.current.find(b => b.id === drag.id)
-    if (!target || Boolean(target.locked)) return
+    // Resize takes precedence if active.
+    if (resize) {
+      const targetId = resize.id
+      const isQuizBox = targetId === QUIZ_BOX_ID
+
+      const dxPx = event.clientX - resize.startClientX
+      const dyPx = event.clientY - resize.startClientY
+      if (!resize.didResize && (dxPx * dxPx + dyPx * dyPx) < 9) return
+      resize.didResize = true
+
+      const dw = dxPx / Math.max(resize.hostWidth, 1)
+      const dh = dyPx / Math.max(resize.hostHeight, 1)
+      const minW = MIN_BOX_PX_W / Math.max(resize.hostWidth, 1)
+      const minH = MIN_BOX_PX_H / Math.max(resize.hostHeight, 1)
+
+      const nextW = clamp01(Math.min(MAX_BOX_FRAC, Math.max(minW, resize.startW + dw)))
+      const nextH = clamp01(Math.min(MAX_BOX_FRAC, Math.max(minH, resize.startH + dh)))
+
+      if (!isAdmin && isQuizBox) {
+        setLocalQuizOverride(prev => ({
+          ...(prev || {}),
+          w: nextW,
+          h: nextH,
+        }))
+        return
+      }
+
+      if (!isAdmin) return
+      const target = boxesRef.current.find(b => b.id === targetId)
+      if (!target || Boolean(target.locked)) return
+
+      const nextBoxes = boxesRef.current.map(b => (b.id === targetId ? { ...b, w: nextW, h: nextH } : b))
+      boxesRef.current = nextBoxes
+      setBoxes(nextBoxes)
+      return
+    }
+
+    if (!drag) return
+    const targetId = drag.id
+    const isQuizBox = targetId === QUIZ_BOX_ID
+    if (isAdmin) {
+      const target = boxesRef.current.find(b => b.id === targetId)
+      if (!target || Boolean(target.locked)) return
+    }
 
     const dxPx = event.clientX - drag.startClientX
     const dyPx = event.clientY - drag.startClientY
@@ -498,31 +749,49 @@ export default function TextOverlayModule(props: {
     const dx = dxPx / Math.max(drag.hostWidth, 1)
     const dy = dyPx / Math.max(drag.hostHeight, 1)
 
+    const nextX = clamp01(drag.startX + dx)
+    const nextY = clamp01(drag.startY + dy)
+
+    if (!isAdmin && isQuizBox) {
+      setLocalQuizOverride(prev => ({
+        ...(prev || {}),
+        x: nextX,
+        y: nextY,
+      }))
+      return
+    }
+
+    if (!isAdmin) return
+
     const nextBoxes = boxesRef.current.map(b => {
-      if (b.id !== drag.id) return b
+      if (b.id !== targetId) return b
       return {
         ...b,
-        x: clamp01(drag.startX + dx),
-        y: clamp01(drag.startY + dy),
+        x: nextX,
+        y: nextY,
       }
     })
 
-    // Local update while moving.
     boxesRef.current = nextBoxes
     setBoxes(nextBoxes)
   }, [isAdmin])
 
   const onBoxPointerUp = useCallback(async () => {
-    if (!isAdmin) return
     if (typeof window !== 'undefined' && longPressRef.current?.timer) {
       window.clearTimeout(longPressRef.current.timer)
     }
     longPressRef.current = null
 
     const drag = dragRef.current
-    if (!drag) return
+    const resize = resizeRef.current
     dragRef.current = null
-    if (!drag.didMove) return
+    resizeRef.current = null
+
+    // Students: local-only changes (no publish).
+    if (!isAdmin) return
+
+    const didChange = Boolean(drag?.didMove) || Boolean(resize?.didResize)
+    if (!didChange) return
     await publish({ kind: 'boxes', boxes: boxesRef.current })
   }, [isAdmin, publish])
 
@@ -580,7 +849,11 @@ export default function TextOverlayModule(props: {
   ) : null
 
   const renderBoxes = boxes
-    .filter(b => b.visible)
+    .filter(b => {
+      if (!b.visible) return false
+      if (!isAdmin && b.id === QUIZ_BOX_ID && localQuizOverrideRef.current?.hidden) return false
+      return true
+    })
     .sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
 
   return (
@@ -594,19 +867,29 @@ export default function TextOverlayModule(props: {
       >
         {renderBoxes.map(box => {
           const isActive = overlayState.activeId === box.id
+          const isQuizBox = box.id === QUIZ_BOX_ID
+          const effective = (!isAdmin && isQuizBox && localQuizOverrideRef.current)
+            ? {
+                ...box,
+                x: typeof localQuizOverrideRef.current.x === 'number' ? localQuizOverrideRef.current.x : box.x,
+                y: typeof localQuizOverrideRef.current.y === 'number' ? localQuizOverrideRef.current.y : box.y,
+                w: typeof localQuizOverrideRef.current.w === 'number' ? localQuizOverrideRef.current.w : box.w,
+                h: typeof localQuizOverrideRef.current.h === 'number' ? localQuizOverrideRef.current.h : box.h,
+              }
+            : box
           return (
             <div
               key={box.id}
               className="pointer-events-auto"
               style={{
                 position: 'absolute',
-                left: `${box.x * 100}%`,
-                top: `${box.y * 100}%`,
-                width: `${box.w * 100}%`,
-                minWidth: 140,
+                left: `${effective.x * 100}%`,
+                top: `${effective.y * 100}%`,
+                width: `${effective.w * 100}%`,
+                minWidth: MIN_BOX_PX_W,
                 maxWidth: '92vw',
-                height: `${box.h * 100}%`,
-                minHeight: 56,
+                height: `${effective.h * 100}%`,
+                minHeight: MIN_BOX_PX_H,
                 zIndex: 520 + box.z,
               }}
               onPointerDown={event => onBoxPointerDown(box, event)}
@@ -616,20 +899,51 @@ export default function TextOverlayModule(props: {
               onContextMenu={event => onBoxContextMenu(box, event)}
             >
               <div
-                className="rounded-2xl border p-3"
+                className="relative rounded-2xl border p-3"
                 style={{
                   background: 'rgba(0,0,0,0.65)',
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
                   color: 'white',
                   backdropFilter: 'blur(10px)',
-                  cursor: isAdmin ? (box.locked ? 'default' : 'grab') : 'default',
+                  cursor: (isAdmin || isQuizBox) ? (box.locked ? 'default' : 'grab') : 'default',
                   height: '100%',
                   overflow: 'auto',
                   touchAction: 'none',
                   userSelect: 'none',
                 }}
               >
-                <div className="text-sm whitespace-pre-wrap">{box.text}</div>
+                {isQuizBox && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 px-2 py-1 text-xs text-white/80 hover:text-white"
+                    onClick={async e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (isAdmin) {
+                        await toggleBoxVisibilityById(QUIZ_BOX_ID)
+                        return
+                      }
+                      setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                    }}
+                    aria-label="Close"
+                    title="Close"
+                  >
+                    ×
+                  </button>
+                )}
+                <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
+
+                {isQuizBox && (
+                  <button
+                    type="button"
+                    className="absolute right-1 bottom-1 h-5 w-5 cursor-se-resize text-white/60 hover:text-white/80"
+                    onPointerDown={e => onResizeHandlePointerDown(box, e)}
+                    aria-label="Resize"
+                    title="Resize"
+                  >
+                    ◢
+                  </button>
+                )}
               </div>
             </div>
           )

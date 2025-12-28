@@ -6326,17 +6326,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </div>
                     )
                   ) : useStackedStudentLayout ? (
-                    latexProjectionMarkup ? (
-                      <div
-                        className="text-slate-900 leading-relaxed"
-                        style={latexOverlayStyle}
-                        dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
-                      </div>
-                    )
+                    <div className="h-full flex flex-col">
+                      {latexProjectionMarkup ? (
+                        <div
+                          className="text-slate-900 leading-relaxed"
+                          style={latexOverlayStyle}
+                          dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
+                        </div>
+                      )}
+
+                      {!isAdmin && quizActive && (
+                        <div className="mt-3 pt-3 border-t border-slate-200">
+                          {studentQuizLatexPreviewMarkup ? (
+                            <div
+                              className="text-slate-700 font-semibold leading-relaxed"
+                              style={latexOverlayStyle}
+                              dangerouslySetInnerHTML={{ __html: studentQuizLatexPreviewMarkup }}
+                            />
+                          ) : (
+                            <p className="text-slate-500 text-sm">Write your answer below to see your LaTeX here.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : latexDisplayState.enabled ? (
                     latexProjectionMarkup ? (
                       <div
@@ -6948,19 +6964,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div
                 className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
               >
-                {!isAdmin && quizActive && (
-                  <div className="px-3 py-2 border-b border-slate-200 bg-slate-50">
-                    {studentQuizLatexPreviewMarkup ? (
-                      <div
-                        className="text-slate-900 leading-relaxed"
-                        style={{ fontSize: '1.05rem' }}
-                        dangerouslySetInnerHTML={{ __html: studentQuizLatexPreviewMarkup }}
-                      />
-                    ) : (
-                      <div className="text-slate-500 text-sm">Your LaTeX preview will appear here as you write.</div>
-                    )}
-                  </div>
-                )}
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"

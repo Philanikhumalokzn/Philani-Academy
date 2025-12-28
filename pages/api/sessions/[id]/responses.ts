@@ -93,6 +93,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       return res.status(200).json(record)
     } catch (err: any) {
+      // Backwards-compat: if production DB still has the legacy unique constraint
+      // on (sessionKey, userId), inserting a second quiz (new quizId) will fail.
+      // In that case, update the existing single record so learners aren't blocked.
+      const code = err?.code || err?.name
+      const target = err?.meta?.target
+      const targetStr = Array.isArray(target) ? target.join(',') : String(target || '')
+      const isLegacyUnique = code === 'P2002' && /sessionKey/i.test(targetStr) && /userId/i.test(targetStr)
+      if (isLegacyUnique) {
+        try {
+          const existing = await learnerResponse.findFirst({
+            where: { sessionKey, userId },
+            orderBy: { updatedAt: 'desc' },
+          })
+          if (existing?.id) {
+            const updated = await learnerResponse.update({
+              where: { id: existing.id },
+              data: {
+                latex,
+                userEmail,
+                quizId: safeQuizId,
+                prompt: safePrompt,
+              },
+            })
+            return res.status(200).json(updated)
+          }
+        } catch (fallbackErr) {
+          console.error('Fallback response save failed', fallbackErr)
+        }
+      }
       console.error('Failed to save response', err)
       return res.status(500).json({ message: err?.message || 'Failed to save response' })
     }

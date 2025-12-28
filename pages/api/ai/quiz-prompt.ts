@@ -365,8 +365,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // ignore
   }
 
-  // Provider selection (optional). If not configured, fall back to heuristics.
-  const provider = (process.env.AI_PROVIDER || '').toLowerCase() // 'openai' | 'anthropic' | 'gemini'
+  // Provider selection (optional). If not configured, auto-pick based on available keys.
+  const configuredProvider = (process.env.AI_PROVIDER || '').toLowerCase() // 'openai' | 'anthropic' | 'gemini'
+  const hasGeminiKey = Boolean((process.env.GEMINI_API_KEY || '').trim())
+  const hasOpenAIKey = Boolean((process.env.OPENAI_API_KEY || '').trim())
+  const hasAnthropicKey = Boolean((process.env.ANTHROPIC_API_KEY || '').trim())
+
+  const provider = (() => {
+    if (configuredProvider === 'gemini' || configuredProvider === 'openai' || configuredProvider === 'anthropic' || configuredProvider === 'claude') {
+      return configuredProvider
+    }
+    if (hasGeminiKey) return 'gemini'
+    if (hasOpenAIKey) return 'openai'
+    if (hasAnthropicKey) return 'anthropic'
+    return ''
+  })()
 
   try {
     let raw = ''

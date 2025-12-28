@@ -347,12 +347,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
 
-  // Student response mode: in stacked student layout we treat the handwriting canvas as a local response canvas.
-  // - Always writable (even if teacher locks the shared board)
-  // - Never broadcasts strokes
-  // - Ignores incoming stroke snapshots (prevents overwriting the student's response)
-  const isStudentResponseMode = Boolean(isStudentView && useStackedStudentLayout)
-
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -399,46 +393,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
-
-  type LessonContextV2 = {
-    schemaVersion: 2
-    phaseKey: LessonScriptPhaseKey
-    pointId: string
-    pointTitle?: string
-    pointIndex: number
-    moduleIndex: number
-    ts: number
-  }
-  type LessonContextV1 = {
-    schemaVersion: 1
-    phaseKey: LessonScriptPhaseKey
-    stepIndex: number
-    ts: number
-  }
-  type LessonContext = LessonContextV2 | LessonContextV1
-  const [remoteLessonContext, setRemoteLessonContext] = useState<LessonContext | null>(null)
-  const remoteLessonContextRef = useRef<LessonContext | null>(null)
-  const localLessonContextRef = useRef<LessonContext | null>(null)
-  useEffect(() => {
-    remoteLessonContextRef.current = remoteLessonContext
-  }, [remoteLessonContext])
-
-  type StudentResponseState = { lines: string[]; lastSubmittedTs?: number }
-  const [studentResponseState, setStudentResponseState] = useState<StudentResponseState>({ lines: [] })
-  const [studentDraftLatex, setStudentDraftLatex] = useState('')
-  const pendingStudentDraftExportRef = useRef<any>(null)
-  const studentDraftExportInFlightRef = useRef(false)
-
-  type StudentSubmission = {
-    id: string
-    ts: number
-    studentClientId: string
-    studentName: string
-    context: LessonContext
-    lines: string[]
-  }
-  const [studentSubmissions, setStudentSubmissions] = useState<StudentSubmission[]>([])
-  const [studentSubmissionsOpen, setStudentSubmissionsOpen] = useState(false)
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -1064,215 +1018,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const idx = Math.max(0, Math.min(lessonScriptPointIndex, lessonScriptV2Points.length - 1))
     return lessonScriptV2Points[idx] ?? null
   }, [lessonScriptPointIndex, lessonScriptV2Points])
-
-  const studentActiveContext = useMemo<LessonContext | null>(() => {
-    if (isAdmin) return null
-    return remoteLessonContext || null
-  }, [isAdmin, remoteLessonContext])
-
-  const studentActiveContextKey = useMemo(() => {
-    const ctx = studentActiveContext
-    if (!ctx) return null
-    if (ctx.schemaVersion === 2) return `v2:${ctx.phaseKey}:${ctx.pointId}`
-    return `v1:${ctx.phaseKey}:step:${ctx.stepIndex}`
-  }, [studentActiveContext])
-
-  const studentActiveContextLabel = useMemo(() => {
-    const ctx = studentActiveContext
-    if (!ctx) return ''
-    const phaseLabel = LESSON_SCRIPT_PHASES.find(p => p.key === ctx.phaseKey)?.label || ctx.phaseKey
-    if (ctx.schemaVersion === 2) {
-      const title = (ctx.pointTitle || '').trim()
-      const pointLabel = title ? title : `Point ${ctx.pointIndex + 1}`
-      return `${phaseLabel} • ${pointLabel}`
-    }
-    return `${phaseLabel} • Step ${Math.max(ctx.stepIndex + 1, 0)}`
-  }, [studentActiveContext])
-
-  const studentResponseStorageKey = useCallback(
-    (ctxKey: string) => {
-      const base = boardId
-        ? sanitizeIdentifier(boardId).toLowerCase()
-        : gradeLabel
-        ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
-        : 'shared'
-      const scope = sanitizeIdentifier(`myscript:${base}`)
-      return `philani:student-response:v1:${scope}:${ctxKey}`
-    },
-    [boardId, gradeLabel]
-  )
-
-  useEffect(() => {
-    if (isAdmin) return
-    if (!studentActiveContextKey) {
-      setStudentResponseState({ lines: [] })
-      return
-    }
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(studentResponseStorageKey(studentActiveContextKey))
-      const parsed = raw ? JSON.parse(raw) : null
-      const lines = Array.isArray(parsed?.lines) ? parsed.lines.filter((s: any) => typeof s === 'string') : []
-      const lastSubmittedTs = typeof parsed?.lastSubmittedTs === 'number' ? parsed.lastSubmittedTs : undefined
-      setStudentResponseState({ lines, lastSubmittedTs })
-    } catch {
-      setStudentResponseState({ lines: [] })
-    }
-  }, [isAdmin, studentActiveContextKey, studentResponseStorageKey])
-
-  useEffect(() => {
-    if (isAdmin) return
-    if (!studentActiveContextKey) return
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(
-        studentResponseStorageKey(studentActiveContextKey),
-        JSON.stringify({ lines: studentResponseState.lines, lastSubmittedTs: studentResponseState.lastSubmittedTs ?? null })
-      )
-    } catch {
-      // ignore
-    }
-  }, [isAdmin, studentActiveContextKey, studentResponseState.lines, studentResponseState.lastSubmittedTs, studentResponseStorageKey])
-
-  const studentResponseMarkup = useMemo(() => {
-    if (isAdmin) return ''
-    const lines = studentResponseState.lines
-    if (!lines.length) return ''
-    const combined = `\\ ${lines.join(' \\\\ ')}`
-    // Reuse projection renderer options for consistent appearance.
-    let latexString = combined
-    if (latexProjectionOptions.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
-      const processed = lines
-        .map(line => String(line || '').trim())
-        .filter(Boolean)
-        .map(line => {
-          const equalsIndex = line.indexOf('=')
-          if (equalsIndex === -1) {
-            return /(^|\s)&/.test(line) ? line : `& ${line}`
-          }
-          const left = line.slice(0, equalsIndex).trim()
-          const right = line.slice(equalsIndex + 1).trim()
-          return `${left} &= ${right}`
-        })
-      latexString = `\\begin{aligned}${processed.join(' \\\\ ')}\\end{aligned}`
-    }
-    try {
-      return renderToString(latexString, { throwOnError: false, displayMode: true })
-    } catch {
-      return ''
-    }
-  }, [isAdmin, latexProjectionOptions.alignAtEquals, studentResponseState.lines])
-
-  const studentResponseLiveMarkup = useMemo(() => {
-    if (isAdmin) return ''
-    if (!isStudentResponseMode) return ''
-    const lines = [...studentResponseState.lines]
-    const draft = (studentDraftLatex || '').trim()
-    if (draft) lines.push(draft)
-    if (!lines.length) return ''
-    const combined = `\\ ${lines.join(' \\\\ ')}`
-    let latexString = combined
-    if (latexProjectionOptions.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
-      const processed = lines
-        .map(line => String(line || '').trim())
-        .filter(Boolean)
-        .map(line => {
-          const equalsIndex = line.indexOf('=')
-          if (equalsIndex === -1) {
-            return /(^|\s)&/.test(line) ? line : `& ${line}`
-          }
-          const left = line.slice(0, equalsIndex).trim()
-          const right = line.slice(equalsIndex + 1).trim()
-          return `${left} &= ${right}`
-        })
-      latexString = `\\begin{aligned}${processed.join(' \\\\ ')}\\end{aligned}`
-    }
-    try {
-      return renderToString(latexString, { throwOnError: false, displayMode: true })
-    } catch {
-      return ''
-    }
-  }, [isAdmin, isStudentResponseMode, latexProjectionOptions.alignAtEquals, studentDraftLatex, studentResponseState.lines])
-
-  const handleStudentPaperplane = useCallback(async () => {
-    if (isAdmin) return
-    const editor = editorInstanceRef.current
-    if (!editor) return
-
-    // Must have lesson context to submit to the teacher.
-    const ctx = studentActiveContext
-
-    const tryGetLineLatex = async () => {
-      let step = ''
-      try {
-        const modelLatex = getLatexFromEditorModel()
-        const normalizedModel = normalizeStepLatex(modelLatex)
-        if (normalizedModel) {
-          step = normalizedModel
-        }
-      } catch {}
-
-      if (!step) {
-        try {
-          const exported = await exportLatexFromEditor()
-          const normalized = normalizeStepLatex(exported)
-          if (normalized) step = normalized
-        } catch {}
-      }
-
-      return step
-    }
-
-    const hasInk = lastSymbolCountRef.current > 0
-    const lineLatex = hasInk ? await tryGetLineLatex() : ''
-
-    // First function: send current line to the student's local display and clear.
-    if (lineLatex) {
-      setStudentResponseState(prev => ({ ...prev, lines: [...prev.lines, lineLatex] }))
-      setStudentDraftLatex('')
-      suppressBroadcastUntilTsRef.current = Date.now() + 1200
-      try {
-        editor.clear?.()
-      } catch {}
-      lastSymbolCountRef.current = 0
-      lastBroadcastBaseCountRef.current = 0
-      setLatexOutput('')
-      return
-    }
-
-    // Second function: if the writing canvas is blank, prompt to submit accumulated response.
-    if (!studentResponseState.lines.length) {
-      return
-    }
-
-    if (!ctx) {
-      if (typeof window !== 'undefined') {
-        window.alert('Waiting for the lesson context (phase/point) from the teacher.')
-      }
-      return
-    }
-
-    if (typeof window === 'undefined') return
-    const ok = window.confirm('Submit your response to the teacher?')
-    if (!ok) return
-
-    const channel = channelRef.current
-    if (!channel) return
-    const ts = Date.now()
-    try {
-      await channel.publish('student-response', {
-        studentClientId: clientIdRef.current,
-        studentName: userDisplayName,
-        context: ctx,
-        lines: studentResponseState.lines,
-        ts,
-      })
-      setStudentDraftLatex('')
-      setStudentResponseState({ lines: [], lastSubmittedTs: ts })
-    } catch (err) {
-      console.warn('Failed to submit student response', err)
-    }
-  }, [isAdmin, studentActiveContext, studentResponseState.lines, userDisplayName])
 
   const lessonScriptV2ActiveModules = useMemo(() => lessonScriptV2ActivePoint?.modules ?? [], [lessonScriptV2ActivePoint])
 
@@ -2568,26 +2313,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     await publishLatexDisplayState(false, '', options)
   }, [isAdmin, publishLatexDisplayState])
 
-  type LessonContextPayload = Omit<LessonContextV2, 'ts'> | Omit<LessonContextV1, 'ts'>
-  const publishLessonContext = useCallback(async (ctx: LessonContextPayload & { ts?: number }) => {
-    if (!isAdmin) return
-    const channel = channelRef.current
-    if (!channel) return
-    const hydrated = { ...ctx, ts: ctx.ts ?? Date.now() } as LessonContext
-    localLessonContextRef.current = hydrated
-    try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'lesson-context',
-        lessonContext: hydrated,
-        ts: hydrated.ts,
-      })
-    } catch (err) {
-      console.warn('Failed to broadcast lesson context', err)
-    }
-  }, [isAdmin, userDisplayName])
-
   const applyLessonScriptPlayback = useCallback(
     async (phaseKey: LessonScriptPhaseKey, nextStepIndex: number) => {
       if (!isAdmin) return
@@ -2597,8 +2322,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const clampedIndex = Math.min(Math.max(nextStepIndex, -1), Math.max(steps.length - 1, -1))
 
       setLessonScriptStepIndex(clampedIndex)
-
-      await publishLessonContext({ schemaVersion: 1, phaseKey, stepIndex: clampedIndex })
 
       if (clampedIndex < 0) {
         setLatexDisplayState({ enabled: false, latex: '', options })
@@ -2610,7 +2333,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setLatexDisplayState({ enabled: true, latex, options })
       await publishLatexDisplayState(true, latex, options)
     },
-    [buildLessonScriptLatex, getLessonScriptPhaseSteps, isAdmin, lessonScriptResolved, publishLatexDisplayState, publishLessonContext]
+    [buildLessonScriptLatex, getLessonScriptPhaseSteps, isAdmin, lessonScriptResolved, publishLatexDisplayState]
   )
 
   const applyLessonScriptPlaybackV2 = useCallback(
@@ -2629,15 +2352,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       setLessonScriptPointIndex(pointIndex)
       setLessonScriptModuleIndex(moduleIndex)
-
-      await publishLessonContext({
-        schemaVersion: 2,
-        phaseKey,
-        pointId: String(point?.id || `${phaseKey}-${pointIndex}`),
-        pointTitle: typeof point?.title === 'string' ? point.title : '',
-        pointIndex,
-        moduleIndex,
-      })
 
       if (moduleIndex < 0) {
         await clearLessonModules()
@@ -2728,7 +2442,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         await publishLatexDisplayState(true, mod.latex, options)
       }
     },
-    [clearLessonModules, getLessonScriptV2, isAdmin, lessonScriptResolved, publishLatexDisplayState, publishLessonContext]
+    [clearLessonModules, getLessonScriptV2, isAdmin, lessonScriptResolved, publishLatexDisplayState]
   )
 
   const startLessonFromScript = useCallback(async () => {
@@ -3268,17 +2982,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (!isAdmin) {
-            if (!isStudentResponseMode) {
             const controllerId = controlStateRef.current?.controllerId
             const hasPermission = controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
             if (!hasPermission) {
               enforceAuthoritativeSnapshot()
               return
             }
-            }
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = !isStudentResponseMode && (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -3315,49 +3027,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 })
             }, 450)
           }
-
-          // Student response mode: keep a live draft LaTeX preview updated.
-          if (!isAdmin && isStudentResponseMode) {
-            if (pendingStudentDraftExportRef.current) {
-              clearTimeout(pendingStudentDraftExportRef.current)
-            }
-            pendingStudentDraftExportRef.current = setTimeout(() => {
-              pendingStudentDraftExportRef.current = null
-              if (studentDraftExportInFlightRef.current) return
-              studentDraftExportInFlightRef.current = true
-              ;(async () => {
-                // If there's no ink, clear draft quickly.
-                if (lastSymbolCountRef.current <= 0) {
-                  setStudentDraftLatex('')
-                  return
-                }
-
-                let latexValue = ''
-                try {
-                  const modelLatex = getLatexFromEditorModel()
-                  latexValue = typeof modelLatex === 'string' ? modelLatex : ''
-                } catch {}
-                const normalizedModel = normalizeStepLatex(latexValue)
-                if (normalizedModel !== null) {
-                  // Allow empty to reflect scratch-to-erase.
-                  setStudentDraftLatex(normalizedModel)
-                  return
-                }
-
-                // Fallback: export if model isn't ready yet.
-                try {
-                  const exported = await exportLatexFromEditor()
-                  const normalized = normalizeStepLatex(exported)
-                  setStudentDraftLatex(normalized || '')
-                } catch {
-                  setStudentDraftLatex('')
-                }
-              })()
-                .finally(() => {
-                  studentDraftExportInFlightRef.current = false
-                })
-            }, 350)
-          }
         }
         const handleExported = (evt: any) => {
           const exports = evt.detail || {}
@@ -3367,7 +3036,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setIsConverting(false)
 
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = !isStudentResponseMode && (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           if (forcedConvertDepthRef.current > 0) {
             forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
             return
@@ -3557,9 +3226,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
             return
           }
-          if (isStudentResponseMode) {
-            return
-          }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
@@ -3567,9 +3233,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         const handleSyncState = (message: any) => {
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
-            return
-          }
-          if (isStudentResponseMode) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -3615,24 +3278,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
           }
-
-          if (isAdmin) {
-            const ctx = localLessonContextRef.current
-            if (ctx) {
-              try {
-                await channel.publish('control', {
-                  clientId: clientIdRef.current,
-                  author: userDisplayName,
-                  action: 'lesson-context',
-                  lessonContext: ctx,
-                  targetClientId: data.clientId,
-                  ts: Date.now(),
-                })
-              } catch (err) {
-                console.warn('Failed to publish lesson context on sync-request', err)
-              }
-            }
-          }
         }
 
         const handleControlMessage = (message: any) => {
@@ -3642,44 +3287,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'lesson-context'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes'
             targetClientId?: string
             snapshot?: SnapshotPayload | null
             enabled?: boolean
             latex?: string
             options?: Partial<LatexDisplayOptions>
-            lessonContext?: LessonContext
-          }
-          if (data?.action === 'lesson-context') {
-            if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
-            const ctx = data.lessonContext as any
-            const ts = typeof ctx?.ts === 'number' ? ctx.ts : (data?.ts ?? Date.now())
-            setRemoteLessonContext(prev => {
-              if (prev?.ts && ts < prev.ts) return prev
-              // Minimal validation
-              if (ctx?.schemaVersion === 2) {
-                const phaseKey = String(ctx.phaseKey || '') as LessonScriptPhaseKey
-                const pointId = String(ctx.pointId || '').trim()
-                if (!phaseKey || !pointId) return prev
-                return {
-                  schemaVersion: 2,
-                  phaseKey,
-                  pointId,
-                  pointTitle: typeof ctx.pointTitle === 'string' ? ctx.pointTitle : '',
-                  pointIndex: typeof ctx.pointIndex === 'number' ? ctx.pointIndex : 0,
-                  moduleIndex: typeof ctx.moduleIndex === 'number' ? ctx.moduleIndex : -1,
-                  ts,
-                }
-              }
-              if (ctx?.schemaVersion === 1) {
-                const phaseKey = String(ctx.phaseKey || '') as LessonScriptPhaseKey
-                const stepIndex = typeof ctx.stepIndex === 'number' ? ctx.stepIndex : -1
-                if (!phaseKey) return prev
-                return { schemaVersion: 1, phaseKey, stepIndex, ts }
-              }
-              return prev
-            })
-            return
           }
           if (data?.action === 'student-broadcast') {
             const enabled = Boolean(data.enabled)
@@ -3862,55 +3475,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
         }
 
-        const handleStudentResponseMessage = (message: any) => {
-          if (!isAdmin) return
-          const data = message?.data as any
-          if (!data || typeof data !== 'object') return
-          const studentClientId = typeof data.studentClientId === 'string' ? data.studentClientId : (typeof data.clientId === 'string' ? data.clientId : '')
-          if (!studentClientId) return
-          if (studentClientId === clientIdRef.current) return
-          const studentName = typeof data.studentName === 'string' ? data.studentName : (typeof data.author === 'string' ? data.author : studentClientId)
-          const ctx = data.context as any
-          if (!ctx || typeof ctx !== 'object') return
-          const ts = typeof data.ts === 'number' ? data.ts : (typeof message?.timestamp === 'number' ? message.timestamp : Date.now())
-          const lines = Array.isArray(data.lines) ? data.lines.filter((s: any) => typeof s === 'string' && s.trim()) : []
-          const normalizedCtx: LessonContext | null = (() => {
-            if (ctx.schemaVersion === 2) {
-              const phaseKey = String(ctx.phaseKey || '') as LessonScriptPhaseKey
-              const pointId = String(ctx.pointId || '').trim()
-              if (!phaseKey || !pointId) return null
-              return {
-                schemaVersion: 2,
-                phaseKey,
-                pointId,
-                pointTitle: typeof ctx.pointTitle === 'string' ? ctx.pointTitle : '',
-                pointIndex: typeof ctx.pointIndex === 'number' ? ctx.pointIndex : 0,
-                moduleIndex: typeof ctx.moduleIndex === 'number' ? ctx.moduleIndex : -1,
-                ts: typeof ctx.ts === 'number' ? ctx.ts : ts,
-              }
-            }
-            if (ctx.schemaVersion === 1) {
-              const phaseKey = String(ctx.phaseKey || '') as LessonScriptPhaseKey
-              if (!phaseKey) return null
-              return { schemaVersion: 1, phaseKey, stepIndex: typeof ctx.stepIndex === 'number' ? ctx.stepIndex : -1, ts: typeof ctx.ts === 'number' ? ctx.ts : ts }
-            }
-            return null
-          })()
-          if (!normalizedCtx) return
-
-          setStudentSubmissions(prev => {
-            const id = `${ts}-${studentClientId}-${Math.random().toString(36).slice(2, 7)}`
-            const next: StudentSubmission = { id, ts, studentClientId, studentName, context: normalizedCtx, lines }
-            return [next, ...prev].slice(0, 50)
-          })
-        }
-
         channel.subscribe('stroke', handleStroke)
         channel.subscribe('sync-state', handleSyncState)
   channel.subscribe('sync-request', handleSyncRequest)
         channel.subscribe('control', handleControlMessage)
   channel.subscribe('latex', handleLatexMessage)
-          channel.subscribe('student-response', handleStudentResponseMessage)
           if (ENABLE_EMBEDDED_DIAGRAMS) {
             channel.subscribe('diagram', handleDiagramMessage)
           }
@@ -4755,7 +4324,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [latexRenderOptions.fontScale, latexRenderOptions.textAlign]
   )
 
-  const disableCanvasInput = (isStudentResponseMode ? false : isViewOnly) || (isOverlayMode && overlayControlsVisible)
+  const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
@@ -6452,13 +6021,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </div>
                     )
                   ) : useStackedStudentLayout ? (
-                    isStudentResponseMode && studentResponseLiveMarkup ? (
-                      <div
-                        className="text-slate-900 leading-relaxed"
-                        style={latexOverlayStyle}
-                        dangerouslySetInnerHTML={{ __html: studentResponseLiveMarkup }}
-                      />
-                    ) : latexProjectionMarkup ? (
+                    latexProjectionMarkup ? (
                       <div
                         className="text-slate-900 leading-relaxed"
                         style={latexOverlayStyle}
@@ -6558,7 +6121,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || (isViewOnly && !isStudentResponseMode)}
+                              disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
                             >
                               <span className="sr-only">Undo</span>
                               <svg
@@ -6579,7 +6142,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || (isViewOnly && !isStudentResponseMode)}
+                              disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
                             >
                               <span className="sr-only">Redo</span>
                               <svg
@@ -6600,7 +6163,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Clear"
                               onClick={() => runCanvasAction(handleClear)}
-                              disabled={!canClear || status !== 'ready' || Boolean(fatalError) || (isViewOnly && !isStudentResponseMode)}
+                              disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
                             >
                               <span className="sr-only">Clear</span>
                               <svg
@@ -6615,31 +6178,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                 <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
                               </svg>
                             </button>
-
-                            {!isAdmin && isStudentResponseMode && (
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                                title="Send line / Submit response"
-                                onClick={() => {
-                                  void handleStudentPaperplane()
-                                }}
-                                disabled={status !== 'ready' || Boolean(fatalError)}
-                              >
-                                <span className="sr-only">Send line / Submit response</span>
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  width="18"
-                                  height="18"
-                                  fill="currentColor"
-                                  className="text-slate-700"
-                                  aria-hidden="true"
-                                >
-                                  <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                                </svg>
-                              </button>
-                            )}
                           </div>
                         ) : (
                           <button
@@ -6788,16 +6326,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        className="px-2 py-1"
-                        title="Send step"
-                        onClick={async () => {
-                        const editor = editorInstanceRef.current
-                        if (!editor) return
-                        if (lockedOutRef.current) return
-                        if (adminSendingStep) return
+                    <button
+                      type="button"
+                      className="px-2 py-1"
+                      title="Send step"
+                      onClick={async () => {
+                      const editor = editorInstanceRef.current
+                      if (!editor) return
+                      if (lockedOutRef.current) return
+                      if (adminSendingStep) return
 
                       // Reset the manual horizontal scrollbar to the start whenever a step is sent.
                       // (Keeps the next step starting from the left.)
@@ -6872,48 +6409,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       } finally {
                         setAdminSendingStep(false)
                       }
-                        }}
-                        disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
+                      }}
+                      disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
+                    >
+                      <span className="sr-only">Send</span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="18"
+                        height="18"
+                        fill="currentColor"
+                        className="text-slate-700"
+                        aria-hidden="true"
                       >
-                        <span className="sr-only">Send</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="currentColor"
-                          className="text-slate-700"
-                          aria-hidden="true"
-                        >
-                          <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                        </svg>
-                      </button>
-                    )}
-
-                    {!isAdmin && (
-                      <button
-                        type="button"
-                        className="px-2 py-1"
-                        title="Send line / Submit response"
-                        onClick={() => {
-                          void handleStudentPaperplane()
-                        }}
-                        disabled={status !== 'ready' || Boolean(fatalError)}
-                      >
-                        <span className="sr-only">Send</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="currentColor"
-                          className="text-slate-700"
-                          aria-hidden="true"
-                        >
-                          <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                        </svg>
-                      </button>
-                    )}
+                        <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                      </svg>
+                    </button>
 
                     {isCompactViewport && mobileLatexTrayOpen && (
                       <div
@@ -7114,30 +6625,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div
                 className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
               >
-                {!isAdmin && (
-                  <div className="px-3 pt-3">
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="text-[11px] text-slate-600">
-                          {studentActiveContextLabel ? `Responding to: ${studentActiveContextLabel}` : 'Responding'}
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          {studentResponseState.lines.length ? `${studentResponseState.lines.length} line${studentResponseState.lines.length === 1 ? '' : 's'}` : 'No lines yet'}
-                        </div>
-                      </div>
-                      {studentResponseLiveMarkup || studentResponseMarkup ? (
-                        <div
-                          className="text-slate-900 leading-relaxed"
-                          style={latexOverlayStyle}
-                          dangerouslySetInnerHTML={{ __html: studentResponseLiveMarkup || studentResponseMarkup }}
-                        />
-                      ) : (
-                        <div className="text-slate-500 text-sm">Write a line below, then tap the paperplane to add it here.</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
@@ -7175,7 +6662,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>
                 )}
-                {!isStudentResponseMode && !isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
+                {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
                   <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
                     {latexProjectionMarkup ? (
                       <div
@@ -8086,7 +7573,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {editorReconnecting && (
             <div className="absolute inset-0 z-20 pointer-events-auto bg-transparent" aria-hidden="true" />
           )}
-                {isViewOnly && !isStudentResponseMode && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+          {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
               {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
             </div>

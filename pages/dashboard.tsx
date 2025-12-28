@@ -78,6 +78,7 @@ type LiveWindowConfig = {
   roomIdOverride?: string
   boardIdOverride?: string
   isAdminOverride?: boolean
+  quizMode?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpenDiagramTray?: boolean
   position: { x: number; y: number }
@@ -779,7 +780,7 @@ export default function Dashboard() {
     }))
   }, [overlayBounds.height, overlayBounds.width, clampWindowPosition, getNextWindowZ])
 
-  const showCanvasWindow = useCallback((sessionId?: string | null) => {
+  const showCanvasWindow = useCallback((sessionId?: string | null, opts?: { quizMode?: boolean }) => {
     if (!canLaunchCanvasOverlay) {
       alert('Sign in and choose a grade to open the shared canvas overlay.')
       return
@@ -800,6 +801,7 @@ export default function Dashboard() {
     setLiveOverlayOpen(true)
     setLiveOverlayChromeVisible(true)
     const windowId = 'canvas-live-window'
+    const quizMode = Boolean(opts?.quizMode)
     setLiveWindows(prev => {
       const stageWidth = overlayBounds.width || (typeof window !== 'undefined' ? window.innerWidth : 1024)
       const stageHeight = overlayBounds.height || (typeof window !== 'undefined' ? window.innerHeight : 768)
@@ -823,6 +825,7 @@ export default function Dashboard() {
             position: { x: 0, y: 0 },
             size: { width: stageWidth, height: stageHeight },
             z: getNextWindowZ(),
+            quizMode,
             windowedSnapshot: win.windowedSnapshot ?? { position: windowedPosition, size: { width: windowedWidth, height: windowedHeight } }
           }
         })
@@ -837,6 +840,7 @@ export default function Dashboard() {
         minimized: false,
         z: getNextWindowZ(),
         mode: 'fullscreen',
+        quizMode,
         windowedSnapshot: { position: windowedPosition, size: { width: windowedWidth, height: windowedHeight } }
       }
       return [...prev, baseWindow]
@@ -2549,31 +2553,21 @@ export default function Dashboard() {
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {canCreateSession && (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => startLiveForSession(String(resolvedCurrentLesson.id))}
-                      disabled={!isCurrentWindow(resolvedCurrentLesson)}
-                    >
-                      Start class
-                    </button>
-                  )}
                   <button
                     type="button"
-                    className={`btn ${canCreateSession ? '' : 'btn-primary'}`}
-                    onClick={() => openLiveForSession(String(resolvedCurrentLesson.id))}
-                    disabled={isSubscriptionBlocked}
+                    className="btn btn-primary"
+                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
+                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                   >
-                    Open class
+                    Enter class
                   </button>
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id))}
+                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: true })}
                     disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                   >
-                    Canvas
+                    Quizzes
                   </button>
                   <button
                     type="button"
@@ -2581,7 +2575,7 @@ export default function Dashboard() {
                     onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0)}
                     disabled={isSubscriptionBlocked}
                   >
-                    Materials
+                    Assignments
                   </button>
                 </div>
               </div>
@@ -2600,31 +2594,21 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {canCreateSession && (
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={() => startLiveForSession(s.id)}
-                          disabled={!isCurrentWindow(s)}
-                        >
-                          Start class
-                        </button>
-                      )}
                       <button
                         type="button"
-                        className={`btn ${canCreateSession ? '' : 'btn-primary'}`}
-                        onClick={() => openLiveForSession(s.id)}
-                        disabled={isSubscriptionBlocked}
+                        className="btn btn-primary"
+                        onClick={() => showCanvasWindow(s.id, { quizMode: false })}
+                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
-                        Open class
+                        Enter class
                       </button>
                       <button
                         type="button"
                         className="btn"
-                        onClick={() => showCanvasWindow(s.id)}
+                        onClick={() => showCanvasWindow(s.id, { quizMode: true })}
                         disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
-                        Canvas
+                        Quizzes
                       </button>
                       <button
                         type="button"
@@ -2632,7 +2616,7 @@ export default function Dashboard() {
                         onClick={() => openSessionDetails([String(s.id)], 0)}
                         disabled={isSubscriptionBlocked}
                       >
-                        Materials
+                        Assignments
                       </button>
                     </div>
                   </div>
@@ -4135,6 +4119,7 @@ export default function Dashboard() {
                         userId={realtimeUserId}
                         userDisplayName={realtimeDisplayName}
                         isAdmin={win.isAdminOverride ?? isOwnerUser}
+                        quizMode={Boolean(win.quizMode)}
                         isVisible={!win.minimized}
                         defaultOrientation="portrait"
                         autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}

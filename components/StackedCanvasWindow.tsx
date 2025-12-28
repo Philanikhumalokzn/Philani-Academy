@@ -11,6 +11,7 @@ type Props = {
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
+  quizMode?: boolean
   isVisible: boolean
   defaultOrientation?: CanvasOrientation
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
@@ -24,7 +25,7 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, quizMode, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, autoOpenDiagramTray, lessonAuthoring }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           userId={userId}
           userDisplayName={userDisplayName}
           isAdmin={isAdmin}
+          quizMode={quizMode}
           defaultOrientation={defaultOrientation}
           autoOpenDiagramTray={autoOpenDiagramTray}
           lessonAuthoring={lessonAuthoring}

@@ -193,6 +193,7 @@ type MyScriptMathCanvasProps = {
   isAdmin?: boolean
   boardId?: string
   autoOpenDiagramTray?: boolean
+  quizMode?: boolean
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
@@ -297,7 +298,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -344,8 +345,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [latexOutput, onLatexOutputChange])
 
   const isStudentView = !isAdmin
+  const isQuizMode = Boolean(quizMode)
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
+
+  const [quizSubmitting, setQuizSubmitting] = useState(false)
 
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 
@@ -6228,18 +6232,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {isAdmin ? (
+                {(isAdmin || isQuizMode) ? (
                   <div className="flex items-center gap-2">
                     {isCompactViewport && (
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
                         title="Diagrams"
                         onClick={() => {
+                          if (!isAdmin) return
                           toggleMobileDiagramTray()
                           openPickerOrApplySingle('diagram')
                         }}
-                        disabled={Boolean(fatalError)}
+                        disabled={!isAdmin || Boolean(fatalError)}
+                        aria-hidden={!isAdmin}
+                        tabIndex={isAdmin ? 0 : -1}
                       >
                         <span className="sr-only">Diagrams</span>
                         <svg
@@ -6262,13 +6269,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {isCompactViewport && (
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
                         title="Text"
                         onClick={() => {
+                          if (!isAdmin) return
                           toggleMobileTextTray()
                           openPickerOrApplySingle('text')
                         }}
-                        disabled={Boolean(fatalError)}
+                        disabled={!isAdmin || Boolean(fatalError)}
+                        aria-hidden={!isAdmin}
+                        tabIndex={isAdmin ? 0 : -1}
                       >
                         <span className="sr-only">Text</span>
                         <svg
@@ -6288,13 +6298,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {isCompactViewport && (
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
                         title="LaTeX"
                         onClick={() => {
+                          if (!isAdmin) return
                           toggleMobileLatexTray()
                           openPickerOrApplySingle('latex')
                         }}
-                        disabled={Boolean(fatalError)}
+                        disabled={!isAdmin || Boolean(fatalError)}
+                        aria-hidden={!isAdmin}
+                        tabIndex={isAdmin ? 0 : -1}
                       >
                         <span className="sr-only">LaTeX</span>
                         <span className="text-slate-700 text-[16px] leading-none font-semibold" aria-hidden="true">Σ</span>
@@ -6304,12 +6317,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {isOverlayMode && (
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
                         title="Canvas controls"
                         onClick={() => {
+                          if (!isAdmin) return
                           openOverlayControls()
                         }}
-                        disabled={status !== 'ready' || Boolean(fatalError)}
+                        disabled={!isAdmin || status !== 'ready' || Boolean(fatalError)}
+                        aria-hidden={!isAdmin}
+                        tabIndex={isAdmin ? 0 : -1}
                       >
                         <span className="sr-only">Canvas controls</span>
                         <svg
@@ -6331,6 +6347,63 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       className="px-2 py-1"
                       title="Send step"
                       onClick={async () => {
+                      if (!isAdmin && isQuizMode) {
+                        if (quizSubmitting) return
+                        if (lockedOutRef.current) return
+                        if (!boardId) {
+                          alert('This quiz session is missing a session id (boardId).')
+                          return
+                        }
+
+                        const editor = editorInstanceRef.current
+                        if (!editor) return
+
+                        setQuizSubmitting(true)
+                        try {
+                          try {
+                            if (typeof editor.waitForIdle === 'function') {
+                              await editor.waitForIdle()
+                            }
+                          } catch {}
+
+                          let step = ''
+                          try {
+                            const modelLatex = getLatexFromEditorModel()
+                            const normalizedModel = normalizeStepLatex(modelLatex)
+                            if (normalizedModel) step = normalizedModel
+                          } catch {}
+
+                          if (!step) {
+                            for (let i = 0; i < 3 && !step; i += 1) {
+                              const exported = await exportLatexFromEditor()
+                              const normalized = normalizeStepLatex(exported)
+                              if (normalized) {
+                                step = normalized
+                                break
+                              }
+                              await new Promise<void>(resolve => setTimeout(resolve, 250))
+                            }
+                          }
+
+                          if (!step) return
+
+                          const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ latex: step }),
+                          })
+                          if (!res.ok) {
+                            const data = await res.json().catch(() => ({}))
+                            alert(data?.message || `Failed to submit response (${res.status})`)
+                            return
+                          }
+                        } finally {
+                          setQuizSubmitting(false)
+                        }
+                        return
+                      }
+
                       const editor = editorInstanceRef.current
                       if (!editor) return
                       if (lockedOutRef.current) return
@@ -6410,7 +6483,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || adminSendingStep || (!adminDraftLatex && !canClear)}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || !boardId))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

@@ -40,10 +40,27 @@ function heuristicPrompt(gradeLabel: string | null, teacherLatex: string) {
   const grade = gradeLabel ? `Grade ${gradeLabel.replace(/[^0-9]/g, '') || gradeLabel}` : 'your grade'
   const latex = teacherLatex.trim()
   if (!latex) {
-    return `Quiz (${grade}): Show your working.`
+    return `Quiz (${grade}): Answer clearly. Show working.`
   }
-  // Very lightweight heuristic: wrap teacher’s latest content as the reference.
-  return `Quiz (${grade}): Solve. Show working.\n${latex}`
+
+  const compact = latex.replace(/\s+/g, ' ').trim()
+  const equalsCount = (compact.match(/=/g) || []).length
+  const hasLineBreaks = /\\\\|\n/.test(latex)
+  const hasX = /(^|[^a-zA-Z])x([^a-zA-Z]|$)/i.test(compact)
+  const hasY = /(^|[^a-zA-Z])y([^a-zA-Z]|$)/i.test(compact)
+  const hasUnknowns = hasX || hasY || /\b[a-z]\b/i.test(compact)
+  const looksLikeSystem = equalsCount >= 2 && hasUnknowns && (hasLineBreaks || compact.includes(';') || compact.includes(','))
+  const looksLikeQuadratic = /(x\^2|\bx\^2\b|\bquadratic\b)/i.test(compact)
+  const looksLikeFactorise = /(factor|factorise|factorize|\\cdot)/i.test(compact)
+  const looksLikeSimplify = /(simplify|\\frac|\\sqrt|\\left|\\right)/i.test(compact) && !looksLikeSystem
+
+  let instruction = 'Solve. Show working.'
+  if (looksLikeSystem) instruction = 'Solve the following equations simultaneously. Show working.'
+  else if (looksLikeQuadratic) instruction = 'Solve the following quadratic equation. Show working.'
+  else if (looksLikeFactorise) instruction = 'Factorise fully. Show working.'
+  else if (looksLikeSimplify) instruction = 'Simplify the following expression. Show working.'
+
+  return `Quiz (${grade}): ${instruction}\n${latex}`
 }
 
 function shortenPrompt(value: string) {
@@ -158,20 +175,23 @@ function parseJsonPackage(text: string): { label?: string; prompt?: string } {
   }
 }
 
-async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
-  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
+async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string; numberingContext: string }) {
+  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt, numberingContext } = opts
   const sys =
     'You write quiz prompts for learners. ' +
     'Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ' +
     `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
     'The label should be short like "Quiz 1.1" and reflect phase/point context if provided. ' +
     'You may use very light emphasis in the prompt using **bold** or _italic_ (no markdown headings/lists). ' +
+    'The prompt MUST be specific to the given math context (avoid generic “Solve. Show working.”). ' +
+    'Use natural classroom phrasing (e.g. “Solve the following equations simultaneously.” when appropriate). ' +
     'If you include any math, wrap it in $...$ or $$...$$ for KaTeX.'
   const user =
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
-    `Teacher notes (LaTeX, may include multiple lines):\n${teacherLatex || '(empty)'}\n\n` +
+    `Math context (LaTeX/notes):\n${teacherLatex || '(empty)'}\n\n` +
     (previousPrompt ? `Previous prompt (optional):\n${previousPrompt}\n\n` : '') +
+    (numberingContext ? `${numberingContext}\n\n` : '') +
     `Task: Write a clear quiz question/instructions that matches the context. ` +
     `Keep it concise, student-friendly, and specific. If the context looks like a worked example, ask a similar new question.`
 
@@ -201,18 +221,21 @@ async function generateWithOpenAI(opts: { apiKey: string; model: string; gradeLa
   return typeof content === 'string' ? content.trim() : ''
 }
 
-async function generateWithAnthropic(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
-  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
+async function generateWithAnthropic(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string; numberingContext: string }) {
+  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt, numberingContext } = opts
   const prompt =
     `You write quiz prompts for learners. Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ` +
     `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
     `The label should be short like "Quiz 1.1" and reflect phase/point context if provided. ` +
     `You may use very light emphasis in the prompt using **bold** or _italic_ (no markdown headings/lists). ` +
+    `The prompt MUST be specific to the given math context (avoid generic “Solve. Show working.”). ` +
+    `Use natural classroom phrasing (e.g. “Solve the following equations simultaneously.” when appropriate). ` +
     `If you include any math, wrap it in $...$ or $$...$$ so it renders with KaTeX.\n\n` +
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
-    `Teacher notes (LaTeX, may include multiple lines):\n${teacherLatex || '(empty)'}\n\n` +
+    `Math context (LaTeX/notes):\n${teacherLatex || '(empty)'}\n\n` +
     (previousPrompt ? `Previous prompt (optional):\n${previousPrompt}\n\n` : '') +
+    (numberingContext ? `${numberingContext}\n\n` : '') +
     `Task: Write a clear quiz question/instructions that matches the context. ` +
     `Keep it concise, student-friendly, and specific. If the context looks like a worked example, ask a similar new question.`
 
@@ -241,18 +264,21 @@ async function generateWithAnthropic(opts: { apiKey: string; model: string; grad
   return typeof content === 'string' ? content.trim() : ''
 }
 
-async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string }) {
-  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt } = opts
+async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string; numberingContext: string }) {
+  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt, numberingContext } = opts
   const prompt =
     `You write quiz prompts for learners. Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ` +
     `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
     `The label should be short like "Quiz 1.1" and reflect phase/point context if provided. ` +
     `You may use very light emphasis in the prompt using **bold** or _italic_ (no markdown headings/lists). ` +
+    `The prompt MUST be specific to the given math context (avoid generic “Solve. Show working.”). ` +
+    `Use natural classroom phrasing (e.g. “Solve the following equations simultaneously.” when appropriate). ` +
     `If you include any math, wrap it in $...$ or $$...$$ so it renders with KaTeX.\n\n` +
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
-    `Teacher notes (LaTeX, may include multiple lines):\n${teacherLatex || '(empty)'}\n\n` +
+    `Math context (LaTeX/notes):\n${teacherLatex || '(empty)'}\n\n` +
     (previousPrompt ? `Previous prompt (optional):\n${previousPrompt}\n\n` : '') +
+    (numberingContext ? `${numberingContext}\n\n` : '') +
     `Task: Write a clear quiz question/instructions that matches the context. ` +
     `Keep it concise, student-friendly, and specific. If the context looks like a worked example, ask a similar new question.`
 
@@ -344,8 +370,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     let raw = ''
 
-    const contextSuffix =
-      `\n\nNumbering context (use this to choose a new unique label):\n` +
+    const numberingContext =
+      `Numbering context (use this to choose a new unique label):\n` +
       `Session quiz count so far: ${priorQuizCount}\n` +
       `Phase: ${phaseKey || 'unknown'}\n` +
       `Point index: ${typeof pointIndex === 'number' ? pointIndex + 1 : 'unknown'}\n` +
@@ -358,24 +384,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         apiKey: process.env.OPENAI_API_KEY,
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         gradeLabel,
-        teacherLatex: teacherLatex + contextSuffix,
+        teacherLatex,
         previousPrompt,
+        numberingContext,
       })
     } else if ((provider === 'anthropic' || provider === 'claude') && process.env.ANTHROPIC_API_KEY) {
       raw = await generateWithAnthropic({
         apiKey: process.env.ANTHROPIC_API_KEY,
         model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
         gradeLabel,
-        teacherLatex: teacherLatex + contextSuffix,
+        teacherLatex,
         previousPrompt,
+        numberingContext,
       })
     } else if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
       raw = await generateWithGemini({
         apiKey: process.env.GEMINI_API_KEY,
         model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
         gradeLabel,
-        teacherLatex: teacherLatex + contextSuffix,
+        teacherLatex,
         previousPrompt,
+        numberingContext,
       })
     } else {
       raw = ''

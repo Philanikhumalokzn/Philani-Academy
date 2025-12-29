@@ -350,6 +350,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const pointTitle = typeof body.pointTitle === 'string' ? body.pointTitle.trim() : ''
   const pointIndex = (typeof body.pointIndex === 'number' && Number.isFinite(body.pointIndex)) ? Math.max(0, Math.min(9999, Math.trunc(body.pointIndex))) : null
 
+  const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
+  if (!geminiApiKey) {
+    return res.status(500).json({ message: 'Gemini is not configured (missing GEMINI_API_KEY)', providerUsed: 'gemini' })
+  }
+
   // Pull a small summary of existing quizzes for this session (distinct quizId).
   let priorQuizCount = 0
   let priorInPointCount = 0
@@ -395,8 +400,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       (priorLabelsSample ? `Recent quiz labels: ${priorLabelsSample}\n` : '')
 
     const raw = await generateWithGemini({
-      apiKey: process.env.GEMINI_API_KEY!,
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      apiKey: geminiApiKey,
+      model: (process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim() || 'gemini-1.5-flash',
       gradeLabel,
       teacherLatex,
       previousPrompt,
@@ -416,6 +421,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const promptShort = shortenPrompt(finalPromptRaw || '')
     const promptKatex = shortenPrompt(ensureKatexDelimiters(promptShort))
     const prompt = promptKatex
+
+    if (!prompt) {
+      throw new Error('Gemini returned an empty prompt')
+    }
 
     return res.status(200).json({ prompt, label, source: 'ai', providerUsed: 'gemini' })
   } catch (err: any) {

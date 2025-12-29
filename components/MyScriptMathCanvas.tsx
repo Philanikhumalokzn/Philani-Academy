@@ -4832,9 +4832,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (suggestedLabel) {
               quizLabel = suggestedLabel
             }
+          } else {
+            const bodyText = await aiRes.text().catch(() => '')
+            console.warn('quiz-prompt API failed', aiRes.status, bodyText)
+            if (!promptText) {
+              promptText = 'Gemini prompt suggestion failed. Enter quiz instructions manually.'
+            }
           }
-        } catch {
-          // Safe fallback: proceed with existing promptText.
+        } catch (err) {
+          console.warn('quiz-prompt API error', err)
+          if (!promptText) {
+            promptText = 'Gemini prompt suggestion failed. Enter quiz instructions manually.'
+          }
         }
 
         // Teacher enters the quiz prompt at the moment quiz mode starts.

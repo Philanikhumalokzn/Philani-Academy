@@ -2861,7 +2861,7 @@ export default function Dashboard() {
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Scheduled sessions — {activeGradeLabel}</h2>
           {isAdmin && (
-            <div className="p-3 border rounded bg-slate-50 space-y-2">
+            <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
               <div className="font-medium">Subscription gating</div>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -2881,7 +2881,7 @@ export default function Dashboard() {
             </div>
           )}
           {isSubscriptionBlocked && (
-            <div className="p-3 border rounded bg-slate-50">
+            <div className="p-3 border border-white/10 rounded bg-white/5">
               <div className="font-medium">Subscription required</div>
               <div className="text-sm muted">Subscribe to join sessions and access lesson materials.</div>
               <div className="mt-2">
@@ -3132,7 +3132,7 @@ export default function Dashboard() {
                     <div className="flex-1 overflow-y-auto p-3">
                       {sessionDetailsTab === 'materials' ? (
                         <div className="space-y-2">
-                          <div className="p-3 border rounded bg-slate-50 space-y-3">
+                          <div className="p-3 border border-white/10 rounded bg-white/5 space-y-3">
                             <div className="flex items-center justify-between gap-3">
                               <div className="font-semibold text-sm">Lesson Script</div>
                               <div className="flex items-center gap-2">
@@ -3622,7 +3622,7 @@ export default function Dashboard() {
                           </div>
 
                           {!isLearner && expandedSessionId && (
-                            <div className="p-3 border rounded bg-slate-50 space-y-2">
+                            <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
                               <div className="font-semibold text-sm">Import assignment (PDF/screenshot)</div>
                               <div className="grid gap-2">
                                 <input
@@ -3660,7 +3660,7 @@ export default function Dashboard() {
                             <div className="text-sm muted">No assignments yet.</div>
                           ) : (
                             <div className="space-y-2">
-                              <ul className="border rounded divide-y overflow-hidden">
+                              <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
                                 {assignments.map((a: any) => (
                                   <li key={a.id} className="p-3 flex items-start justify-between gap-3">
                                     <button
@@ -3696,7 +3696,7 @@ export default function Dashboard() {
                               </ul>
 
                               {selectedAssignmentId && (
-                                <div className="p-3 border rounded bg-white space-y-2">
+                                <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
                                   {selectedAssignmentError ? (
                                     <div className="text-sm text-red-600">{selectedAssignmentError}</div>
                                   ) : selectedAssignmentLoading ? (
@@ -3707,7 +3707,7 @@ export default function Dashboard() {
                                       {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length > 0 ? (
                                         <div className="space-y-2">
                                           {selectedAssignment.questions.map((q: any, idx: number) => (
-                                            <details key={q.id || idx} className="border rounded p-2">
+                                            <details key={q.id || idx} className="border border-white/10 rounded p-2">
                                               <summary className="cursor-pointer font-medium text-sm">
                                                 Question {idx + 1}
                                               </summary>

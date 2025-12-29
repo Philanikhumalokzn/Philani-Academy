@@ -2040,8 +2040,8 @@ export default function DiagramOverlayModule(props: {
       {diagramState.isOpen && activeDiagram ? (
         <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
           <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
-          <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900">
-        <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
+          <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900 flex flex-col">
+        <div className="shrink-0 relative z-10 flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
           <div className="min-w-0">
             <p className="text-xs text-slate-500">Diagram</p>
             <p className="text-sm font-semibold truncate">{activeDiagram.title || 'Untitled diagram'}</p>
@@ -2082,7 +2082,7 @@ export default function DiagramOverlayModule(props: {
 
         <div
           ref={containerRef}
-          className="relative w-full h-[calc(100%-44px)]"
+          className="relative w-full flex-1 min-h-0"
           onMouseDown={() => setContextMenu(null)}
         >
           {isAdmin && (

@@ -384,27 +384,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // ignore
   }
 
-  // Provider selection (optional). If not configured, auto-pick based on available keys.
-  const configuredProvider = (process.env.AI_PROVIDER || '').toLowerCase() // 'openai' | 'anthropic' | 'gemini'
-  const hasGeminiKey = Boolean((process.env.GEMINI_API_KEY || '').trim())
-  const hasOpenAIKey = Boolean((process.env.OPENAI_API_KEY || '').trim())
-  const hasAnthropicKey = Boolean((process.env.ANTHROPIC_API_KEY || '').trim())
-
-  const provider = (() => {
-    if (configuredProvider === 'gemini' || configuredProvider === 'openai' || configuredProvider === 'anthropic' || configuredProvider === 'claude') {
-      return configuredProvider
-    }
-    if (hasGeminiKey) return 'gemini'
-    if (hasOpenAIKey) return 'openai'
-    if (hasAnthropicKey) return 'anthropic'
-    return ''
-  })()
-
   try {
-    let raw = ''
-    let source: 'ai' | 'heuristic' = 'heuristic'
-    let providerUsed: string | null = null
-
     const numberingContext =
       `Numbering context (use this to choose a new unique label):\n` +
       `Session quiz count so far: ${priorQuizCount}\n` +
@@ -414,43 +394,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       (pointTitle ? `Point title: ${pointTitle}\n` : '') +
       (priorLabelsSample ? `Recent quiz labels: ${priorLabelsSample}\n` : '')
 
-    if (provider === 'openai' && process.env.OPENAI_API_KEY) {
-      raw = await generateWithOpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        gradeLabel,
-        teacherLatex,
-        previousPrompt,
-        numberingContext,
-      })
-      source = 'ai'
-      providerUsed = 'openai'
-    } else if ((provider === 'anthropic' || provider === 'claude') && process.env.ANTHROPIC_API_KEY) {
-      raw = await generateWithAnthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
-        model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest',
-        gradeLabel,
-        teacherLatex,
-        previousPrompt,
-        numberingContext,
-      })
-      source = 'ai'
-      providerUsed = 'anthropic'
-    } else if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
-      raw = await generateWithGemini({
-        apiKey: process.env.GEMINI_API_KEY,
-        model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-        gradeLabel,
-        teacherLatex,
-        previousPrompt,
-        numberingContext,
-      })
-      source = 'ai'
-      providerUsed = 'gemini'
-    } else {
-      raw = ''
-    }
-
+    const raw = await generateWithGemini({
+      apiKey: process.env.GEMINI_API_KEY!,
+      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      gradeLabel,
+      teacherLatex,
+      previousPrompt,
+      numberingContext,
+    })
     const parsed = raw ? parseJsonPackage(raw) : {}
     const fallbackLabel = fallbackQuizLabel({ phaseKey: phaseKey || null, pointIndex, priorQuizCount, priorInPointCount })
     const label = clampLabel(typeof parsed.label === 'string' ? parsed.label : '') || fallbackLabel
@@ -464,12 +415,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     )
     const promptShort = shortenPrompt(finalPromptRaw || '')
     const promptKatex = shortenPrompt(ensureKatexDelimiters(promptShort))
-    const prompt = promptKatex || shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex)))
+    const prompt = promptKatex
 
-    return res.status(200).json({ prompt, label, source, providerUsed })
+    return res.status(200).json({ prompt, label, source: 'ai', providerUsed: 'gemini' })
   } catch (err: any) {
-    console.warn('AI quiz prompt generation failed; falling back', err?.message || err)
-    const label = fallbackQuizLabel({ phaseKey: phaseKey || null, pointIndex, priorQuizCount, priorInPointCount })
-    return res.status(200).json({ prompt: shortenPrompt(ensureKatexDelimiters(heuristicPrompt(gradeLabel, teacherLatex))), label, source: 'heuristic', providerUsed: null })
+    console.warn('AI quiz prompt generation failed', err?.message || err)
+    return res.status(500).json({ message: 'Gemini prompt generation failed', error: err?.message || err })
   }
 }

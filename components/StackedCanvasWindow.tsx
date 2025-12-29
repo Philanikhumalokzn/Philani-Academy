@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
 
+const DiagramOverlayModule = dynamic(() => import('./DiagramOverlayModule'), { ssr: false })
 const TextOverlayModule = dynamic(() => import('./TextOverlayModule'), { ssr: false })
 
 type CanvasOrientation = 'portrait' | 'landscape'
@@ -65,6 +66,17 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
             onOverlayChromeVisibilityChange?.(visible)
           }}
         />
+
+        {boardId && (
+          <DiagramOverlayModule
+            boardId={boardId}
+            gradeLabel={gradeLabel || null}
+            userId={userId}
+            userDisplayName={userDisplayName}
+            isAdmin={Boolean(isAdmin)}
+            lessonAuthoring={lessonAuthoring}
+          />
+        )}
 
         {boardId && (
           <TextOverlayModule

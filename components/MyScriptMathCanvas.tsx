@@ -6684,28 +6684,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         e.stopPropagation()
                       }}
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="26"
-                        height="26"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        {/* Simple original “finger snap” gesture mark */}
-                        <path d="M9.5 4.5c0 2.3 1.2 3.8 3.1 4.8" />
-                        <path d="M12.6 9.3l1.7 1.7c.9.9 1.2 2.2.6 3.4-1 2.2-3.1 3.6-5.6 3.6-2.9 0-5.3-2.4-5.3-5.3V10" />
-                        <path d="M7.7 10V7.6c0-.9.7-1.6 1.6-1.6.9 0 1.6.7 1.6 1.6v3.1" />
-                        <path d="M10.9 10V6.8c0-.9.7-1.6 1.6-1.6.9 0 1.6.7 1.6 1.6v3.9" />
-                        <path d="M14.1 12V8.4c0-.9.7-1.6 1.6-1.6.9 0 1.6.7 1.6 1.6v5" />
-                        <path d="M18.9 4.6l1.1-1.1" />
-                        <path d="M19.6 7.2h1.6" />
-                        <path d="M17.6 2.8V1.2" />
-                      </svg>
+                      <img
+                        src="/finger-snap-icon.png"
+                        alt=""
+                        width={26}
+                        height={26}
+                        draggable={false}
+                        className="block"
+                        style={{ pointerEvents: 'none' }}
+                      />
                     </button>
                   )}
                   {isAdmin ? (
@@ -6799,35 +6786,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 } catch {}
               }}
             >
-              {isAdmin && (
-                <button
-                  type="button"
-                  className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 px-2 py-2 rounded-full border bg-white text-slate-700 ${quizActive ? 'border-slate-400' : 'border-slate-300'} hover:bg-slate-50`}
-                  title={quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}
-                  aria-label={quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}
-                  onPointerDown={e => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                  }}
-                  onClick={() => runCanvasAction(async () => {
-                    await publishQuizState(!quizActiveRef.current)
-                    setQuizActiveState(!quizActiveRef.current)
-                  })}
-                  disabled={status !== 'ready' || Boolean(fatalError)}
-                >
-                  <span className="sr-only">{quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v14h10V5H7zm2 3h6v2H9V8zm0 4h6v2H9v-2z" />
-                  </svg>
-                </button>
-              )}
               <div className="w-full h-0.5 bg-slate-200 relative">
                 <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
               </div>

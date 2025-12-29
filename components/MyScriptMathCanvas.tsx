@@ -447,6 +447,204 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [])
 
+  const requestWindowContext = useCallback(<T,>(opts: {
+    requestEvent: string
+    responseEvent: string
+    timeoutMs?: number
+  }): Promise<T | null> => {
+    if (typeof window === 'undefined') return Promise.resolve(null)
+    const timeoutMs = typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) ? Math.max(60, Math.min(1200, Math.trunc(opts.timeoutMs))) : 260
+
+    let requestId = ''
+    try {
+      requestId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? (crypto as any).randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    } catch {
+      requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    }
+
+    return new Promise<T | null>(resolve => {
+      let done = false
+
+      const finish = (value: T | null) => {
+        if (done) return
+        done = true
+        try {
+          window.removeEventListener(opts.responseEvent, onResponse as any)
+        } catch {}
+        resolve(value)
+      }
+
+      const onResponse = (event: Event) => {
+        const detail = (event as CustomEvent)?.detail as any
+        if (!detail || typeof detail !== 'object') return
+        if (detail.requestId !== requestId) return
+        finish(detail as T)
+      }
+
+      window.addEventListener(opts.responseEvent, onResponse as any)
+      window.setTimeout(() => finish(null), timeoutMs)
+      try {
+        window.dispatchEvent(new CustomEvent(opts.requestEvent, { detail: { requestId } }))
+      } catch {
+        finish(null)
+      }
+    })
+  }, [])
+
+  const buildLessonContextText = useCallback((opts: {
+    gradeLabel: string | null
+    phaseKey: string
+    pointTitle: string
+    pointIndex: number | null
+    teacherLatexContext: string
+    adminStepsLatex: string[]
+    adminDraftLatex: string
+    textBoxes: Array<{ id: string; text: string }>
+    textTimeline?: Array<{ ts: number; kind: string; action: string; boxId?: string; visible?: boolean; textSnippet?: string }>
+    diagramSummary: string
+    diagramTimeline?: Array<{ ts: number; kind: string; action: string; diagramId?: string; title?: string; imageUrl?: string; strokes?: number; arrows?: number }>
+  }) => {
+    const lines: string[] = []
+    lines.push('Lesson context snapshot (what students have seen):')
+    lines.push(`Grade: ${opts.gradeLabel || 'unknown'}`)
+    if (opts.phaseKey) lines.push(`Phase: ${opts.phaseKey}`)
+    if (typeof opts.pointIndex === 'number') lines.push(`Point: ${opts.pointIndex + 1}${opts.pointTitle ? ` — ${opts.pointTitle}` : ''}`)
+    lines.push('')
+
+    const steps = opts.adminStepsLatex.map(s => (s || '').trim()).filter(Boolean)
+    const draft = (opts.adminDraftLatex || '').trim()
+    const contextLatex = (opts.teacherLatexContext || '').trim()
+
+    if (steps.length || draft || contextLatex) {
+      lines.push('Teacher math/notes context (LaTeX):')
+      if (steps.length) {
+        const tail = steps.slice(Math.max(0, steps.length - 14))
+        for (let i = 0; i < tail.length; i += 1) {
+          lines.push(`${Math.max(steps.length - tail.length, 0) + i + 1}) ${tail[i]}`)
+        }
+      }
+      if (draft) {
+        lines.push(`Draft: ${draft}`)
+      }
+      if (contextLatex && (!steps.length || contextLatex !== steps[steps.length - 1])) {
+        lines.push(`Current: ${contextLatex}`)
+      }
+      lines.push('')
+    }
+
+    if (opts.textBoxes.length) {
+      lines.push('Text modules shown (overlay):')
+      for (const b of opts.textBoxes.slice(0, 12)) {
+        const text = (b.text || '').trim().replace(/\s+/g, ' ')
+        if (!text) continue
+        lines.push(`- [${b.id}] ${text.slice(0, 240)}`)
+      }
+      lines.push('')
+    }
+
+    if (opts.diagramSummary) {
+      lines.push('Diagrams shown:')
+      lines.push(opts.diagramSummary)
+      lines.push('')
+    }
+
+    const textTimeline = Array.isArray(opts.textTimeline) ? opts.textTimeline : []
+    const diagramTimeline = Array.isArray(opts.diagramTimeline) ? opts.diagramTimeline : []
+    if (textTimeline.length || diagramTimeline.length) {
+      type HistoryLine = { ts: number; msg: string }
+      const history: HistoryLine[] = []
+
+      const cleanSnippet = (s: unknown, maxLen: number) => {
+        const raw = typeof s === 'string' ? s : ''
+        const t = raw.trim().replace(/\s+/g, ' ')
+        if (!t) return ''
+        return t.length > maxLen ? t.slice(0, maxLen) + '…' : t
+      }
+
+      for (const e of textTimeline) {
+        const ts = typeof (e as any)?.ts === 'number' ? (e as any).ts : NaN
+        if (!Number.isFinite(ts)) continue
+        const kind = typeof (e as any)?.kind === 'string' ? (e as any).kind : ''
+        const action = typeof (e as any)?.action === 'string' ? (e as any).action : ''
+        if (!kind || !action) continue
+
+        if (kind === 'overlay-state') {
+          history.push({ ts, msg: `Text overlay: ${action}` })
+          continue
+        }
+
+        if (kind === 'box') {
+          const boxId = typeof (e as any)?.boxId === 'string' ? (e as any).boxId : ''
+          const snippet = cleanSnippet((e as any)?.textSnippet, 160)
+          const vis = typeof (e as any)?.visible === 'boolean' ? (e as any).visible : undefined
+          const visLabel = typeof vis === 'boolean' ? (vis ? 'visible' : 'hidden') : ''
+          const idLabel = boxId ? ` [${boxId.slice(0, 28)}]` : ''
+          const bits = [`Text box ${action}${idLabel}`]
+          if (visLabel) bits.push(`(${visLabel})`)
+          if (snippet) bits.push(`“${snippet}”`)
+          history.push({ ts, msg: bits.join(' ') })
+          continue
+        }
+      }
+
+      for (const e of diagramTimeline) {
+        const ts = typeof (e as any)?.ts === 'number' ? (e as any).ts : NaN
+        if (!Number.isFinite(ts)) continue
+        const kind = typeof (e as any)?.kind === 'string' ? (e as any).kind : ''
+        const action = typeof (e as any)?.action === 'string' ? (e as any).action : ''
+        if (!kind || !action) continue
+
+        if (kind === 'overlay-state') {
+          history.push({ ts, msg: `Diagram overlay: ${action}` })
+          continue
+        }
+
+        const title = cleanSnippet((e as any)?.title, 80)
+        const diagramId = typeof (e as any)?.diagramId === 'string' ? (e as any).diagramId : ''
+        const idLabel = diagramId ? ` [${diagramId.slice(0, 24)}]` : ''
+
+        if (kind === 'diagram') {
+          const bits = [`Diagram ${action}${idLabel}`]
+          if (title) bits.push(`— ${title}`)
+          history.push({ ts, msg: bits.join(' ') })
+          continue
+        }
+
+        if (kind === 'annotations') {
+          const strokes = typeof (e as any)?.strokes === 'number' ? (e as any).strokes : undefined
+          const arrows = typeof (e as any)?.arrows === 'number' ? (e as any).arrows : undefined
+          const bits = [`Diagram annotations ${action}${idLabel}`]
+          if (title) bits.push(`— ${title}`)
+          const counts = [
+            typeof strokes === 'number' ? `strokes=${strokes}` : '',
+            typeof arrows === 'number' ? `arrows=${arrows}` : '',
+          ].filter(Boolean).join(', ')
+          if (counts) bits.push(`(${counts})`)
+          history.push({ ts, msg: bits.join(' ') })
+          continue
+        }
+      }
+
+      history.sort((a, b) => a.ts - b.ts)
+      const tail = history.slice(Math.max(0, history.length - 60))
+      if (tail.length) {
+        const baseTs = tail[0].ts
+        lines.push('Recent lesson timeline (history, chronological):')
+        for (const h of tail) {
+          const deltaSec = Math.max(0, Math.round((h.ts - baseTs) / 1000))
+          lines.push(`- +${deltaSec}s ${h.msg}`)
+        }
+        lines.push('')
+      }
+    }
+
+    const joined = lines.join('\n').trim()
+    // Keep within a safe size for the API prompt.
+    return joined.length > 12000 ? joined.slice(0, 12000) : joined
+  }, [])
+
   const setQuizActiveState = useCallback((enabled: boolean) => {
     setQuizActive(enabled)
     quizActiveRef.current = enabled
@@ -4902,13 +5100,83 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               : (latexOutput || '')
           ).trim()
 
+            // Capture broader lesson context (text + diagrams) as best-effort.
+            const [textCtx, diagramCtx] = await Promise.all([
+              requestWindowContext<any>({ requestEvent: 'philani-text:request-context', responseEvent: 'philani-text:context', timeoutMs: 220 }),
+              requestWindowContext<any>({ requestEvent: 'philani-diagrams:request-context', responseEvent: 'philani-diagrams:context', timeoutMs: 220 }),
+            ])
+
+            const textBoxes: Array<{ id: string; text: string }> = Array.isArray(textCtx?.boxes)
+              ? textCtx.boxes
+                  .map((b: any) => ({ id: typeof b?.id === 'string' ? b.id : '', text: typeof b?.text === 'string' ? b.text : '' }))
+                  .filter((b: any) => b.id && b.text)
+              : []
+
+            const textTimeline = Array.isArray(textCtx?.timeline)
+              ? textCtx.timeline
+                  .map((e: any) => ({
+                    ts: typeof e?.ts === 'number' ? e.ts : NaN,
+                    kind: typeof e?.kind === 'string' ? e.kind : '',
+                    action: typeof e?.action === 'string' ? e.action : '',
+                    boxId: typeof e?.boxId === 'string' ? e.boxId : undefined,
+                    visible: typeof e?.visible === 'boolean' ? e.visible : undefined,
+                    textSnippet: typeof e?.textSnippet === 'string' ? e.textSnippet : undefined,
+                  }))
+                  .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
+              : []
+
+            const activeDiagram = diagramCtx?.activeDiagram
+            const diagramSummary = (() => {
+              if (!activeDiagram || typeof activeDiagram !== 'object') return ''
+              const title = typeof activeDiagram.title === 'string' ? activeDiagram.title.trim() : ''
+              const url = typeof activeDiagram.imageUrl === 'string' ? activeDiagram.imageUrl.trim() : ''
+              const ann = activeDiagram.annotations
+              const strokes = Array.isArray(ann?.strokes) ? ann.strokes.length : 0
+              const arrows = Array.isArray(ann?.arrows) ? ann.arrows.length : 0
+              const bits = []
+              bits.push(`- Active diagram: ${title || '(untitled)'}`)
+              if (url) bits.push(`  imageUrl: ${url}`)
+              if (strokes || arrows) bits.push(`  annotations: strokes=${strokes}, arrows=${arrows}`)
+              return bits.join('\n')
+            })()
+
+            const diagramTimeline = Array.isArray(diagramCtx?.timeline)
+              ? diagramCtx.timeline
+                  .map((e: any) => ({
+                    ts: typeof e?.ts === 'number' ? e.ts : NaN,
+                    kind: typeof e?.kind === 'string' ? e.kind : '',
+                    action: typeof e?.action === 'string' ? e.action : '',
+                    diagramId: typeof e?.diagramId === 'string' ? e.diagramId : undefined,
+                    title: typeof e?.title === 'string' ? e.title : undefined,
+                    imageUrl: typeof e?.imageUrl === 'string' ? e.imageUrl : undefined,
+                    strokes: typeof e?.strokes === 'number' ? e.strokes : undefined,
+                    arrows: typeof e?.arrows === 'number' ? e.arrows : undefined,
+                  }))
+                  .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
+              : []
+
+            const lessonContextText = buildLessonContextText({
+              gradeLabel: gradeLabel || null,
+              phaseKey: phaseKey || '',
+              pointTitle: pointTitle || '',
+              pointIndex: Number.isFinite(pointIndex) ? (pointIndex as any) : null,
+              teacherLatexContext,
+              adminStepsLatex: adminSteps.map(s => (s?.latex || '')).filter(Boolean),
+              adminDraftLatex,
+              textBoxes,
+              textTimeline,
+              diagramSummary,
+              diagramTimeline,
+            })
+
           const aiRes = await fetch('/api/ai/quiz-prompt', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-debug-echo': '1' },
             body: JSON.stringify({
               gradeLabel: gradeLabel || undefined,
               teacherLatex: teacherLatexContext || undefined,
+                lessonContextText: lessonContextText || undefined,
               previousPrompt: promptText || undefined,
               sessionId: boardId || undefined,
               phaseKey: phaseKey || undefined,
@@ -4919,6 +5187,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           })
           if (aiRes.ok) {
             const data = await aiRes.json().catch(() => null)
+            const echoed = typeof data?.debug?.lessonContextText === 'string' ? data.debug.lessonContextText : ''
+            if (echoed) {
+              console.log('[quiz-prompt debug echo] lessonContextText (what Gemini received):\n' + echoed)
+            }
             const suggested = typeof data?.prompt === 'string' ? data.prompt.trim() : ''
             if (suggested) {
               promptText = suggested

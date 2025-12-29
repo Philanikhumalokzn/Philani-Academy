@@ -134,10 +134,67 @@ export default function DiagramOverlayModule(props: {
     diagramStateRef.current = diagramState
   }, [diagramState])
 
+  type DiagramTimelineEvent = {
+    ts: number
+    kind: 'overlay-state' | 'diagram' | 'annotations'
+    action: string
+    diagramId?: string
+    title?: string
+    imageUrl?: string
+    strokes?: number
+    arrows?: number
+  }
+  const diagramTimelineRef = useRef<DiagramTimelineEvent[]>([])
+  const pushDiagramTimeline = useCallback((evt: DiagramTimelineEvent) => {
+    const next = [...diagramTimelineRef.current, evt]
+    diagramTimelineRef.current = next.length > 250 ? next.slice(next.length - 250) : next
+  }, [])
+
   const activeDiagram = useMemo(() => {
     if (!diagramState.activeDiagramId) return null
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
   }, [diagramState.activeDiagramId, diagrams])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      if (!isAdmin) return
+      const detail = (event as CustomEvent)?.detail as { requestId?: string } | undefined
+      const requestId = typeof detail?.requestId === 'string' ? detail.requestId : ''
+      if (!requestId) return
+
+      const state = diagramStateRef.current
+      const active = (() => {
+        if (!state?.activeDiagramId) return null
+        return diagramsRef.current.find(d => d.id === state.activeDiagramId) || null
+      })()
+
+      // Keep payload reasonably small: provide active snapshot + titles list.
+      const diagramsIndex = diagramsRef.current
+        .slice(0, 30)
+        .map(d => ({ id: d.id, title: d.title, imageUrl: d.imageUrl, order: d.order }))
+
+      window.dispatchEvent(new CustomEvent('philani-diagrams:context', {
+        detail: {
+          requestId,
+          ts: Date.now(),
+          state,
+          activeDiagram: active ? {
+            id: active.id,
+            title: active.title,
+            imageUrl: active.imageUrl,
+            annotations: active.annotations ?? null,
+          } : null,
+          diagramsIndex,
+          timeline: diagramTimelineRef.current.slice(Math.max(0, diagramTimelineRef.current.length - 80)),
+        },
+      }))
+    }
+
+    window.addEventListener('philani-diagrams:request-context', handler as any)
+    return () => window.removeEventListener('philani-diagrams:request-context', handler as any)
+  }, [isAdmin])
 
   useEffect(() => {
     if (!isLessonAuthoring) return
@@ -357,6 +414,27 @@ export default function DiagramOverlayModule(props: {
   const setOverlayState = useCallback(async (next: DiagramState) => {
     setDiagramState(next)
     if (!isAdmin) return
+
+    try {
+      const prev = diagramStateRef.current
+      if (Boolean(prev?.isOpen) !== Boolean(next.isOpen)) {
+        pushDiagramTimeline({ ts: Date.now(), kind: 'overlay-state', action: next.isOpen ? 'open' : 'close' })
+      }
+      if ((prev?.activeDiagramId || null) !== (next.activeDiagramId || null)) {
+        const diag = next.activeDiagramId ? diagramsRef.current.find(d => d.id === next.activeDiagramId) : null
+        pushDiagramTimeline({
+          ts: Date.now(),
+          kind: 'diagram',
+          action: 'set-active',
+          diagramId: next.activeDiagramId || undefined,
+          title: diag?.title || undefined,
+          imageUrl: diag?.imageUrl || undefined,
+        })
+      }
+    } catch {
+      // ignore
+    }
+
     await persistState(next)
     await publish({ kind: 'state', activeDiagramId: next.activeDiagramId, isOpen: next.isOpen })
 
@@ -1335,8 +1413,16 @@ export default function DiagramOverlayModule(props: {
     setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations } : d)))
     void persistAnnotations(diagramId, annotations)
     void publish({ kind: 'annotations-set', diagramId, annotations })
+    try {
+      const strokes = Array.isArray(annotations?.strokes) ? annotations.strokes.length : 0
+      const arrows = Array.isArray((annotations as any)?.arrows) ? (annotations as any).arrows.length : 0
+      const diag = diagramsRef.current.find(d => d.id === diagramId)
+      pushDiagramTimeline({ ts: Date.now(), kind: 'annotations', action: 'set', diagramId, title: diag?.title || undefined, strokes, arrows })
+    } catch {
+      // ignore
+    }
     redraw()
-  }, [persistAnnotations, publish, redraw])
+  }, [persistAnnotations, publish, pushDiagramTimeline, redraw])
 
   const pushUndoSnapshot = useCallback((diagramId: string) => {
     try {
@@ -1581,6 +1667,13 @@ export default function DiagramOverlayModule(props: {
       redraw()
       void persistAnnotations(diagramId, next)
       void publish({ kind: 'annotations-set', diagramId, annotations: next })
+      try {
+        const strokes = Array.isArray(next?.strokes) ? next.strokes.length : 0
+        const arrows = Array.isArray(next?.arrows) ? next.arrows.length : 0
+        pushDiagramTimeline({ ts: Date.now(), kind: 'annotations', action: 'commit-arrow', diagramId, title: diag?.title || undefined, strokes, arrows })
+      } catch {
+        // ignore
+      }
       return
     }
 
@@ -1605,6 +1698,13 @@ export default function DiagramOverlayModule(props: {
       redraw()
       void persistAnnotations(diagramId, next)
       void publish({ kind: 'annotations-set', diagramId, annotations: next })
+      try {
+        const strokes = Array.isArray(next?.strokes) ? next.strokes.length : 0
+        const arrows = Array.isArray(next?.arrows) ? next.arrows.length : 0
+        pushDiagramTimeline({ ts: Date.now(), kind: 'annotations', action: 'commit-stroke', diagramId, title: diag?.title || undefined, strokes, arrows })
+      } catch {
+        // ignore
+      }
       return
     }
 

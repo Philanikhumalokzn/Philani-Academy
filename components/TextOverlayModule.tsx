@@ -295,6 +295,21 @@ export default function TextOverlayModule(props: {
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
 
+  type TextTimelineEvent = {
+    ts: number
+    kind: 'overlay-state' | 'box'
+    action: string
+    boxId?: string
+    visible?: boolean
+    textSnippet?: string
+  }
+  const textTimelineRef = useRef<TextTimelineEvent[]>([])
+  const pushTextTimeline = useCallback((evt: TextTimelineEvent) => {
+    const next = [...textTimelineRef.current, evt]
+    // Bound memory: keep last ~250 events.
+    textTimelineRef.current = next.length > 250 ? next.slice(next.length - 250) : next
+  }, [])
+
   const lastQuizPromptSignatureRef = useRef<string>('')
 
   const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; boxId: string }>(null)
@@ -469,18 +484,85 @@ export default function TextOverlayModule(props: {
     return () => window.removeEventListener('philani-text:toggle-tray', handler as any)
   }, [isAdmin])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      if (!isAdmin) return
+      const detail = (event as CustomEvent)?.detail as { requestId?: string } | undefined
+      const requestId = typeof detail?.requestId === 'string' ? detail.requestId : ''
+      if (!requestId) return
+
+      const visibleBoxes = boxesRef.current
+        .filter(b => Boolean(b.visible))
+        .map(b => ({ id: b.id, text: b.text || '', visible: Boolean(b.visible), z: b.z }))
+
+      window.dispatchEvent(new CustomEvent('philani-text:context', {
+        detail: {
+          requestId,
+          ts: Date.now(),
+          overlayState: overlayStateRef.current,
+          boxes: visibleBoxes,
+          timeline: textTimelineRef.current.slice(Math.max(0, textTimelineRef.current.length - 80)),
+        },
+      }))
+    }
+
+    window.addEventListener('philani-text:request-context', handler as any)
+    return () => window.removeEventListener('philani-text:request-context', handler as any)
+  }, [isAdmin])
+
   const setStateAndBroadcast = useCallback(async (next: TextOverlayState) => {
     setOverlayState(next)
     if (!isAdmin) return
+    pushTextTimeline({
+      ts: Date.now(),
+      kind: 'overlay-state',
+      action: next.isOpen ? 'open' : 'close',
+    })
     await publish({ kind: 'state', state: next })
-  }, [isAdmin, publish])
+  }, [isAdmin, publish, pushTextTimeline])
 
   const setBoxesAndBroadcast = useCallback(async (nextBoxes: TextBoxRecord[]) => {
+    const prev = boxesRef.current
     setBoxes(nextBoxes)
     boxesRef.current = nextBoxes
     if (!isAdmin) return
+
+    try {
+      const prevById = new Map(prev.map(b => [b.id, b]))
+      const nextById = new Map(nextBoxes.map(b => [b.id, b]))
+      const ids = new Set<string>([...prevById.keys(), ...nextById.keys()])
+      for (const id of ids) {
+        const p = prevById.get(id) || null
+        const n = nextById.get(id) || null
+        if (!p && n) {
+          pushTextTimeline({ ts: Date.now(), kind: 'box', action: 'create', boxId: id, visible: Boolean(n.visible), textSnippet: (n.text || '').trim().slice(0, 220) })
+          continue
+        }
+        if (p && !n) {
+          pushTextTimeline({ ts: Date.now(), kind: 'box', action: 'delete', boxId: id })
+          continue
+        }
+        if (!p || !n) continue
+
+        const pVis = Boolean(p.visible)
+        const nVis = Boolean(n.visible)
+        if (pVis !== nVis) {
+          pushTextTimeline({ ts: Date.now(), kind: 'box', action: nVis ? 'show' : 'hide', boxId: id, visible: nVis, textSnippet: (n.text || '').trim().slice(0, 220) })
+        }
+        const pText = (p.text || '').trim()
+        const nText = (n.text || '').trim()
+        if (pText !== nText) {
+          pushTextTimeline({ ts: Date.now(), kind: 'box', action: 'text', boxId: id, visible: nVis, textSnippet: nText.slice(0, 220) })
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     await publish({ kind: 'boxes', boxes: nextBoxes })
-  }, [isAdmin, publish])
+  }, [isAdmin, publish, pushTextTimeline])
 
   const upsertScriptBox = useCallback(async (detail: ScriptTextEventDetail) => {
     if (!isAdmin) return

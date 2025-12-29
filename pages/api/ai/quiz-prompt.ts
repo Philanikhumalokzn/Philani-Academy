@@ -5,6 +5,8 @@ import prisma from '../../../lib/prisma'
 type Body = {
   gradeLabel?: string | null
   teacherLatex?: string
+  lessonContextText?: string
+  debugEcho?: boolean
   previousPrompt?: string
   sessionId?: string
   phaseKey?: string
@@ -15,6 +17,7 @@ type Body = {
 
 const MAX_LATEX = 20000
 const MAX_PROMPT = 4000
+const MAX_LESSON_CONTEXT = 12000
 
 // We want the quiz prompt to be extremely concise in UI.
 const TARGET_PROMPT_MAX_CHARS = 220
@@ -265,8 +268,8 @@ async function generateWithAnthropic(opts: { apiKey: string; model: string; grad
   return typeof content === 'string' ? content.trim() : ''
 }
 
-async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; previousPrompt: string; numberingContext: string }) {
-  const { apiKey, model, gradeLabel, teacherLatex, previousPrompt, numberingContext } = opts
+async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; teacherLatex: string; lessonContextText: string; previousPrompt: string; numberingContext: string }) {
+  const { apiKey, model, gradeLabel, teacherLatex, lessonContextText, previousPrompt, numberingContext } = opts
   const prompt =
     `You write quiz prompts for learners. Return ONLY valid JSON with exactly these keys: {"label":"Quiz 1.1","prompt":"..."}. ` +
     `The prompt must be extremely concise (ideally 1 line, max ${TARGET_PROMPT_MAX_CHARS} chars). ` +
@@ -278,6 +281,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; gradeLa
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
     `Math context (LaTeX/notes):\n${teacherLatex || '(empty)'}\n\n` +
+    (lessonContextText ? `Additional lesson context (text modules / diagrams / what students saw):\n${lessonContextText}\n\n` : '') +
     (previousPrompt ? `Previous prompt (optional):\n${previousPrompt}\n\n` : '') +
     (numberingContext ? `${numberingContext}\n\n` : '') +
     `Task: Write a clear quiz question/instructions that matches the context. ` +
@@ -343,12 +347,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const body = (req.body || {}) as Body
   const gradeLabel = (typeof body.gradeLabel === 'string' ? body.gradeLabel : null)
   const teacherLatex = clampText(body.teacherLatex, MAX_LATEX)
+  const lessonContextText = clampText(body.lessonContextText, MAX_LESSON_CONTEXT)
   const previousPrompt = clampText(body.previousPrompt, MAX_PROMPT)
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
   const phaseKey = typeof body.phaseKey === 'string' ? body.phaseKey.trim() : ''
   const pointId = typeof body.pointId === 'string' ? body.pointId.trim() : ''
   const pointTitle = typeof body.pointTitle === 'string' ? body.pointTitle.trim() : ''
   const pointIndex = (typeof body.pointIndex === 'number' && Number.isFinite(body.pointIndex)) ? Math.max(0, Math.min(9999, Math.trunc(body.pointIndex))) : null
+
+  const debugEchoRequested = (() => {
+    if (process.env.DEBUG !== '1') return false
+    if (req.headers['x-debug-echo'] === '1') return true
+    if (req.headers['x-philani-debug-echo'] === '1') return true
+    return body?.debugEcho === true
+  })()
 
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
   if (!geminiApiKey) {
@@ -404,6 +416,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       model: (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash',
       gradeLabel,
       teacherLatex,
+      lessonContextText,
       previousPrompt,
       numberingContext,
     })
@@ -426,7 +439,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Gemini returned an empty prompt')
     }
 
-    return res.status(200).json({ prompt, label, source: 'ai', providerUsed: 'gemini' })
+    return res.status(200).json({
+      prompt,
+      label,
+      source: 'ai',
+      providerUsed: 'gemini',
+      ...(debugEchoRequested ? { debug: { lessonContextText } } : {}),
+    })
   } catch (err: any) {
     console.warn('AI quiz prompt generation failed', err?.message || err)
     return res.status(500).json({ message: 'Gemini prompt generation failed', error: err?.message || err })

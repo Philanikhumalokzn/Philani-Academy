@@ -14,8 +14,17 @@
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+@keyframes philaniQuizPopOut {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(8px) scale(0.985); opacity: 0; }
+}
+
 .philani-quiz-pop {
   animation: philaniQuizPop 260ms ease-out;
+}
+
+.philani-quiz-pop-out {
+  animation: philaniQuizPopOut 220ms ease-in forwards;
 }
 
 

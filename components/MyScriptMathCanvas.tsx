@@ -160,6 +160,8 @@ type QuizControlMessage = {
   quizPointId?: string
   quizPointIndex?: number
   prompt?: string
+  durationSec?: number
+  endsAt?: number
   combinedLatex?: string
   fromUserId?: string
   fromName?: string
@@ -381,6 +383,69 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizPhaseKeyRef = useRef<string>('')
   const quizPointIdRef = useRef<string>('')
   const quizPointIndexRef = useRef<number>(-1)
+  const quizEndsAtRef = useRef<number | null>(null)
+  const quizDurationSecRef = useRef<number | null>(null)
+  const quizAutoSubmitTriggeredRef = useRef(false)
+  const quizCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
+
+  const clearQuizCountdown = useCallback(() => {
+    if (quizCountdownIntervalRef.current) {
+      clearInterval(quizCountdownIntervalRef.current)
+      quizCountdownIntervalRef.current = null
+    }
+    quizEndsAtRef.current = null
+    quizDurationSecRef.current = null
+    quizAutoSubmitTriggeredRef.current = false
+    setQuizTimeLeftSec(null)
+  }, [])
+
+  const formatCountdown = useCallback((seconds: number | null) => {
+    if (seconds == null || !Number.isFinite(seconds)) return ''
+    const s = Math.max(0, Math.trunc(seconds))
+    const mm = Math.floor(s / 60)
+    const ss = s % 60
+    return `${mm}:${String(ss).padStart(2, '0')}`
+  }, [])
+
+  const playSnapSound = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext)
+      if (!AudioCtx) return
+      const ctx = new AudioCtx()
+      const now = ctx.currentTime
+
+      const osc = ctx.createOscillator()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(1400, now)
+      osc.frequency.exponentialRampToValueAtTime(260, now + 0.045)
+
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.28, now + 0.006)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(now)
+      osc.stop(now + 0.09)
+
+      const cleanupDelayMs = 180
+      window.setTimeout(() => {
+        try {
+          osc.disconnect()
+          gain.disconnect()
+        } catch {}
+        try {
+          ctx.close()
+        } catch {}
+      }, cleanupDelayMs)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   const setQuizActiveState = useCallback((enabled: boolean) => {
     setQuizActive(enabled)
@@ -3371,6 +3436,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             quizPointId?: string
             quizPointIndex?: number
             prompt?: string
+            durationSec?: number
+            endsAt?: number
             latex?: string
             options?: Partial<LatexDisplayOptions>
             phase?: 'active' | 'inactive' | 'submit'
@@ -3401,6 +3468,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 quizPhaseKeyRef.current = typeof data.quizPhaseKey === 'string' ? data.quizPhaseKey : ''
                 quizPointIdRef.current = typeof data.quizPointId === 'string' ? data.quizPointId : ''
                 quizPointIndexRef.current = (typeof data.quizPointIndex === 'number' && Number.isFinite(data.quizPointIndex)) ? Math.trunc(data.quizPointIndex) : -1
+
+                const endsAt = (typeof data.endsAt === 'number' && Number.isFinite(data.endsAt) && data.endsAt > 0) ? Math.trunc(data.endsAt) : null
+                const durationSec = (typeof data.durationSec === 'number' && Number.isFinite(data.durationSec) && data.durationSec > 0) ? Math.trunc(data.durationSec) : null
+                quizEndsAtRef.current = endsAt
+                quizDurationSecRef.current = durationSec
+                quizAutoSubmitTriggeredRef.current = false
+
+                if (quizCountdownIntervalRef.current) {
+                  clearInterval(quizCountdownIntervalRef.current)
+                  quizCountdownIntervalRef.current = null
+                }
+                if (endsAt) {
+                  const tick = () => {
+                    const remainingSec = Math.ceil((endsAt - Date.now()) / 1000)
+                    setQuizTimeLeftSec(Math.max(0, remainingSec))
+                  }
+                  tick()
+                  quizCountdownIntervalRef.current = setInterval(tick, 250)
+                } else {
+                  setQuizTimeLeftSec(null)
+                }
+
+                // Best-effort sound cue; browser may block autoplay.
+                playSnapSound()
+
                 // Capture baseline (the teacher's last visible state) and clear the work area.
                 const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
                 quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
@@ -3418,6 +3510,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               }
               if (phase === 'inactive') {
                 setQuizActiveState(false)
+                clearQuizCountdown()
                 quizCombinedLatexRef.current = ''
                 quizHasCommittedRef.current = false
                 quizIdRef.current = ''
@@ -4790,6 +4883,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       let quizId = quizIdRef.current
       let promptText = quizPromptRef.current
       let quizLabel = quizLabelRef.current
+      let durationSec: number | undefined
+      let endsAt: number | undefined
 
       const phaseKey = lessonScriptPhaseKey
       const pointIndex = lessonScriptPointIndex
@@ -4870,6 +4965,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           promptText = trimmed
         }
 
+        // Ask Gemini for a sensible quiz timer based on the final prompt.
+        try {
+          const timerRes = await fetch('/api/ai/quiz-timer', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gradeLabel: gradeLabel || undefined,
+              prompt: promptText,
+            }),
+          })
+          if (timerRes.ok) {
+            const data = await timerRes.json().catch(() => null)
+            const maybe = typeof data?.durationSec === 'number' ? Math.trunc(data.durationSec) : 0
+            if (Number.isFinite(maybe) && maybe > 0) {
+              durationSec = maybe
+              endsAt = Date.now() + maybe * 1000
+            }
+          } else {
+            const rawBody = await timerRes.text().catch(() => '')
+            console.warn('quiz-timer API failed', timerRes.status, rawBody)
+          }
+        } catch (err) {
+          console.warn('quiz-timer API error', err)
+        }
+
+        // Safety fallback: keep UX functional even if AI timer fails.
+        if (!durationSec || !endsAt) {
+          durationSec = 300
+          endsAt = Date.now() + durationSec * 1000
+        }
+
         // Create a new quiz instance id each time quiz mode starts.
         try {
           quizId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
@@ -4940,6 +5067,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         quizPointId: enabled ? pointId : undefined,
         quizPointIndex: enabled ? pointIndex : undefined,
         prompt: enabled ? promptText : undefined,
+        durationSec: enabled ? durationSec : undefined,
+        endsAt: enabled ? endsAt : undefined,
         ts: Date.now(),
       } satisfies QuizControlMessage)
     } catch (err) {
@@ -4947,7 +5076,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [adminDraftLatex, adminSteps, boardId, gradeLabel, isAdmin, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, useAdminStepComposer, userDisplayName])
 
-  const studentQuizCommitOrSubmit = useCallback(async () => {
+  const studentQuizCommitOrSubmit = useCallback(async (opts?: { forceSubmit?: boolean; skipConfirm?: boolean }) => {
     if (isAdmin) return
     if (!quizActiveRef.current) return
     if (quizSubmitting) return
@@ -4957,6 +5086,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     const editor = editorInstanceRef.current
     if (!editor) return
+
+    const forceSubmit = Boolean(opts?.forceSubmit)
+    const skipConfirm = Boolean(opts?.skipConfirm)
 
     setQuizSubmitting(true)
     try {
@@ -4992,7 +5124,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return step
       }
 
-      if (hasInk) {
+      if (hasInk && !forceSubmit) {
         // First-stage send: commit this line into combined latex and clear bottom canvas.
         const step = await getStepLatex()
         if (!step) return
@@ -5012,17 +5144,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
 
-      // Second-stage send: if blank, prompt to submit (only after at least one commit).
-      if (!quizHasCommittedRef.current || !quizCombinedLatexRef.current.trim()) {
-        return
+      // Force-submit mode (timer): include current ink as the last step if present.
+      if (hasInk && forceSubmit) {
+        const step = await getStepLatex()
+        if (step) {
+          const existing = quizCombinedLatexRef.current
+          const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
+          quizCombinedLatexRef.current = nextCombined
+          quizHasCommittedRef.current = true
+        }
       }
 
-      const ok = typeof window !== 'undefined'
-        ? window.confirm('Submit your quiz response?')
-        : true
-      if (!ok) return
+      // Second-stage send: if blank, prompt to submit (only after at least one commit).
+      let combined = quizCombinedLatexRef.current.trim()
+      if (!combined) {
+        // Server requires non-empty LaTeX.
+        combined = '\\text{(no\\ response)}'
+        quizCombinedLatexRef.current = combined
+      }
 
-      const combined = quizCombinedLatexRef.current.trim()
+      if (!skipConfirm) {
+        const ok = typeof window !== 'undefined'
+          ? window.confirm('Submit your quiz response?')
+          : true
+        if (!ok) return
+      }
 
       // Persist under the session responses (dashboard Quizzes folder).
       const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
@@ -5064,6 +5210,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             window.dispatchEvent(new CustomEvent('philani-text:local-apply', {
               detail: { id: 'quiz-feedback', text: feedback, visible: true },
             }))
+            playSnapSound()
           }
         } else {
           const bodyText = await fbRes.text().catch(() => '')
@@ -5093,6 +5240,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       quizCombinedLatexRef.current = ''
       quizHasCommittedRef.current = false
       setQuizActiveState(false)
+      clearQuizCountdown()
       if (baseline) {
         await applyPageSnapshot(baseline)
       } else {
@@ -5101,7 +5249,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, boardId, captureFullSnapshot, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, quizSubmitting, setQuizActiveState, userDisplayName, userId])
+  }, [applyPageSnapshot, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, userDisplayName, userId])
+
+  useEffect(() => {
+    if (isAdmin) return
+    if (!quizActive) return
+    if (quizSubmitting) return
+    if (quizTimeLeftSec == null) return
+    if (quizTimeLeftSec > 0) return
+    if (quizAutoSubmitTriggeredRef.current) return
+    quizAutoSubmitTriggeredRef.current = true
+    void studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
+  }, [isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
 
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -6577,6 +6736,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                       {!isAdmin && quizActive && (
                         <div className="mt-3 pt-3 border-t border-slate-200">
+                          {quizTimeLeftSec != null && (
+                            <div className="mb-2 flex items-center justify-end text-xs text-slate-500">
+                              Time left: {formatCountdown(quizTimeLeftSec)}
+                            </div>
+                          )}
                           {studentQuizLatexPreviewMarkup ? (
                             <div
                               className="text-slate-700 font-semibold leading-relaxed"

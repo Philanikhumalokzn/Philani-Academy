@@ -293,6 +293,8 @@ export default function TextOverlayModule(props: {
     localQuizOverrideRef.current = localQuizOverride
   }, [localQuizOverride])
 
+  const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
+
   const lastQuizPromptSignatureRef = useRef<string>('')
 
   const [contextMenu, setContextMenu] = useState<null | { x: number; y: number; boxId: string }>(null)
@@ -407,6 +409,12 @@ export default function TextOverlayModule(props: {
               if (signature && signature !== lastQuizPromptSignatureRef.current) {
                 lastQuizPromptSignatureRef.current = signature
                 setLocalQuizOverride(prev => (prev?.hidden ? { ...prev, hidden: false } : prev))
+                  setClosingPopupIds(prev => {
+                    if (!prev[QUIZ_BOX_ID]) return prev
+                    const next = { ...prev }
+                    delete next[QUIZ_BOX_ID]
+                    return next
+                  })
               }
             }
             return
@@ -584,6 +592,14 @@ export default function TextOverlayModule(props: {
           ? prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? nextRecord : b))
           : [...prev, nextRecord]
         studentLocalBoxesRef.current = next
+        return next
+      })
+
+      // Ensure "pop in" runs if it was closing.
+      setClosingPopupIds(prev => {
+        if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
+        const next = { ...prev }
+        delete next[QUIZ_FEEDBACK_BOX_ID]
         return next
       })
     }
@@ -984,8 +1000,9 @@ export default function TextOverlayModule(props: {
 
   const renderBoxes = mergedBoxes
     .filter(b => {
-      if (!b.visible) return false
-      if (!isAdmin && b.id === QUIZ_BOX_ID && localQuizOverrideRef.current?.hidden) return false
+      const isClosing = Boolean(closingPopupIds[b.id])
+      if (!b.visible && !isClosing) return false
+      if (!isAdmin && b.id === QUIZ_BOX_ID && localQuizOverrideRef.current?.hidden && !isClosing) return false
       return true
     })
     .sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
@@ -1004,6 +1021,7 @@ export default function TextOverlayModule(props: {
           const isQuizBox = box.id === QUIZ_BOX_ID
           const isQuizFeedbackBox = box.id === QUIZ_FEEDBACK_BOX_ID
           const isQuizPopupBox = isQuizBox || isQuizFeedbackBox
+          const isClosing = Boolean(closingPopupIds[box.id])
           const effective = (!isAdmin && isQuizBox && localQuizOverrideRef.current)
             ? {
                 ...box,
@@ -1013,6 +1031,7 @@ export default function TextOverlayModule(props: {
                 h: typeof localQuizOverrideRef.current.h === 'number' ? localQuizOverrideRef.current.h : box.h,
               }
             : box
+          const shouldAutoFitHeight = isQuizFeedbackBox || (!isAdmin && isQuizBox)
           return (
             <div
               key={box.id}
@@ -1024,8 +1043,8 @@ export default function TextOverlayModule(props: {
                 width: isQuizFeedbackBox ? 'fit-content' : `${effective.w * 100}%`,
                 minWidth: isQuizFeedbackBox ? undefined : MIN_BOX_PX_W,
                 maxWidth: '92vw',
-                height: isQuizFeedbackBox ? 'fit-content' : `${effective.h * 100}%`,
-                minHeight: isQuizFeedbackBox ? undefined : MIN_BOX_PX_H,
+                height: shouldAutoFitHeight ? 'fit-content' : `${effective.h * 100}%`,
+                minHeight: shouldAutoFitHeight ? undefined : MIN_BOX_PX_H,
                 zIndex: 520 + box.z,
                 transform: isQuizFeedbackBox ? 'translateX(-50%)' : undefined,
               }}
@@ -1036,15 +1055,15 @@ export default function TextOverlayModule(props: {
               onContextMenu={event => onBoxContextMenu(box, event)}
             >
               <div
-                className={`relative rounded-2xl border p-3 ${(!isAdmin && isQuizPopupBox) ? 'philani-quiz-pop' : ''}`}
+                className={`relative rounded-2xl border p-3 ${(!isAdmin && isQuizPopupBox) ? (isClosing ? 'philani-quiz-pop-out' : 'philani-quiz-pop') : ''}`}
                 style={{
                   background: 'rgba(0,0,0,0.65)',
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
                   color: 'white',
                   backdropFilter: 'blur(10px)',
                   cursor: (isAdmin || isQuizBox) ? (box.locked ? 'default' : 'grab') : 'default',
-                  height: isQuizFeedbackBox ? 'auto' : '100%',
-                  overflow: isQuizFeedbackBox ? 'hidden' : 'auto',
+                  height: shouldAutoFitHeight ? 'auto' : '100%',
+                  overflow: shouldAutoFitHeight ? 'hidden' : 'auto',
                   touchAction: 'none',
                   userSelect: 'none',
                 }}
@@ -1061,10 +1080,28 @@ export default function TextOverlayModule(props: {
                         return
                       }
                       if (isQuizBox) {
-                        setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                        setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
+                        window.setTimeout(() => {
+                          setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                          setClosingPopupIds(prev => {
+                            if (!prev[QUIZ_BOX_ID]) return prev
+                            const next = { ...prev }
+                            delete next[QUIZ_BOX_ID]
+                            return next
+                          })
+                        }, 230)
                         return
                       }
-                      setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
+                      setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
+                      window.setTimeout(() => {
+                        setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
+                        setClosingPopupIds(prev => {
+                          if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
+                          const next = { ...prev }
+                          delete next[QUIZ_FEEDBACK_BOX_ID]
+                          return next
+                        })
+                      }, 230)
                     }}
                     aria-label="Close"
                     title="Close"

@@ -6505,6 +6505,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     setAdminDraftLatex(adminSteps[index]?.latex || '')
                   } : undefined}
                 >
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      aria-label={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}
+                      title={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}
+                      className="absolute right-3 bottom-3 p-0 m-0 bg-transparent border-0 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-0"
+                      onClick={e => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void runCanvasAction(async () => {
+                          await publishQuizState(!quizActiveRef.current)
+                          // Keep local admin indicator in sync.
+                          setQuizActiveState(!quizActiveRef.current)
+                        })
+                      }}
+                      onPointerDown={e => {
+                        // Prevent the split/selection handlers from seeing this press.
+                        e.stopPropagation()
+                      }}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="26"
+                        height="26"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        {/* Simple original “finger snap” gesture mark */}
+                        <path d="M9.5 4.5c0 2.3 1.2 3.8 3.1 4.8" />
+                        <path d="M12.6 9.3l1.7 1.7c.9.9 1.2 2.2.6 3.4-1 2.2-3.1 3.6-5.6 3.6-2.9 0-5.3-2.4-5.3-5.3V10" />
+                        <path d="M7.7 10V7.6c0-.9.7-1.6 1.6-1.6.9 0 1.6.7 1.6 1.6v3.1" />
+                        <path d="M10.9 10V6.8c0-.9.7-1.6 1.6-1.6.9 0 1.6.7 1.6 1.6v3.9" />
+                        <path d="M14.1 12V8.4c0-.9.7-1.6 1.6-1.6.9 0 1.6.7 1.6 1.6v5" />
+                        <path d="M18.9 4.6l1.1-1.1" />
+                        <path d="M19.6 7.2h1.6" />
+                        <path d="M17.6 2.8V1.2" />
+                      </svg>
+                    </button>
+                  )}
                   {isAdmin ? (
                     latexProjectionMarkup ? (
                       <div

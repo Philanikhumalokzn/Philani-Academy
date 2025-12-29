@@ -1,0 +1,8 @@
+   ▲ Next.js 16.0.7 (webpack)
+   - Local:         http://127.0.0.1:3010
+   - Network:       http://127.0.0.1:3010
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 3.8s
+ POST /api/ai/quiz-prompt 200 in 10.0s (compile: 997ms, render: 9.0s)

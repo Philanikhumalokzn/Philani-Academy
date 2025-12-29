@@ -538,7 +538,19 @@ export default function Dashboard() {
   const [sessionDetailsIds, setSessionDetailsIds] = useState<string[]>([])
   const [sessionDetailsIndex, setSessionDetailsIndex] = useState(0)
   const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
-  const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex' | 'responses'>('materials')
+  const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex' | 'assignments' | 'responses'>('materials')
+
+  const [assignments, setAssignments] = useState<any[]>([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+  const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
+  const [assignmentImporting, setAssignmentImporting] = useState(false)
+  const [assignmentImportError, setAssignmentImportError] = useState<string | null>(null)
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null)
+  const [assignmentTitle, setAssignmentTitle] = useState('')
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
+  const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
+  const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
+  const [selectedAssignmentError, setSelectedAssignmentError] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1477,6 +1489,83 @@ export default function Dashboard() {
       setMyResponsesError(err?.message || 'Network error')
     } finally {
       setMyResponsesLoading(false)
+    }
+  }
+
+  async function fetchAssignments(sessionId: string) {
+    setAssignmentsError(null)
+    setAssignmentsLoading(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/assignments`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setAssignments(Array.isArray(data) ? data : [])
+        return
+      }
+      setAssignments([])
+      setAssignmentsError(data?.message || `Failed to load assignments (${res.status})`)
+    } catch (err: any) {
+      setAssignments([])
+      setAssignmentsError(err?.message || 'Network error')
+    } finally {
+      setAssignmentsLoading(false)
+    }
+  }
+
+  async function fetchAssignmentDetails(sessionId: string, assignmentId: string) {
+    setSelectedAssignmentError(null)
+    setSelectedAssignmentLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setSelectedAssignment(data)
+        return
+      }
+      setSelectedAssignment(null)
+      setSelectedAssignmentError(data?.message || `Failed to load assignment (${res.status})`)
+    } catch (err: any) {
+      setSelectedAssignment(null)
+      setSelectedAssignmentError(err?.message || 'Network error')
+    } finally {
+      setSelectedAssignmentLoading(false)
+    }
+  }
+
+  async function importAssignment(sessionId: string) {
+    if (!assignmentFile) {
+      setAssignmentImportError('Choose a PDF or image first.')
+      return
+    }
+    setAssignmentImportError(null)
+    setAssignmentImporting(true)
+    try {
+      const form = new FormData()
+      form.append('file', assignmentFile)
+      if (assignmentTitle.trim()) form.append('title', assignmentTitle.trim())
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/assignments/import`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Import failed (${res.status})`)
+      }
+      setAssignmentFile(null)
+      setAssignmentTitle('')
+      await fetchAssignments(sessionId)
+      if (data?.id) {
+        setSelectedAssignmentId(String(data.id))
+        await fetchAssignmentDetails(sessionId, String(data.id))
+      }
+    } catch (err: any) {
+      setAssignmentImportError(err?.message || 'Import failed')
+    } finally {
+      setAssignmentImporting(false)
     }
   }
 
@@ -3000,7 +3089,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="p-3 border-b">
-                      <div className={`grid gap-2 ${isLearner ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      <div className={`grid gap-2 ${isLearner ? 'grid-cols-4' : 'grid-cols-3'}`}>
                         <button
                           type="button"
                           className={`btn w-full justify-center ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
@@ -3014,6 +3103,16 @@ export default function Dashboard() {
                           onClick={() => setSessionDetailsTab('latex')}
                         >
                           {learnerNotesLabel}
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn w-full justify-center ${sessionDetailsTab === 'assignments' ? 'btn-primary' : 'btn-ghost'}`}
+                          onClick={() => {
+                            setSessionDetailsTab('assignments')
+                            if (sessionDetailsSessionId) fetchAssignments(sessionDetailsSessionId)
+                          }}
+                        >
+                          Assignments
                         </button>
                         {isLearner && (
                           <button
@@ -3503,6 +3602,138 @@ export default function Dashboard() {
                                   </ul>
                                 )}
                               </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : sessionDetailsTab === 'assignments' ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-sm">Assignments</div>
+                            {expandedSessionId && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => fetchAssignments(expandedSessionId)}
+                                disabled={assignmentsLoading}
+                              >
+                                {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
+                              </button>
+                            )}
+                          </div>
+
+                          {!isLearner && expandedSessionId && (
+                            <div className="p-3 border rounded bg-slate-50 space-y-2">
+                              <div className="font-semibold text-sm">Import assignment (PDF/screenshot)</div>
+                              <div className="grid gap-2">
+                                <input
+                                  className="input"
+                                  placeholder="Optional title"
+                                  value={assignmentTitle}
+                                  onChange={e => setAssignmentTitle(e.target.value)}
+                                />
+                                <input
+                                  className="input"
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
+                                />
+                                {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
+                                <div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={assignmentImporting || !assignmentFile}
+                                    onClick={() => importAssignment(expandedSessionId)}
+                                  >
+                                    {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {assignmentsError ? (
+                            <div className="text-sm text-red-600">{assignmentsError}</div>
+                          ) : assignmentsLoading ? (
+                            <div className="text-sm muted">Loading assignments…</div>
+                          ) : assignments.length === 0 ? (
+                            <div className="text-sm muted">No assignments yet.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              <ul className="border rounded divide-y overflow-hidden">
+                                {assignments.map((a: any) => (
+                                  <li key={a.id} className="p-3 flex items-start justify-between gap-3">
+                                    <button
+                                      type="button"
+                                      className="min-w-0 text-left"
+                                      onClick={() => {
+                                        if (!expandedSessionId) return
+                                        setSelectedAssignmentId(String(a.id))
+                                        fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                      }}
+                                    >
+                                      <div className="font-medium break-words">{a.title || 'Assignment'}</div>
+                                      <div className="text-xs muted">
+                                        {a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}
+                                        {typeof a?._count?.questions === 'number' ? ` • ${a._count.questions} questions` : ''}
+                                      </div>
+                                    </button>
+                                    <div className="shrink-0">
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost text-xs"
+                                        onClick={() => {
+                                          if (!expandedSessionId) return
+                                          setSelectedAssignmentId(String(a.id))
+                                          fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                        }}
+                                      >
+                                        View
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+
+                              {selectedAssignmentId && (
+                                <div className="p-3 border rounded bg-white space-y-2">
+                                  {selectedAssignmentError ? (
+                                    <div className="text-sm text-red-600">{selectedAssignmentError}</div>
+                                  ) : selectedAssignmentLoading ? (
+                                    <div className="text-sm muted">Loading assignment…</div>
+                                  ) : selectedAssignment ? (
+                                    <>
+                                      <div className="font-semibold break-words">{selectedAssignment.title || 'Assignment'}</div>
+                                      {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length > 0 ? (
+                                        <div className="space-y-2">
+                                          {selectedAssignment.questions.map((q: any, idx: number) => (
+                                            <details key={q.id || idx} className="border rounded p-2">
+                                              <summary className="cursor-pointer font-medium text-sm">
+                                                Question {idx + 1}
+                                              </summary>
+                                              <div className="pt-2 text-sm whitespace-pre-wrap break-words">
+                                                {renderTextWithKatex(String(q.latex || ''))}
+                                              </div>
+                                              {isLearner && expandedSessionId && selectedAssignment?.id && q?.id ? (
+                                                <div className="pt-2">
+                                                  <Link
+                                                    className="btn btn-primary text-xs"
+                                                    href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(q.id))}`}
+                                                  >
+                                                    Answer on canvas
+                                                  </Link>
+                                                </div>
+                                              ) : null}
+                                            </details>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="text-sm muted">No questions found.</div>
+                                      )}
+                                    </>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

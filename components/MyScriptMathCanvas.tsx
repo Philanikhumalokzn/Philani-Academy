@@ -214,6 +214,16 @@ type MyScriptMathCanvasProps = {
   boardId?: string
   autoOpenDiagramTray?: boolean
   quizMode?: boolean
+  initialQuiz?: {
+    quizId: string
+    quizLabel?: string
+    quizPhaseKey?: string
+    quizPointId?: string
+    quizPointIndex?: number
+    prompt: string
+    durationSec?: number | null
+    endsAt?: number | null
+  }
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
@@ -318,7 +328,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -388,6 +398,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizAutoSubmitTriggeredRef = useRef(false)
   const quizCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
+  const initialQuizAppliedRef = useRef<string | null>(null)
 
   const clearQuizCountdown = useCallback(() => {
     if (quizCountdownIntervalRef.current) {
@@ -649,6 +660,68 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setQuizActive(enabled)
     quizActiveRef.current = enabled
   }, [])
+
+  useEffect(() => {
+    if (!initialQuiz) return
+    if (isAdmin) return
+    if (!isQuizMode) return
+    if (!initialQuiz.quizId || !initialQuiz.prompt) return
+    if (initialQuizAppliedRef.current === initialQuiz.quizId) return
+    initialQuizAppliedRef.current = initialQuiz.quizId
+
+    quizIdRef.current = String(initialQuiz.quizId)
+    quizPromptRef.current = String(initialQuiz.prompt)
+    quizLabelRef.current = typeof initialQuiz.quizLabel === 'string' ? initialQuiz.quizLabel : ''
+    quizPhaseKeyRef.current = typeof initialQuiz.quizPhaseKey === 'string' ? initialQuiz.quizPhaseKey : ''
+    quizPointIdRef.current = typeof initialQuiz.quizPointId === 'string' ? initialQuiz.quizPointId : ''
+    quizPointIndexRef.current = typeof initialQuiz.quizPointIndex === 'number' && Number.isFinite(initialQuiz.quizPointIndex)
+      ? Math.trunc(initialQuiz.quizPointIndex)
+      : -1
+
+    const endsAt = typeof initialQuiz.endsAt === 'number' && Number.isFinite(initialQuiz.endsAt) && initialQuiz.endsAt > 0
+      ? Math.trunc(initialQuiz.endsAt)
+      : null
+    const durationSec = typeof initialQuiz.durationSec === 'number' && Number.isFinite(initialQuiz.durationSec) && initialQuiz.durationSec > 0
+      ? Math.trunc(initialQuiz.durationSec)
+      : null
+    quizEndsAtRef.current = endsAt
+    quizDurationSecRef.current = durationSec
+    quizAutoSubmitTriggeredRef.current = false
+
+    if (quizCountdownIntervalRef.current) {
+      clearInterval(quizCountdownIntervalRef.current)
+      quizCountdownIntervalRef.current = null
+    }
+
+    if (endsAt) {
+      const tick = () => {
+        const remainingSec = Math.ceil((endsAt - Date.now()) / 1000)
+        setQuizTimeLeftSec(Math.max(0, remainingSec))
+      }
+      tick()
+      quizCountdownIntervalRef.current = setInterval(tick, 250)
+    } else {
+      setQuizTimeLeftSec(null)
+    }
+
+    playSnapSound()
+
+    const editor = editorInstanceRef.current
+    const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
+    quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
+    quizCombinedLatexRef.current = ''
+    quizHasCommittedRef.current = false
+    setQuizActiveState(true)
+    suppressBroadcastUntilTsRef.current = Date.now() + 600
+    try {
+      editor?.clear?.()
+    } catch {}
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+    setLatexOutput('')
+    // NOTE: `captureFullSnapshot` is defined later in this component; do not reference it in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuiz, isAdmin, isQuizMode, playSnapSound, setQuizActiveState])
 
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 

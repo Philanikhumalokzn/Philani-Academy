@@ -8,6 +8,17 @@ const TextOverlayModule = dynamic(() => import('./TextOverlayModule'), { ssr: fa
 
 type CanvasOrientation = 'portrait' | 'landscape'
 
+type InitialQuizConfig = {
+  quizId: string
+  quizLabel?: string
+  quizPhaseKey?: string
+  quizPointId?: string
+  quizPointIndex?: number
+  prompt: string
+  durationSec?: number | null
+  endsAt?: number | null
+}
+
 type Props = {
   gradeLabel?: string | null
   roomId: string
@@ -16,6 +27,7 @@ type Props = {
   userDisplayName?: string
   isAdmin?: boolean
   quizMode?: boolean
+  initialQuiz?: InitialQuizConfig
   isVisible: boolean
   defaultOrientation?: CanvasOrientation
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
@@ -29,7 +41,7 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, quizMode, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, quizMode, initialQuiz, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, autoOpenDiagramTray, lessonAuthoring }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
 
   useEffect(() => {
@@ -58,6 +70,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           userDisplayName={userDisplayName}
           isAdmin={isAdmin}
           quizMode={quizMode}
+          initialQuiz={initialQuiz}
           defaultOrientation={defaultOrientation}
           autoOpenDiagramTray={autoOpenDiagramTray}
           lessonAuthoring={lessonAuthoring}

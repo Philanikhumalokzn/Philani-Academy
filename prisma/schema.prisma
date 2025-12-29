@@ -88,7 +88,40 @@ model SessionRecord {
   createdBy String
   createdAt DateTime @default(now())
   materials LessonMaterial[]
+  assignments Assignment[]
   lessonScript SessionLessonScript?
+}
+
+model Assignment {
+  id                String   @id @default(cuid())
+  sessionId          String
+  session            SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title              String
+  sourceUrl          String?
+  sourceContentType  String?
+  sourceFilename     String?
+  createdBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  questions          AssignmentQuestion[]
+
+  @@index([sessionId])
+  @@index([sessionId, createdAt])
+}
+
+model AssignmentQuestion {
+  id            String   @id @default(cuid())
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  order         Int
+  latex         String
+  points        Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([assignmentId, order])
+  @@index([assignmentId, order])
 }
 
 model LessonScriptTemplate {

@@ -9,6 +9,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes philaniQuizPop {
+  0% { transform: translateY(10px) scale(0.98); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.philani-quiz-pop {
+  animation: philaniQuizPop 260ms ease-out;
+}
+
 
 :root{
   --bg: #030712;

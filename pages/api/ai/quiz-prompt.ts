@@ -299,7 +299,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; gradeLa
     return typeof text === 'string' ? text.trim() : ''
   } catch (sdkErr: any) {
     // REST fallback (older implementation).
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+    const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
 
     const res = await fetch(url, {
       method: 'POST',
@@ -401,7 +401,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const raw = await generateWithGemini({
       apiKey: geminiApiKey,
-      model: (process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim() || 'gemini-1.5-flash',
+      model: (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash',
       gradeLabel,
       teacherLatex,
       previousPrompt,

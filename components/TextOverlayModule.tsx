@@ -48,6 +48,7 @@ const randomId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 const SCRIPT_BOX_ID = 'lesson-script-text'
 const QUIZ_BOX_ID = 'quiz-prompt'
+const QUIZ_FEEDBACK_BOX_ID = 'quiz-feedback'
 
 const MIN_BOX_PX_W = 140
 const MIN_BOX_PX_H = 56
@@ -276,6 +277,13 @@ export default function TextOverlayModule(props: {
   useEffect(() => {
     boxesRef.current = boxes
   }, [boxes])
+
+  // Student-local boxes (not broadcast). Used for instant feedback after quiz submission.
+  const [studentLocalBoxes, setStudentLocalBoxes] = useState<TextBoxRecord[]>([])
+  const studentLocalBoxesRef = useRef<TextBoxRecord[]>([])
+  useEffect(() => {
+    studentLocalBoxesRef.current = studentLocalBoxes
+  }, [studentLocalBoxes])
 
   // Student-local overrides for the quiz prompt box.
   // Students should be able to move/resize/close the prompt without affecting others.
@@ -526,6 +534,63 @@ export default function TextOverlayModule(props: {
     window.addEventListener('philani-text:script-apply', handler as any)
     return () => window.removeEventListener('philani-text:script-apply', handler as any)
   }, [isAdmin, upsertScriptBox])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      if (isAdmin) return
+      const detail = (event as CustomEvent)?.detail as ScriptTextEventDetail
+      const targetIdRaw = typeof detail?.id === 'string' ? detail.id : QUIZ_FEEDBACK_BOX_ID
+      const targetId = targetIdRaw.trim().length > 0 ? targetIdRaw.trim() : QUIZ_FEEDBACK_BOX_ID
+      if (targetId !== QUIZ_FEEDBACK_BOX_ID) return
+
+      const text = typeof detail?.text === 'string' ? detail.text : (detail?.text === null ? '' : undefined)
+      const wantsVisible = typeof detail?.visible === 'boolean' ? detail.visible : undefined
+
+      setStudentLocalBoxes(prev => {
+        const existing = prev.find(b => b.id === QUIZ_FEEDBACK_BOX_ID) || null
+
+        if (wantsVisible === false) {
+          if (!existing) return prev
+          const next = prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b))
+          studentLocalBoxesRef.current = next
+          return next
+        }
+
+        const maxZ = prev.reduce((m, b) => Math.max(m, b.z), 0)
+        const nextRecord: TextBoxRecord = existing
+          ? {
+              ...existing,
+              text: text !== undefined ? text : existing.text,
+              visible: true,
+              z: Math.max(existing.z, maxZ + 1, 9999),
+              locked: true,
+            }
+          : {
+              id: QUIZ_FEEDBACK_BOX_ID,
+              text: text !== undefined ? text : ' ',
+              x: 0.5,
+              y: 0.74,
+              w: 0.6,
+              h: 0.16,
+              z: Math.max(maxZ + 1, 9999),
+              surface: 'stage',
+              visible: true,
+              locked: true,
+            }
+
+        const next = existing
+          ? prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? nextRecord : b))
+          : [...prev, nextRecord]
+        studentLocalBoxesRef.current = next
+        return next
+      })
+    }
+
+    window.addEventListener('philani-text:local-apply', handler as any)
+    return () => window.removeEventListener('philani-text:local-apply', handler as any)
+  }, [isAdmin])
 
   const addBox = useCallback(async () => {
     if (!isAdmin) return
@@ -908,7 +973,16 @@ export default function TextOverlayModule(props: {
     </div>
   ) : null
 
-  const renderBoxes = boxes
+  const mergedBoxes = useMemo(() => {
+    if (isAdmin) return boxes
+    if (!studentLocalBoxes.length) return boxes
+    const byId = new Map<string, TextBoxRecord>()
+    for (const b of boxes) byId.set(b.id, b)
+    for (const b of studentLocalBoxes) byId.set(b.id, b)
+    return Array.from(byId.values())
+  }, [boxes, isAdmin, studentLocalBoxes])
+
+  const renderBoxes = mergedBoxes
     .filter(b => {
       if (!b.visible) return false
       if (!isAdmin && b.id === QUIZ_BOX_ID && localQuizOverrideRef.current?.hidden) return false
@@ -928,6 +1002,8 @@ export default function TextOverlayModule(props: {
         {renderBoxes.map(box => {
           const isActive = overlayState.activeId === box.id
           const isQuizBox = box.id === QUIZ_BOX_ID
+          const isQuizFeedbackBox = box.id === QUIZ_FEEDBACK_BOX_ID
+          const isQuizPopupBox = isQuizBox || isQuizFeedbackBox
           const effective = (!isAdmin && isQuizBox && localQuizOverrideRef.current)
             ? {
                 ...box,
@@ -943,14 +1019,15 @@ export default function TextOverlayModule(props: {
               className="pointer-events-auto"
               style={{
                 position: 'absolute',
-                left: `${effective.x * 100}%`,
+                left: isQuizFeedbackBox ? '50%' : `${effective.x * 100}%`,
                 top: `${effective.y * 100}%`,
-                width: `${effective.w * 100}%`,
-                minWidth: MIN_BOX_PX_W,
+                width: isQuizFeedbackBox ? 'fit-content' : `${effective.w * 100}%`,
+                minWidth: isQuizFeedbackBox ? undefined : MIN_BOX_PX_W,
                 maxWidth: '92vw',
-                height: `${effective.h * 100}%`,
-                minHeight: MIN_BOX_PX_H,
+                height: isQuizFeedbackBox ? 'fit-content' : `${effective.h * 100}%`,
+                minHeight: isQuizFeedbackBox ? undefined : MIN_BOX_PX_H,
                 zIndex: 520 + box.z,
+                transform: isQuizFeedbackBox ? 'translateX(-50%)' : undefined,
               }}
               onPointerDown={event => onBoxPointerDown(box, event)}
               onPointerMove={onBoxPointerMove}
@@ -959,20 +1036,20 @@ export default function TextOverlayModule(props: {
               onContextMenu={event => onBoxContextMenu(box, event)}
             >
               <div
-                className="relative rounded-2xl border p-3"
+                className={`relative rounded-2xl border p-3 ${(!isAdmin && isQuizPopupBox) ? 'philani-quiz-pop' : ''}`}
                 style={{
                   background: 'rgba(0,0,0,0.65)',
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
                   color: 'white',
                   backdropFilter: 'blur(10px)',
                   cursor: (isAdmin || isQuizBox) ? (box.locked ? 'default' : 'grab') : 'default',
-                  height: '100%',
-                  overflow: 'auto',
+                  height: isQuizFeedbackBox ? 'auto' : '100%',
+                  overflow: isQuizFeedbackBox ? 'hidden' : 'auto',
                   touchAction: 'none',
                   userSelect: 'none',
                 }}
               >
-                {isQuizBox && (
+                {(isQuizBox || isQuizFeedbackBox) && (
                   <button
                     type="button"
                     className="absolute right-2 top-2 px-2 py-1 text-xs text-white/80 hover:text-white"
@@ -980,10 +1057,14 @@ export default function TextOverlayModule(props: {
                       e.preventDefault()
                       e.stopPropagation()
                       if (isAdmin) {
-                        await toggleBoxVisibilityById(QUIZ_BOX_ID)
+                        await toggleBoxVisibilityById(box.id)
                         return
                       }
-                      setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                      if (isQuizBox) {
+                        setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                        return
+                      }
+                      setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
                     }}
                     aria-label="Close"
                     title="Close"

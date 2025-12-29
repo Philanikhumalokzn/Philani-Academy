@@ -4833,10 +4833,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               quizLabel = suggestedLabel
             }
           } else {
-            const bodyText = await aiRes.text().catch(() => '')
-            console.warn('quiz-prompt API failed', aiRes.status, bodyText)
+            const rawBody = await aiRes.text().catch(() => '')
+            console.warn('quiz-prompt API failed', aiRes.status, rawBody)
+            let detail = ''
+            try {
+              const parsed = JSON.parse(rawBody || '{}')
+              const msg = typeof parsed?.message === 'string' ? parsed.message.trim() : ''
+              const err = typeof parsed?.error === 'string' ? parsed.error.trim() : ''
+              detail = (msg || err) ? [msg, err].filter(Boolean).join(' — ') : ''
+            } catch {
+              detail = rawBody.trim()
+            }
+
             if (!promptText) {
-              promptText = 'Gemini prompt suggestion failed. Enter quiz instructions manually.'
+              const hint = detail ? ` (${detail})` : ''
+              promptText = `Gemini prompt suggestion failed${hint}. Enter quiz instructions manually.`
             }
           }
         } catch (err) {
@@ -5032,6 +5043,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const data = await res.json().catch(() => ({}))
         alert(data?.message || `Failed to submit response (${res.status})`)
         return
+      }
+
+      // Student-only: show instant AI feedback in a local popup textbox.
+      try {
+        const fbRes = await fetch('/api/ai/quiz-feedback', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gradeLabel: gradeLabel || undefined,
+            prompt: quizPromptRef.current || undefined,
+            studentLatex: combined,
+          }),
+        })
+        if (fbRes.ok) {
+          const data = await fbRes.json().catch(() => null)
+          const feedback = typeof data?.feedback === 'string' ? data.feedback.trim() : ''
+          if (feedback && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('philani-text:local-apply', {
+              detail: { id: 'quiz-feedback', text: feedback, visible: true },
+            }))
+          }
+        } else {
+          const bodyText = await fbRes.text().catch(() => '')
+          console.warn('quiz-feedback API failed', fbRes.status, bodyText)
+        }
+      } catch (err) {
+        console.warn('quiz-feedback API error', err)
       }
 
       // Notify teacher immediately with the combined latex string.
@@ -6552,6 +6591,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 } catch {}
               }}
             >
+              {isAdmin && (
+                <button
+                  type="button"
+                  className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 px-2 py-2 rounded-full border bg-white text-slate-700 ${quizActive ? 'border-slate-400' : 'border-slate-300'} hover:bg-slate-50`}
+                  title={quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}
+                  aria-label={quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}
+                  onPointerDown={e => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                  }}
+                  onClick={() => runCanvasAction(async () => {
+                    await publishQuizState(!quizActiveRef.current)
+                    setQuizActiveState(!quizActiveRef.current)
+                  })}
+                  disabled={status !== 'ready' || Boolean(fatalError)}
+                >
+                  <span className="sr-only">{quizActive ? 'Stop Quiz Mode' : 'Start Quiz Mode'}</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v14h10V5H7zm2 3h6v2H9V8zm0 4h6v2H9v-2z" />
+                  </svg>
+                </button>
+              )}
               <div className="w-full h-0.5 bg-slate-200 relative">
                 <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
               </div>

@@ -212,6 +212,7 @@ type MyScriptMathCanvasProps = {
   userDisplayName?: string
   isAdmin?: boolean
   boardId?: string
+  realtimeBoardId?: string
   allowLearnerWrite?: boolean
   autoOpenDiagramTray?: boolean
   quizMode?: boolean
@@ -329,7 +330,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, allowLearnerWrite, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeBoardId, allowLearnerWrite, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -1445,15 +1446,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [boardId, isAdmin, loadLessonScript])
 
   const channelName = useMemo(() => {
-    // Force a single shared board across instances unless a specific boardId is provided.
-    // Prefer per-grade board scoping if gradeLabel is present.
-    const base = boardId
+    // Default: use the scheduled session id (boardId) for realtime sync.
+    // Some routes (e.g., assignments) intentionally isolate realtime so remote snapshots
+    // from the live class cannot overwrite learner work.
+    const base = realtimeBoardId
+      ? sanitizeIdentifier(realtimeBoardId).toLowerCase()
+      : boardId
       ? sanitizeIdentifier(boardId).toLowerCase()
       : gradeLabel
       ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
       : 'shared'
     return `myscript:${base}`
-  }, [boardId, gradeLabel])
+  }, [boardId, gradeLabel, realtimeBoardId])
 
   const buildLessonScriptLatex = useCallback((steps: string[], stepIndex: number) => {
     if (!Array.isArray(steps) || steps.length === 0) return ''

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
@@ -24,6 +24,28 @@ export default function AssignmentQuestionPage() {
   const [error, setError] = useState<string | null>(null)
   const [assignment, setAssignment] = useState<any | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
+  const [metaVisible, setMetaVisible] = useState(false)
+  const metaHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      setMetaVisible(true)
+      if (metaHideTimeoutRef.current) clearTimeout(metaHideTimeoutRef.current)
+      metaHideTimeoutRef.current = setTimeout(() => {
+        setMetaVisible(false)
+        metaHideTimeoutRef.current = null
+      }, 1500)
+    }
+    window.addEventListener('philani:assignment-meta-peek', handler as any)
+    return () => {
+      window.removeEventListener('philani:assignment-meta-peek', handler as any)
+      if (metaHideTimeoutRef.current) {
+        clearTimeout(metaHideTimeoutRef.current)
+        metaHideTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!sessionId || !assignmentId || !questionId) return
@@ -91,46 +113,48 @@ export default function AssignmentQuestionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm text-white/70">Assignment</div>
-          <div className="font-semibold break-words">
-            {assignment?.title || 'Assignment'}
-            {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
-          </div>
-        </div>
-        <div className="shrink-0 flex items-center gap-2">
-          <Link href="/dashboard" className="btn btn-ghost">
-            Back
-          </Link>
-        </div>
-      </div>
-
-      {error ? <div className="p-3 text-red-300">{error}</div> : null}
-      {loading ? <div className="p-3 text-white/70">Loading…</div> : null}
+    <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
+      {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
+      {loading ? <div className="absolute top-2 left-2 right-2 z-50 text-white/70 text-sm">Loading…</div> : null}
 
       {initialQuiz && sessionId ? (
-        <div className="p-3">
+        <div className="absolute inset-0">
           {(() => {
             const realtimeScopeId = `assignment:${assignmentId}:q:${questionId}:u:${userId}`
             return (
-          <StackedCanvasWindow
-            gradeLabel={null}
-            roomId={`assignment-${assignmentId}-q-${questionId}-u-${userId}`}
-            boardId={sessionId}
-            realtimeScopeId={realtimeScopeId}
-            userId={userId}
-            userDisplayName={userDisplayName}
-            isAdmin={false}
-            quizMode
-            initialQuiz={initialQuiz}
-            assignmentSubmission={{ sessionId, assignmentId, questionId }}
-            isVisible
-            defaultOrientation="portrait"
-          />
+              <StackedCanvasWindow
+                gradeLabel={null}
+                roomId={`assignment-${assignmentId}-q-${questionId}-u-${userId}`}
+                boardId={sessionId}
+                realtimeScopeId={realtimeScopeId}
+                userId={userId}
+                userDisplayName={userDisplayName}
+                isAdmin={false}
+                quizMode
+                initialQuiz={initialQuiz}
+                assignmentSubmission={{ sessionId, assignmentId, questionId }}
+                isVisible
+                defaultOrientation="portrait"
+              />
             )
           })()}
+        </div>
+      ) : null}
+
+      {metaVisible ? (
+        <div className="absolute top-3 left-3 right-3 z-50">
+          <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.35em] text-white/70">Assignment</div>
+              <div className="font-semibold break-words">
+                {assignment?.title || 'Assignment'}
+                {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+              </div>
+            </div>
+            <Link href="/dashboard" className="btn btn-ghost shrink-0">
+              Back
+            </Link>
+          </div>
         </div>
       ) : null}
     </div>

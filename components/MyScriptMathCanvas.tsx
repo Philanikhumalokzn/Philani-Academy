@@ -947,6 +947,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
   const forceEditableForAssignment = Boolean(!isAdmin && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
+  const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
@@ -7019,6 +7020,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   onPointerDown={() => {
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
                     revealOverlayChrome()
+                    if (isAssignmentView && typeof window !== 'undefined') {
+                      try {
+                        window.dispatchEvent(new CustomEvent('philani:assignment-meta-peek'))
+                      } catch {}
+                    }
                   }}
                   onClick={isAdmin ? async (e) => {
                     if (!useAdminStepComposer) return
@@ -7121,13 +7127,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           style={latexOverlayStyle}
                           dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                         />
-                      ) : (
+                      ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                         </div>
                       )}
 
-                      {!isAdmin && quizActive && (
+                      {!isAdmin && quizActive && !isAssignmentView && (
                         <div className="mt-3 pt-3 border-t border-slate-200">
                           {quizTimeLeftSec != null && (
                             <div className="mb-2 flex items-center justify-end text-xs text-slate-500">
@@ -7789,7 +7795,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     Preparing collaborative canvas…
                   </div>
                 )}
-                {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+                {isViewOnly && !forceEditableForAssignment && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>

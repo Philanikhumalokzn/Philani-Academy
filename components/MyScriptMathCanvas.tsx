@@ -225,7 +225,6 @@ type MyScriptMathCanvasProps = {
     endsAt?: number | null
   }
   uiMode?: 'default' | 'overlay'
-  hideBackgroundPanels?: boolean
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
@@ -329,7 +328,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', hideBackgroundPanels = false, defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -400,13 +399,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
   const initialQuizAppliedRef = useRef<string | null>(null)
-
-  const [assessmentSubmitting, setAssessmentSubmitting] = useState(false)
-  const [assessmentActive, setAssessmentActive] = useState(false)
-  const assessmentActiveRef = useRef(false)
-  const assessmentBaselineSnapshotRef = useRef<SnapshotPayload | null>(null)
-  const assessmentHasCommittedRef = useRef(false)
-  const assessmentCombinedLatexRef = useRef('')
 
   const clearQuizCountdown = useCallback(() => {
     if (quizCountdownIntervalRef.current) {
@@ -2573,7 +2565,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
       // During quizzes, students work privately (no live ink publishing).
-      if (!isAdmin && (quizActiveRef.current || assessmentActiveRef.current)) {
+      if (!isAdmin && quizActiveRef.current) {
         return
       }
       if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
@@ -5604,183 +5596,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [applyPageSnapshot, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, userDisplayName, userId])
 
-  const setAssessmentActiveState = useCallback((enabled: boolean) => {
-    setAssessmentActive(enabled)
-    assessmentActiveRef.current = enabled
-  }, [])
-
-  const exitAssessmentMode = useCallback(async () => {
-    if (isAdmin) return
-
-    const baseline = assessmentBaselineSnapshotRef.current
-    assessmentBaselineSnapshotRef.current = null
-    assessmentCombinedLatexRef.current = ''
-    assessmentHasCommittedRef.current = false
-    setAssessmentActiveState(false)
-
-    try {
-      const editor = editorInstanceRef.current
-      suppressBroadcastUntilTsRef.current = Date.now() + 600
-      editor?.clear?.()
-    } catch {}
-
-    lastSymbolCountRef.current = 0
-    lastBroadcastBaseCountRef.current = 0
-    setLatexOutput('')
-
-    if (baseline) {
-      await applyPageSnapshot(baseline)
-    } else {
-      await channelRef.current?.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
-    }
-  }, [applyPageSnapshot, isAdmin, setAssessmentActiveState, userDisplayName])
-
-  const toggleAssessmentMode = useCallback(async () => {
-    if (isAdmin) return
-    if (quizActiveRef.current) return
-    if (assessmentSubmitting) return
-
-    if (!boardId) {
-      alert('This assessment session is missing a session id (boardId).')
-      return
-    }
-
-    if (assessmentActiveRef.current) {
-      const ok = typeof window !== 'undefined'
-        ? window.confirm('Exit assessments mode? (Submit first if you want to keep your work.)')
-        : true
-      if (!ok) return
-      await exitAssessmentMode()
-      return
-    }
-
-    playSnapSound()
-    const editor = editorInstanceRef.current
-    const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
-    assessmentBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
-    assessmentCombinedLatexRef.current = ''
-    assessmentHasCommittedRef.current = false
-    setAssessmentActiveState(true)
-    suppressBroadcastUntilTsRef.current = Date.now() + 600
-    try {
-      editor?.clear?.()
-    } catch {}
-    lastSymbolCountRef.current = 0
-    lastBroadcastBaseCountRef.current = 0
-    setLatexOutput('')
-  }, [assessmentSubmitting, boardId, exitAssessmentMode, isAdmin, playSnapSound, setAssessmentActiveState])
-
-  const studentAssessmentCommitOrSubmit = useCallback(async () => {
-    if (isAdmin) return
-    if (!assessmentActiveRef.current) return
-    if (assessmentSubmitting) return
-    if (!boardId) {
-      alert('This assessment session is missing a session id (boardId).')
-      return
-    }
-
-    const editor = editorInstanceRef.current
-    if (!editor) return
-
-    setAssessmentSubmitting(true)
-    try {
-      try {
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-      } catch {}
-
-      const snap = captureFullSnapshot()
-      const symbolCount = countSymbols(snap?.symbols)
-      const hasInk = symbolCount > 0
-
-      const getStepLatex = async () => {
-        let step = ''
-        try {
-          const modelLatex = getLatexFromEditorModel()
-          const normalizedModel = normalizeStepLatex(modelLatex)
-          if (normalizedModel) step = normalizedModel
-        } catch {}
-        if (!step) {
-          for (let i = 0; i < 3 && !step; i += 1) {
-            const exported = await exportLatexFromEditor()
-            const normalized = normalizeStepLatex(exported)
-            if (normalized) {
-              step = normalized
-              break
-            }
-            await new Promise<void>(resolve => setTimeout(resolve, 200))
-          }
-        }
-        return step
-      }
-
-      if (hasInk) {
-        const step = await getStepLatex()
-        if (step) {
-          const existing = assessmentCombinedLatexRef.current
-          const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
-          assessmentCombinedLatexRef.current = nextCombined
-          assessmentHasCommittedRef.current = true
-
-          suppressBroadcastUntilTsRef.current = Date.now() + 1200
-          try {
-            editor.clear?.()
-          } catch {}
-          lastSymbolCountRef.current = 0
-          lastBroadcastBaseCountRef.current = 0
-          setLatexOutput('')
-          return
-        }
-      }
-
-      let combined = assessmentCombinedLatexRef.current.trim()
-      if (!combined) {
-        combined = '\\text{(no\\ response)}'
-        assessmentCombinedLatexRef.current = combined
-      }
-
-      const ok = typeof window !== 'undefined'
-        ? window.confirm('Submit your assessment response?')
-        : true
-      if (!ok) return
-
-      const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latex: combined,
-          quizId: 'assessment',
-          quizLabel: 'Assessment',
-          prompt: 'Assessment submission',
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        alert(data?.message || `Failed to submit response (${res.status})`)
-        return
-      }
-
-      try {
-        await channelRef.current?.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          action: 'assessment',
-          phase: 'submit',
-          combinedLatex: combined,
-          fromUserId: userId,
-          fromName: userDisplayName,
-          ts: Date.now(),
-        })
-      } catch {}
-
-      await exitAssessmentMode()
-    } finally {
-      setAssessmentSubmitting(false)
-    }
-  }, [assessmentSubmitting, boardId, captureFullSnapshot, exitAssessmentMode, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, userDisplayName, userId])
-
   useEffect(() => {
     if (isAdmin) return
     if (!quizActive) return
@@ -7466,7 +7281,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(isAdmin || !isAdmin || quizActive || assessmentActive) ? (
+                {(isAdmin || quizActive) ? (
                   <div className="flex items-center gap-2">
                     {isCompactViewport && (
                       <button
@@ -7576,37 +7391,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {!isAdmin && (
-                      <button
-                        type="button"
-                        className={`px-2 py-1${assessmentActive ? ' font-bold' : ''}`}
-                        title={assessmentActive ? 'Exit assessments' : 'Assessments'}
-                        onClick={() => {
-                          if (lockedOutRef.current) return
-                          void toggleAssessmentMode()
-                        }}
-                        disabled={status !== 'ready' || Boolean(fatalError) || quizActive || assessmentSubmitting}
-                      >
-                        <span className="sr-only">Assessments</span>
-                        <span className="text-slate-700 text-[16px] leading-none font-semibold" aria-hidden="true">A</span>
-                      </button>
-                    )}
-
                     <button
                       type="button"
                       className="px-2 py-1"
                       title="Send step"
                       onClick={async () => {
-                      if (!isAdmin) {
+                      if (!isAdmin && quizActiveRef.current) {
                         if (lockedOutRef.current) return
-                        if (quizActiveRef.current) {
-                          await studentQuizCommitOrSubmit()
-                          return
-                        }
-                        if (assessmentActiveRef.current) {
-                          await studentAssessmentCommitOrSubmit()
-                          return
-                        }
+                        await studentQuizCommitOrSubmit()
                         return
                       }
 
@@ -7689,7 +7481,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || assessmentSubmitting || (!quizActive && !assessmentActive)))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || !quizActive))}
                     >
                       <span className="sr-only">Send</span>
                       <svg
@@ -7964,7 +7756,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </button>
                 )}
 
-                {/* Legacy toolbar controls removed (Undo/Redo/Clear/Convert). */}
+                {isOverlayMode && (
+                  <div
+                    className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+                    style={{
+                      pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+                      cursor: overlayControlsVisible ? 'default' : undefined,
+                    }}
+                    onClick={closeOverlayControls}
+                  >
+                    <div
+                      className="canvas-overlay-controls__panel"
+                      onClick={event => {
+                        event.stopPropagation()
+                        kickOverlayAutoHide()
+                      }}
+                    >
+                      <p className="canvas-overlay-controls__title">Canvas controls</p>
+                      {renderToolbarBlock()}
+                      <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                        Return to drawing
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -8859,9 +8674,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         </div>
         )}
 
-        {/* Legacy toolbar controls removed (Undo/Redo/Clear/Convert). */}
+        {isOverlayMode && useStackedStudentLayout && (
+          <div
+            className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
+            style={{
+              pointerEvents: overlayControlsVisible ? 'auto' : 'none',
+              cursor: overlayControlsVisible ? 'default' : undefined,
+              zIndex: 50,
+            }}
+            onClick={closeOverlayControls}
+          >
+            <div className="canvas-overlay-controls__panel" onClick={event => {
+              event.stopPropagation()
+              kickOverlayAutoHide()
+            }}>
+              <p className="canvas-overlay-controls__title">Canvas controls</p>
+              {renderToolbarBlock()}
+              <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
+                Return to drawing
+              </button>
+            </div>
+          </div>
+        )}
 
-        {!isOverlayMode && !hideBackgroundPanels && (
+        {!isOverlayMode && renderToolbarBlock()}
+
+        {!isOverlayMode && (
           <div className="orientation-panel">
             <p className="orientation-panel__label">Canvas orientation</p>
             <div className="orientation-panel__options">
@@ -8892,7 +8730,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {isAdmin && !isOverlayMode && !hideBackgroundPanels && (
+        {isAdmin && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Notes font size</span>
@@ -8928,7 +8766,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {isAdmin && !isOverlayMode && !hideBackgroundPanels && (
+        {isAdmin && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <button
               className="btn"
@@ -8961,7 +8799,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {!isOverlayMode && gradeLabel && !hideBackgroundPanels && (
+        {!isOverlayMode && gradeLabel && (
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
         )}
 
@@ -9015,7 +8853,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
-        {!isOverlayMode && !hideBackgroundPanels && (
+        {!isOverlayMode && (
           <div className="canvas-admin-controls">
           {isAdmin && (
             <button

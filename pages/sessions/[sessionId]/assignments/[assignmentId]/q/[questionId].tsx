@@ -116,11 +116,9 @@ export default function AssignmentQuestionPage() {
             gradeLabel={null}
             roomId={`assignment-${assignmentId}-q-${questionId}`}
             boardId={sessionId}
-            realtimeBoardId={`assignment-${assignmentId}-q-${questionId}`}
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={false}
-            allowLearnerWrite
             quizMode
             initialQuiz={initialQuiz}
             isVisible

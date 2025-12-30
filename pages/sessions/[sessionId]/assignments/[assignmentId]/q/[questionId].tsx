@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
 
-const StackedCanvasWindow = dynamic(() => import('../../../../../../components/StackedCanvasWindow'), { ssr: false })
+const MyScriptMathCanvas = dynamic(() => import('../../../../../../components/MyScriptMathCanvas'), { ssr: false })
 
 export default function AssignmentQuestionPage() {
   const router = useRouter()
@@ -24,6 +24,31 @@ export default function AssignmentQuestionPage() {
   const [error, setError] = useState<string | null>(null)
   const [assignment, setAssignment] = useState<any | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
+
+  const [chromeVisible, setChromeVisible] = useState(true)
+  const chromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const scheduleChromeHide = useCallback(() => {
+    if (chromeHideTimeoutRef.current) {
+      clearTimeout(chromeHideTimeoutRef.current)
+      chromeHideTimeoutRef.current = null
+    }
+    chromeHideTimeoutRef.current = setTimeout(() => {
+      setChromeVisible(false)
+    }, 1500)
+  }, [])
+
+  const revealChrome = useCallback(() => {
+    setChromeVisible(true)
+    scheduleChromeHide()
+  }, [scheduleChromeHide])
+
+  useEffect(() => {
+    revealChrome()
+    return () => {
+      if (chromeHideTimeoutRef.current) clearTimeout(chromeHideTimeoutRef.current)
+    }
+  }, [revealChrome])
 
   useEffect(() => {
     if (!sessionId || !assignmentId || !questionId) return
@@ -71,6 +96,11 @@ export default function AssignmentQuestionPage() {
     }
   }, [assignment, question])
 
+  const realtimeKey = useMemo(() => {
+    if (!assignmentId || !questionId) return ''
+    return `assignment-${assignmentId}-q-${questionId}`
+  }, [assignmentId, questionId])
+
   if (status === 'loading') {
     return <div className="p-6">Loading…</div>
   }
@@ -91,41 +121,55 @@ export default function AssignmentQuestionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm text-white/70">Assignment</div>
-          <div className="font-semibold break-words">
-            {assignment?.title || 'Assignment'}
-            {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+    <div
+      className="fixed inset-0 bg-slate-950 text-white overflow-hidden"
+      onPointerDown={() => {
+        // Any tap reveals the top chrome briefly.
+        revealChrome()
+      }}
+    >
+      <div
+        className={`absolute top-0 left-0 right-0 z-30 border-b border-white/10 bg-slate-950/70 backdrop-blur transition-all ${chromeVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
+      >
+        <div className="p-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm text-white/70">Assignment</div>
+            <div className="font-semibold break-words">
+              {assignment?.title || 'Assignment'}
+              {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+            </div>
           </div>
-        </div>
-        <div className="shrink-0 flex items-center gap-2">
-          <Link href="/dashboard" className="btn btn-ghost">
-            Back
-          </Link>
+          <div className="shrink-0 flex items-center gap-2">
+            <Link href="/dashboard" className="btn btn-ghost">
+              Back
+            </Link>
+          </div>
         </div>
       </div>
 
-      {error ? <div className="p-3 text-red-300">{error}</div> : null}
-      {loading ? <div className="p-3 text-white/70">Loading…</div> : null}
+      {error ? <div className="absolute top-16 left-0 right-0 z-20 p-3 text-red-300">{error}</div> : null}
+      {loading ? <div className="absolute top-16 left-0 right-0 z-20 p-3 text-white/70">Loading…</div> : null}
 
-      {initialQuiz && sessionId ? (
-        <div className="p-3">
-          <StackedCanvasWindow
-            gradeLabel={null}
-            roomId={`assignment-${assignmentId}-q-${questionId}`}
-            boardId={sessionId}
-            userId={userId}
-            userDisplayName={userDisplayName}
-            isAdmin={false}
-            quizMode
-            initialQuiz={initialQuiz}
-            isVisible
-            defaultOrientation="portrait"
-          />
-        </div>
-      ) : null}
+      <div className="absolute inset-0 pt-0">
+        {initialQuiz && sessionId && realtimeKey ? (
+          <div className="absolute inset-0">
+            <MyScriptMathCanvas
+              uiMode="overlay"
+              gradeLabel={undefined}
+              roomId={realtimeKey}
+              realtimeKey={realtimeKey}
+              boardId={sessionId}
+              userId={userId}
+              userDisplayName={userDisplayName}
+              isAdmin={false}
+              quizMode
+              initialQuiz={initialQuiz}
+              studentLayout="canvasOnly"
+              defaultOrientation="portrait"
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

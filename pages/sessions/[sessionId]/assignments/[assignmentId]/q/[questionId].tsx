@@ -6,8 +6,6 @@ import dynamic from 'next/dynamic'
 
 const StackedCanvasWindow = dynamic(() => import('../../../../../../components/StackedCanvasWindow'), { ssr: false })
 
-const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80)
-
 export default function AssignmentQuestionPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
@@ -73,12 +71,6 @@ export default function AssignmentQuestionPage() {
     }
   }, [assignment, question])
 
-  const realtimeKey = useMemo(() => {
-    if (!assignmentId || !questionId || !userId) return ''
-    // Per-student room so answers don't collide across learners.
-    return `assignment-${sanitizeIdentifier(assignmentId)}-q-${sanitizeIdentifier(questionId)}-u-${sanitizeIdentifier(userId)}`
-  }, [assignmentId, questionId, userId])
-
   if (status === 'loading') {
     return <div className="p-6">Loading…</div>
   }
@@ -99,35 +91,41 @@ export default function AssignmentQuestionPage() {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
-      {error ? <div className="absolute top-3 left-3 right-3 z-20 p-3 text-red-300">{error}</div> : null}
-      {loading ? <div className="absolute top-3 left-3 right-3 z-20 p-3 text-white/70">Loading…</div> : null}
-
-      <div className="absolute top-3 left-3 z-30">
-        <Link href="/dashboard" className="btn btn-ghost">
-          Back
-        </Link>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm text-white/70">Assignment</div>
+          <div className="font-semibold break-words">
+            {assignment?.title || 'Assignment'}
+            {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <Link href="/dashboard" className="btn btn-ghost">
+            Back
+          </Link>
+        </div>
       </div>
 
-      <div className="absolute inset-0 p-0">
-        {initialQuiz && sessionId && realtimeKey ? (
+      {error ? <div className="p-3 text-red-300">{error}</div> : null}
+      {loading ? <div className="p-3 text-white/70">Loading…</div> : null}
+
+      {initialQuiz && sessionId ? (
+        <div className="p-3">
           <StackedCanvasWindow
             gradeLabel={null}
-            roomId={realtimeKey}
+            roomId={`assignment-${assignmentId}-q-${questionId}`}
             boardId={sessionId}
-            realtimeKey={realtimeKey}
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={false}
-            // Key requirement: learners must be able to write immediately.
-            defaultStudentWriteEnabled
             quizMode
             initialQuiz={initialQuiz}
             isVisible
             defaultOrientation="portrait"
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }

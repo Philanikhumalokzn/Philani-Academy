@@ -212,6 +212,7 @@ type MyScriptMathCanvasProps = {
   userDisplayName?: string
   isAdmin?: boolean
   boardId?: string
+  allowLearnerWrite?: boolean
   autoOpenDiagramTray?: boolean
   quizMode?: boolean
   initialQuiz?: {
@@ -328,7 +329,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, allowLearnerWrite, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -940,7 +941,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
-  const lockedOutRef = useRef(!isAdmin)
+  const allowWriteOverride = Boolean(allowLearnerWrite && !isAdmin)
+  const lockedOutRef = useRef(!isAdmin && !allowWriteOverride)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
@@ -1197,7 +1199,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const controllerId = next?.controllerId
       const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
       hasExclusiveControlRef.current = isExclusiveController
-      const hasWriteAccess = Boolean(isAdmin) || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+      const hasWriteAccess = Boolean(isAdmin) || allowWriteOverride || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -1205,7 +1207,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       setControlState(next)
     },
-    [isAdmin]
+    [allowWriteOverride, isAdmin]
   )
 
   const studentCanPublish = useCallback(() => {
@@ -4707,7 +4709,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }
 
-  const hasWriteAccess = Boolean(isAdmin) || Boolean(
+  const hasWriteAccess = Boolean(isAdmin) || allowWriteOverride || Boolean(
     controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
   )
   const isViewOnly = !hasWriteAccess

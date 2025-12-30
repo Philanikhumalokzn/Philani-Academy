@@ -119,6 +119,7 @@ export default function AssignmentQuestionPage() {
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={false}
+            allowLearnerWrite
             quizMode
             initialQuiz={initialQuiz}
             isVisible

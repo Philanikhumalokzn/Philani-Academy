@@ -121,6 +121,7 @@ export default function AssignmentQuestionPage() {
             isAdmin={false}
             quizMode
             initialQuiz={initialQuiz}
+            assignmentSubmission={{ sessionId, assignmentId, questionId }}
             isVisible
             defaultOrientation="portrait"
           />

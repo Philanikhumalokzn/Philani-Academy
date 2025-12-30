@@ -551,6 +551,9 @@ export default function Dashboard() {
   const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
   const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
   const [selectedAssignmentError, setSelectedAssignmentError] = useState<string | null>(null)
+  const [assignmentResponsesByQuestionId, setAssignmentResponsesByQuestionId] = useState<Record<string, any>>({})
+  const [assignmentResponsesLoading, setAssignmentResponsesLoading] = useState(false)
+  const [assignmentResponsesError, setAssignmentResponsesError] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1523,15 +1526,45 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setSelectedAssignment(data)
+        setAssignmentResponsesByQuestionId({})
+        setAssignmentResponsesError(null)
+        if (isLearner) {
+          void fetchAssignmentResponses(sessionId, assignmentId)
+        }
         return
       }
       setSelectedAssignment(null)
       setSelectedAssignmentError(data?.message || `Failed to load assignment (${res.status})`)
+      setAssignmentResponsesByQuestionId({})
     } catch (err: any) {
       setSelectedAssignment(null)
       setSelectedAssignmentError(err?.message || 'Network error')
+      setAssignmentResponsesByQuestionId({})
     } finally {
       setSelectedAssignmentLoading(false)
+    }
+  }
+
+  async function fetchAssignmentResponses(sessionId: string, assignmentId: string) {
+    setAssignmentResponsesError(null)
+    setAssignmentResponsesLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/responses`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setAssignmentResponsesByQuestionId((data?.byQuestionId && typeof data.byQuestionId === 'object') ? data.byQuestionId : {})
+        return
+      }
+      setAssignmentResponsesByQuestionId({})
+      setAssignmentResponsesError(data?.message || `Failed to load assignment responses (${res.status})`)
+    } catch (err: any) {
+      setAssignmentResponsesByQuestionId({})
+      setAssignmentResponsesError(err?.message || 'Network error')
+    } finally {
+      setAssignmentResponsesLoading(false)
     }
   }
 
@@ -3613,7 +3646,10 @@ export default function Dashboard() {
                               <button
                                 type="button"
                                 className="btn btn-ghost text-xs"
-                                onClick={() => fetchAssignments(expandedSessionId)}
+                                onClick={() => {
+                                  fetchAssignments(expandedSessionId)
+                                  if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
+                                }}
                                 disabled={assignmentsLoading}
                               >
                                 {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
@@ -3704,6 +3740,13 @@ export default function Dashboard() {
                                   ) : selectedAssignment ? (
                                     <>
                                       <div className="font-semibold break-words">{selectedAssignment.title || 'Assignment'}</div>
+                                      {isLearner ? (
+                                        assignmentResponsesError ? (
+                                          <div className="text-sm text-red-600">{assignmentResponsesError}</div>
+                                        ) : assignmentResponsesLoading ? (
+                                          <div className="text-sm muted">Loading your responses…</div>
+                                        ) : null
+                                      ) : null}
                                       {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length > 0 ? (
                                         <div className="space-y-2">
                                           {selectedAssignment.questions.map((q: any, idx: number) => (
@@ -3714,6 +3757,29 @@ export default function Dashboard() {
                                               <div className="pt-2 text-sm whitespace-pre-wrap break-words">
                                                 {renderTextWithKatex(String(q.latex || ''))}
                                               </div>
+                                              {isLearner && q?.id ? (
+                                                <div className="pt-2">
+                                                  <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                    <div className="text-xs text-white/70 mb-1">Your response</div>
+                                                    {(() => {
+                                                      const latex = String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '')
+                                                      if (!latex.trim()) {
+                                                        return <div className="text-sm text-white/60">Not submitted yet.</div>
+                                                      }
+                                                      const html = renderKatexDisplayHtml(latex)
+                                                      if (html) {
+                                                        return (
+                                                          <div
+                                                            className="leading-relaxed"
+                                                            dangerouslySetInnerHTML={{ __html: html }}
+                                                          />
+                                                        )
+                                                      }
+                                                      return <div className="text-xs font-mono whitespace-pre-wrap break-words">{latex}</div>
+                                                    })()}
+                                                  </div>
+                                                </div>
+                                              ) : null}
                                               {isLearner && expandedSessionId && selectedAssignment?.id && q?.id ? (
                                                 <div className="pt-2">
                                                   <Link

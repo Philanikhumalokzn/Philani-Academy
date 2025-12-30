@@ -51,6 +51,7 @@ model User {
   verifications ContactVerification[]
   subscription UserSubscription?
   learnerResponses LearnerResponse[]
+  assignmentResponses AssignmentResponse[]
 }
 
 model UserSubscription {
@@ -105,6 +106,7 @@ model Assignment {
   updatedAt          DateTime @updatedAt
 
   questions          AssignmentQuestion[]
+  responses          AssignmentResponse[]
 
   @@index([sessionId])
   @@index([sessionId, createdAt])
@@ -120,8 +122,31 @@ model AssignmentQuestion {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  responses      AssignmentResponse[]
+
   @@unique([assignmentId, order])
   @@index([assignmentId, order])
+}
+
+model AssignmentResponse {
+  id           String   @id @default(cuid())
+  sessionId     String
+  assignmentId  String
+  questionId    String
+  userId        String
+  userEmail     String?
+  latex         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  question      AssignmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, userId])
+  @@index([sessionId])
+  @@index([assignmentId, userId, updatedAt])
+  @@index([questionId, updatedAt])
 }
 
 model LessonScriptTemplate {

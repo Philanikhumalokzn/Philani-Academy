@@ -224,6 +224,11 @@ type MyScriptMathCanvasProps = {
     durationSec?: number | null
     endsAt?: number | null
   }
+  assignmentSubmission?: {
+    sessionId: string
+    assignmentId: string
+    questionId: string
+  }
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
@@ -328,7 +333,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -5515,7 +5520,59 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (!ok) return
       }
 
-      // Persist under the session responses (dashboard Quizzes folder).
+      const isAssignment = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId && assignmentSubmission?.sessionId)
+
+      if (isAssignment) {
+        // Persist under assignments (NOT quizzes).
+        const res = await fetch(
+          `/api/sessions/${encodeURIComponent(assignmentSubmission!.sessionId)}/assignments/${encodeURIComponent(assignmentSubmission!.assignmentId)}/responses`,
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              latex: combined,
+              questionId: assignmentSubmission!.questionId,
+            }),
+          }
+        )
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          alert(data?.message || `Failed to submit assignment response (${res.status})`)
+          return
+        }
+
+        // Notify the page to display/update the saved response under this question.
+        try {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('philani:assignment-response-saved', {
+                detail: {
+                  assignmentId: assignmentSubmission!.assignmentId,
+                  questionId: assignmentSubmission!.questionId,
+                  latex: combined,
+                  ts: Date.now(),
+                },
+              })
+            )
+          }
+        } catch {}
+
+        // Keep the question active (assignment-style): reset the step composer for future edits.
+        quizCombinedLatexRef.current = ''
+        quizHasCommittedRef.current = false
+        suppressBroadcastUntilTsRef.current = Date.now() + 600
+        try {
+          editor.clear?.()
+        } catch {}
+        lastSymbolCountRef.current = 0
+        lastBroadcastBaseCountRef.current = 0
+        setLatexOutput('')
+        playSnapSound()
+        return
+      }
+
+      // Default quiz behavior: persist under the session responses (dashboard Quizzes folder).
       const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
         method: 'POST',
         credentials: 'same-origin',
@@ -5594,7 +5651,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, userDisplayName, userId])
 
   useEffect(() => {
     if (isAdmin) return

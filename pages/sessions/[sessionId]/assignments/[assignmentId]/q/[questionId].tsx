@@ -91,14 +91,29 @@ export default function AssignmentQuestionPage() {
   }
 
   return (
-    <div className="h-screen bg-slate-950 text-white flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm text-white/70">Assignment</div>
+          <div className="font-semibold break-words">
+            {assignment?.title || 'Assignment'}
+            {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <Link href="/dashboard" className="btn btn-ghost">
+            Back
+          </Link>
+        </div>
+      </div>
+
       {error ? <div className="p-3 text-red-300">{error}</div> : null}
       {loading ? <div className="p-3 text-white/70">Loading…</div> : null}
 
-      <div className="flex-1 min-h-0">
-        {initialQuiz && sessionId ? (
+      {initialQuiz && sessionId ? (
+        <div className="p-3">
           <StackedCanvasWindow
-            gradeLabel={`${assignment?.title || 'Assignment'}${question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}`}
+            gradeLabel={null}
             roomId={`assignment-${assignmentId}-q-${questionId}`}
             boardId={sessionId}
             userId={userId}
@@ -108,11 +123,9 @@ export default function AssignmentQuestionPage() {
             initialQuiz={initialQuiz}
             isVisible
             defaultOrientation="portrait"
-            autoHideHeader
-            backHref="/dashboard"
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }

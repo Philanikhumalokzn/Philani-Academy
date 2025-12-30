@@ -2289,6 +2289,14 @@ export default function Dashboard() {
           </p>
         </div>
       )}
+
+      {status === 'authenticated' && (
+        <div className="pt-1">
+          <Link href="/assessments" className="btn btn-secondary w-full justify-center">
+            Assessments
+          </Link>
+        </div>
+      )}
     </div>
   )
 

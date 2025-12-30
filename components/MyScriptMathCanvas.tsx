@@ -7466,7 +7466,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(isAdmin || quizActive) ? (
+                {(isAdmin || !isAdmin || quizActive || assessmentActive) ? (
                   <div className="flex items-center gap-2">
                     {isCompactViewport && (
                       <button

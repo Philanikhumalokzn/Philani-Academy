@@ -18,6 +18,7 @@ const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: 
   if (pathname === '/board') return false
   if (pathname === '/diagram') return false
   if (pathname === '/jaas-demo') return false
+  if (pathname === '/sessions/[sessionId]/assignments/[assignmentId]/q/[questionId]') return false
 
   return true
 }

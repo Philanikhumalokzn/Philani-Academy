@@ -143,15 +143,15 @@ export default function AssignmentQuestionPage() {
 
       {metaVisible ? (
         <div className="absolute top-3 left-3 right-3 z-50">
-          <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3">
+          <div className="rounded-2xl border border-slate-900/10 bg-white/80 backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.35em] text-white/70">Assignment</div>
+              <div className="text-[11px] uppercase tracking-[0.35em] text-slate-500">Assignment</div>
               <div className="font-semibold break-words">
                 {assignment?.title || 'Assignment'}
                 {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
               </div>
             </div>
-            <Link href="/dashboard" className="btn btn-ghost shrink-0">
+            <Link href="/dashboard" className="btn shrink-0 bg-slate-900/5 border border-slate-900/10 text-slate-900 hover:bg-slate-900/10">
               Back
             </Link>
           </div>

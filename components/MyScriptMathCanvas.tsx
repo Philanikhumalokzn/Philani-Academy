@@ -213,6 +213,7 @@ type MyScriptMathCanvasProps = {
   isAdmin?: boolean
   boardId?: string
   realtimeKey?: string
+  defaultStudentWriteEnabled?: boolean
   autoOpenDiagramTray?: boolean
   quizMode?: boolean
   initialQuiz?: {
@@ -330,7 +331,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeKey, autoOpenDiagramTray, quizMode, initialQuiz, studentLayout = 'stacked', uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeKey, defaultStudentWriteEnabled = false, autoOpenDiagramTray, quizMode, initialQuiz, studentLayout = 'stacked', uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -942,7 +943,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
-  const lockedOutRef = useRef(!isAdmin)
+  const lockedOutRef = useRef(!isAdmin && !defaultStudentWriteEnabled)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
@@ -4711,9 +4712,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }
 
-  const hasWriteAccess = Boolean(isAdmin) || Boolean(
-    controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
-  )
+  const hasWriteAccess = Boolean(isAdmin)
+    || Boolean(
+      controlState
+        ? (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
+        : (!isAdmin && defaultStudentWriteEnabled)
+    )
   const isViewOnly = !hasWriteAccess
   const controlOwnerLabel = (() => {
     if (controlState) {

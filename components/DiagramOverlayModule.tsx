@@ -38,17 +38,20 @@ type ScriptDiagramEventDetail = {
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
-const makeChannelName = (boardId?: string, gradeLabel?: string | null) => {
-  const base = boardId
-    ? sanitizeIdentifier(boardId).toLowerCase()
-    : gradeLabel
-      ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
-      : 'shared'
+const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeScopeId?: string) => {
+  const base = realtimeScopeId
+    ? sanitizeIdentifier(realtimeScopeId).toLowerCase()
+    : boardId
+      ? sanitizeIdentifier(boardId).toLowerCase()
+      : gradeLabel
+        ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
+        : 'shared'
   return `myscript:${base}`
 }
 
 export default function DiagramOverlayModule(props: {
   boardId?: string
+  realtimeScopeId?: string
   gradeLabel?: string | null
   userId: string
   userDisplayName?: string
@@ -59,7 +62,7 @@ export default function DiagramOverlayModule(props: {
   onRequestClose?: () => void
   closeSignal?: number
 }) {
-  const { boardId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
@@ -114,7 +117,7 @@ export default function DiagramOverlayModule(props: {
     return `${base}-${randomSuffix}`
   }, [userId])
 
-  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel), [boardId, gradeLabel])
+  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
 
   const channelRef = useRef<any>(null)
   const clientIdRef = useRef(clientId)

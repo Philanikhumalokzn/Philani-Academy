@@ -33,12 +33,14 @@ type ScriptTextEventDetail = {
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
-const makeChannelName = (boardId?: string, gradeLabel?: string | null) => {
-  const base = boardId
-    ? sanitizeIdentifier(boardId).toLowerCase()
-    : gradeLabel
-      ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
-      : 'shared'
+const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeScopeId?: string) => {
+  const base = realtimeScopeId
+    ? sanitizeIdentifier(realtimeScopeId).toLowerCase()
+    : boardId
+      ? sanitizeIdentifier(boardId).toLowerCase()
+      : gradeLabel
+        ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
+        : 'shared'
   return `myscript:${base}`
 }
 
@@ -244,12 +246,13 @@ function renderTextWithKatex(text: string) {
 
 export default function TextOverlayModule(props: {
   boardId?: string
+  realtimeScopeId?: string
   gradeLabel?: string | null
   userId: string
   userDisplayName?: string
   isAdmin: boolean
 }) {
-  const { boardId, gradeLabel, userId, userDisplayName, isAdmin } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin } = props
 
   const clientId = useMemo(() => {
     const base = sanitizeIdentifier(userId || 'anonymous')
@@ -261,7 +264,7 @@ export default function TextOverlayModule(props: {
     clientIdRef.current = clientId
   }, [clientId])
 
-  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel), [boardId, gradeLabel])
+  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
 
   const channelRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)

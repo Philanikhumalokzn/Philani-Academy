@@ -212,6 +212,7 @@ type MyScriptMathCanvasProps = {
   userDisplayName?: string
   isAdmin?: boolean
   boardId?: string
+  realtimeScopeId?: string
   autoOpenDiagramTray?: boolean
   quizMode?: boolean
   initialQuiz?: {
@@ -333,7 +334,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -945,7 +946,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
-  const lockedOutRef = useRef(!isAdmin)
+  const forceEditableForAssignment = Boolean(!isAdmin && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
+  const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
@@ -1202,7 +1204,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const controllerId = next?.controllerId
       const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
       hasExclusiveControlRef.current = isExclusiveController
-      const hasWriteAccess = Boolean(isAdmin) || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+      const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -1210,7 +1212,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       setControlState(next)
     },
-    [isAdmin]
+    [forceEditableForAssignment, isAdmin]
   )
 
   const studentCanPublish = useCallback(() => {
@@ -1448,15 +1450,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [boardId, isAdmin, loadLessonScript])
 
   const channelName = useMemo(() => {
-    // Force a single shared board across instances unless a specific boardId is provided.
-    // Prefer per-grade board scoping if gradeLabel is present.
-    const base = boardId
+    // Ably realtime scope (and diagram sessionKey) is intentionally separable from boardId.
+    // - boardId is used for session-scoped APIs (e.g. lesson scripts, quiz responses)
+    // - realtimeScopeId can isolate realtime traffic (e.g. per-learner assignment boards)
+    const base = realtimeScopeId
+      ? sanitizeIdentifier(realtimeScopeId).toLowerCase()
+      : boardId
       ? sanitizeIdentifier(boardId).toLowerCase()
       : gradeLabel
       ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
       : 'shared'
     return `myscript:${base}`
-  }, [boardId, gradeLabel])
+  }, [boardId, gradeLabel, realtimeScopeId])
 
   const buildLessonScriptLatex = useCallback((steps: string[], stepIndex: number) => {
     if (!Array.isArray(steps) || steps.length === 0) return ''
@@ -4712,7 +4717,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }
 
-  const hasWriteAccess = Boolean(isAdmin) || Boolean(
+  const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || Boolean(
     controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
   )
   const isViewOnly = !hasWriteAccess

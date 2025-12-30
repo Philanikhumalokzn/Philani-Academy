@@ -112,10 +112,14 @@ export default function AssignmentQuestionPage() {
 
       {initialQuiz && sessionId ? (
         <div className="p-3">
+          {(() => {
+            const realtimeScopeId = `assignment:${assignmentId}:q:${questionId}:u:${userId}`
+            return (
           <StackedCanvasWindow
             gradeLabel={null}
-            roomId={`assignment-${assignmentId}-q-${questionId}`}
+            roomId={`assignment-${assignmentId}-q-${questionId}-u-${userId}`}
             boardId={sessionId}
+            realtimeScopeId={realtimeScopeId}
             userId={userId}
             userDisplayName={userDisplayName}
             isAdmin={false}
@@ -125,6 +129,8 @@ export default function AssignmentQuestionPage() {
             isVisible
             defaultOrientation="portrait"
           />
+            )
+          })()}
         </div>
       ) : null}
     </div>

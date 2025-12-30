@@ -394,8 +394,8 @@ body{
 .board-fullscreen__stage{
   flex:1;
   min-height:0;
-  background:#ffffff;
-  color:#0f172a;
+  background:transparent;
+  color:var(--text);
 }
 
 @media (max-width: 768px) {

@@ -7756,30 +7756,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </button>
                 )}
 
-                {isOverlayMode && (
-                  <div
-                    className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
-                    style={{
-                      pointerEvents: overlayControlsVisible ? 'auto' : 'none',
-                      cursor: overlayControlsVisible ? 'default' : undefined,
-                    }}
-                    onClick={closeOverlayControls}
-                  >
-                    <div
-                      className="canvas-overlay-controls__panel"
-                      onClick={event => {
-                        event.stopPropagation()
-                        kickOverlayAutoHide()
-                      }}
-                    >
-                      <p className="canvas-overlay-controls__title">Canvas controls</p>
-                      {renderToolbarBlock()}
-                      <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
-                        Return to drawing
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {/* Legacy toolbar controls removed (Undo/Redo/Clear/Convert). */}
               </div>
 
             </div>
@@ -8674,30 +8651,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         </div>
         )}
 
-        {isOverlayMode && useStackedStudentLayout && (
-          <div
-            className={`canvas-overlay-controls ${overlayControlsVisible ? 'is-visible' : ''}`}
-            style={{
-              pointerEvents: overlayControlsVisible ? 'auto' : 'none',
-              cursor: overlayControlsVisible ? 'default' : undefined,
-              zIndex: 50,
-            }}
-            onClick={closeOverlayControls}
-          >
-            <div className="canvas-overlay-controls__panel" onClick={event => {
-              event.stopPropagation()
-              kickOverlayAutoHide()
-            }}>
-              <p className="canvas-overlay-controls__title">Canvas controls</p>
-              {renderToolbarBlock()}
-              <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
-                Return to drawing
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!isOverlayMode && renderToolbarBlock()}
+        {/* Legacy toolbar controls removed (Undo/Redo/Clear/Convert). */}
 
         {!isOverlayMode && (
           <div className="orientation-panel">

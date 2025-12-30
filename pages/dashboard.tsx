@@ -2290,13 +2290,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {status === 'authenticated' && (
-        <div className="pt-1">
-          <Link href="/assessments" className="btn btn-secondary w-full justify-center">
-            Assessments
-          </Link>
-        </div>
-      )}
     </div>
   )
 

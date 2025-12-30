@@ -401,6 +401,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
   const initialQuizAppliedRef = useRef<string | null>(null)
 
+  const [assessmentSubmitting, setAssessmentSubmitting] = useState(false)
+  const [assessmentActive, setAssessmentActive] = useState(false)
+  const assessmentActiveRef = useRef(false)
+  const assessmentBaselineSnapshotRef = useRef<SnapshotPayload | null>(null)
+  const assessmentHasCommittedRef = useRef(false)
+  const assessmentCombinedLatexRef = useRef('')
+
   const clearQuizCountdown = useCallback(() => {
     if (quizCountdownIntervalRef.current) {
       clearInterval(quizCountdownIntervalRef.current)
@@ -2566,7 +2573,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
       // During quizzes, students work privately (no live ink publishing).
-      if (!isAdmin && quizActiveRef.current) {
+      if (!isAdmin && (quizActiveRef.current || assessmentActiveRef.current)) {
         return
       }
       if (pageIndex !== sharedPageIndexRef.current && !options?.force) {
@@ -5597,6 +5604,183 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [applyPageSnapshot, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, userDisplayName, userId])
 
+  const setAssessmentActiveState = useCallback((enabled: boolean) => {
+    setAssessmentActive(enabled)
+    assessmentActiveRef.current = enabled
+  }, [])
+
+  const exitAssessmentMode = useCallback(async () => {
+    if (isAdmin) return
+
+    const baseline = assessmentBaselineSnapshotRef.current
+    assessmentBaselineSnapshotRef.current = null
+    assessmentCombinedLatexRef.current = ''
+    assessmentHasCommittedRef.current = false
+    setAssessmentActiveState(false)
+
+    try {
+      const editor = editorInstanceRef.current
+      suppressBroadcastUntilTsRef.current = Date.now() + 600
+      editor?.clear?.()
+    } catch {}
+
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+    setLatexOutput('')
+
+    if (baseline) {
+      await applyPageSnapshot(baseline)
+    } else {
+      await channelRef.current?.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
+    }
+  }, [applyPageSnapshot, isAdmin, setAssessmentActiveState, userDisplayName])
+
+  const toggleAssessmentMode = useCallback(async () => {
+    if (isAdmin) return
+    if (quizActiveRef.current) return
+    if (assessmentSubmitting) return
+
+    if (!boardId) {
+      alert('This assessment session is missing a session id (boardId).')
+      return
+    }
+
+    if (assessmentActiveRef.current) {
+      const ok = typeof window !== 'undefined'
+        ? window.confirm('Exit assessments mode? (Submit first if you want to keep your work.)')
+        : true
+      if (!ok) return
+      await exitAssessmentMode()
+      return
+    }
+
+    playSnapSound()
+    const editor = editorInstanceRef.current
+    const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
+    assessmentBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
+    assessmentCombinedLatexRef.current = ''
+    assessmentHasCommittedRef.current = false
+    setAssessmentActiveState(true)
+    suppressBroadcastUntilTsRef.current = Date.now() + 600
+    try {
+      editor?.clear?.()
+    } catch {}
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+    setLatexOutput('')
+  }, [assessmentSubmitting, boardId, exitAssessmentMode, isAdmin, playSnapSound, setAssessmentActiveState])
+
+  const studentAssessmentCommitOrSubmit = useCallback(async () => {
+    if (isAdmin) return
+    if (!assessmentActiveRef.current) return
+    if (assessmentSubmitting) return
+    if (!boardId) {
+      alert('This assessment session is missing a session id (boardId).')
+      return
+    }
+
+    const editor = editorInstanceRef.current
+    if (!editor) return
+
+    setAssessmentSubmitting(true)
+    try {
+      try {
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
+      } catch {}
+
+      const snap = captureFullSnapshot()
+      const symbolCount = countSymbols(snap?.symbols)
+      const hasInk = symbolCount > 0
+
+      const getStepLatex = async () => {
+        let step = ''
+        try {
+          const modelLatex = getLatexFromEditorModel()
+          const normalizedModel = normalizeStepLatex(modelLatex)
+          if (normalizedModel) step = normalizedModel
+        } catch {}
+        if (!step) {
+          for (let i = 0; i < 3 && !step; i += 1) {
+            const exported = await exportLatexFromEditor()
+            const normalized = normalizeStepLatex(exported)
+            if (normalized) {
+              step = normalized
+              break
+            }
+            await new Promise<void>(resolve => setTimeout(resolve, 200))
+          }
+        }
+        return step
+      }
+
+      if (hasInk) {
+        const step = await getStepLatex()
+        if (step) {
+          const existing = assessmentCombinedLatexRef.current
+          const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
+          assessmentCombinedLatexRef.current = nextCombined
+          assessmentHasCommittedRef.current = true
+
+          suppressBroadcastUntilTsRef.current = Date.now() + 1200
+          try {
+            editor.clear?.()
+          } catch {}
+          lastSymbolCountRef.current = 0
+          lastBroadcastBaseCountRef.current = 0
+          setLatexOutput('')
+          return
+        }
+      }
+
+      let combined = assessmentCombinedLatexRef.current.trim()
+      if (!combined) {
+        combined = '\\text{(no\\ response)}'
+        assessmentCombinedLatexRef.current = combined
+      }
+
+      const ok = typeof window !== 'undefined'
+        ? window.confirm('Submit your assessment response?')
+        : true
+      if (!ok) return
+
+      const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex: combined,
+          quizId: 'assessment',
+          quizLabel: 'Assessment',
+          prompt: 'Assessment submission',
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.message || `Failed to submit response (${res.status})`)
+        return
+      }
+
+      try {
+        await channelRef.current?.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'assessment',
+          phase: 'submit',
+          combinedLatex: combined,
+          fromUserId: userId,
+          fromName: userDisplayName,
+          ts: Date.now(),
+        })
+      } catch {}
+
+      await exitAssessmentMode()
+    } finally {
+      setAssessmentSubmitting(false)
+    }
+  }, [assessmentSubmitting, boardId, captureFullSnapshot, exitAssessmentMode, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, userDisplayName, userId])
+
   useEffect(() => {
     if (isAdmin) return
     if (!quizActive) return
@@ -7392,14 +7576,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
+                    {!isAdmin && (
+                      <button
+                        type="button"
+                        className={`px-2 py-1${assessmentActive ? ' font-bold' : ''}`}
+                        title={assessmentActive ? 'Exit assessments' : 'Assessments'}
+                        onClick={() => {
+                          if (lockedOutRef.current) return
+                          void toggleAssessmentMode()
+                        }}
+                        disabled={status !== 'ready' || Boolean(fatalError) || quizActive || assessmentSubmitting}
+                      >
+                        <span className="sr-only">Assessments</span>
+                        <span className="text-slate-700 text-[16px] leading-none font-semibold" aria-hidden="true">A</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       className="px-2 py-1"
                       title="Send step"
                       onClick={async () => {
-                      if (!isAdmin && quizActiveRef.current) {
+                      if (!isAdmin) {
                         if (lockedOutRef.current) return
-                        await studentQuizCommitOrSubmit()
+                        if (quizActiveRef.current) {
+                          await studentQuizCommitOrSubmit()
+                          return
+                        }
+                        if (assessmentActiveRef.current) {
+                          await studentAssessmentCommitOrSubmit()
+                          return
+                        }
                         return
                       }
 
@@ -7482,7 +7689,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || !quizActive))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || assessmentSubmitting || (!quizActive && !assessmentActive)))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

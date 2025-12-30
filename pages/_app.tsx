@@ -11,7 +11,6 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
   const router = useRouter()
   const hideGlobalChrome = router.pathname === '/board'
     || router.pathname === '/diagram'
-    || router.pathname === '/assessments'
     || router.pathname === '/jaas-demo'
 
   return (

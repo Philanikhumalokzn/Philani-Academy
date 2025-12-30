@@ -400,6 +400,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
   const initialQuizAppliedRef = useRef<string | null>(null)
 
+  const isAssignmentQuizContext = Boolean(
+    (!isAdmin && isQuizMode && (initialQuiz?.quizId || '').startsWith('assignment:'))
+      || (!isAdmin && isQuizMode && (quizIdRef.current || '').startsWith('assignment:'))
+  )
+
+  const assignmentPromptMarkup = useMemo(() => {
+    if (!isAssignmentQuizContext) return ''
+    const prompt = String(initialQuiz?.prompt || quizPromptRef.current || '').trim()
+    if (!prompt) return ''
+    try {
+      return renderToString(prompt, {
+        throwOnError: false,
+        displayMode: true,
+      })
+    } catch (err) {
+      console.warn('Failed to render assignment prompt', err)
+      return ''
+    }
+  }, [initialQuiz?.prompt, initialQuiz?.quizId, isAssignmentQuizContext])
+
   const clearQuizCountdown = useCallback(() => {
     if (quizCountdownIntervalRef.current) {
       clearInterval(quizCountdownIntervalRef.current)
@@ -4709,6 +4729,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const hasWriteAccess = Boolean(isAdmin) || Boolean(
     controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
+  ) || Boolean(
+    // Assignment answering should be editable by default (teacher may still explicitly lock later).
+    !isAdmin && isQuizMode && isAssignmentQuizContext
   )
   const isViewOnly = !hasWriteAccess
   const controlOwnerLabel = (() => {
@@ -4867,7 +4890,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return {
         width: '100%',
         height: '100%',
-        minHeight: '220px',
+        minHeight: isAssignmentQuizContext ? '0px' : '220px',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }
@@ -4882,7 +4905,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       pointerEvents: disableCanvasInput ? 'none' : undefined,
       cursor: disableCanvasInput ? 'default' : undefined,
     }
-  }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
+  }, [canvasOrientation, disableCanvasInput, isFullscreen, isAssignmentQuizContext, useStackedStudentLayout])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    if (!isAssignmentQuizContext) return
+    // Give assignment answers more writing space by shrinking the top LaTeX pane.
+    setStudentSplitRatio(curr => (curr > 0.3 ? 0.3 : curr))
+  }, [isAssignmentQuizContext, useStackedStudentLayout])
 
   // Mobile stacked mode: provide extra horizontal writing room by making the ink surface wider than
   // the viewport so users can scroll sideways for long expressions.
@@ -6902,7 +6932,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           >
             <div
               className="flex flex-col"
-              style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
+              style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: isAssignmentQuizContext ? '0px' : '200px' }}
             >
               {!isOverlayMode && !isCompactViewport && canPersistLatex && (
                 <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
@@ -7060,6 +7090,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           style={latexOverlayStyle}
                           dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                         />
+                      ) : isAssignmentQuizContext ? (
+                        assignmentPromptMarkup ? (
+                          <div
+                            className="text-slate-900 leading-relaxed"
+                            style={latexOverlayStyle}
+                            dangerouslySetInnerHTML={{ __html: assignmentPromptMarkup }}
+                          />
+                        ) : null
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
@@ -7079,7 +7117,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               style={latexOverlayStyle}
                               dangerouslySetInnerHTML={{ __html: studentQuizLatexPreviewMarkup }}
                             />
-                          ) : (
+                          ) : isAssignmentQuizContext ? null : (
                             <p className="text-slate-500 text-sm">Write your answer below to see your LaTeX here.</p>
                           )}
                         </div>
@@ -7135,7 +7173,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
               </div>
             </div>
-            <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
+            <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: isAssignmentQuizContext ? '0px' : '220px' }}>
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
                 {canPersistLatex ? (
                   (() => {

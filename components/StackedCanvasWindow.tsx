@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
 
@@ -33,6 +34,8 @@ type Props = {
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
   autoOpenDiagramTray?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
+  autoHideHeader?: boolean
+  backHref?: string
 }
 
 type OverlayControlsHandle = {
@@ -41,8 +44,27 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, quizMode, initialQuiz, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userId, userDisplayName, isAdmin, quizMode, initialQuiz, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, autoOpenDiagramTray, lessonAuthoring, autoHideHeader, backHref }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
+  const [headerVisible, setHeaderVisible] = useState(true)
+  const headerHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearHeaderHide = () => {
+    if (headerHideTimeoutRef.current) {
+      clearTimeout(headerHideTimeoutRef.current)
+      headerHideTimeoutRef.current = null
+    }
+  }
+
+  const showHeaderForMoment = () => {
+    if (!autoHideHeader) return
+    setHeaderVisible(true)
+    clearHeaderHide()
+    headerHideTimeoutRef.current = setTimeout(() => {
+      setHeaderVisible(false)
+      headerHideTimeoutRef.current = null
+    }, 1500)
+  }
 
   useEffect(() => {
     if (!isVisible || typeof window === 'undefined') return
@@ -52,13 +74,50 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
     return () => clearTimeout(resizeHandle)
   }, [isVisible])
 
+  useEffect(() => {
+    if (!autoHideHeader) {
+      setHeaderVisible(true)
+      return
+    }
+    showHeaderForMoment()
+    return () => {
+      clearHeaderHide()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoHideHeader, isVisible])
+
+  useEffect(() => {
+    if (!autoHideHeader) return
+    if (!isVisible) return
+    if (typeof window === 'undefined') return
+
+    const onAnyPointer = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      // Ignore taps inside the header itself.
+      if (target.closest('[data-stacked-canvas-header]')) return
+      // "Empty" means: not an interactive element.
+      if (target.closest('a,button,input,textarea,select,[role="button"]')) return
+      showHeaderForMoment()
+    }
+
+    window.addEventListener('pointerdown', onAnyPointer, { capture: true })
+    return () => window.removeEventListener('pointerdown', onAnyPointer, { capture: true } as any)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoHideHeader, isVisible])
+
   return (
     <div className="live-canvas-window" aria-hidden={!isVisible}>
-      <div className="live-canvas-window__header">
+      <div data-stacked-canvas-header className="live-canvas-window__header" style={{ display: !autoHideHeader || headerVisible ? undefined : 'none' }}>
         <div className="live-canvas-window__brand">
           <BrandLogo height={32} label className="text-white" labelClassName="text-white/60 tracking-[0.3em] uppercase text-[10px]" />
           <span className="live-canvas-window__badge">{gradeLabel || 'Shared board'}</span>
         </div>
+        {backHref ? (
+          <Link href={backHref} className="live-canvas-window__controls" aria-label="Back">
+            Back
+          </Link>
+        ) : null}
       </div>
       <div className="live-canvas-window__body relative">
         <MyScriptMathCanvas
@@ -76,6 +135,9 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, userI
           lessonAuthoring={lessonAuthoring}
           overlayControlsHandleRef={controlsHandleRef}
           onOverlayChromeVisibilityChange={visible => {
+            if (autoHideHeader) {
+              if (visible) showHeaderForMoment()
+            }
             onOverlayChromeVisibilityChange?.(visible)
           }}
         />

@@ -3376,13 +3376,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (now < suppressBroadcastUntilTsRef.current) {
             return
           }
-          if (!isAdmin) {
-            const controllerId = controlStateRef.current?.controllerId
-            const hasPermission = controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
-            if (!hasPermission) {
-              enforceAuthoritativeSnapshot()
-              return
-            }
+          // Respect assignment override + general lock state.
+          // `lockedOutRef` is the single source of truth for whether the current user
+          // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
+          if (!isAdmin && lockedOutRef.current) {
+            enforceAuthoritativeSnapshot()
+            return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
           const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current

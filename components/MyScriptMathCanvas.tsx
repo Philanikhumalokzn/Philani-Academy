@@ -393,6 +393,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizBaselineSnapshotRef = useRef<SnapshotPayload | null>(null)
   const quizHasCommittedRef = useRef(false)
   const quizCombinedLatexRef = useRef('')
+  const [studentCommittedLatex, setStudentCommittedLatex] = useState('')
   const quizIdRef = useRef<string>('')
   const quizPromptRef = useRef<string>('')
   const quizLabelRef = useRef<string>('')
@@ -948,6 +949,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const controlStateRef = useRef<ControlState>(null)
   const forceEditableForAssignment = Boolean(!isAdmin && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
+  const isAssignmentViewRef = useRef(isAssignmentView)
+  useEffect(() => {
+    isAssignmentViewRef.current = isAssignmentView
+  }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
@@ -3423,9 +3428,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             }, 450)
           }
 
-          // Student quiz mode: show a live LaTeX preview while the learner writes.
-          // (The normal student view doesn't continuously export LaTeX, so we add it only for active quizzes.)
-          if (!isAdmin && quizActiveRef.current) {
+          // Student quiz/assignment mode: show a live LaTeX preview while the learner writes.
+          // (The normal student view doesn't continuously export LaTeX, so we enable it for
+          // active quizzes and for assignment pages that use the same commit-then-submit flow.)
+          if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) {
             if (studentQuizPreviewExportRef.current) {
               clearTimeout(studentQuizPreviewExportRef.current)
             }
@@ -4736,11 +4742,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const latexRenderOptions = useAdminStepComposer
     ? { ...latexProjectionOptions, alignAtEquals: true }
-    : isAdmin
-      ? latexProjectionOptions
-      : useStackedStudentLayout
-        ? stackedNotesState.options
-        : latexDisplayState.options
+    : (!isAdmin && isAssignmentView && useStackedStudentLayout)
+      ? { ...stackedNotesState.options, alignAtEquals: true }
+      : isAdmin
+        ? latexProjectionOptions
+        : useStackedStudentLayout
+          ? stackedNotesState.options
+          : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useAdminStepComposer) {
       const lines = adminSteps.map(s => s.latex)
@@ -4756,6 +4764,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
       return composed || (latexDisplayState.latex || '').trim()
     }
+    if (!isAdmin && isAssignmentView && useStackedStudentLayout) {
+      const committed = (studentCommittedLatex || '').trim()
+      const live = (latexOutput || '').trim()
+      return [committed, live].filter(Boolean).join(' \\\\ ').trim()
+    }
     if (isAdmin) {
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
@@ -4763,7 +4776,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexDisplayState.latex, latexOutput, stackedNotesState.latex, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useAdminStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -5433,7 +5446,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const studentQuizCommitOrSubmit = useCallback(async (opts?: { forceSubmit?: boolean; skipConfirm?: boolean }) => {
     if (isAdmin) return
-    if (!quizActiveRef.current) return
+    const isAssignment = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId && assignmentSubmission?.sessionId)
+    if (!quizActiveRef.current && !isAssignment) return
     if (quizSubmitting) return
     if (!boardId) {
       alert('This quiz session is missing a session id (boardId).')
@@ -5488,6 +5502,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
         quizCombinedLatexRef.current = nextCombined
         quizHasCommittedRef.current = true
+        setStudentCommittedLatex(nextCombined)
 
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
         try {
@@ -5507,11 +5522,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
           quizCombinedLatexRef.current = nextCombined
           quizHasCommittedRef.current = true
+          setStudentCommittedLatex(nextCombined)
         }
       }
 
       // Second-stage send: if blank, prompt to submit (only after at least one commit).
       let combined = quizCombinedLatexRef.current.trim()
+
+      // Assignment pages use a strict 2-stage flow: if there's nothing on the canvas to commit
+      // AND no prior committed work, treat this as a no-op.
+      if (isAssignment && !hasInk && !quizHasCommittedRef.current) {
+        return
+      }
       if (!combined) {
         // Server requires non-empty LaTeX.
         combined = '\\text{(no\\ response)}'
@@ -5520,12 +5542,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       if (!skipConfirm) {
         const ok = typeof window !== 'undefined'
-          ? window.confirm('Submit your quiz response?')
+          ? window.confirm(isAssignment ? 'Submit your assignment response?' : 'Submit your quiz response?')
           : true
         if (!ok) return
       }
-
-      const isAssignment = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId && assignmentSubmission?.sessionId)
 
       if (isAssignment) {
         // Persist under assignments (NOT quizzes).
@@ -5566,6 +5586,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         // Keep the question active (assignment-style): reset the step composer for future edits.
         quizCombinedLatexRef.current = ''
         quizHasCommittedRef.current = false
+        setStudentCommittedLatex('')
         suppressBroadcastUntilTsRef.current = Date.now() + 600
         try {
           editor.clear?.()
@@ -5646,6 +5667,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       quizBaselineSnapshotRef.current = null
       quizCombinedLatexRef.current = ''
       quizHasCommittedRef.current = false
+      setStudentCommittedLatex('')
       setQuizActiveState(false)
       clearQuizCountdown()
       if (baseline) {
@@ -7463,7 +7485,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       className="px-2 py-1"
                       title="Send step"
                       onClick={async () => {
-                      if (!isAdmin && quizActiveRef.current) {
+                      if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) {
                         if (lockedOutRef.current) return
                         await studentQuizCommitOrSubmit()
                         return
@@ -7548,7 +7570,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || !quizActive))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

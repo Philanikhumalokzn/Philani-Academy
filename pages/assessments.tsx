@@ -69,6 +69,7 @@ export default function AssessmentsPage() {
               userId={realtimeUserId}
               userDisplayName={realtimeDisplayName}
               isAdmin={true}
+              hideBackgroundPanels
             />
           </div>
         )}

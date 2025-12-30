@@ -225,6 +225,7 @@ type MyScriptMathCanvasProps = {
     endsAt?: number | null
   }
   uiMode?: 'default' | 'overlay'
+  hideBackgroundPanels?: boolean
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
@@ -328,7 +329,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, autoOpenDiagramTray, quizMode, initialQuiz, uiMode = 'default', hideBackgroundPanels = false, defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -8653,7 +8654,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         {/* Legacy toolbar controls removed (Undo/Redo/Clear/Convert). */}
 
-        {!isOverlayMode && (
+        {!isOverlayMode && !hideBackgroundPanels && (
           <div className="orientation-panel">
             <p className="orientation-panel__label">Canvas orientation</p>
             <div className="orientation-panel__options">
@@ -8684,7 +8685,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {isAdmin && !isOverlayMode && (
+        {isAdmin && !isOverlayMode && !hideBackgroundPanels && (
           <div className="canvas-settings-panel">
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Notes font size</span>
@@ -8807,7 +8808,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
           </div>
         )}
-        {!isOverlayMode && (
+        {!isOverlayMode && !hideBackgroundPanels && (
           <div className="canvas-admin-controls">
           {isAdmin && (
             <button

@@ -48,7 +48,7 @@ export default function AssessmentsPage() {
         </div>
       </div>
 
-      <div className="board-fullscreen__main" style={{ height: '100%' }}>
+      <div className="board-fullscreen__stage relative">
         {status !== 'authenticated' ? (
           <div className="p-4">
             <div className="card space-y-2">

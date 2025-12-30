@@ -27,6 +27,13 @@ export default function AssessmentsPage() {
     return `myscript-assessments-${base.toLowerCase()}`
   }, [realtimeUserId, status])
 
+  // Note: `MyScriptMathCanvas` currently derives its realtime channel name from `gradeLabel`/`boardId`
+  // (not from `roomId`). Use a stable per-user label so Assessments is always a fresh private board.
+  const channelScopedGradeLabel = useMemo(() => {
+    const base = status === 'authenticated' ? sanitizeIdentifier(realtimeUserId) : 'guest'
+    return `Assessments-${base.toLowerCase()}`
+  }, [realtimeUserId, status])
+
   return (
     <div className="board-fullscreen">
       <div className="board-fullscreen__topbar">
@@ -57,7 +64,7 @@ export default function AssessmentsPage() {
         ) : (
           <div className="h-full">
             <MyScriptMathCanvas
-              gradeLabel="Assessments"
+              gradeLabel={channelScopedGradeLabel}
               roomId={roomId}
               userId={realtimeUserId}
               userDisplayName={realtimeDisplayName}

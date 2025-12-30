@@ -8721,7 +8721,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {isAdmin && !isOverlayMode && (
+        {isAdmin && !isOverlayMode && !hideBackgroundPanels && (
           <div className="canvas-settings-panel">
             <button
               className="btn"
@@ -8754,7 +8754,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {!isOverlayMode && gradeLabel && (
+        {!isOverlayMode && gradeLabel && !hideBackgroundPanels && (
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
         )}
 

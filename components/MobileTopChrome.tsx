@@ -16,6 +16,8 @@ const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: 
 
   // Full-screen / no-distraction learning surfaces.
   if (pathname === '/board') return false
+  if (pathname === '/diagram') return false
+  if (pathname === '/assessments') return false
   if (pathname === '/jaas-demo') return false
 
   return true

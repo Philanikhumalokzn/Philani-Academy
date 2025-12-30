@@ -3,10 +3,17 @@ import 'katex/dist/katex.min.css'
 import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import NavBar from '../components/NavBar'
 import MobileTopChrome from '../components/MobileTopChrome'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
+  const router = useRouter()
+  const hideGlobalChrome = router.pathname === '/board'
+    || router.pathname === '/diagram'
+    || router.pathname === '/assessments'
+    || router.pathname === '/jaas-demo'
+
   return (
     <SessionProvider session={session}>
       <Head>
@@ -29,8 +36,8 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <meta name="twitter:description" content="Philani Academy — online sessions and learning for your community." />
       </Head>
       <div className="app-shell">
-        <NavBar />
-        <MobileTopChrome />
+        {!hideGlobalChrome && <NavBar />}
+        {!hideGlobalChrome && <MobileTopChrome />}
         <Component {...pageProps} />
       </div>
     </SessionProvider>

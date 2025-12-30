@@ -61,7 +61,7 @@ export default function AssessmentsPage() {
               roomId={roomId}
               userId={realtimeUserId}
               userDisplayName={realtimeDisplayName}
-              isAdmin={false}
+              isAdmin={true}
             />
           </div>
         )}

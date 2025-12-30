@@ -49,7 +49,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const assignment = await (prisma as any).assignment.findFirst({
     where: { id: String(assignmentIdParam), sessionId: sessionRecord.id },
-    include: { questions: { orderBy: { order: 'asc' } } },
+    include: {
+      questions: { orderBy: { order: 'asc' } },
+      session: { select: { title: true } },
+    },
   })
 
   if (!assignment) return res.status(404).json({ message: 'Assignment not found' })

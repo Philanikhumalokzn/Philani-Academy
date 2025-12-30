@@ -98,6 +98,10 @@ model Assignment {
   sessionId          String
   session            SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   title              String
+  // Stable, Gemini-decided header metadata computed at import time.
+  // Used by assignment question pages; does not change per student.
+  displayTitle        String?
+  sectionLabel        String?
   sourceUrl          String?
   sourceContentType  String?
   sourceFilename     String?

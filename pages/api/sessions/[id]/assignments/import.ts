@@ -90,8 +90,14 @@ async function extractQuestionsWithGemini(opts: {
 
   const prompt =
     `You convert assignment pages into clean LaTeX questions for learners. ` +
-    `Return ONLY valid JSON with this shape: {"title":"...","questions":[{"latex":"..."}]}. ` +
-    `Rules:` +
+    `Return ONLY valid JSON with this shape: ` +
+    `{"title":"...","displayTitle":"...","sectionLabel":"...","questions":[{"latex":"..."}]}. ` +
+    `Where:` +
+    `\n- title: a general assignment title (short).` +
+    `\n- displayTitle: the stable header for the assignment, ideally like "Question 7: Functions and Graphs" when the source indicates a question number/topic.` +
+    `\n- sectionLabel: a short section/tag label inferred from the source (e.g. "Analysis", "Algebra", "Geometry"). Keep it 1-2 words.` +
+    `\n- questions: the extracted LaTeX questions/sub-questions.` +
+    `\n\nRules:` +
     `\n- Produce 1 question per item in questions[].` +
     `\n- Keep each question latex concise and self-contained.` +
     `\n- If you include math, wrap it in $...$ or $$...$$.` +
@@ -259,6 +265,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const parsed = tryParseJsonLoose(geminiText)
     const titleFromAi = typeof parsed?.title === 'string' ? parsed.title.trim() : ''
+    const displayTitleFromAi = typeof (parsed as any)?.displayTitle === 'string' ? String((parsed as any).displayTitle).trim() : ''
+    const sectionLabelFromAi = typeof (parsed as any)?.sectionLabel === 'string' ? String((parsed as any).sectionLabel).trim() : ''
     const questionsRaw = Array.isArray(parsed?.questions) ? parsed.questions : []
     const questions = questionsRaw
       .map((q: any) => ({ latex: typeof q?.latex === 'string' ? q.latex.trim() : '' }))
@@ -273,11 +281,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const assignmentTitle = titleHint || titleFromAi || uploadedFile.originalFilename || 'Assignment'
+    const displayTitle = (displayTitleFromAi || assignmentTitle).trim().slice(0, 180)
+    const sectionLabel = (sectionLabelFromAi || '').trim().slice(0, 60) || null
 
     const created = await (prisma as any).assignment.create({
       data: {
         sessionId: sessionRecord.id,
         title: assignmentTitle,
+        displayTitle,
+        sectionLabel,
         sourceUrl: publicUrl,
         sourceFilename: storedFilename,
         sourceContentType: uploadedFile.mimetype || null,

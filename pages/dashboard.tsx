@@ -551,6 +551,10 @@ export default function Dashboard() {
   const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
   const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
   const [selectedAssignmentError, setSelectedAssignmentError] = useState<string | null>(null)
+  const [openAssignmentQuestionIds, setOpenAssignmentQuestionIds] = useState<string[]>([])
+  const [pendingAssignmentScrollTop, setPendingAssignmentScrollTop] = useState<number | null>(null)
+  const didRestoreAssignmentScrollRef = useRef<string | null>(null)
+  const sessionDetailsScrollRef = useRef<HTMLDivElement | null>(null)
   const [assignmentResponsesByQuestionId, setAssignmentResponsesByQuestionId] = useState<Record<string, any>>({})
   const [assignmentResponsesLoading, setAssignmentResponsesLoading] = useState(false)
   const [assignmentResponsesError, setAssignmentResponsesError] = useState<string | null>(null)
@@ -630,6 +634,67 @@ export default function Dashboard() {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     return `pa:readAnnouncements:${userKey}`
   }, [session])
+
+  const assignmentUiStateStorageKey = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:assignmentUiState:${userKey}`
+  }, [session])
+
+  const openAssignmentQuestionIdSet = useMemo(() => new Set(openAssignmentQuestionIds.map(String)), [openAssignmentQuestionIds])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!expandedSessionId || !selectedAssignmentId) {
+      setOpenAssignmentQuestionIds([])
+      setPendingAssignmentScrollTop(null)
+      return
+    }
+    try {
+      const raw = window.sessionStorage.getItem(assignmentUiStateStorageKey)
+      const parsed = raw ? JSON.parse(raw) : {}
+      const key = `${String(expandedSessionId)}:${String(selectedAssignmentId)}`
+      const openIds = Array.isArray(parsed?.[key]?.openQuestionIds) ? parsed[key].openQuestionIds.map(String) : []
+      const scrollTopRaw = parsed?.[key]?.scrollTop
+      const scrollTop = Number.isFinite(Number(scrollTopRaw)) ? Number(scrollTopRaw) : null
+      setOpenAssignmentQuestionIds(openIds)
+      setPendingAssignmentScrollTop(scrollTop)
+      didRestoreAssignmentScrollRef.current = null
+    } catch {
+      setOpenAssignmentQuestionIds([])
+      setPendingAssignmentScrollTop(null)
+      didRestoreAssignmentScrollRef.current = null
+    }
+  }, [assignmentUiStateStorageKey, expandedSessionId, selectedAssignmentId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!expandedSessionId || !selectedAssignmentId) return
+    try {
+      const raw = window.sessionStorage.getItem(assignmentUiStateStorageKey)
+      const parsed = raw ? JSON.parse(raw) : {}
+      const key = `${String(expandedSessionId)}:${String(selectedAssignmentId)}`
+      parsed[key] = { ...(parsed[key] || {}), openQuestionIds: openAssignmentQuestionIds.map(String) }
+      window.sessionStorage.setItem(assignmentUiStateStorageKey, JSON.stringify(parsed))
+    } catch {}
+  }, [assignmentUiStateStorageKey, expandedSessionId, openAssignmentQuestionIds, selectedAssignmentId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (sessionDetailsTab !== 'assignments') return
+    if (!expandedSessionId || !selectedAssignmentId) return
+    if (pendingAssignmentScrollTop == null) return
+    const key = `${String(expandedSessionId)}:${String(selectedAssignmentId)}`
+    if (didRestoreAssignmentScrollRef.current === key) return
+    const el = sessionDetailsScrollRef.current
+    if (!el) return
+    // Wait a frame so <details> open state and question content has been laid out.
+    window.requestAnimationFrame(() => {
+      try {
+        el.scrollTop = Math.max(0, pendingAssignmentScrollTop)
+        didRestoreAssignmentScrollRef.current = key
+      } catch {}
+    })
+  }, [expandedSessionId, pendingAssignmentScrollTop, selectedAssignmentId, sessionDetailsTab])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1710,14 +1775,24 @@ export default function Dashboard() {
     const qpSessionId = typeof router.query.sessionId === 'string' ? router.query.sessionId : ''
     const qpTab = typeof router.query.tab === 'string' ? router.query.tab : ''
     const qpAssignmentId = typeof router.query.assignmentId === 'string' ? router.query.assignmentId : ''
+    const qpQuestionId = typeof router.query.questionId === 'string' ? router.query.questionId : ''
+    const qpScrollTop = typeof router.query.scrollTop === 'string' ? router.query.scrollTop : ''
 
-    const applyRestore = async (payload: { section?: string; sessionId: string; tab?: string; assignmentId?: string }) => {
+    const applyRestore = async (payload: { section?: string; sessionId: string; tab?: string; assignmentId?: string; questionId?: string; openQuestionIds?: string[]; scrollTop?: number }) => {
       const sid = String(payload?.sessionId || '').trim()
       if (!sid) return
 
       const nextSection = payload?.section === 'sessions' ? ('sessions' as SectionId) : null
       const nextTab = payload?.tab === 'assignments' ? 'assignments' : null
       const aid = String(payload?.assignmentId || '').trim()
+      const focusQuestionId = String(payload?.questionId || '').trim()
+      const openFromPayload = Array.isArray(payload?.openQuestionIds) ? payload.openQuestionIds.map(String) : []
+      const scrollTop = Number.isFinite(Number(payload?.scrollTop)) ? Number(payload.scrollTop) : null
+      const nextOpen = (() => {
+        const set = new Set(openFromPayload.map(String))
+        if (focusQuestionId) set.add(focusQuestionId)
+        return Array.from(set)
+      })()
 
       if (nextSection) setActiveSection(nextSection)
       if (nextTab) {
@@ -1727,6 +1802,15 @@ export default function Dashboard() {
         } catch {}
         if (aid) {
           setSelectedAssignmentId(aid)
+          setOpenAssignmentQuestionIds(nextOpen)
+          setPendingAssignmentScrollTop(scrollTop)
+          try {
+            const raw = window.sessionStorage.getItem(assignmentUiStateStorageKey)
+            const parsed = raw ? JSON.parse(raw) : {}
+            const key = `${sid}:${aid}`
+            parsed[key] = { ...(parsed[key] || {}), openQuestionIds: nextOpen, scrollTop: scrollTop != null ? scrollTop : (parsed[key]?.scrollTop ?? 0) }
+            window.sessionStorage.setItem(assignmentUiStateStorageKey, JSON.stringify(parsed))
+          } catch {}
           try {
             fetchAssignmentDetails(sid, aid)
           } catch {}
@@ -1735,7 +1819,14 @@ export default function Dashboard() {
     }
 
     if (qpSessionId && qpTab === 'assignments') {
-      void applyRestore({ section: 'sessions', sessionId: qpSessionId, tab: qpTab, assignmentId: qpAssignmentId || undefined })
+      void applyRestore({
+        section: 'sessions',
+        sessionId: qpSessionId,
+        tab: qpTab,
+        assignmentId: qpAssignmentId || undefined,
+        questionId: qpQuestionId || undefined,
+        scrollTop: Number.isFinite(Number(qpScrollTop)) ? Number(qpScrollTop) : undefined,
+      })
       return
     }
 
@@ -1749,7 +1840,7 @@ export default function Dashboard() {
       }
       window.sessionStorage.removeItem('pa:assignmentReturn')
     } catch {}
-  }, [openSessionDetails, router.isReady, router.query.assignmentId, router.query.sessionId, router.query.tab])
+  }, [assignmentUiStateStorageKey, openSessionDetails, router.isReady, router.query.assignmentId, router.query.questionId, router.query.scrollTop, router.query.sessionId, router.query.tab])
 
   const openPastSessionsList = useCallback((ids: string[]) => {
     const safeIds = (ids || []).map(String).filter(Boolean)
@@ -3210,7 +3301,26 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3">
+                    <div
+                      className="flex-1 overflow-y-auto p-3"
+                      ref={sessionDetailsScrollRef}
+                      onScroll={() => {
+                        if (typeof window === 'undefined') return
+                        if (sessionDetailsTab !== 'assignments') return
+                        if (!expandedSessionId || !selectedAssignmentId) return
+                        const el = sessionDetailsScrollRef.current
+                        if (!el) return
+                        const scrollTop = Math.max(0, Math.floor(el.scrollTop || 0))
+                        setPendingAssignmentScrollTop(scrollTop)
+                        try {
+                          const raw = window.sessionStorage.getItem(assignmentUiStateStorageKey)
+                          const parsed = raw ? JSON.parse(raw) : {}
+                          const key = `${String(expandedSessionId)}:${String(selectedAssignmentId)}`
+                          parsed[key] = { ...(parsed[key] || {}), scrollTop }
+                          window.sessionStorage.setItem(assignmentUiStateStorageKey, JSON.stringify(parsed))
+                        } catch {}
+                      }}
+                    >
                       {sessionDetailsTab === 'materials' ? (
                         <div className="space-y-2">
                           <div className="p-3 border border-white/10 rounded bg-white/5 space-y-3">
@@ -3798,7 +3908,22 @@ export default function Dashboard() {
                                       {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length > 0 ? (
                                         <div className="space-y-2">
                                           {selectedAssignment.questions.map((q: any, idx: number) => (
-                                            <details key={q.id || idx} className="border border-white/10 rounded p-2">
+                                            <details
+                                              key={q.id || idx}
+                                              className="border border-white/10 rounded p-2"
+                                              open={q?.id ? openAssignmentQuestionIdSet.has(String(q.id)) : undefined}
+                                              onToggle={event => {
+                                                if (!q?.id) return
+                                                const open = Boolean((event.currentTarget as HTMLDetailsElement).open)
+                                                const qid = String(q.id)
+                                                setOpenAssignmentQuestionIds(prev => {
+                                                  const next = new Set((prev || []).map(String))
+                                                  if (open) next.add(qid)
+                                                  else next.delete(qid)
+                                                  return Array.from(next)
+                                                })
+                                              }}
+                                            >
                                               <summary className="cursor-pointer font-medium text-sm">
                                                 Question {idx + 1}
                                               </summary>
@@ -3833,6 +3958,25 @@ export default function Dashboard() {
                                                   <Link
                                                     className="btn btn-primary text-xs"
                                                     href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(q.id))}`}
+                                                    onClick={() => {
+                                                      if (typeof window === 'undefined') return
+                                                      if (!expandedSessionId || !selectedAssignment?.id || !q?.id) return
+                                                      try {
+                                                        const scrollTop = Math.max(0, Math.floor(sessionDetailsScrollRef.current?.scrollTop || 0))
+                                                        window.sessionStorage.setItem(
+                                                          'pa:assignmentReturn',
+                                                          JSON.stringify({
+                                                            section: 'sessions',
+                                                            sessionId: String(expandedSessionId),
+                                                            tab: 'assignments',
+                                                            assignmentId: String(selectedAssignment.id),
+                                                            questionId: String(q.id),
+                                                            openQuestionIds: (openAssignmentQuestionIds || []).map(String),
+                                                            scrollTop,
+                                                          })
+                                                        )
+                                                      } catch {}
+                                                    }}
                                                   >
                                                     Answer on canvas
                                                   </Link>

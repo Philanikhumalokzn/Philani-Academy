@@ -35,19 +35,38 @@ export default function AssignmentQuestionPage() {
     params.set('sessionId', sessionId)
     params.set('tab', 'assignments')
     if (assignmentId) params.set('assignmentId', assignmentId)
+    if (questionId) params.set('questionId', questionId)
+
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.sessionStorage.getItem('pa:assignmentReturn')
+        const parsed = raw ? JSON.parse(raw) : null
+        const scrollTopRaw = parsed?.scrollTop
+        const scrollTop = Number.isFinite(Number(scrollTopRaw)) ? Math.floor(Number(scrollTopRaw)) : null
+        if (scrollTop != null) params.set('scrollTop', String(scrollTop))
+      }
+    } catch {}
+
     return `${base}?${params.toString()}`
-  }, [assignmentId, sessionId])
+  }, [assignmentId, questionId, sessionId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!sessionId || !assignmentId) return
     try {
-      window.sessionStorage.setItem(
-        'pa:assignmentReturn',
-        JSON.stringify({ section: 'sessions', sessionId, tab: 'assignments', assignmentId })
-      )
+      const raw = window.sessionStorage.getItem('pa:assignmentReturn')
+      const prev = raw ? JSON.parse(raw) : null
+      const next = {
+        ...(prev && typeof prev === 'object' ? prev : {}),
+        section: 'sessions',
+        sessionId,
+        tab: 'assignments',
+        assignmentId,
+        questionId,
+      }
+      window.sessionStorage.setItem('pa:assignmentReturn', JSON.stringify(next))
     } catch {}
-  }, [assignmentId, sessionId])
+  }, [assignmentId, questionId, sessionId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

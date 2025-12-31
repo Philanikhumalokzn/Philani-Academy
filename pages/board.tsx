@@ -212,13 +212,15 @@ export default function BoardPage() {
         </div>
         {!lessonAuthoring && (
           <div className="board-fullscreen__controls">
-            {status === 'authenticated' && selectedGrade && gradeTokenEndpoint && (
+            {status === 'authenticated' && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   className="board-fullscreen__back"
                   aria-label={isBoardAdmin ? (jitsiMuteState.audioMuted ? 'Start teacher audio' : 'Stop teacher audio') : (teacherAudioEnabled ? 'Stop listening to teacher audio' : 'Listen to teacher audio')}
+                  disabled={!gradeTokenEndpoint}
                   onClick={async () => {
+                    if (!gradeTokenEndpoint) return
                     if (isBoardAdmin) {
                       // Teacher/admin: toggle their mic (commentary).
                       if (!jitsiControls) {
@@ -248,7 +250,9 @@ export default function BoardPage() {
                   type="button"
                   className="board-fullscreen__back"
                   aria-label={teacherVideoVisible ? 'Hide teacher video' : 'Show teacher video'}
+                  disabled={!gradeTokenEndpoint}
                   onClick={async () => {
+                    if (!gradeTokenEndpoint) return
                     // Ensure we stay connected when opening the overlay.
                     setTeacherAudioEnabled(true)
                     setTeacherVideoVisible(prev => !prev)
@@ -271,7 +275,9 @@ export default function BoardPage() {
                     type="button"
                     className="board-fullscreen__back"
                     aria-label={studentMicEnabled ? 'Mute your microphone' : 'Unmute your microphone'}
+                    disabled={!gradeTokenEndpoint}
                     onClick={async () => {
+                      if (!gradeTokenEndpoint) return
                       // Student mic publish toggle.
                       const next = !studentMicEnabled
                       setTeacherAudioEnabled(true)

@@ -64,8 +64,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (authToken as any).email === ownerEmail
 
-  const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !isOwner) return res.status(403).json({ message: 'Meeting not started yet' })
+  // Do not hard-block learners if the teacher hasn't explicitly marked the session as started.
+  // JaaS lobby can handle waiting until a moderator arrives.
 
   // Compute room name same as /room endpoint
   const secret = process.env.ROOM_SECRET || ''

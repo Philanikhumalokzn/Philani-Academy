@@ -57,13 +57,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const ownerEmail = process.env.OWNER_EMAIL || process.env.NEXT_PUBLIC_OWNER_EMAIL || ''
   const isOwner = ownerEmail && (token as any).email === ownerEmail
 
-  // If session isn't active and requester is not owner, deny
-  // The Prisma client types may not yet include `jitsiActive` until the migration is applied
-  // so read it dynamically to avoid a TypeScript compile failure during deploy.
-  const jitsiActive = (rec as any)?.jitsiActive ?? false
-  if (!jitsiActive && !isOwner) {
-    return res.status(403).json({ message: 'Meeting not started yet' })
-  }
+  // Do not hard-block learners if the teacher hasn't explicitly marked the session as started.
+  // JaaS lobby can handle waiting until a moderator arrives.
 
   const secret = process.env.ROOM_SECRET || ''
   if (!secret) return res.status(500).json({ message: 'Room secret not configured' })

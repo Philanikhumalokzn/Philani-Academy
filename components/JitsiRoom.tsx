@@ -109,7 +109,11 @@ export default function JitsiRoom({
               jwtToken = tkJson?.token
               if (tkJson?.roomName) roomName = tkJson.roomName
             } else {
-              if (tkRes.status === 403) {
+              const body = await tkRes.json().catch(() => null)
+              const serverMessage = typeof body?.message === 'string' ? body.message.trim() : ''
+              if (serverMessage) {
+                setInitError(serverMessage)
+              } else if (tkRes.status === 403) {
                 setInitError('You do not have access to this meeting.')
               } else {
                 setInitError(`Failed to fetch meeting token (${tkRes.status}).`)

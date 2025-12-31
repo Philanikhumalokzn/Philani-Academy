@@ -152,7 +152,9 @@ export default function JitsiRoom({
             disableDeepLinking: true,
             lobbyEnabled: true,
             // Silent/background join: skip the pre-join UI so the iframe immediately joins.
+            // Jitsi config keys have changed over time; set both the legacy and newer knobs.
             prejoinPageEnabled: silentJoin ? false : undefined,
+            prejoinConfig: silentJoin ? { enabled: false } : undefined,
             enableWelcomePage: silentJoin ? false : undefined,
             startWithAudioMuted: Boolean(startWithAudioMuted),
             startWithVideoMuted: Boolean(startWithVideoMuted),

@@ -7469,7 +7469,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {!isAdmin && typeof onRequestVideoOverlay === 'function' && (
+                    {typeof onRequestVideoOverlay === 'function' && (
                       <button
                         type="button"
                         className="px-2 py-1"

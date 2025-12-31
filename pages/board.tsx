@@ -191,12 +191,12 @@ export default function BoardPage() {
           isAdmin={isBoardAdmin}
           boardId={lessonAuthoring ? (lessonAuthoringBoardId || undefined) : undefined}
           autoOpenDiagramTray={Boolean(lessonAuthoring && lessonAuthoringModule === 'diagram')}
-          onRequestVideoOverlay={!isBoardAdmin
-            ? () => {
+          onRequestVideoOverlay={lessonAuthoring
+            ? undefined
+            : () => {
               setTeacherAudioEnabled(true)
               setTeacherVideoVisible(prev => !prev)
-            }
-            : undefined}
+            }}
           lessonAuthoring={lessonAuthoring && lessonAuthoringPhase && lessonAuthoringPointId
             ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
             : undefined}

@@ -21,6 +21,7 @@ type Props = {
   height?: number | string
   className?: string
   showControls?: boolean
+  silentJoin?: boolean
   onControlsChange?: (controls: JitsiControls | null) => void
   onMuteStateChange?: (state: JitsiMuteState) => void
   toolbarButtons?: string[]
@@ -38,6 +39,7 @@ export default function JitsiRoom({
   height,
   className,
   showControls = true,
+  silentJoin = false,
   onControlsChange,
   onMuteStateChange,
   toolbarButtons,
@@ -149,6 +151,9 @@ export default function JitsiRoom({
           configOverwrite: {
             disableDeepLinking: true,
             lobbyEnabled: true,
+            // Silent/background join: skip the pre-join UI so the iframe immediately joins.
+            prejoinPageEnabled: silentJoin ? false : undefined,
+            enableWelcomePage: silentJoin ? false : undefined,
             startWithAudioMuted: Boolean(startWithAudioMuted),
             startWithVideoMuted: Boolean(startWithVideoMuted),
           },

@@ -132,6 +132,24 @@ export default function BoardPage() {
     (teacherAudioEnabled || teacherVideoVisible || studentMicEnabled || isBoardAdmin)
   )
 
+  // Student live-board behavior: as soon as they open the board, connect to the meeting in the
+  // background (mic/cam muted by default). This mirrors the dashboard live view, but without
+  // forcing the video UI to be visible.
+  const didAutoJoinKeyRef = useRef<string>('')
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    if (lessonAuthoring) return
+    if (!selectedGrade) return
+    if (!gradeTokenEndpoint) return
+    if (isBoardAdmin) return
+
+    const key = String(selectedGrade)
+    if (didAutoJoinKeyRef.current === key) return
+    didAutoJoinKeyRef.current = key
+
+    setTeacherAudioEnabled(true)
+  }, [gradeTokenEndpoint, isBoardAdmin, lessonAuthoring, selectedGrade, status])
+
   // For the live board we drive all UX from the header icons, so remove the in-iframe toolbar.
   const boardJitsiToolbarButtons: string[] = []
   // Always start with camera off; we will toggle it via the header for teachers only.
@@ -173,6 +191,12 @@ export default function BoardPage() {
           isAdmin={isBoardAdmin}
           boardId={lessonAuthoring ? (lessonAuthoringBoardId || undefined) : undefined}
           autoOpenDiagramTray={Boolean(lessonAuthoring && lessonAuthoringModule === 'diagram')}
+          onRequestVideoOverlay={!isBoardAdmin
+            ? () => {
+              setTeacherAudioEnabled(true)
+              setTeacherVideoVisible(prev => !prev)
+            }
+            : undefined}
           lessonAuthoring={lessonAuthoring && lessonAuthoringPhase && lessonAuthoringPointId
             ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
             : undefined}
@@ -387,6 +411,7 @@ export default function BoardPage() {
                 gradeLabel={activeGradeLabel}
                 boundsRef={canvasStageRef}
                 visible={teacherVideoVisible}
+                silentJoin
                 toolbarButtons={boardJitsiToolbarButtons}
                 startWithAudioMuted={startWithAudioMuted}
                 startWithVideoMuted={startWithVideoMuted}

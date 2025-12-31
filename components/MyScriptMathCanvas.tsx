@@ -235,6 +235,7 @@ type MyScriptMathCanvasProps = {
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
   onLatexOutputChange?: (latex: string) => void
+  onRequestVideoOverlay?: () => void
   lessonAuthoring?: { phaseKey: string; pointId: string }
 }
 
@@ -334,7 +335,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -7370,7 +7371,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(isAdmin || quizActive) ? (
+                {(isAdmin || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
                   <div className="flex items-center gap-2">
                     {isCompactViewport && (
                       <button
@@ -7476,6 +7477,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           aria-hidden="true"
                         >
                           <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.06 7.06 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.65.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.25.1.52.01.65-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" />
+                        </svg>
+                      </button>
+                    )}
+
+                    {!isAdmin && typeof onRequestVideoOverlay === 'function' && (
+                      <button
+                        type="button"
+                        className="px-2 py-1"
+                        title="Video"
+                        aria-label="Open live video"
+                        onClick={() => {
+                          try {
+                            onRequestVideoOverlay()
+                          } catch {}
+                        }}
+                        disabled={Boolean(fatalError)}
+                      >
+                        <span className="sr-only">Video</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="currentColor"
+                          className="text-slate-700"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
+                          <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
                         </svg>
                       </button>
                     )}

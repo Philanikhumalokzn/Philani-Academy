@@ -4545,6 +4545,9 @@ export default function Dashboard() {
                   passwordEndpoint={null}
                   isOwner={isOwnerUser}
                   showControls={false}
+                  silentJoin
+                  startWithAudioMuted
+                  startWithVideoMuted
                   onControlsChange={setLiveControls}
                 />
               ) : (
@@ -4595,6 +4598,10 @@ export default function Dashboard() {
                         defaultOrientation="portrait"
                         autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}
                         lessonAuthoring={win.lessonAuthoring}
+                        onRequestVideoOverlay={() => {
+                          setLiveOverlayChromeVisible(true)
+                          setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
+                        }}
                         onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
                       />
                     )}

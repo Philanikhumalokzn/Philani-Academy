@@ -7373,19 +7373,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                 {(isAdmin || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
                   <div className="flex items-center gap-2">
-                    {isCompactViewport && (
+                    {isAdmin && isCompactViewport && (
                       <button
                         type="button"
-                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
+                        className="px-2 py-1"
                         title="Diagrams"
                         onClick={() => {
-                          if (!isAdmin) return
                           toggleMobileDiagramTray()
                           openPickerOrApplySingle('diagram')
                         }}
-                        disabled={!isAdmin || Boolean(fatalError)}
-                        aria-hidden={!isAdmin}
-                        tabIndex={isAdmin ? 0 : -1}
+                        disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">Diagrams</span>
                         <svg
@@ -7405,19 +7402,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isCompactViewport && (
+                    {isAdmin && isCompactViewport && (
                       <button
                         type="button"
-                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
+                        className="px-2 py-1"
                         title="Text"
                         onClick={() => {
-                          if (!isAdmin) return
                           toggleMobileTextTray()
                           openPickerOrApplySingle('text')
                         }}
-                        disabled={!isAdmin || Boolean(fatalError)}
-                        aria-hidden={!isAdmin}
-                        tabIndex={isAdmin ? 0 : -1}
+                        disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">Text</span>
                         <svg
@@ -7434,37 +7428,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isCompactViewport && (
+                    {isAdmin && isCompactViewport && (
                       <button
                         type="button"
-                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
+                        className="px-2 py-1"
                         title="LaTeX"
                         onClick={() => {
-                          if (!isAdmin) return
                           toggleMobileLatexTray()
                           openPickerOrApplySingle('latex')
                         }}
-                        disabled={!isAdmin || Boolean(fatalError)}
-                        aria-hidden={!isAdmin}
-                        tabIndex={isAdmin ? 0 : -1}
+                        disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">LaTeX</span>
                         <span className="text-slate-700 text-[16px] leading-none font-semibold" aria-hidden="true">Σ</span>
                       </button>
                     )}
 
-                    {isOverlayMode && (
+                    {isAdmin && isOverlayMode && (
                       <button
                         type="button"
-                        className={`px-2 py-1${isAdmin ? '' : ' invisible'}`}
+                        className="px-2 py-1"
                         title="Canvas controls"
                         onClick={() => {
-                          if (!isAdmin) return
                           openOverlayControls()
                         }}
-                        disabled={!isAdmin || status !== 'ready' || Boolean(fatalError)}
-                        aria-hidden={!isAdmin}
-                        tabIndex={isAdmin ? 0 : -1}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
                       >
                         <span className="sr-only">Canvas controls</span>
                         <svg

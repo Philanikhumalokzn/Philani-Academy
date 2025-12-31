@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import BrandLogo from '../components/BrandLogo'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
+import type { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 const FloatingJitsiWindow = dynamic(() => import('../components/FloatingJitsiWindow'), { ssr: false })
@@ -116,6 +117,28 @@ export default function BoardPage() {
     return `/api/sessions/grade/${selectedGrade}/token`
   }, [gradeReady, selectedGrade])
 
+  const [teacherAudioEnabled, setTeacherAudioEnabled] = useState(false)
+  const [teacherVideoVisible, setTeacherVideoVisible] = useState(false)
+  const [studentMicEnabled, setStudentMicEnabled] = useState(false)
+  const [jitsiControls, setJitsiControls] = useState<JitsiControls | null>(null)
+  const [jitsiMuteState, setJitsiMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
+
+  const shouldMountJitsi = Boolean(
+    status === 'authenticated' &&
+    !lessonAuthoring &&
+    selectedGrade &&
+    gradeRoomName &&
+    gradeTokenEndpoint &&
+    (teacherAudioEnabled || teacherVideoVisible || studentMicEnabled || isBoardAdmin)
+  )
+
+  // For the live board we drive all UX from the header icons, so remove the in-iframe toolbar.
+  const boardJitsiToolbarButtons: string[] = []
+  // Always start with camera off; we will toggle it via the header for teachers only.
+  const startWithVideoMuted = true
+  // Start with mic muted for everyone; teachers/students explicitly enable mic via header.
+  const startWithAudioMuted = true
+
   const handleGradeChange = (value: string) => {
     const next = normalizeGradeInput(value)
     setSelectedGrade(next)
@@ -189,6 +212,92 @@ export default function BoardPage() {
         </div>
         {!lessonAuthoring && (
           <div className="board-fullscreen__controls">
+            {status === 'authenticated' && selectedGrade && gradeTokenEndpoint && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="board-fullscreen__back"
+                  aria-label={isBoardAdmin ? (jitsiMuteState.audioMuted ? 'Start teacher audio' : 'Stop teacher audio') : (teacherAudioEnabled ? 'Stop listening to teacher audio' : 'Listen to teacher audio')}
+                  onClick={async () => {
+                    if (isBoardAdmin) {
+                      // Teacher/admin: toggle their mic (commentary).
+                      if (!jitsiControls) {
+                        setTeacherAudioEnabled(true)
+                        return
+                      }
+                      jitsiControls.toggleAudio()
+                      return
+                    }
+
+                    // Student: connect/disconnect to pull teacher audio.
+                    setTeacherAudioEnabled(prev => !prev)
+                    if (teacherAudioEnabled && !studentMicEnabled && !teacherVideoVisible) {
+                      setTeacherVideoVisible(false)
+                      setStudentMicEnabled(false)
+                    }
+                  }}
+                >
+                  <span className="sr-only">Teacher audio</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M3 10v4a2 2 0 0 0 2 2h2.1l4.4 3.3A1 1 0 0 0 13 18.8V5.2a1 1 0 0 0-1.6-.8L7.1 8H5a2 2 0 0 0-2 2z" />
+                    <path d="M16.5 8.2a1 1 0 0 1 1.4 0A6 6 0 0 1 20 12a6 6 0 0 1-2.1 3.8 1 1 0 1 1-1.3-1.5A4 4 0 0 0 18 12a4 4 0 0 0-1.5-2.3 1 1 0 0 1 0-1.5z" opacity="0.65" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  className="board-fullscreen__back"
+                  aria-label={teacherVideoVisible ? 'Hide teacher video' : 'Show teacher video'}
+                  onClick={async () => {
+                    // Ensure we stay connected when opening the overlay.
+                    setTeacherAudioEnabled(true)
+                    setTeacherVideoVisible(prev => !prev)
+
+                    // Teacher/admin: toggles their own camera when they show/hide video.
+                    if (isBoardAdmin && jitsiControls) {
+                      jitsiControls.toggleVideo()
+                    }
+                  }}
+                >
+                  <span className="sr-only">Teacher video</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
+                    <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
+                  </svg>
+                </button>
+
+                {!isBoardAdmin && (
+                  <button
+                    type="button"
+                    className="board-fullscreen__back"
+                    aria-label={studentMicEnabled ? 'Mute your microphone' : 'Unmute your microphone'}
+                    onClick={async () => {
+                      // Student mic publish toggle.
+                      const next = !studentMicEnabled
+                      setTeacherAudioEnabled(true)
+                      setStudentMicEnabled(next)
+                      if (!jitsiControls) return
+                      // In JitsiMeetExternalAPI, toggleAudio controls the local mic mute state.
+                      jitsiControls.toggleAudio()
+                    }}
+                  >
+                    <span className="sr-only">Your microphone</span>
+                    {studentMicEnabled ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
+                        <path d="M7 11a1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.08A7 7 0 0 0 19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0z" opacity="0.65" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V6z" opacity="0.65" />
+                        <path d="M5 11a1 1 0 1 1 2 0 5 5 0 0 0 8.5 3.5 1 1 0 1 1 1.4 1.4A7 7 0 0 1 13 17.92V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.08A7 7 0 0 1 5 11z" />
+                        <path d="M4 3.3a1 1 0 0 1 1.4 0l15.3 15.3a1 1 0 1 1-1.4 1.4L4 4.7a1 1 0 0 1 0-1.4z" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
             {isMobile ? (
               <button
                 type="button"
@@ -263,7 +372,7 @@ export default function BoardPage() {
               />
             )}
 
-            {!lessonAuthoring && !isMobile && selectedGrade && (
+            {shouldMountJitsi && (
               <FloatingJitsiWindow
                 roomName={gradeRoomName}
                 displayName={realtimeDisplayName}
@@ -271,6 +380,12 @@ export default function BoardPage() {
                 isOwner={isOwnerUser}
                 gradeLabel={activeGradeLabel}
                 boundsRef={canvasStageRef}
+                visible={teacherVideoVisible}
+                toolbarButtons={boardJitsiToolbarButtons}
+                startWithAudioMuted={startWithAudioMuted}
+                startWithVideoMuted={startWithVideoMuted}
+                onControlsChange={setJitsiControls}
+                onMuteStateChange={setJitsiMuteState}
               />
             )}
           </>

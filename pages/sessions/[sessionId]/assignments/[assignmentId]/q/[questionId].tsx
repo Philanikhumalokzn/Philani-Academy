@@ -27,47 +27,6 @@ export default function AssignmentQuestionPage() {
   const [metaVisible, setMetaVisible] = useState(false)
   const metaHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const backHref = useMemo(() => {
-    if (!sessionId) return '/dashboard'
-    const base = '/dashboard'
-    const params = new URLSearchParams()
-    params.set('section', 'sessions')
-    params.set('sessionId', sessionId)
-    params.set('tab', 'assignments')
-    if (assignmentId) params.set('assignmentId', assignmentId)
-    if (questionId) params.set('questionId', questionId)
-
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = window.sessionStorage.getItem('pa:assignmentReturn')
-        const parsed = raw ? JSON.parse(raw) : null
-        const scrollTopRaw = parsed?.scrollTop
-        const scrollTop = Number.isFinite(Number(scrollTopRaw)) ? Math.floor(Number(scrollTopRaw)) : null
-        if (scrollTop != null) params.set('scrollTop', String(scrollTop))
-      }
-    } catch {}
-
-    return `${base}?${params.toString()}`
-  }, [assignmentId, questionId, sessionId])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!sessionId || !assignmentId) return
-    try {
-      const raw = window.sessionStorage.getItem('pa:assignmentReturn')
-      const prev = raw ? JSON.parse(raw) : null
-      const next = {
-        ...(prev && typeof prev === 'object' ? prev : {}),
-        section: 'sessions',
-        sessionId,
-        tab: 'assignments',
-        assignmentId,
-        questionId,
-      }
-      window.sessionStorage.setItem('pa:assignmentReturn', JSON.stringify(next))
-    } catch {}
-  }, [assignmentId, questionId, sessionId])
-
   useEffect(() => {
     if (typeof window === 'undefined') return
     const handler = () => {
@@ -198,7 +157,7 @@ export default function AssignmentQuestionPage() {
                 {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
               </div>
             </div>
-            <Link href={backHref} className="btn btn-ghost shrink-0">
+            <Link href="/dashboard" className="btn btn-ghost shrink-0">
               Back
             </Link>
           </div>

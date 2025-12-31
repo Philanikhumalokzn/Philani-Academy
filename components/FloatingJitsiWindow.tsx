@@ -1,5 +1,5 @@
 import { PointerEvent as ReactPointerEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react'
-import JitsiRoom from './JitsiRoom'
+import JitsiRoom, { JitsiControls, JitsiMuteState } from './JitsiRoom'
 
 const MIN_WIDTH = 280
 const MIN_HEIGHT = 180
@@ -22,9 +22,15 @@ type FloatingJitsiWindowProps = {
   isOwner?: boolean
   gradeLabel?: string
   boundsRef: RefObject<HTMLElement>
+  visible?: boolean
+  onControlsChange?: (controls: JitsiControls | null) => void
+  onMuteStateChange?: (state: JitsiMuteState) => void
+  toolbarButtons?: string[]
+  startWithAudioMuted?: boolean
+  startWithVideoMuted?: boolean
 }
 
-export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoint, isOwner, gradeLabel, boundsRef }: FloatingJitsiWindowProps) {
+export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoint, isOwner, gradeLabel, boundsRef, visible = true, onControlsChange, onMuteStateChange, toolbarButtons, startWithAudioMuted, startWithVideoMuted }: FloatingJitsiWindowProps) {
   const [position, setPosition] = useState({ x: 24, y: 24 })
   const [size, setSize] = useState({ width: 360, height: 240 })
   const [isMinimized, setIsMinimized] = useState(false)
@@ -177,6 +183,31 @@ export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoi
 
   if (!roomName) return null
 
+  // Hidden mode: keep the JaaS meeting connected (audio/mic) without showing any overlay.
+  // We intentionally do NOT use `display:none` so the iframe can keep streaming audio.
+  if (!visible) {
+    return (
+      <div
+        aria-hidden="true"
+        style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: 1, height: 1, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}
+      >
+        <JitsiRoom
+          roomName={roomName}
+          displayName={displayName}
+          tokenEndpoint={tokenEndpoint}
+          isOwner={isOwner}
+          showControls={false}
+          height={1}
+          toolbarButtons={toolbarButtons}
+          startWithAudioMuted={startWithAudioMuted}
+          startWithVideoMuted={startWithVideoMuted}
+          onControlsChange={onControlsChange}
+          onMuteStateChange={onMuteStateChange}
+        />
+      </div>
+    )
+  }
+
   const currentWidth = isMinimized ? MINIMIZED_WIDTH : size.width
   const currentHeight = isMinimized ? MINIMIZED_HEIGHT : size.height
 
@@ -206,6 +237,11 @@ export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoi
             showControls={false}
             height="100%"
             className="floating-video-window__jitsi"
+            toolbarButtons={toolbarButtons}
+            startWithAudioMuted={startWithAudioMuted}
+            startWithVideoMuted={startWithVideoMuted}
+            onControlsChange={onControlsChange}
+            onMuteStateChange={onMuteStateChange}
           />
         </div>
       )}

@@ -6,6 +6,11 @@ export type JitsiControls = {
   hangup: () => void
 }
 
+export type JitsiMuteState = {
+  audioMuted: boolean
+  videoMuted: boolean
+}
+
 type Props = {
   roomName: string
   displayName?: string
@@ -17,6 +22,10 @@ type Props = {
   className?: string
   showControls?: boolean
   onControlsChange?: (controls: JitsiControls | null) => void
+  onMuteStateChange?: (state: JitsiMuteState) => void
+  toolbarButtons?: string[]
+  startWithAudioMuted?: boolean
+  startWithVideoMuted?: boolean
 }
 
 export default function JitsiRoom({
@@ -30,11 +39,15 @@ export default function JitsiRoom({
   className,
   showControls = true,
   onControlsChange,
+  onMuteStateChange,
+  toolbarButtons,
+  startWithAudioMuted,
+  startWithVideoMuted,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const apiRef = useRef<any>(null)
-  const [audioMuted, setAudioMuted] = useState(false)
-  const [videoMuted, setVideoMuted] = useState(false)
+  const [audioMuted, setAudioMuted] = useState(Boolean(startWithAudioMuted))
+  const [videoMuted, setVideoMuted] = useState(Boolean(startWithVideoMuted))
   const [initError, setInitError] = useState<string | null>(null)
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
@@ -111,12 +124,21 @@ export default function JitsiRoom({
           }
         }
 
+        const resolvedToolbarButtons = Array.isArray(toolbarButtons)
+          ? toolbarButtons
+          : ['microphone', 'camera', 'hangup', 'tileview']
+
         const options: any = {
           roomName,
           parentNode: containerRef.current,
-          interfaceConfigOverwrite: { TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup', 'tileview'] },
-          configOverwrite: { disableDeepLinking: true, lobbyEnabled: true },
-          userInfo: { displayName: displayName || 'Learner' }
+          interfaceConfigOverwrite: { TOOLBAR_BUTTONS: resolvedToolbarButtons },
+          configOverwrite: {
+            disableDeepLinking: true,
+            lobbyEnabled: true,
+            startWithAudioMuted: Boolean(startWithAudioMuted),
+            startWithVideoMuted: Boolean(startWithVideoMuted),
+          },
+          userInfo: { displayName: displayName || 'Learner' },
         }
 
         if (jwtToken) options.jwt = jwtToken
@@ -133,10 +155,27 @@ export default function JitsiRoom({
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
         onControlsChange?.({ toggleAudio, toggleVideo, hangup })
 
+        // Initial best-effort sync (Jitsi will emit events as it settles).
+        try {
+          onMuteStateChange?.({ audioMuted: Boolean(startWithAudioMuted), videoMuted: Boolean(startWithVideoMuted) })
+        } catch {}
+
         // attach listeners safely
         try {
-          apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => setAudioMuted(e.muted))
-          apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => setVideoMuted(e.muted))
+          apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => {
+            const next = Boolean(e?.muted)
+            setAudioMuted(next)
+            try {
+              onMuteStateChange?.({ audioMuted: next, videoMuted })
+            } catch {}
+          })
+          apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => {
+            const next = Boolean(e?.muted)
+            setVideoMuted(next)
+            try {
+              onMuteStateChange?.({ audioMuted, videoMuted: next })
+            } catch {}
+          })
         } catch (err) {
           // ignore
         }
@@ -200,7 +239,7 @@ export default function JitsiRoom({
         delete (apiRef.current as any)._lobbyToggleListener
       }
     }
-  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, toggleAudio, toggleVideo, hangup])
+  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, onMuteStateChange, startWithAudioMuted, startWithVideoMuted, toggleAudio, toggleVideo, hangup, toolbarButtons, audioMuted, videoMuted])
 
   const toggleLobby = async () => {
     if (!apiRef.current) return

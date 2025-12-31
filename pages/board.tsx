@@ -270,30 +270,6 @@ export default function BoardPage() {
                   </svg>
                 </button>
 
-                <button
-                  type="button"
-                  className="board-fullscreen__back"
-                  aria-label={teacherVideoVisible ? 'Hide teacher video' : 'Show teacher video'}
-                  disabled={!gradeTokenEndpoint}
-                  onClick={async () => {
-                    if (!gradeTokenEndpoint) return
-                    // Ensure we stay connected when opening the overlay.
-                    setTeacherAudioEnabled(true)
-                    setTeacherVideoVisible(prev => !prev)
-
-                    // Teacher/admin: toggles their own camera when they show/hide video.
-                    if (isBoardAdmin && jitsiControls) {
-                      jitsiControls.toggleVideo()
-                    }
-                  }}
-                >
-                  <span className="sr-only">Teacher video</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                    <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
-                    <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
-                  </svg>
-                </button>
-
                 {!isBoardAdmin && (
                   <button
                     type="button"
@@ -329,28 +305,78 @@ export default function BoardPage() {
               </div>
             )}
             {isMobile ? (
-              <button
-                type="button"
-                className="board-fullscreen__grade"
-                onClick={() => setGradePickerOpen(prev => !prev)}
-                aria-label="Choose grade"
-              >
-                {activeGradeLabel}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="board-fullscreen__grade"
+                  onClick={() => setGradePickerOpen(prev => !prev)}
+                  aria-label="Choose grade"
+                >
+                  {activeGradeLabel}
+                </button>
+                <button
+                  type="button"
+                  className="board-fullscreen__back"
+                  aria-label={teacherVideoVisible ? 'Hide teacher video' : 'Show teacher video'}
+                  disabled={!gradeTokenEndpoint}
+                  onClick={async () => {
+                    if (!gradeTokenEndpoint) return
+                    // Ensure we stay connected when opening the overlay.
+                    setTeacherAudioEnabled(true)
+                    setTeacherVideoVisible(prev => !prev)
+
+                    // Teacher/admin: toggles their own camera when they show/hide video.
+                    if (isBoardAdmin && jitsiControls) {
+                      jitsiControls.toggleVideo()
+                    }
+                  }}
+                >
+                  <span className="sr-only">Teacher video</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
+                    <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
+                  </svg>
+                </button>
+              </>
             ) : (
-              <select
-                className="input board-fullscreen__select"
-                value={selectedGrade ?? ''}
-                onChange={e => handleGradeChange(e.target.value)}
-                aria-label="Choose grade"
-              >
-                <option value="">Select a grade</option>
-                {gradeOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  className="input board-fullscreen__select"
+                  value={selectedGrade ?? ''}
+                  onChange={e => handleGradeChange(e.target.value)}
+                  aria-label="Choose grade"
+                >
+                  <option value="">Select a grade</option>
+                  {gradeOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="board-fullscreen__back"
+                  aria-label={teacherVideoVisible ? 'Hide teacher video' : 'Show teacher video'}
+                  disabled={!gradeTokenEndpoint}
+                  onClick={async () => {
+                    if (!gradeTokenEndpoint) return
+                    // Ensure we stay connected when opening the overlay.
+                    setTeacherAudioEnabled(true)
+                    setTeacherVideoVisible(prev => !prev)
+
+                    // Teacher/admin: toggles their own camera when they show/hide video.
+                    if (isBoardAdmin && jitsiControls) {
+                      jitsiControls.toggleVideo()
+                    }
+                  }}
+                >
+                  <span className="sr-only">Teacher video</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
+                    <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
+                  </svg>
+                </button>
+              </>
             )}
           </div>
         )}

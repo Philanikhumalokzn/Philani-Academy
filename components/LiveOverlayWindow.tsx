@@ -12,6 +12,7 @@ type LiveOverlayWindowProps = {
   title: string
   subtitle?: string
   className?: string
+  onRequestVideoOverlay?: () => void
   position: Point
   size: { width: number; height: number }
   minimized: boolean
@@ -34,6 +35,7 @@ export default function LiveOverlayWindow({
   title,
   subtitle,
   className,
+  onRequestVideoOverlay,
   position,
   size,
   minimized,
@@ -50,6 +52,7 @@ export default function LiveOverlayWindow({
   onResize,
   children
 }: LiveOverlayWindowProps) {
+  const isCanvasWindow = Boolean(className?.includes('live-window--canvas'))
   const dragStateRef = useRef<{ offsetX: number; offsetY: number } | null>(null)
   const resizeStateRef = useRef<{
     direction: ResizeDirection
@@ -244,6 +247,52 @@ export default function LiveOverlayWindow({
           {subtitle && <p className="live-window__eyebrow">{subtitle}</p>}
           <p className="live-window__title">{title}</p>
         </div>
+
+        {isCanvasWindow && (
+          <div className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
+            {typeof onRequestVideoOverlay === 'function' && (
+              <button
+                type="button"
+                title="Video"
+                aria-label="Open live video"
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  try {
+                    onRequestVideoOverlay()
+                  } catch {}
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
+                  <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
+                </svg>
+              </button>
+            )}
+
+            <button
+              type="button"
+              title="Close"
+              aria-label="Close canvas"
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
+                onClose(id)
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
       <div
         className="live-window__body"

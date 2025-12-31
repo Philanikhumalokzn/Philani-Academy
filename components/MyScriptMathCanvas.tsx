@@ -7469,34 +7469,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {typeof onRequestVideoOverlay === 'function' && (
-                      <button
-                        type="button"
-                        className="px-2 py-1"
-                        title="Video"
-                        aria-label="Open live video"
-                        onClick={() => {
-                          try {
-                            onRequestVideoOverlay()
-                          } catch {}
-                        }}
-                        disabled={Boolean(fatalError)}
-                      >
-                        <span className="sr-only">Video</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          width="18"
-                          height="18"
-                          fill="currentColor"
-                          className="text-slate-700"
-                          aria-hidden="true"
-                        >
-                          <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
-                          <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
-                        </svg>
-                      </button>
-                    )}
+
 
                     <button
                       type="button"

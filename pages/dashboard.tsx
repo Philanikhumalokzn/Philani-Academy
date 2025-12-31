@@ -4570,6 +4570,14 @@ export default function Dashboard() {
                         ? `live-window--canvas${liveOverlayChromeVisible ? ' live-window--chrome-visible' : ''}`
                         : undefined
                     }
+                    onRequestVideoOverlay={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? () => {
+                          setLiveOverlayChromeVisible(true)
+                          setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
+                        }
+                        : undefined
+                    }
                     position={win.position}
                     size={win.size}
                     minimized={win.minimized}

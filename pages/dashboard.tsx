@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
-import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
+import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -480,10 +480,6 @@ export default function Dashboard() {
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
-  const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
-  const [teacherAudioEnabled, setTeacherAudioEnabled] = useState(false)
-  const [teacherVideoVisible, setTeacherVideoVisible] = useState(true)
-  const [studentMicEnabled, setStudentMicEnabled] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [liveOverrideSessionId, setLiveOverrideSessionId] = useState<string | null>(null)
   const [resolvedLiveSessionId, setResolvedLiveSessionId] = useState<string | null>(null)
@@ -526,16 +522,6 @@ export default function Dashboard() {
   const heroBgEditHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!liveOverlayOpen) {
-      setLiveControls(null)
-      setTeacherAudioEnabled(false)
-      setTeacherVideoVisible(true)
-      setStudentMicEnabled(false)
-      setLiveMuteState({ audioMuted: true, videoMuted: true })
-    }
-  }, [liveOverlayOpen])
 
   // One shared hidden input so the dashboard button can open the file picker as a direct user gesture.
   // This keeps diagram upload standalone and avoids navigation.
@@ -820,13 +806,6 @@ export default function Dashboard() {
   }, [gradeReady, selectedGrade])
   const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
   const canJoinLiveClass = canLaunchCanvasOverlay
-
-  const shouldMountLiveMeeting = Boolean(
-    liveOverlayOpen &&
-    canJoinLiveClass &&
-    activeSessionId &&
-    (teacherAudioEnabled || teacherVideoVisible || studentMicEnabled || isTeacherOrAdminUser)
-  )
   const getNextWindowZ = useCallback(() => {
     windowZCounterRef.current += 1
     return windowZCounterRef.current
@@ -4553,135 +4532,21 @@ export default function Dashboard() {
                 >
                   Canvas
                 </button>
-
-                <button
-                  type="button"
-                  className="live-call-overlay__close"
-                  aria-label={isTeacherOrAdminUser ? (liveMuteState.audioMuted ? 'Start teacher audio' : 'Stop teacher audio') : (teacherAudioEnabled ? 'Stop listening to teacher audio' : 'Listen to teacher audio')}
-                  disabled={!canJoinLiveClass || !activeSessionId}
-                  onClick={() => {
-                    if (!canJoinLiveClass || !activeSessionId) return
-
-                    if (isTeacherOrAdminUser) {
-                      // Teacher/admin: toggle their mic (commentary).
-                      if (!liveControls) {
-                        setTeacherAudioEnabled(true)
-                        return
-                      }
-                      liveControls.toggleAudio()
-                      return
-                    }
-
-                    // Student: connect/disconnect to pull teacher audio.
-                    setTeacherAudioEnabled(prev => !prev)
-                    if (teacherAudioEnabled && !studentMicEnabled && !teacherVideoVisible) {
-                      setTeacherVideoVisible(false)
-                      setStudentMicEnabled(false)
-                    }
-                  }}
-                >
-                  <span className="sr-only">Teacher audio</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                    <path d="M3 10v4a2 2 0 0 0 2 2h2.1l4.4 3.3A1 1 0 0 0 13 18.8V5.2a1 1 0 0 0-1.6-.8L7.1 8H5a2 2 0 0 0-2 2z" />
-                    <path d="M16.5 8.2a1 1 0 0 1 1.4 0A6 6 0 0 1 20 12a6 6 0 0 1-2.1 3.8 1 1 0 1 1-1.3-1.5A4 4 0 0 0 18 12a4 4 0 0 0-1.5-2.3 1 1 0 0 1 0-1.5z" opacity="0.65" />
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  className="live-call-overlay__close"
-                  aria-label={teacherVideoVisible ? 'Hide teacher video' : 'Show teacher video'}
-                  disabled={!canJoinLiveClass || !activeSessionId}
-                  onClick={() => {
-                    if (!canJoinLiveClass || !activeSessionId) return
-                    setTeacherAudioEnabled(true)
-                    setTeacherVideoVisible(prev => !prev)
-
-                    if (isTeacherOrAdminUser && liveControls) {
-                      liveControls.toggleVideo()
-                    }
-                  }}
-                >
-                  <span className="sr-only">Teacher video</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                    <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
-                    <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
-                  </svg>
-                </button>
-
-                {!isTeacherOrAdminUser && (
-                  <button
-                    type="button"
-                    className="live-call-overlay__close"
-                    aria-label={studentMicEnabled ? 'Mute your microphone' : 'Unmute your microphone'}
-                    disabled={!canJoinLiveClass || !activeSessionId}
-                    onClick={() => {
-                      if (!canJoinLiveClass || !activeSessionId) return
-                      const next = !studentMicEnabled
-                      setTeacherAudioEnabled(true)
-                      setStudentMicEnabled(next)
-                      if (!liveControls) return
-                      liveControls.toggleAudio()
-                    }}
-                  >
-                    <span className="sr-only">Your microphone</span>
-                    {studentMicEnabled ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                        <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
-                        <path d="M7 11a1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.08A7 7 0 0 0 19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0z" opacity="0.65" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                        <path d="M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V6z" opacity="0.65" />
-                        <path d="M5 11a1 1 0 1 1 2 0 5 5 0 0 0 8.5 3.5 1 1 0 1 1 1.4 1.4A7 7 0 0 1 13 17.92V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.08A7 7 0 0 1 5 11z" />
-                        <path d="M4 3.3a1 1 0 0 1 1.4 0l15.3 15.3a1 1 0 1 1-1.4 1.4L4 4.7a1 1 0 0 1 0-1.4z" />
-                      </svg>
-                    )}
-                  </button>
-                )}
-
                 <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
                   ×
                 </button>
               </div>
-              {shouldMountLiveMeeting ? (
-                teacherVideoVisible ? (
-                  <JitsiRoom
-                    roomName={gradeRoomName}
-                    displayName={session?.user?.name || session?.user?.email}
-                    sessionId={activeSessionId}
-                    tokenEndpoint={null}
-                    passwordEndpoint={null}
-                    isOwner={isOwnerUser}
-                    showControls={false}
-                    toolbarButtons={[]}
-                    startWithAudioMuted
-                    startWithVideoMuted
-                    onControlsChange={setLiveControls}
-                    onMuteStateChange={setLiveMuteState}
-                  />
-                ) : (
-                  <div
-                    aria-hidden="true"
-                    style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: 1, height: 1, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}
-                  >
-                    <JitsiRoom
-                      roomName={gradeRoomName}
-                      displayName={session?.user?.name || session?.user?.email}
-                      sessionId={activeSessionId}
-                      tokenEndpoint={null}
-                      passwordEndpoint={null}
-                      isOwner={isOwnerUser}
-                      showControls={false}
-                      toolbarButtons={[]}
-                      startWithAudioMuted
-                      startWithVideoMuted
-                      onControlsChange={setLiveControls}
-                      onMuteStateChange={setLiveMuteState}
-                      height={1}
-                    />
-                  </div>
-                )
+              {canJoinLiveClass && activeSessionId ? (
+                <JitsiRoom
+                  roomName={gradeRoomName}
+                  displayName={session?.user?.name || session?.user?.email}
+                  sessionId={activeSessionId}
+                  tokenEndpoint={null}
+                  passwordEndpoint={null}
+                  isOwner={isOwnerUser}
+                  showControls={false}
+                  onControlsChange={setLiveControls}
+                />
               ) : (
                 <div className="live-call-overlay__placeholder">
                   <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>

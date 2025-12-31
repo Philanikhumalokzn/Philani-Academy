@@ -1692,7 +1692,7 @@ export default function Dashboard() {
     resetMaterialForm()
   }, [])
 
-  const openSessionDetails = useCallback((ids: string[], initialIndex = 0, initialTab: 'materials' | 'latex' | 'responses' = 'materials') => {
+  const openSessionDetails = useCallback((ids: string[], initialIndex = 0, initialTab: 'materials' | 'latex' | 'assignments' | 'responses' = 'materials') => {
     const safeIds = (ids || []).map(String).filter(Boolean)
     if (!safeIds.length) return
     const idx = Math.max(0, Math.min(initialIndex, safeIds.length - 1))
@@ -1702,6 +1702,54 @@ export default function Dashboard() {
     setSessionDetailsTab(initialTab)
     setSessionDetailsOpen(true)
   }, [])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    if (typeof window === 'undefined') return
+
+    const qpSessionId = typeof router.query.sessionId === 'string' ? router.query.sessionId : ''
+    const qpTab = typeof router.query.tab === 'string' ? router.query.tab : ''
+    const qpAssignmentId = typeof router.query.assignmentId === 'string' ? router.query.assignmentId : ''
+
+    const applyRestore = async (payload: { section?: string; sessionId: string; tab?: string; assignmentId?: string }) => {
+      const sid = String(payload?.sessionId || '').trim()
+      if (!sid) return
+
+      const nextSection = payload?.section === 'sessions' ? ('sessions' as SectionId) : null
+      const nextTab = payload?.tab === 'assignments' ? 'assignments' : null
+      const aid = String(payload?.assignmentId || '').trim()
+
+      if (nextSection) setActiveSection(nextSection)
+      if (nextTab) {
+        openSessionDetails([sid], 0, 'assignments')
+        try {
+          fetchAssignments(sid)
+        } catch {}
+        if (aid) {
+          setSelectedAssignmentId(aid)
+          try {
+            fetchAssignmentDetails(sid, aid)
+          } catch {}
+        }
+      }
+    }
+
+    if (qpSessionId && qpTab === 'assignments') {
+      void applyRestore({ section: 'sessions', sessionId: qpSessionId, tab: qpTab, assignmentId: qpAssignmentId || undefined })
+      return
+    }
+
+    // Fallback: browser back (no query params). Restore once from sessionStorage.
+    try {
+      const raw = window.sessionStorage.getItem('pa:assignmentReturn')
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        void applyRestore(parsed)
+      }
+      window.sessionStorage.removeItem('pa:assignmentReturn')
+    } catch {}
+  }, [openSessionDetails, router.isReady, router.query.assignmentId, router.query.sessionId, router.query.tab])
 
   const openPastSessionsList = useCallback((ids: string[]) => {
     const safeIds = (ids || []).map(String).filter(Boolean)

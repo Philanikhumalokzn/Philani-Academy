@@ -555,6 +555,8 @@ export default function Dashboard() {
   const [pendingAssignmentScrollTop, setPendingAssignmentScrollTop] = useState<number | null>(null)
   const didRestoreAssignmentScrollRef = useRef<string | null>(null)
   const sessionDetailsScrollRef = useRef<HTMLDivElement | null>(null)
+  const assignmentDetailsByQuestionIdRef = useRef<Record<string, HTMLDetailsElement | null>>({})
+  const suppressAssignmentDetailsToggleRef = useRef(false)
   const [assignmentResponsesByQuestionId, setAssignmentResponsesByQuestionId] = useState<Record<string, any>>({})
   const [assignmentResponsesLoading, setAssignmentResponsesLoading] = useState(false)
   const [assignmentResponsesError, setAssignmentResponsesError] = useState<string | null>(null)
@@ -641,6 +643,30 @@ export default function Dashboard() {
   }, [session])
 
   const openAssignmentQuestionIdSet = useMemo(() => new Set(openAssignmentQuestionIds.map(String)), [openAssignmentQuestionIds])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (sessionDetailsTab !== 'assignments') return
+    if (!expandedSessionId || !selectedAssignmentId) return
+
+    // Imperatively sync <details>.open so the UI matches restored state.
+    // This avoids relying on React-controlled <details open={...}> which can be flaky across browsers.
+    suppressAssignmentDetailsToggleRef.current = true
+    try {
+      for (const [qid, el] of Object.entries(assignmentDetailsByQuestionIdRef.current)) {
+        if (!el) continue
+        const shouldOpen = openAssignmentQuestionIdSet.has(String(qid))
+        if (el.open !== shouldOpen) {
+          el.open = shouldOpen
+        }
+      }
+    } finally {
+      // Let the DOM settle before re-enabling toggle handling.
+      window.setTimeout(() => {
+        suppressAssignmentDetailsToggleRef.current = false
+      }, 0)
+    }
+  }, [expandedSessionId, openAssignmentQuestionIdSet, selectedAssignmentId, sessionDetailsTab])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3911,9 +3937,14 @@ export default function Dashboard() {
                                             <details
                                               key={q.id || idx}
                                               className="border border-white/10 rounded p-2"
-                                              open={q?.id ? openAssignmentQuestionIdSet.has(String(q.id)) : undefined}
+                                              ref={el => {
+                                                const qid = q?.id ? String(q.id) : ''
+                                                if (!qid) return
+                                                assignmentDetailsByQuestionIdRef.current[qid] = el
+                                              }}
                                               onToggle={event => {
                                                 if (!q?.id) return
+                                                if (suppressAssignmentDetailsToggleRef.current) return
                                                 const open = Boolean((event.currentTarget as HTMLDetailsElement).open)
                                                 const qid = String(q.id)
                                                 setOpenAssignmentQuestionIds(prev => {

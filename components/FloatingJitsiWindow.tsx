@@ -184,51 +184,47 @@ export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoi
 
   if (!roomName) return null
 
-  // Hidden mode: keep the JaaS meeting connected (audio/mic) without showing any overlay.
-  // We intentionally do NOT use `display:none` so the iframe can keep streaming audio.
-  if (!visible) {
-    return (
-      <div
-        aria-hidden="true"
-        style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: 1, height: 1, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}
-      >
-        <JitsiRoom
-          roomName={roomName}
-          displayName={displayName}
-          tokenEndpoint={tokenEndpoint}
-          isOwner={isOwner}
-          silentJoin={silentJoin}
-          showControls={false}
-          height={1}
-          toolbarButtons={toolbarButtons}
-          startWithAudioMuted={startWithAudioMuted}
-          startWithVideoMuted={startWithVideoMuted}
-          onControlsChange={onControlsChange}
-          onMuteStateChange={onMuteStateChange}
-        />
-      </div>
-    )
-  }
-
   const currentWidth = isMinimized ? MINIMIZED_WIDTH : size.width
   const currentHeight = isMinimized ? MINIMIZED_HEIGHT : size.height
+
+  // Important: keep the meeting mounted even when hidden so toggling visibility does not
+  // dispose/recreate the iframe (which would trigger a fresh join).
+  // We intentionally do NOT use `display:none` so the iframe can keep streaming audio.
+  const hiddenShellStyle = {
+    position: 'absolute' as const,
+    left: '-9999px',
+    top: '-9999px',
+    width: 1,
+    height: 1,
+    overflow: 'hidden' as const,
+    opacity: 0,
+    pointerEvents: 'none' as const,
+  }
 
   return (
     <div
       className={`floating-video-window${isMinimized ? ' floating-video-window--minimized' : ''}${isDragging ? ' is-dragging' : ''}${isResizing ? ' is-resizing' : ''}`}
-      style={{ width: currentWidth, height: currentHeight, left: position.x, top: position.y }}
+      aria-hidden={!visible}
+      style={
+        visible
+          ? { width: currentWidth, height: currentHeight, left: position.x, top: position.y }
+          : hiddenShellStyle
+      }
     >
-      <div className="floating-video-window__header" onPointerDown={handleDragStart} role="presentation">
-        <div className="floating-video-window__heading">
-          <p className="floating-video-window__eyebrow">Live JaaS</p>
-          <p className="floating-video-window__title">{gradeLabel || 'Shared room'}</p>
+      {visible && (
+        <div className="floating-video-window__header" onPointerDown={handleDragStart} role="presentation">
+          <div className="floating-video-window__heading">
+            <p className="floating-video-window__eyebrow">Live JaaS</p>
+            <p className="floating-video-window__title">{gradeLabel || 'Shared room'}</p>
+          </div>
+          <div className="floating-video-window__header-controls">
+            <button type="button" className="floating-video-window__icon" onClick={toggleMinimize} aria-label={isMinimized ? 'Expand video call' : 'Minimize video call'}>
+              {isMinimized ? '■' : '—'}
+            </button>
+          </div>
         </div>
-        <div className="floating-video-window__header-controls">
-          <button type="button" className="floating-video-window__icon" onClick={toggleMinimize} aria-label={isMinimized ? 'Expand video call' : 'Minimize video call'}>
-            {isMinimized ? '■' : '—'}
-          </button>
-        </div>
-      </div>
+      )}
+
       {!isMinimized && (
         <div className="floating-video-window__body">
           <JitsiRoom
@@ -248,7 +244,8 @@ export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoi
           />
         </div>
       )}
-      {!isMinimized && (
+
+      {visible && !isMinimized && (
         <button
           type="button"
           className="floating-video-window__resize-handle"

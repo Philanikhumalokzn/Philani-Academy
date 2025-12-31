@@ -48,10 +48,20 @@ export default function JitsiRoom({
   const apiRef = useRef<any>(null)
   const [audioMuted, setAudioMuted] = useState(Boolean(startWithAudioMuted))
   const [videoMuted, setVideoMuted] = useState(Boolean(startWithVideoMuted))
+  const audioMutedRef = useRef(Boolean(startWithAudioMuted))
+  const videoMutedRef = useRef(Boolean(startWithVideoMuted))
   const [initError, setInitError] = useState<string | null>(null)
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
+
+  useEffect(() => {
+    audioMutedRef.current = audioMuted
+  }, [audioMuted])
+
+  useEffect(() => {
+    videoMutedRef.current = videoMuted
+  }, [videoMuted])
 
   const toggleAudio = useCallback(() => {
     if (!apiRef.current) return
@@ -161,23 +171,31 @@ export default function JitsiRoom({
 
         // Initial best-effort sync (Jitsi will emit events as it settles).
         try {
-          onMuteStateChange?.({ audioMuted: Boolean(startWithAudioMuted), videoMuted: Boolean(startWithVideoMuted) })
+          const initialAudio = Boolean(startWithAudioMuted)
+          const initialVideo = Boolean(startWithVideoMuted)
+          audioMutedRef.current = initialAudio
+          videoMutedRef.current = initialVideo
+          setAudioMuted(initialAudio)
+          setVideoMuted(initialVideo)
+          onMuteStateChange?.({ audioMuted: initialAudio, videoMuted: initialVideo })
         } catch {}
 
         // attach listeners safely
         try {
           apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => {
             const next = Boolean(e?.muted)
+            audioMutedRef.current = next
             setAudioMuted(next)
             try {
-              onMuteStateChange?.({ audioMuted: next, videoMuted })
+              onMuteStateChange?.({ audioMuted: next, videoMuted: videoMutedRef.current })
             } catch {}
           })
           apiRef.current.addEventListener('videoMuteStatusChanged', (e: any) => {
             const next = Boolean(e?.muted)
+            videoMutedRef.current = next
             setVideoMuted(next)
             try {
-              onMuteStateChange?.({ audioMuted, videoMuted: next })
+              onMuteStateChange?.({ audioMuted: audioMutedRef.current, videoMuted: next })
             } catch {}
           })
         } catch (err) {
@@ -243,7 +261,7 @@ export default function JitsiRoom({
         delete (apiRef.current as any)._lobbyToggleListener
       }
     }
-  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, onMuteStateChange, startWithAudioMuted, startWithVideoMuted, toggleAudio, toggleVideo, hangup, toolbarButtons, audioMuted, videoMuted])
+  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, onMuteStateChange, startWithAudioMuted, startWithVideoMuted, toggleAudio, toggleVideo, hangup, toolbarButtons])
 
   const toggleLobby = async () => {
     if (!apiRef.current) return

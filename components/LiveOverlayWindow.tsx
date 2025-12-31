@@ -13,6 +13,10 @@ type LiveOverlayWindowProps = {
   subtitle?: string
   className?: string
   onRequestVideoOverlay?: () => void
+  onToggleTeacherAudio?: () => void
+  teacherAudioEnabled?: boolean
+  onToggleStudentMic?: () => void
+  studentMicMuted?: boolean
   position: Point
   size: { width: number; height: number }
   minimized: boolean
@@ -36,6 +40,10 @@ export default function LiveOverlayWindow({
   subtitle,
   className,
   onRequestVideoOverlay,
+  onToggleTeacherAudio,
+  teacherAudioEnabled,
+  onToggleStudentMic,
+  studentMicMuted,
   position,
   size,
   minimized,
@@ -250,6 +258,61 @@ export default function LiveOverlayWindow({
 
         {isCanvasWindow && (
           <div className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
+            {typeof onToggleTeacherAudio === 'function' && (
+              <button
+                type="button"
+                title={teacherAudioEnabled ? 'Mute teacher audio' : 'Unmute teacher audio'}
+                aria-label={teacherAudioEnabled ? 'Stop listening to teacher audio' : 'Listen to teacher audio'}
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  try {
+                    onToggleTeacherAudio()
+                  } catch {}
+                }}
+              >
+                <span className="sr-only">Teacher audio</span>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10v4a2 2 0 0 0 2 2h2.1l4.4 3.3A1 1 0 0 0 13 18.8V5.2a1 1 0 0 0-1.6-.8L7.1 8H5a2 2 0 0 0-2 2z" />
+                  <path d="M16.5 8.2a1 1 0 0 1 1.4 0A6 6 0 0 1 20 12a6 6 0 0 1-2.1 3.8 1 1 0 1 1-1.3-1.5A4 4 0 0 0 18 12a4 4 0 0 0-1.5-2.3 1 1 0 0 1 0-1.5z" opacity="0.65" />
+                  {teacherAudioEnabled === false && (
+                    <path d="M4 3.3a1 1 0 0 1 1.4 0l15.3 15.3a1 1 0 1 1-1.4 1.4L4 4.7a1 1 0 0 1 0-1.4z" />
+                  )}
+                </svg>
+              </button>
+            )}
+
+            {typeof onToggleStudentMic === 'function' && (
+              <button
+                type="button"
+                title={studentMicMuted ? 'Unmute your microphone' : 'Mute your microphone'}
+                aria-label={studentMicMuted ? 'Unmute your microphone' : 'Mute your microphone'}
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  try {
+                    onToggleStudentMic()
+                  } catch {}
+                }}
+              >
+                <span className="sr-only">Your microphone</span>
+                {studentMicMuted ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V6z" opacity="0.65" />
+                    <path d="M5 11a1 1 0 1 1 2 0 5 5 0 0 0 8.5 3.5 1 1 0 1 1 1.4 1.4A7 7 0 0 1 13 17.92V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.08A7 7 0 0 1 5 11z" />
+                    <path d="M4 3.3a1 1 0 0 1 1.4 0l15.3 15.3a1 1 0 1 1-1.4 1.4L4 4.7a1 1 0 0 1 0-1.4z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
+                    <path d="M7 11a1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.08A7 7 0 0 0 19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0z" opacity="0.65" />
+                  </svg>
+                )}
+              </button>
+            )}
+
             {typeof onRequestVideoOverlay === 'function' && (
               <button
                 type="button"

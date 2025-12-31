@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
-import JitsiRoom, { JitsiControls } from '../components/JitsiRoom'
+import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -480,6 +480,18 @@ export default function Dashboard() {
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
+  const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
+  const [liveTeacherAudioEnabled, setLiveTeacherAudioEnabled] = useState(true)
+  const pendingLiveMicToggleRef = useRef(false)
+
+  useEffect(() => {
+    if (!liveControls) return
+    if (!pendingLiveMicToggleRef.current) return
+    pendingLiveMicToggleRef.current = false
+    try {
+      liveControls.toggleAudio()
+    } catch {}
+  }, [liveControls])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [liveOverrideSessionId, setLiveOverrideSessionId] = useState<string | null>(null)
   const [resolvedLiveSessionId, setResolvedLiveSessionId] = useState<string | null>(null)
@@ -806,6 +818,41 @@ export default function Dashboard() {
   }, [gradeReady, selectedGrade])
   const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
   const canJoinLiveClass = canLaunchCanvasOverlay
+
+  useEffect(() => {
+    if (!liveOverlayOpen) return
+    if (isOwnerUser) return
+    setLiveTeacherAudioEnabled(true)
+  }, [isOwnerUser, liveOverlayOpen])
+
+  const handleToggleLiveTeacherAudio = useCallback(() => {
+    if (isOwnerUser) return
+    setLiveTeacherAudioEnabled(prev => {
+      const next = !prev
+      if (!next) {
+        pendingLiveMicToggleRef.current = false
+        try {
+          liveControls?.hangup()
+        } catch {}
+        setLiveControls(null)
+        setLiveMuteState({ audioMuted: true, videoMuted: true })
+      }
+      return next
+    })
+  }, [isOwnerUser, liveControls])
+
+  const handleToggleLiveStudentMic = useCallback(() => {
+    if (isOwnerUser) return
+    setLiveTeacherAudioEnabled(true)
+    if (!liveControls) {
+      pendingLiveMicToggleRef.current = true
+      return
+    }
+    try {
+      liveControls.toggleAudio()
+    } catch {}
+  }, [isOwnerUser, liveControls])
+
   const getNextWindowZ = useCallback(() => {
     windowZCounterRef.current += 1
     return windowZCounterRef.current
@@ -4536,7 +4583,7 @@ export default function Dashboard() {
                   ×
                 </button>
               </div>
-              {canJoinLiveClass && activeSessionId ? (
+              {canJoinLiveClass && activeSessionId && (isOwnerUser || liveTeacherAudioEnabled) ? (
                 <JitsiRoom
                   roomName={gradeRoomName}
                   displayName={session?.user?.name || session?.user?.email}
@@ -4549,11 +4596,21 @@ export default function Dashboard() {
                   startWithAudioMuted
                   startWithVideoMuted
                   onControlsChange={setLiveControls}
+                  onMuteStateChange={setLiveMuteState}
                 />
               ) : (
                 <div className="live-call-overlay__placeholder">
-                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
-                  <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
+                  {activeSessionId && !isOwnerUser ? (
+                    <>
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/60">Teacher audio muted</p>
+                      <p className="text-white text-lg font-semibold text-center">Tap the speaker icon on the Canvas header to listen again.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
+                      <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -4576,6 +4633,26 @@ export default function Dashboard() {
                           setLiveOverlayChromeVisible(true)
                           setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
                         }
+                        : undefined
+                    }
+                    onToggleTeacherAudio={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? handleToggleLiveTeacherAudio
+                        : undefined
+                    }
+                    teacherAudioEnabled={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? liveTeacherAudioEnabled
+                        : undefined
+                    }
+                    onToggleStudentMic={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? handleToggleLiveStudentMic
+                        : undefined
+                    }
+                    studentMicMuted={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? liveMuteState.audioMuted
                         : undefined
                     }
                     position={win.position}

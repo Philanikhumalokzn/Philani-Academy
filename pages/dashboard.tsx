@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
-import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
+import JitsiRoom, { JitsiControls, JitsiMuteState, JitsiParticipantInfo } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -482,6 +482,8 @@ export default function Dashboard() {
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
   const [liveTeacherAudioEnabled, setLiveTeacherAudioEnabled] = useState(true)
+  const [liveTeacherVolume, setLiveTeacherVolume] = useState(1)
+  const [liveTeacherParticipantId, setLiveTeacherParticipantId] = useState<string | null>(null)
   const pendingLiveMicToggleRef = useRef(false)
 
   useEffect(() => {
@@ -852,6 +854,46 @@ export default function Dashboard() {
       liveControls.toggleAudio()
     } catch {}
   }, [isOwnerUser, liveControls])
+
+  const handleLiveParticipantsChange = useCallback(
+    (list: JitsiParticipantInfo[]) => {
+      if (isOwnerUser) return
+      const localId = list.find(p => p.isLocal)?.id
+      const remote = list.filter(p => p.id && p.id !== localId)
+      const moderator = remote.find(p => (p as any)?.role === 'moderator')
+      const nextId = (moderator || remote[0])?.id || null
+      setLiveTeacherParticipantId(nextId || null)
+      if (nextId && liveControls?.setParticipantVolume) {
+        try {
+          liveControls.setParticipantVolume(nextId, liveTeacherVolume)
+        } catch {}
+      }
+    },
+    [isOwnerUser, liveControls, liveTeacherVolume]
+  )
+
+  useEffect(() => {
+    if (!liveControls?.setParticipantVolume) return
+    if (!liveTeacherParticipantId) return
+    try {
+      liveControls.setParticipantVolume(liveTeacherParticipantId, liveTeacherVolume)
+    } catch {}
+  }, [liveControls, liveTeacherParticipantId, liveTeacherVolume])
+
+  const handleTeacherVolumeChange = useCallback(
+    (value: number) => {
+      if (isOwnerUser) return
+      const clamped = Math.min(Math.max(value, 0), 1)
+      setLiveTeacherVolume(clamped)
+      setLiveTeacherAudioEnabled(true)
+      if (liveTeacherParticipantId && liveControls?.setParticipantVolume) {
+        try {
+          liveControls.setParticipantVolume(liveTeacherParticipantId, clamped)
+        } catch {}
+      }
+    },
+    [isOwnerUser, liveControls, liveTeacherParticipantId]
+  )
 
   const getNextWindowZ = useCallback(() => {
     windowZCounterRef.current += 1
@@ -4586,6 +4628,7 @@ export default function Dashboard() {
                     startWithVideoMuted
                     onControlsChange={setLiveControls}
                     onMuteStateChange={setLiveMuteState}
+                    onParticipantsChange={handleLiveParticipantsChange}
                   />
                 ) : null
               ) : (
@@ -4624,6 +4667,16 @@ export default function Dashboard() {
                     teacherAudioEnabled={
                       win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
                         ? liveTeacherAudioEnabled
+                        : undefined
+                    }
+                    onTeacherVolumeChange={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? handleTeacherVolumeChange
+                        : undefined
+                    }
+                    teacherVolume={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? liveTeacherVolume
                         : undefined
                     }
                     onToggleStudentMic={

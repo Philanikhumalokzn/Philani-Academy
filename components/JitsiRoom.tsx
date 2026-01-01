@@ -1,9 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
+export type JitsiParticipantInfo = {
+  id: string
+  displayName?: string
+  formattedDisplayName?: string
+  email?: string
+  role?: string
+  isLocal?: boolean
+}
+
 export type JitsiControls = {
   toggleAudio: () => void
   toggleVideo: () => void
   hangup: () => void
+  setParticipantVolume?: (participantId: string, volume: number) => void
+  getParticipantsInfo?: () => JitsiParticipantInfo[]
 }
 
 export type JitsiMuteState = {
@@ -24,6 +35,7 @@ type Props = {
   silentJoin?: boolean
   onControlsChange?: (controls: JitsiControls | null) => void
   onMuteStateChange?: (state: JitsiMuteState) => void
+  onParticipantsChange?: (participants: JitsiParticipantInfo[]) => void
   toolbarButtons?: string[]
   startWithAudioMuted?: boolean
   startWithVideoMuted?: boolean
@@ -42,6 +54,7 @@ export default function JitsiRoom({
   silentJoin = false,
   onControlsChange,
   onMuteStateChange,
+  onParticipantsChange,
   toolbarButtons,
   startWithAudioMuted,
   startWithVideoMuted,
@@ -56,6 +69,7 @@ export default function JitsiRoom({
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
+  const participantsRef = useRef<JitsiParticipantInfo[]>([])
 
   useEffect(() => {
     audioMutedRef.current = audioMuted
@@ -79,6 +93,38 @@ export default function JitsiRoom({
     if (!apiRef.current) return
     apiRef.current.executeCommand('hangup')
   }, [])
+
+  const setParticipantVolume = useCallback((participantId: string, volume: number) => {
+    if (!apiRef.current) return
+    if (!participantId) return
+    const clamped = Math.min(Math.max(volume, 0), 1)
+    try {
+      apiRef.current.setParticipantVolume?.(participantId, clamped)
+    } catch {}
+  }, [])
+
+  const syncParticipants = useCallback(() => {
+    if (!apiRef.current || typeof apiRef.current.getParticipantsInfo !== 'function') return
+    try {
+      const raw = apiRef.current.getParticipantsInfo() || []
+      const localId = typeof apiRef.current.getCurrentUserID === 'function' ? apiRef.current.getCurrentUserID() : null
+      const normalized: JitsiParticipantInfo[] = raw
+        .map((p: any) => ({
+          id: p?.participantId || p?.id || '',
+          displayName: p?.displayName,
+          formattedDisplayName: p?.formattedDisplayName,
+          email: p?.email,
+          role: p?.role,
+          isLocal: Boolean(localId && (p?.participantId === localId || p?.id === localId)),
+        }))
+        .filter((p: JitsiParticipantInfo) => Boolean(p.id))
+
+      participantsRef.current = normalized
+      onParticipantsChange?.(normalized)
+    } catch {
+      // ignore participant sync errors
+    }
+  }, [onParticipantsChange])
 
   useEffect(() => {
     let mounted = true
@@ -174,7 +220,13 @@ export default function JitsiRoom({
         }
 
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
-        onControlsChange?.({ toggleAudio, toggleVideo, hangup })
+        onControlsChange?.({
+          toggleAudio,
+          toggleVideo,
+          hangup,
+          setParticipantVolume,
+          getParticipantsInfo: () => participantsRef.current,
+        })
 
         // Initial best-effort sync (Jitsi will emit events as it settles).
         try {
@@ -205,9 +257,15 @@ export default function JitsiRoom({
               onMuteStateChange?.({ audioMuted: audioMutedRef.current, videoMuted: next })
             } catch {}
           })
+          apiRef.current.addEventListener('participantJoined', () => syncParticipants())
+          apiRef.current.addEventListener('participantLeft', () => syncParticipants())
+          apiRef.current.addEventListener('participantRoleChanged', () => syncParticipants())
+          apiRef.current.addEventListener('participantUpdated', () => syncParticipants())
         } catch (err) {
           // ignore
         }
+
+        syncParticipants()
 
         if (isOwner && apiRef.current) {
           try {

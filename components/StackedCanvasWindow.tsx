@@ -87,9 +87,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
           lessonAuthoring={lessonAuthoring}
           overlayControlsHandleRef={controlsHandleRef}
           onRequestVideoOverlay={onRequestVideoOverlay}
-          onOverlayChromeVisibilityChange={visible => {
-            onOverlayChromeVisibilityChange?.(visible)
-          }}
+          onOverlayChromeVisibilityChange={onOverlayChromeVisibilityChange}
         />
 
         {boardId && (

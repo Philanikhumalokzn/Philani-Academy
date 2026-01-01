@@ -97,9 +97,41 @@ export default function JitsiRoom({
   const setParticipantVolume = useCallback((participantId: string, volume: number) => {
     if (!apiRef.current) return
     if (!participantId) return
-    const clamped = Math.min(Math.max(volume, 0), 1)
+    const clamped01 = Math.min(Math.max(volume, 0), 1)
+    const vol100 = Math.round(clamped01 * 100)
+    const api = apiRef.current
+
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const hasDirect = typeof api?.setParticipantVolume === 'function'
+        const hasExec = typeof api?.executeCommand === 'function'
+        console.log('[DEV] setParticipantVolume', { participantId, clamped01, vol100, hasDirect, hasExec })
+      } catch {}
+    }
+
+    // Jitsi External API has varied across deployments/versions.
+    // Try direct method first, then the executeCommand form, and try both 0..1 and 0..100.
     try {
-      apiRef.current.setParticipantVolume?.(participantId, clamped)
+      if (typeof api.setParticipantVolume === 'function') {
+        api.setParticipantVolume(participantId, clamped01)
+        return
+      }
+    } catch {}
+
+    try {
+      if (typeof api.setParticipantVolume === 'function') {
+        api.setParticipantVolume(participantId, vol100)
+        return
+      }
+    } catch {}
+
+    try {
+      api.executeCommand?.('setParticipantVolume', participantId, clamped01)
+      return
+    } catch {}
+
+    try {
+      api.executeCommand?.('setParticipantVolume', participantId, vol100)
     } catch {}
   }, [])
 

@@ -862,6 +862,14 @@ export default function Dashboard() {
       const remote = list.filter(p => p.id && p.id !== localId)
       const moderator = remote.find(p => (p as any)?.role === 'moderator')
       const nextId = (moderator || remote[0])?.id || null
+
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          console.log('[DEV] Jitsi participants', list)
+          console.log('[DEV] resolved teacher participant', { localId, nextId, remoteCount: remote.length })
+        } catch {}
+      }
+
       setLiveTeacherParticipantId(nextId || null)
       if (nextId && liveControls?.setParticipantVolume) {
         try {

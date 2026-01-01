@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
@@ -4571,34 +4571,27 @@ export default function Dashboard() {
               })()}
               <div className="live-call-overlay__floating-actions">
               </div>
-              {canJoinLiveClass && activeSessionId && (isOwnerUser || liveTeacherAudioEnabled) ? (
-                <JitsiRoom
-                  roomName={gradeRoomName}
-                  displayName={session?.user?.name || session?.user?.email}
-                  sessionId={activeSessionId}
-                  tokenEndpoint={null}
-                  passwordEndpoint={null}
-                  isOwner={isOwnerUser}
-                  showControls={false}
-                  silentJoin
-                  startWithAudioMuted
-                  startWithVideoMuted
-                  onControlsChange={setLiveControls}
-                  onMuteStateChange={setLiveMuteState}
-                />
+              {canJoinLiveClass && activeSessionId ? (
+                (isOwnerUser || liveTeacherAudioEnabled) ? (
+                  <JitsiRoom
+                    roomName={gradeRoomName}
+                    displayName={session?.user?.name || session?.user?.email}
+                    sessionId={activeSessionId}
+                    tokenEndpoint={null}
+                    passwordEndpoint={null}
+                    isOwner={isOwnerUser}
+                    showControls={false}
+                    silentJoin
+                    startWithAudioMuted
+                    startWithVideoMuted
+                    onControlsChange={setLiveControls}
+                    onMuteStateChange={setLiveMuteState}
+                  />
+                ) : null
               ) : (
                 <div className="live-call-overlay__placeholder">
-                  {activeSessionId && !isOwnerUser ? (
-                    <>
-                      <p className="text-xs uppercase tracking-[0.3em] text-white/60">Teacher audio muted</p>
-                      <p className="text-white text-lg font-semibold text-center">Tap the speaker icon on the Canvas header to listen again.</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
-                      <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
-                    </>
-                  )}
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
+                  <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
                 </div>
               )}
             </div>

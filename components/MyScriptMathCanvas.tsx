@@ -744,6 +744,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
     quizCombinedLatexRef.current = ''
     quizHasCommittedRef.current = false
+    setStudentCommittedLatex('')
     setQuizActiveState(true)
     suppressBroadcastUntilTsRef.current = Date.now() + 600
     try {
@@ -3845,6 +3846,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
                 quizCombinedLatexRef.current = ''
                 quizHasCommittedRef.current = false
+                setStudentCommittedLatex('')
                 setQuizActiveState(true)
                 suppressBroadcastUntilTsRef.current = Date.now() + 800
                 try {
@@ -3860,6 +3862,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 clearQuizCountdown()
                 quizCombinedLatexRef.current = ''
                 quizHasCommittedRef.current = false
+                setStudentCommittedLatex('')
                 quizIdRef.current = ''
                 quizPromptRef.current = ''
                 quizLabelRef.current = ''
@@ -4820,6 +4823,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const latexRenderOptions = useAdminStepComposer
     ? { ...latexProjectionOptions, alignAtEquals: true }
+    : (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout)
+      ? { ...stackedNotesState.options, alignAtEquals: true }
     : (!isAdmin && isAssignmentView && useStackedStudentLayout)
       ? { ...stackedNotesState.options, alignAtEquals: true }
       : isAdmin
@@ -4841,6 +4846,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
       return composed || (latexDisplayState.latex || '').trim()
+    }
+    if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
+      const committed = (studentCommittedLatex || '').trim()
+      const live = (latexOutput || '').trim()
+      return [committed, live].filter(Boolean).join(' \\\\ ').trim()
     }
     if (!isAdmin && isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
@@ -7370,11 +7380,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               Time left: {formatCountdown(quizTimeLeftSec)}
                             </div>
                           )}
-                          {studentQuizLatexPreviewMarkup ? (
+                          {latexProjectionMarkup ? (
                             <div
                               className="text-slate-700 font-semibold leading-relaxed"
                               style={latexOverlayStyle}
-                              dangerouslySetInnerHTML={{ __html: studentQuizLatexPreviewMarkup }}
+                              dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">

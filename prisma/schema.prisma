@@ -108,6 +108,8 @@ model Assignment {
   sourceUrl          String?
   sourceContentType  String?
   sourceFilename     String?
+  // Teacher/admin grading instructions that apply to the whole assignment.
+  gradingPrompt      String?
   createdBy          String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -147,6 +149,8 @@ model AssignmentQuestion {
   order         Int
   latex         String
   points        Int?
+  // Teacher/admin grading instructions for this specific question.
+  gradingPrompt String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

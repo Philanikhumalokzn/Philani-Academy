@@ -575,6 +575,10 @@ export default function Dashboard() {
   const [assignmentSolutionUploadFilesByQuestionId, setAssignmentSolutionUploadFilesByQuestionId] = useState<Record<string, File | null>>({})
   const [assignmentSolutionUploadNonceByQuestionId, setAssignmentSolutionUploadNonceByQuestionId] = useState<Record<string, number>>({})
   const [assignmentSolutionUploadingQuestionId, setAssignmentSolutionUploadingQuestionId] = useState<string | null>(null)
+
+  const [assignmentMasterGradingPrompt, setAssignmentMasterGradingPrompt] = useState('')
+  const [assignmentGradingPromptByQuestionId, setAssignmentGradingPromptByQuestionId] = useState<Record<string, string>>({})
+  const [assignmentGradingPromptSavingScope, setAssignmentGradingPromptSavingScope] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1609,12 +1613,24 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setSelectedAssignment(data)
+        setAssignmentMasterGradingPrompt(String((data as any)?.gradingPrompt || ''))
+        setAssignmentGradingPromptByQuestionId(() => {
+          const map: Record<string, string> = {}
+          const qs = Array.isArray((data as any)?.questions) ? (data as any).questions : []
+          for (const q of qs) {
+            if (!q?.id) continue
+            map[String(q.id)] = String(q?.gradingPrompt || '')
+          }
+          return map
+        })
         setAssignmentResponsesByQuestionId({})
         setAssignmentResponsesError(null)
         setAssignmentSubmittedAt(null)
         setAssignmentSubmitError(null)
         setAssignmentSolutionsByQuestionId({})
         setAssignmentSolutionsError(null)
+        setAssignmentSolutionUploadFilesByQuestionId({})
+        setAssignmentSolutionUploadNonceByQuestionId({})
         if (isLearner) {
           void fetchAssignmentResponses(sessionId, assignmentId)
         } else {
@@ -1633,8 +1649,62 @@ export default function Dashboard() {
       setAssignmentResponsesByQuestionId({})
       setAssignmentSubmittedAt(null)
       setAssignmentSolutionsByQuestionId({})
+      setAssignmentMasterGradingPrompt('')
+      setAssignmentGradingPromptByQuestionId({})
+      setAssignmentSolutionUploadFilesByQuestionId({})
+      setAssignmentSolutionUploadNonceByQuestionId({})
     } finally {
       setSelectedAssignmentLoading(false)
+    }
+  }
+
+  async function saveAssignmentGradingPrompt(sessionId: string, assignmentId: string, prompt: string) {
+    if (isLearner) return
+    if (assignmentGradingPromptSavingScope) return
+    setAssignmentGradingPromptSavingScope('assignment')
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/grading-prompts`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: 'assignment', prompt }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Save failed (${res.status})`)
+      alert('Assignment grading prompt saved.')
+      void fetchAssignmentDetails(sessionId, assignmentId)
+    } catch (err: any) {
+      alert(err?.message || 'Save failed')
+    } finally {
+      setAssignmentGradingPromptSavingScope(null)
+    }
+  }
+
+  async function saveQuestionGradingPrompt(sessionId: string, assignmentId: string, questionId: string, prompt: string) {
+    if (isLearner) return
+    if (assignmentGradingPromptSavingScope) return
+    setAssignmentGradingPromptSavingScope(`q:${questionId}`)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/grading-prompts`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: 'question', questionId, prompt }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Save failed (${res.status})`)
+      alert('Question grading prompt saved.')
+      void fetchAssignmentDetails(sessionId, assignmentId)
+    } catch (err: any) {
+      alert(err?.message || 'Save failed')
+    } finally {
+      setAssignmentGradingPromptSavingScope(null)
     }
   }
 
@@ -4020,6 +4090,39 @@ export default function Dashboard() {
                                                       </button>
                                                     </div>
                                                   ) : null}
+
+                                                  {expandedSessionId && selectedAssignment?.id && q?.id ? (
+                                                    <div className="pt-2">
+                                                      <div className="text-xs text-white/70 mb-1">Grading prompt (this question)</div>
+                                                      <textarea
+                                                        className="input w-full text-xs"
+                                                        rows={3}
+                                                        placeholder="Tell the AI how to grade this question (method marks, key steps, tolerances, common mistakes, etc.)"
+                                                        value={String(assignmentGradingPromptByQuestionId?.[String(q.id)] || '')}
+                                                        onChange={e => {
+                                                          const value = e.target.value
+                                                          setAssignmentGradingPromptByQuestionId(prev => ({ ...prev, [String(q.id)]: value }))
+                                                        }}
+                                                      />
+                                                      <div className="pt-2">
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-secondary text-xs"
+                                                          disabled={assignmentGradingPromptSavingScope === `q:${String(q.id)}`}
+                                                          onClick={() => {
+                                                            void saveQuestionGradingPrompt(
+                                                              expandedSessionId,
+                                                              String(selectedAssignment.id),
+                                                              String(q.id),
+                                                              String(assignmentGradingPromptByQuestionId?.[String(q.id)] || '')
+                                                            )
+                                                          }}
+                                                        >
+                                                          {assignmentGradingPromptSavingScope === `q:${String(q.id)}` ? 'Saving…' : 'Save grading prompt'}
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  ) : null}
                                                 </div>
                                               ) : null}
                                               {isLearner && q?.id ? (
@@ -4065,6 +4168,38 @@ export default function Dashboard() {
                                               ) : null}
                                             </details>
                                           ))}
+
+                                          {!isLearner && expandedSessionId && selectedAssignment?.id ? (
+                                            <div className="pt-3">
+                                              <div className="p-3 rounded border border-white/10 bg-white/5 space-y-2">
+                                                <div className="text-sm font-semibold">Assignment grading prompt</div>
+                                                <div className="text-xs text-white/70">General grading guidelines that apply to the whole assignment.</div>
+                                                <textarea
+                                                  className="input w-full text-xs"
+                                                  rows={4}
+                                                  placeholder="General instructions for the AI grader (rubric, marks allocation, strictness, formatting, etc.)"
+                                                  value={assignmentMasterGradingPrompt}
+                                                  onChange={e => setAssignmentMasterGradingPrompt(e.target.value)}
+                                                />
+                                                <div>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-primary text-xs"
+                                                    disabled={assignmentGradingPromptSavingScope === 'assignment'}
+                                                    onClick={() => {
+                                                      void saveAssignmentGradingPrompt(
+                                                        expandedSessionId,
+                                                        String(selectedAssignment.id),
+                                                        assignmentMasterGradingPrompt
+                                                      )
+                                                    }}
+                                                  >
+                                                    {assignmentGradingPromptSavingScope === 'assignment' ? 'Saving…' : 'Save assignment grading prompt'}
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ) : null}
 
                                           {isLearner && expandedSessionId && selectedAssignment?.id ? (
                                             <div className="pt-2 space-y-2">

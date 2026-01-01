@@ -760,6 +760,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const overlayChromeInitialPeekDoneRef = useRef(false)
+  const OVERLAY_CHROME_PEEK_MS = 2500
   const clearOverlayChromeAutoHide = useCallback(() => {
     if (overlayChromeHideTimeoutRef.current) {
       clearTimeout(overlayChromeHideTimeoutRef.current)
@@ -774,14 +776,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     clearOverlayChromeAutoHide()
     overlayChromeHideTimeoutRef.current = setTimeout(() => {
       onOverlayChromeVisibilityChange(false)
-    }, 1800)
-  }, [clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+    }, OVERLAY_CHROME_PEEK_MS)
+  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
 
   useEffect(() => {
     if (!onOverlayChromeVisibilityChange) return
     if (!isOverlayMode || !isCompactViewport) return
-    onOverlayChromeVisibilityChange(false)
-  }, [isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+    if (overlayChromeInitialPeekDoneRef.current) return
+
+    // On first open/refresh in mobile overlay mode, peek the chrome briefly.
+    overlayChromeInitialPeekDoneRef.current = true
+    onOverlayChromeVisibilityChange(true)
+    clearOverlayChromeAutoHide()
+    overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      onOverlayChromeVisibilityChange(false)
+    }, OVERLAY_CHROME_PEEK_MS)
+  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
 
   useEffect(() => {
     return () => {

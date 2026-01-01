@@ -975,7 +975,7 @@ td{color:#f8fafc;}
   opacity:0;
   pointer-events:none;
   transform:translateY(-6px);
-  transition:opacity 0.18s ease, transform 0.18s ease;
+  transition:opacity 0.65s ease, transform 0.35s ease;
 }
 .live-window--canvas.live-window--chrome-visible .live-window__header{
   opacity:1;

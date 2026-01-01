@@ -5685,6 +5685,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
 
+      // Student-only: once the response is successfully submitted, hide quiz popups locally.
+      // This should not affect lesson-context text boxes added by the teacher.
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('philani-quiz:submitted'))
+        }
+      } catch {}
+
       // Student-only: show instant AI feedback in a local popup textbox.
       try {
         const fbRes = await fetch('/api/ai/quiz-feedback', {

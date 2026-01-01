@@ -52,6 +52,7 @@ const SCRIPT_BOX_ID = 'lesson-script-text'
 const QUIZ_BOX_ID = 'quiz-prompt'
 const QUIZ_FEEDBACK_BOX_ID = 'quiz-feedback'
 const QUIZ_RESPONSE_EVENT = 'philani-quiz:text-response'
+const QUIZ_SUBMITTED_EVENT = 'philani-quiz:submitted'
 
 const MIN_BOX_PX_W = 140
 const MIN_BOX_PX_H = 56
@@ -308,6 +309,23 @@ export default function TextOverlayModule(props: {
       window.dispatchEvent(new CustomEvent(QUIZ_RESPONSE_EVENT, { detail: { text: normalized } }))
     } catch {}
   }, [])
+
+  // Student-only: when a quiz is submitted, hide quiz-specific popups locally.
+  // This preserves all teacher-authored lesson/context text boxes.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (isAdmin) return
+
+    const handler = () => {
+      setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+      setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
+      setStudentQuizTextResponse('')
+      dispatchStudentQuizTextResponse('')
+    }
+
+    window.addEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
+    return () => window.removeEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
+  }, [dispatchStudentQuizTextResponse, isAdmin])
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
 

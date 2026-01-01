@@ -5664,13 +5664,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
 
       // Default quiz behavior: persist under the session responses (dashboard Quizzes folder).
+      const studentTextSnapshot = (studentQuizTextResponseRef.current || '').trim()
       const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           latex: combined,
-          studentText: (studentQuizTextResponseRef.current || '').trim() || undefined,
+          studentText: studentTextSnapshot || undefined,
           quizId: quizIdRef.current || undefined,
           prompt: quizPromptRef.current || undefined,
           quizLabel: quizLabelRef.current || undefined,
@@ -5703,7 +5704,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             gradeLabel: gradeLabel || undefined,
             prompt: quizPromptRef.current || undefined,
             studentLatex: combined,
-            studentText: (studentQuizTextResponseRef.current || '').trim() || undefined,
+            studentText: studentTextSnapshot || undefined,
           }),
         })
         if (fbRes.ok) {

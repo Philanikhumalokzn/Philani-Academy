@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
@@ -28,9 +28,6 @@ export default function AssignmentSolutionQuestionPage() {
   const [assignment, setAssignment] = useState<any | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
   const [existingSolutionLatex, setExistingSolutionLatex] = useState<string>('')
-
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!sessionId || !assignmentId || !questionId) return
@@ -110,31 +107,6 @@ export default function AssignmentSolutionQuestionPage() {
     }
   }, [assignment, question])
 
-  const uploadSolutionFile = async (file: File) => {
-    if (!sessionId || !assignmentId || !questionId) return
-    if (!canEditSolution) return
-    if (uploading) return
-
-    setUploading(true)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      form.append('questionId', questionId)
-      const res = await fetch(
-        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions/upload`,
-        { method: 'POST', credentials: 'same-origin', body: form }
-      )
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
-      alert('Solution uploaded.')
-    } catch (err: any) {
-      alert(err?.message || 'Upload failed')
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
   if (status === 'loading') {
     return <div className="p-6">Loading…</div>
   }
@@ -158,38 +130,22 @@ export default function AssignmentSolutionQuestionPage() {
     )
   }
 
+  if (loading) {
+    return <div className="p-6">Loading…</div>
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 space-y-3">
+        <div className="text-lg font-semibold text-red-600">Error</div>
+        <div className="text-sm text-slate-700">{error}</div>
+        <Link href="/dashboard" className="btn btn-primary">Back</Link>
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
-      {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
-      {loading ? <div className="absolute top-2 left-2 right-2 z-50 text-white/70 text-sm">Loading…</div> : null}
-
-      <div className="absolute top-3 left-3 right-3 z-50 flex items-center justify-between gap-2">
-        <Link href="/dashboard" className="btn btn-ghost">Back</Link>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            className="input"
-            type="file"
-            onChange={e => {
-              const f = e.target.files?.[0]
-              if (f) void uploadSolutionFile(f)
-            }}
-            disabled={uploading}
-          />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={uploading || !fileInputRef.current?.files?.[0]}
-            onClick={() => {
-              const f = fileInputRef.current?.files?.[0]
-              if (f) void uploadSolutionFile(f)
-            }}
-          >
-            {uploading ? 'Uploading…' : 'Upload solution'}
-          </button>
-        </div>
-      </div>
-
       {initialQuiz && sessionId ? (
         <div className="absolute inset-0">
           {(() => {

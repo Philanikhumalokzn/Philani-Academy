@@ -572,6 +572,9 @@ export default function Dashboard() {
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
   const [assignmentSolutionsLoading, setAssignmentSolutionsLoading] = useState(false)
   const [assignmentSolutionsError, setAssignmentSolutionsError] = useState<string | null>(null)
+  const [assignmentSolutionUploadFilesByQuestionId, setAssignmentSolutionUploadFilesByQuestionId] = useState<Record<string, File | null>>({})
+  const [assignmentSolutionUploadNonceByQuestionId, setAssignmentSolutionUploadNonceByQuestionId] = useState<Record<string, number>>({})
+  const [assignmentSolutionUploadingQuestionId, setAssignmentSolutionUploadingQuestionId] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1681,6 +1684,38 @@ export default function Dashboard() {
       setAssignmentSolutionsError(err?.message || 'Network error')
     } finally {
       setAssignmentSolutionsLoading(false)
+    }
+  }
+
+  async function uploadAssignmentSolutionFile(sessionId: string, assignmentId: string, questionId: string, file: File) {
+    if (isLearner) return
+    if (!file) return
+    if (assignmentSolutionUploadingQuestionId === String(questionId)) return
+
+    setAssignmentSolutionUploadingQuestionId(String(questionId))
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('questionId', String(questionId))
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions/upload`,
+        { method: 'POST', credentials: 'same-origin', body: form }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
+
+      setAssignmentSolutionUploadFilesByQuestionId(prev => ({ ...prev, [String(questionId)]: null }))
+      setAssignmentSolutionUploadNonceByQuestionId(prev => ({
+        ...prev,
+        [String(questionId)]: (prev[String(questionId)] || 0) + 1,
+      }))
+
+      void fetchAssignmentSolutions(sessionId, assignmentId)
+      alert('Solution uploaded.')
+    } catch (err: any) {
+      alert(err?.message || 'Upload failed')
+    } finally {
+      setAssignmentSolutionUploadingQuestionId(null)
     }
   }
 
@@ -3940,7 +3975,7 @@ export default function Dashboard() {
                                                   </div>
 
                                                   {expandedSessionId && selectedAssignment?.id ? (
-                                                    <div>
+                                                    <div className="flex flex-wrap items-center gap-2">
                                                       <Link
                                                         className="btn btn-primary text-xs"
                                                         href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/solution/${encodeURIComponent(String(q.id))}`}
@@ -3951,6 +3986,38 @@ export default function Dashboard() {
                                                           return (solLatex.trim() || solFileUrl.trim()) ? 'Edit solution on canvas' : 'Solve on canvas'
                                                         })()}
                                                       </Link>
+
+                                                      <input
+                                                        key={`solution-upload-${String(q.id)}-${assignmentSolutionUploadNonceByQuestionId?.[String(q.id)] || 0}`}
+                                                        className="input text-xs"
+                                                        type="file"
+                                                        disabled={assignmentSolutionUploadingQuestionId === String(q.id)}
+                                                        onChange={e => {
+                                                          const f = e.target.files?.[0] || null
+                                                          setAssignmentSolutionUploadFilesByQuestionId(prev => ({ ...prev, [String(q.id)]: f }))
+                                                        }}
+                                                      />
+
+                                                      <button
+                                                        type="button"
+                                                        className="btn btn-secondary text-xs"
+                                                        disabled={
+                                                          assignmentSolutionUploadingQuestionId === String(q.id)
+                                                          || !assignmentSolutionUploadFilesByQuestionId?.[String(q.id)]
+                                                        }
+                                                        onClick={() => {
+                                                          const file = assignmentSolutionUploadFilesByQuestionId?.[String(q.id)]
+                                                          if (!file) return
+                                                          void uploadAssignmentSolutionFile(
+                                                            expandedSessionId,
+                                                            String(selectedAssignment.id),
+                                                            String(q.id),
+                                                            file
+                                                          )
+                                                        }}
+                                                      >
+                                                        {assignmentSolutionUploadingQuestionId === String(q.id) ? 'Uploading…' : 'Upload solution'}
+                                                      </button>
                                                     </div>
                                                   ) : null}
                                                 </div>

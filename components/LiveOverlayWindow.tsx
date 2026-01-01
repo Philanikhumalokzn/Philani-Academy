@@ -261,6 +261,7 @@ export default function LiveOverlayWindow({
             {typeof onToggleTeacherAudio === 'function' && (
               <button
                 type="button"
+                className="live-window__header-btn live-window__header-btn--teacher-audio"
                 title={teacherAudioEnabled ? 'Mute teacher audio' : 'Unmute teacher audio'}
                 aria-label={teacherAudioEnabled ? 'Stop listening to teacher audio' : 'Listen to teacher audio'}
                 onPointerDown={e => e.stopPropagation()}
@@ -286,6 +287,7 @@ export default function LiveOverlayWindow({
             {typeof onToggleStudentMic === 'function' && (
               <button
                 type="button"
+                className="live-window__header-btn live-window__header-btn--student-mic"
                 title={studentMicMuted ? 'Unmute your microphone' : 'Mute your microphone'}
                 aria-label={studentMicMuted ? 'Unmute your microphone' : 'Mute your microphone'}
                 onPointerDown={e => e.stopPropagation()}
@@ -316,6 +318,7 @@ export default function LiveOverlayWindow({
             {typeof onRequestVideoOverlay === 'function' && (
               <button
                 type="button"
+                className="live-window__header-btn live-window__header-btn--video"
                 title="Video"
                 aria-label="Open live video"
                 onPointerDown={e => e.stopPropagation()}
@@ -343,6 +346,7 @@ export default function LiveOverlayWindow({
 
             <button
               type="button"
+              className="live-window__header-btn live-window__header-btn--close"
               title="Close"
               aria-label="Close canvas"
               onPointerDown={e => e.stopPropagation()}

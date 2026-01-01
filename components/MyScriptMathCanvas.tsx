@@ -415,6 +415,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const preQuizControlStateRef = useRef<ControlState>(null)
   const preQuizControlCapturedRef = useRef(false)
 
+  // Admin: snapshot pre-quiz state so clicking the quiz icon again (abort) restores everything.
+  const adminPreQuizControlStateRef = useRef<ControlState>(null)
+  const adminPreQuizControlCapturedRef = useRef(false)
+  const adminPreQuizStudentPublishEnabledRef = useRef(false)
+  const adminPreQuizStudentPublishCapturedRef = useRef(false)
+
   // Student typed response (from quiz popup in TextOverlayModule)
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3855,6 +3861,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 quizPointIdRef.current = ''
                 quizPointIndexRef.current = -1
 
+                // Ensure all quiz-specific UI clears (including any local feedback popup).
+                try {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('philani-text:local-apply', {
+                      detail: { id: 'quiz-feedback', visible: false },
+                    }))
+                  }
+                } catch {}
+
                 // Restore pre-quiz lock/control state.
                 if (!forceEditableForAssignment && preQuizControlCapturedRef.current) {
                   const prior = preQuizControlStateRef.current
@@ -5237,9 +5252,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       let durationSec: number | undefined
       let endsAt: number | undefined
 
-      // Snapshot current control state BEFORE we unlock students for the quiz.
-      // Students use this to restore the board to its prior state after receiving AI feedback.
+      // Snapshot current state BEFORE we unlock students for the quiz.
+      // - Students use this to restore their board state after feedback.
+      // - Teacher uses this to restore class state if the quiz is aborted (toggle off).
       const preQuizControl: ControlState = enabled ? (controlStateRef.current ?? null) : null
+      if (enabled) {
+        adminPreQuizControlStateRef.current = preQuizControl
+        adminPreQuizControlCapturedRef.current = true
+        adminPreQuizStudentPublishEnabledRef.current = Boolean(isStudentPublishEnabledRef.current)
+        adminPreQuizStudentPublishCapturedRef.current = true
+      }
 
       const phaseKey = lessonScriptPhaseKey
       const pointIndex = lessonScriptPointIndex
@@ -5552,6 +5574,62 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         endsAt: enabled ? endsAt : undefined,
         ts: Date.now(),
       } satisfies QuizControlMessage)
+
+      // Stopping/aborting quiz: restore class state to what it was before the quiz started.
+      if (!enabled) {
+        const restoreControl = adminPreQuizControlCapturedRef.current ? adminPreQuizControlStateRef.current : null
+        const restorePublish = adminPreQuizStudentPublishCapturedRef.current ? adminPreQuizStudentPublishEnabledRef.current : Boolean(isStudentPublishEnabledRef.current)
+
+        // Restore the lock/controller state.
+        try {
+          if (restoreControl?.controllerId) {
+            const isAll = restoreControl.controllerId === ALL_STUDENTS_ID
+            await channel.publish('control', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              locked: !isAll,
+              controllerId: restoreControl.controllerId,
+              controllerName: restoreControl.controllerName,
+              ts: Date.now() + 2,
+            })
+          } else {
+            // No prior controller: default back to everyone unlocked.
+            await channel.publish('control', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              locked: false,
+              controllerId: ALL_STUDENTS_ID,
+              controllerName: 'All Students',
+              ts: Date.now() + 2,
+            })
+          }
+        } catch (err) {
+          console.warn('Failed to restore pre-quiz control state', err)
+        }
+
+        // Restore student publishing to its pre-quiz setting.
+        try {
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'student-broadcast',
+            enabled: Boolean(restorePublish),
+            controllerId: restoreControl?.controllerId || ALL_STUDENTS_ID,
+            controllerName: restoreControl?.controllerName || 'All Students',
+            ts: Date.now() + 3,
+          })
+          setIsStudentPublishEnabled(Boolean(restorePublish))
+          isStudentPublishEnabledRef.current = Boolean(restorePublish)
+        } catch (err) {
+          console.warn('Failed to restore pre-quiz student publishing state', err)
+        }
+
+        // Clear captured pre-quiz state snapshots.
+        adminPreQuizControlStateRef.current = null
+        adminPreQuizControlCapturedRef.current = false
+        adminPreQuizStudentPublishEnabledRef.current = false
+        adminPreQuizStudentPublishCapturedRef.current = false
+      }
     } catch (err) {
       console.warn('Failed to publish quiz state', err)
     }

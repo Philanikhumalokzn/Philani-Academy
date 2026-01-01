@@ -38,6 +38,46 @@ function repairCommonJsonIssues(text: string) {
   return (text || '').replace(/,\s*([}\]])/g, '$1')
 }
 
+function closeTruncatedJson(text: string) {
+  // If the model output is cut off mid-object/array, try to close any still-open
+  // braces/brackets. This is conservative: it does NOT invent missing commas/quotes.
+  const s = text || ''
+  const closers: Array<'}' | ']'> = []
+  let inString = false
+  let escape = false
+
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i]
+
+    if (escape) {
+      escape = false
+      continue
+    }
+
+    if (ch === '\\' && inString) {
+      escape = true
+      continue
+    }
+
+    if (ch === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) continue
+
+    if (ch === '{') closers.push('}')
+    else if (ch === '[') closers.push(']')
+    else if (ch === '}' || ch === ']') {
+      const expected = closers[closers.length - 1]
+      if (expected === ch) closers.pop()
+    }
+  }
+
+  if (closers.length === 0) return s
+  return s + closers.reverse().join('')
+}
+
 function parseGeminiJsonStrict(rawText: string) {
   const extracted = stripJsonNoise(extractJsonObject(rawText))
   if (!extracted) throw new Error('Gemini returned empty JSON')
@@ -49,8 +89,13 @@ function parseGeminiJsonStrict(rawText: string) {
     try {
       return JSON.parse(repaired)
     } catch (e2: any) {
-      const msg = e2?.message || e1?.message || 'JSON parse error'
-      throw new Error(`${msg}. Raw JSON excerpt: ${repaired.slice(0, 300)}`)
+      const closed = closeTruncatedJson(repaired)
+      try {
+        return JSON.parse(closed)
+      } catch (e3: any) {
+        const msg = e3?.message || e2?.message || e1?.message || 'JSON parse error'
+        throw new Error(`${msg}. Raw JSON excerpt: ${closed.slice(0, 300)}`)
+      }
     }
   }
 }

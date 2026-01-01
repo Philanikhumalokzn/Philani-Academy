@@ -5380,26 +5380,52 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         // Admin moderation: allow teacher to override the suggested timer before broadcasting.
-        // Keep UX simple (native prompt), but validate and clamp.
+        // Keep UX simple (native prompts) but provide separate minute + second fields.
         if (typeof window !== 'undefined') {
           try {
-            const suggestedMin = Math.max(1, Math.round(durationSec / 60))
-            const entered = window.prompt(
-              `Time limit in minutes (suggested ${suggestedMin}):`,
+            const suggestedMin = Math.max(0, Math.floor(durationSec / 60))
+            const suggestedSec = Math.max(0, Math.min(59, Math.round(durationSec - suggestedMin * 60)))
+
+            const enteredMin = window.prompt(
+              `Time limit minutes (suggested ${suggestedMin}):`,
               String(suggestedMin)
             )
-            if (entered === null) {
-              return
-            }
-            const raw = entered.trim()
-            if (raw) {
-              const asNumber = Number(raw)
-              if (Number.isFinite(asNumber) && asNumber > 0) {
-                const nextSec = Math.round(asNumber * 60)
-                const clampedSec = Math.max(30, Math.min(1800, nextSec))
-                durationSec = clampedSec
-                endsAt = Date.now() + clampedSec * 1000
-              }
+            if (enteredMin === null) return
+
+            const enteredSec = window.prompt(
+              `Time limit seconds (0–59) (suggested ${suggestedSec}):`,
+              String(suggestedSec)
+            )
+            if (enteredSec === null) return
+
+            const rawMin = (enteredMin || '').trim()
+            const rawSec = (enteredSec || '').trim()
+
+            // If teacher keeps both fields empty, keep Gemini (or fallback) suggestion.
+            if (!rawMin && !rawSec) {
+              // keep durationSec/endsAt as-is
+            } else {
+              // Minutes: allow comma decimals like 0,5 (common locale input).
+              const minFloat = rawMin
+                ? Number.parseFloat(rawMin.replace(',', '.'))
+                : 0
+
+              const minSec = (Number.isFinite(minFloat) && minFloat > 0)
+                ? Math.round(minFloat * 60)
+                : 0
+
+              const secInt = rawSec
+                ? Number.parseInt(rawSec.replace(',', '.'), 10)
+                : 0
+
+              const safeSec = Number.isFinite(secInt) && secInt > 0
+                ? Math.max(0, Math.min(59, secInt))
+                : 0
+
+              const nextSec = minSec + safeSec
+              const clampedSec = Math.max(30, Math.min(1800, nextSec))
+              durationSec = clampedSec
+              endsAt = Date.now() + clampedSec * 1000
             }
           } catch {}
         }

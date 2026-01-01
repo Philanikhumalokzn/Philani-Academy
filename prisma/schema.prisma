@@ -53,6 +53,7 @@ model User {
   learnerResponses LearnerResponse[]
   assignmentResponses AssignmentResponse[]
   assignmentSubmissions AssignmentSubmission[]
+  assignmentGrades AssignmentGrade[]
 }
 
 model UserSubscription {
@@ -93,6 +94,7 @@ model SessionRecord {
   assignments Assignment[]
   assignmentSubmissions AssignmentSubmission[]
   assignmentSolutions AssignmentSolution[]
+  assignmentGrades AssignmentGrade[]
   lessonScript SessionLessonScript?
 }
 
@@ -118,9 +120,41 @@ model Assignment {
   responses          AssignmentResponse[]
   submissions        AssignmentSubmission[]
   solutions          AssignmentSolution[]
+  grades             AssignmentGrade[]
 
   @@index([sessionId])
   @@index([sessionId, createdAt])
+}
+
+model AssignmentGrade {
+  id           String   @id @default(cuid())
+  sessionId    String
+  assignmentId String
+  userId       String
+
+  // Strict correctness results per question (used to render tick/X).
+  // Shape: [{ questionId: string, correctness: 'correct'|'incorrect' }]
+  results      Json
+
+  earnedPoints Int
+  totalPoints  Int
+  percentage   Float
+
+  provider     String   @default("gemini")
+  model        String?
+  gradedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignment   Assignment    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session      SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, userId])
+  @@index([sessionId])
+  @@index([assignmentId])
+  @@index([userId])
+  @@index([assignmentId, gradedAt])
 }
 
 model AssignmentSubmission {

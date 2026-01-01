@@ -569,6 +569,10 @@ export default function Dashboard() {
   const [assignmentSubmittedAt, setAssignmentSubmittedAt] = useState<string | null>(null)
   const [assignmentSubmitting, setAssignmentSubmitting] = useState(false)
   const [assignmentSubmitError, setAssignmentSubmitError] = useState<string | null>(null)
+  const [assignmentGradeLoading, setAssignmentGradeLoading] = useState(false)
+  const [assignmentGradeError, setAssignmentGradeError] = useState<string | null>(null)
+  const [assignmentGradeByQuestionId, setAssignmentGradeByQuestionId] = useState<Record<string, 'correct' | 'incorrect'>>({})
+  const [assignmentGradeSummary, setAssignmentGradeSummary] = useState<{ earnedPoints: number; totalPoints: number; percentage: number } | null>(null)
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
   const [assignmentSolutionsLoading, setAssignmentSolutionsLoading] = useState(false)
   const [assignmentSolutionsError, setAssignmentSolutionsError] = useState<string | null>(null)
@@ -1627,6 +1631,9 @@ export default function Dashboard() {
         setAssignmentResponsesError(null)
         setAssignmentSubmittedAt(null)
         setAssignmentSubmitError(null)
+        setAssignmentGradeByQuestionId({})
+        setAssignmentGradeSummary(null)
+        setAssignmentGradeError(null)
         setAssignmentSolutionsByQuestionId({})
         setAssignmentSolutionsError(null)
         setAssignmentSolutionUploadFilesByQuestionId({})
@@ -1642,12 +1649,18 @@ export default function Dashboard() {
       setSelectedAssignmentError(data?.message || `Failed to load assignment (${res.status})`)
       setAssignmentResponsesByQuestionId({})
       setAssignmentSubmittedAt(null)
+      setAssignmentGradeByQuestionId({})
+      setAssignmentGradeSummary(null)
+      setAssignmentGradeError(null)
       setAssignmentSolutionsByQuestionId({})
     } catch (err: any) {
       setSelectedAssignment(null)
       setSelectedAssignmentError(err?.message || 'Network error')
       setAssignmentResponsesByQuestionId({})
       setAssignmentSubmittedAt(null)
+      setAssignmentGradeByQuestionId({})
+      setAssignmentGradeSummary(null)
+      setAssignmentGradeError(null)
       setAssignmentSolutionsByQuestionId({})
       setAssignmentMasterGradingPrompt('')
       setAssignmentGradingPromptByQuestionId({})
@@ -1719,18 +1732,77 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setAssignmentResponsesByQuestionId((data?.byQuestionId && typeof data.byQuestionId === 'object') ? data.byQuestionId : {})
-        setAssignmentSubmittedAt(data?.submittedAt ? String(data.submittedAt) : null)
+        const submittedAt = data?.submittedAt ? String(data.submittedAt) : null
+        setAssignmentSubmittedAt(submittedAt)
+        if (submittedAt) {
+          void fetchAssignmentGrade(sessionId, assignmentId)
+        } else {
+          setAssignmentGradeByQuestionId({})
+          setAssignmentGradeSummary(null)
+          setAssignmentGradeError(null)
+        }
         return
       }
       setAssignmentResponsesByQuestionId({})
       setAssignmentResponsesError(data?.message || `Failed to load assignment responses (${res.status})`)
       setAssignmentSubmittedAt(null)
+      setAssignmentGradeByQuestionId({})
+      setAssignmentGradeSummary(null)
     } catch (err: any) {
       setAssignmentResponsesByQuestionId({})
       setAssignmentResponsesError(err?.message || 'Network error')
       setAssignmentSubmittedAt(null)
+      setAssignmentGradeByQuestionId({})
+      setAssignmentGradeSummary(null)
     } finally {
       setAssignmentResponsesLoading(false)
+    }
+  }
+
+  async function fetchAssignmentGrade(sessionId: string, assignmentId: string) {
+    if (!isLearner) return
+    if (assignmentGradeLoading) return
+
+    setAssignmentGradeError(null)
+    setAssignmentGradeLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/grade`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAssignmentGradeByQuestionId({})
+        setAssignmentGradeSummary(null)
+        // 409 = assignment not submitted yet; keep silent.
+        if (res.status !== 409) {
+          setAssignmentGradeError(data?.message || `Failed to load grade (${res.status})`)
+        }
+        return
+      }
+
+      const grade = data?.grade
+      const results: any[] = Array.isArray(grade?.results) ? grade.results : []
+      const next: Record<string, 'correct' | 'incorrect'> = {}
+      for (const r of results) {
+        const qid = String(r?.questionId || '')
+        const correctness = String(r?.correctness || '')
+        if (!qid) continue
+        next[qid] = correctness === 'correct' ? 'correct' : 'incorrect'
+      }
+
+      setAssignmentGradeByQuestionId(next)
+      setAssignmentGradeSummary({
+        earnedPoints: Number(grade?.earnedPoints || 0) || 0,
+        totalPoints: Number(grade?.totalPoints || 0) || 0,
+        percentage: Number(grade?.percentage || 0) || 0,
+      })
+    } catch (err: any) {
+      setAssignmentGradeByQuestionId({})
+      setAssignmentGradeSummary(null)
+      setAssignmentGradeError(err?.message || 'Network error')
+    } finally {
+      setAssignmentGradeLoading(false)
     }
   }
 
@@ -4002,8 +4074,20 @@ export default function Dashboard() {
                                         <div className="space-y-2">
                                           {selectedAssignment.questions.map((q: any, idx: number) => (
                                             <details key={q.id || idx} className="border border-white/10 rounded p-2">
-                                              <summary className="cursor-pointer font-medium text-sm">
-                                                Question {idx + 1}
+                                              <summary className="cursor-pointer font-medium text-sm flex items-center justify-between gap-2">
+                                                <span>Question {idx + 1}</span>
+                                                {isLearner && assignmentSubmittedAt && q?.id ? (
+                                                  (() => {
+                                                    const correctness = assignmentGradeByQuestionId?.[String(q.id)]
+                                                    if (correctness === 'correct') {
+                                                      return <span className="text-green-500">✓</span>
+                                                    }
+                                                    if (correctness === 'incorrect') {
+                                                      return <span className="text-red-500">✕</span>
+                                                    }
+                                                    return null
+                                                  })()
+                                                ) : null}
                                               </summary>
                                               <div className="pt-2 text-sm whitespace-pre-wrap break-words">
                                                 {renderTextWithKatex(String(q.latex || ''))}
@@ -4220,6 +4304,24 @@ export default function Dashboard() {
                                                     })()}
                                                   </div>
                                                   <div className="text-xs text-white/70 mt-1">Editing is locked.</div>
+
+                                                  {assignmentGradeError ? (
+                                                    <div className="text-xs text-red-600 mt-2">{assignmentGradeError}</div>
+                                                  ) : null}
+
+                                                  {assignmentGradeLoading ? (
+                                                    <div className="text-xs muted mt-2">Loading grade…</div>
+                                                  ) : assignmentGradeSummary ? (
+                                                    <div className="mt-2 text-sm">
+                                                      <div className="font-semibold">Grade</div>
+                                                      <div className="text-xs text-white/80">
+                                                        {assignmentGradeSummary.earnedPoints} / {assignmentGradeSummary.totalPoints} points
+                                                        {' '}({Number.isFinite(assignmentGradeSummary.percentage)
+                                                          ? `${assignmentGradeSummary.percentage.toFixed(0)}%`
+                                                          : '0%'})
+                                                      </div>
+                                                    </div>
+                                                  ) : null}
                                                 </div>
                                               ) : (
                                                 <button

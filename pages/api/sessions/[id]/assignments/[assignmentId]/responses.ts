@@ -58,8 +58,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!assignment) return res.status(404).json({ message: 'Assignment not found' })
 
   const assignmentResponse = (prisma as any).assignmentResponse as any
+  const assignmentSubmission = (prisma as any).assignmentSubmission as any
 
   if (req.method === 'GET') {
+    const submission = await assignmentSubmission.findUnique({
+      where: {
+        assignmentId_userId: {
+          assignmentId,
+          userId: authUserId,
+        },
+      },
+      select: { submittedAt: true },
+    })
+
     // Learners only fetch their own responses.
     const records = await assignmentResponse.findMany({
       where: { sessionId: sessionRecord.id, assignmentId, userId: authUserId },
@@ -71,12 +82,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     for (const r of records) {
       if (r?.questionId) byQuestionId[String(r.questionId)] = r
     }
-    return res.status(200).json({ responses: records, byQuestionId })
+    return res.status(200).json({ responses: records, byQuestionId, submittedAt: submission?.submittedAt || null })
   }
 
   if (req.method === 'POST') {
     if (role !== 'student') {
       return res.status(403).json({ message: 'Only learners may submit assignment responses' })
+    }
+
+    const submission = await assignmentSubmission.findUnique({
+      where: {
+        assignmentId_userId: {
+          assignmentId,
+          userId: authUserId,
+        },
+      },
+      select: { submittedAt: true },
+    })
+    if (submission?.submittedAt) {
+      return res.status(409).json({ message: 'Assignment already submitted. Editing is locked.' })
     }
 
     const { latex, questionId } = req.body || {}

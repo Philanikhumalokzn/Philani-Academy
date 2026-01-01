@@ -25,6 +25,7 @@ export default function AssignmentQuestionPage() {
   const [assignment, setAssignment] = useState<any | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
   const [existingResponseLatex, setExistingResponseLatex] = useState<string>('')
+  const [submittedAt, setSubmittedAt] = useState<string | null>(null)
   const [metaVisible, setMetaVisible] = useState(false)
   const metaHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -81,11 +82,17 @@ export default function AssignmentQuestionPage() {
           if (rr.ok) {
             const latex = String(rdata?.byQuestionId?.[String(questionId)]?.latex || '')
             setExistingResponseLatex(latex)
+            const sAt = rdata?.submittedAt ? String(rdata.submittedAt) : null
+            setSubmittedAt(sAt)
           } else {
             setExistingResponseLatex('')
+            setSubmittedAt(null)
           }
         } catch {
-          if (!cancelled) setExistingResponseLatex('')
+          if (!cancelled) {
+            setExistingResponseLatex('')
+            setSubmittedAt(null)
+          }
         }
       } catch (err: any) {
         if (cancelled) return
@@ -150,7 +157,19 @@ export default function AssignmentQuestionPage() {
       {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
       {loading ? <div className="absolute top-2 left-2 right-2 z-50 text-white/70 text-sm">Loading…</div> : null}
 
-      {initialQuiz && sessionId ? (
+      {submittedAt ? (
+        <div className="absolute inset-0 flex items-center justify-center p-6">
+          <div className="max-w-lg w-full rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <div className="text-lg font-semibold">Assignment submitted</div>
+            <div className="text-sm text-white/80">
+              This assignment was submitted on {new Date(submittedAt).toLocaleString()}. Editing is locked.
+            </div>
+            <div>
+              <Link href="/dashboard" className="btn btn-primary">Back to dashboard</Link>
+            </div>
+          </div>
+        </div>
+      ) : initialQuiz && sessionId ? (
         <div className="absolute inset-0">
           {(() => {
             const realtimeScopeId = `assignment:${assignmentId}:q:${questionId}:u:${userId}`

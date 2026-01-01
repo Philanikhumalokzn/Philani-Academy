@@ -566,6 +566,9 @@ export default function Dashboard() {
   const [assignmentResponsesByQuestionId, setAssignmentResponsesByQuestionId] = useState<Record<string, any>>({})
   const [assignmentResponsesLoading, setAssignmentResponsesLoading] = useState(false)
   const [assignmentResponsesError, setAssignmentResponsesError] = useState<string | null>(null)
+  const [assignmentSubmittedAt, setAssignmentSubmittedAt] = useState<string | null>(null)
+  const [assignmentSubmitting, setAssignmentSubmitting] = useState(false)
+  const [assignmentSubmitError, setAssignmentSubmitError] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1602,6 +1605,8 @@ export default function Dashboard() {
         setSelectedAssignment(data)
         setAssignmentResponsesByQuestionId({})
         setAssignmentResponsesError(null)
+        setAssignmentSubmittedAt(null)
+        setAssignmentSubmitError(null)
         if (isLearner) {
           void fetchAssignmentResponses(sessionId, assignmentId)
         }
@@ -1610,10 +1615,12 @@ export default function Dashboard() {
       setSelectedAssignment(null)
       setSelectedAssignmentError(data?.message || `Failed to load assignment (${res.status})`)
       setAssignmentResponsesByQuestionId({})
+      setAssignmentSubmittedAt(null)
     } catch (err: any) {
       setSelectedAssignment(null)
       setSelectedAssignmentError(err?.message || 'Network error')
       setAssignmentResponsesByQuestionId({})
+      setAssignmentSubmittedAt(null)
     } finally {
       setSelectedAssignmentLoading(false)
     }
@@ -1630,15 +1637,48 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setAssignmentResponsesByQuestionId((data?.byQuestionId && typeof data.byQuestionId === 'object') ? data.byQuestionId : {})
+        setAssignmentSubmittedAt(data?.submittedAt ? String(data.submittedAt) : null)
         return
       }
       setAssignmentResponsesByQuestionId({})
       setAssignmentResponsesError(data?.message || `Failed to load assignment responses (${res.status})`)
+      setAssignmentSubmittedAt(null)
     } catch (err: any) {
       setAssignmentResponsesByQuestionId({})
       setAssignmentResponsesError(err?.message || 'Network error')
+      setAssignmentSubmittedAt(null)
     } finally {
       setAssignmentResponsesLoading(false)
+    }
+  }
+
+  async function submitAssignment(sessionId: string, assignmentId: string) {
+    if (!isLearner) return
+    if (assignmentSubmitting) return
+    setAssignmentSubmitError(null)
+
+    alert('Submitting will lock this assignment. You will no longer be able to edit your answers after submission.')
+    const ok = confirm('Submit this assignment now?')
+    if (!ok) return
+
+    setAssignmentSubmitting(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/submit`,
+        { method: 'POST', credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Submit failed (${res.status})`)
+      }
+      setAssignmentSubmittedAt(data?.submittedAt ? String(data.submittedAt) : new Date().toISOString())
+      alert('Assignment submitted.')
+      void fetchAssignmentResponses(sessionId, assignmentId)
+    } catch (err: any) {
+      setAssignmentSubmitError(err?.message || 'Submit failed')
+      alert(err?.message || 'Submit failed')
+    } finally {
+      setAssignmentSubmitting(false)
     }
   }
 
@@ -3856,18 +3896,57 @@ export default function Dashboard() {
                                               ) : null}
                                               {isLearner && expandedSessionId && selectedAssignment?.id && q?.id ? (
                                                 <div className="pt-2">
-                                                  <Link
-                                                    className="btn btn-primary text-xs"
-                                                    href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(q.id))}`}
-                                                  >
-                                                    {String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '').trim()
-                                                      ? 'Edit on canvas'
-                                                      : 'Answer on canvas'}
-                                                  </Link>
+                                                  {assignmentSubmittedAt ? (
+                                                    <button type="button" className="btn btn-primary text-xs opacity-60 cursor-not-allowed" disabled>
+                                                      Editing locked
+                                                    </button>
+                                                  ) : (
+                                                    <Link
+                                                      className="btn btn-primary text-xs"
+                                                      href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(q.id))}`}
+                                                    >
+                                                      {String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '').trim()
+                                                        ? 'Edit on canvas'
+                                                        : 'Answer on canvas'}
+                                                    </Link>
+                                                  )}
                                                 </div>
                                               ) : null}
                                             </details>
                                           ))}
+
+                                          {isLearner && expandedSessionId && selectedAssignment?.id ? (
+                                            <div className="pt-2 space-y-2">
+                                              {assignmentSubmitError ? (
+                                                <div className="text-sm text-red-600">{assignmentSubmitError}</div>
+                                              ) : null}
+
+                                              {assignmentSubmittedAt ? (
+                                                <div className="p-3 rounded border border-white/10 bg-white/5">
+                                                  <div className="text-sm font-semibold">Submitted</div>
+                                                  <div className="text-xs muted">
+                                                    {(() => {
+                                                      try {
+                                                        return new Date(assignmentSubmittedAt).toLocaleString()
+                                                      } catch {
+                                                        return ''
+                                                      }
+                                                    })()}
+                                                  </div>
+                                                  <div className="text-xs text-white/70 mt-1">Editing is locked.</div>
+                                                </div>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-primary w-full"
+                                                  disabled={assignmentSubmitting}
+                                                  onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
+                                                >
+                                                  {assignmentSubmitting ? 'Submitting…' : 'Submit Assignment'}
+                                                </button>
+                                              )}
+                                            </div>
+                                          ) : null}
                                         </div>
                                       ) : (
                                         <div className="text-sm muted">No questions found.</div>

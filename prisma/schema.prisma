@@ -52,6 +52,7 @@ model User {
   subscription UserSubscription?
   learnerResponses LearnerResponse[]
   assignmentResponses AssignmentResponse[]
+  assignmentSubmissions AssignmentSubmission[]
 }
 
 model UserSubscription {
@@ -90,6 +91,7 @@ model SessionRecord {
   createdAt DateTime @default(now())
   materials LessonMaterial[]
   assignments Assignment[]
+  assignmentSubmissions AssignmentSubmission[]
   lessonScript SessionLessonScript?
 }
 
@@ -111,9 +113,29 @@ model Assignment {
 
   questions          AssignmentQuestion[]
   responses          AssignmentResponse[]
+  submissions        AssignmentSubmission[]
 
   @@index([sessionId])
   @@index([sessionId, createdAt])
+}
+
+model AssignmentSubmission {
+  id           String   @id @default(cuid())
+  sessionId     String
+  assignmentId  String
+  userId        String
+  submittedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session       SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, userId])
+  @@index([sessionId])
+  @@index([assignmentId, submittedAt])
+  @@index([userId, submittedAt])
 }
 
 model AssignmentQuestion {

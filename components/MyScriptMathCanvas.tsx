@@ -3770,6 +3770,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 quizPointIdRef.current = typeof data.quizPointId === 'string' ? data.quizPointId : ''
                 quizPointIndexRef.current = (typeof data.quizPointIndex === 'number' && Number.isFinite(data.quizPointIndex)) ? Math.trunc(data.quizPointIndex) : -1
 
+                // During quizzes, students must be able to write on their canvas.
+                // We still expect the teacher to broadcast the corresponding unlock control message,
+                // but apply a local unlock here as a safety net in case messages arrive out-of-order.
+                if (!forceEditableForAssignment) {
+                  updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts: Date.now() })
+                }
+
                 const endsAt = (typeof data.endsAt === 'number' && Number.isFinite(data.endsAt) && data.endsAt > 0) ? Math.trunc(data.endsAt) : null
                 const durationSec = (typeof data.durationSec === 'number' && Number.isFinite(data.durationSec) && data.durationSec > 0) ? Math.trunc(data.durationSec) : null
                 quizEndsAtRef.current = endsAt
@@ -5764,8 +5771,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (quizTimeLeftSec > 0) return
     if (quizAutoSubmitTriggeredRef.current) return
     quizAutoSubmitTriggeredRef.current = true
-    void studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
-  }, [isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
+    void (async () => {
+      try {
+        await studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
+      } finally {
+        // After timer expiry, stop student editing again until teacher explicitly unlocks.
+        if (!forceEditableForAssignment) {
+          updateControlState({ controllerId: '__quiz-locked__', controllerName: 'Teacher', ts: Date.now() })
+        }
+      }
+    })()
+  }, [forceEditableForAssignment, isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit, updateControlState])
 
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return

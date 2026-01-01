@@ -230,6 +230,7 @@ type MyScriptMathCanvasProps = {
     sessionId: string
     assignmentId: string
     questionId: string
+    kind?: 'response' | 'solution'
     initialLatex?: string
   }
   uiMode?: 'default' | 'overlay'
@@ -749,7 +750,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     // Assignment editing: if we already have a saved response for this question,
     // preload it into the committed preview so the learner can edit/resubmit.
-    const initialAssignmentLatex = (!isAdmin && assignmentSubmission?.initialLatex && typeof assignmentSubmission.initialLatex === 'string')
+    const initialAssignmentLatex = (assignmentSubmission?.initialLatex && typeof assignmentSubmission.initialLatex === 'string')
       ? assignmentSubmission.initialLatex.trim()
       : ''
     if (initialAssignmentLatex) {
@@ -1002,7 +1003,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const remoteFrameHandleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null)
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
-  const forceEditableForAssignment = Boolean(!isAdmin && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
+  const isAssignmentSolutionAuthoring = assignmentSubmission?.kind === 'solution'
+  const forceEditableForAssignment = Boolean((!isAdmin || isAssignmentSolutionAuthoring) && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const isAssignmentViewRef = useRef(isAssignmentView)
   useEffect(() => {
@@ -5675,7 +5677,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [adminDraftLatex, adminSteps, boardId, gradeLabel, isAdmin, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, useAdminStepComposer, userDisplayName])
 
   const studentQuizCommitOrSubmit = useCallback(async (opts?: { forceSubmit?: boolean; skipConfirm?: boolean }) => {
-    if (isAdmin) return
+    const isSolution = assignmentSubmission?.kind === 'solution'
+    if (isAdmin && !isSolution) return
+
     const isAssignment = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId && assignmentSubmission?.sessionId)
     if (!quizActiveRef.current && !isAssignment) return
     if (quizSubmitting) return
@@ -5772,15 +5776,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       if (!skipConfirm) {
         const ok = typeof window !== 'undefined'
-          ? window.confirm(isAssignment ? 'Submit your assignment response?' : 'Submit your quiz response?')
+          ? window.confirm(
+            isSolution
+              ? 'Save this solution?'
+              : isAssignment
+                ? 'Submit your assignment response?'
+                : 'Submit your quiz response?'
+          )
           : true
         if (!ok) return
       }
 
       if (isAssignment) {
         // Persist under assignments (NOT quizzes).
+        const endpoint = isSolution ? 'solutions' : 'responses'
         const res = await fetch(
-          `/api/sessions/${encodeURIComponent(assignmentSubmission!.sessionId)}/assignments/${encodeURIComponent(assignmentSubmission!.assignmentId)}/responses`,
+          `/api/sessions/${encodeURIComponent(assignmentSubmission!.sessionId)}/assignments/${encodeURIComponent(assignmentSubmission!.assignmentId)}/${endpoint}`,
           {
             method: 'POST',
             credentials: 'same-origin',
@@ -5793,15 +5804,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         )
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          alert(data?.message || `Failed to submit assignment response (${res.status})`)
+          alert(data?.message || (isSolution ? `Failed to save solution (${res.status})` : `Failed to submit assignment response (${res.status})`))
           return
         }
 
-        // Notify the page to display/update the saved response under this question.
+        // Notify the page to display/update the saved response/solution under this question.
         try {
           if (typeof window !== 'undefined') {
             window.dispatchEvent(
-              new CustomEvent('philani:assignment-response-saved', {
+              new CustomEvent(isSolution ? 'philani:assignment-solution-saved' : 'philani:assignment-response-saved', {
                 detail: {
                   assignmentId: assignmentSubmission!.assignmentId,
                   questionId: assignmentSubmission!.questionId,

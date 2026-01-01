@@ -569,6 +569,9 @@ export default function Dashboard() {
   const [assignmentSubmittedAt, setAssignmentSubmittedAt] = useState<string | null>(null)
   const [assignmentSubmitting, setAssignmentSubmitting] = useState(false)
   const [assignmentSubmitError, setAssignmentSubmitError] = useState<string | null>(null)
+  const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
+  const [assignmentSolutionsLoading, setAssignmentSolutionsLoading] = useState(false)
+  const [assignmentSolutionsError, setAssignmentSolutionsError] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -1607,8 +1610,12 @@ export default function Dashboard() {
         setAssignmentResponsesError(null)
         setAssignmentSubmittedAt(null)
         setAssignmentSubmitError(null)
+        setAssignmentSolutionsByQuestionId({})
+        setAssignmentSolutionsError(null)
         if (isLearner) {
           void fetchAssignmentResponses(sessionId, assignmentId)
+        } else {
+          void fetchAssignmentSolutions(sessionId, assignmentId)
         }
         return
       }
@@ -1616,11 +1623,13 @@ export default function Dashboard() {
       setSelectedAssignmentError(data?.message || `Failed to load assignment (${res.status})`)
       setAssignmentResponsesByQuestionId({})
       setAssignmentSubmittedAt(null)
+      setAssignmentSolutionsByQuestionId({})
     } catch (err: any) {
       setSelectedAssignment(null)
       setSelectedAssignmentError(err?.message || 'Network error')
       setAssignmentResponsesByQuestionId({})
       setAssignmentSubmittedAt(null)
+      setAssignmentSolutionsByQuestionId({})
     } finally {
       setSelectedAssignmentLoading(false)
     }
@@ -1649,6 +1658,29 @@ export default function Dashboard() {
       setAssignmentSubmittedAt(null)
     } finally {
       setAssignmentResponsesLoading(false)
+    }
+  }
+
+  async function fetchAssignmentSolutions(sessionId: string, assignmentId: string) {
+    setAssignmentSolutionsError(null)
+    setAssignmentSolutionsLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setAssignmentSolutionsByQuestionId((data?.byQuestionId && typeof data.byQuestionId === 'object') ? data.byQuestionId : {})
+        return
+      }
+      setAssignmentSolutionsByQuestionId({})
+      setAssignmentSolutionsError(data?.message || `Failed to load solutions (${res.status})`)
+    } catch (err: any) {
+      setAssignmentSolutionsByQuestionId({})
+      setAssignmentSolutionsError(err?.message || 'Network error')
+    } finally {
+      setAssignmentSolutionsLoading(false)
     }
   }
 
@@ -3871,6 +3903,58 @@ export default function Dashboard() {
                                               <div className="pt-2 text-sm whitespace-pre-wrap break-words">
                                                 {renderTextWithKatex(String(q.latex || ''))}
                                               </div>
+
+                                              {!isLearner && q?.id ? (
+                                                <div className="pt-2 space-y-2">
+                                                  {assignmentSolutionsError ? (
+                                                    <div className="text-sm text-red-600">{assignmentSolutionsError}</div>
+                                                  ) : assignmentSolutionsLoading ? (
+                                                    <div className="text-sm muted">Loading solutions…</div>
+                                                  ) : null}
+
+                                                  <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                    <div className="text-xs text-white/70 mb-1">Solution</div>
+                                                    {(() => {
+                                                      const sol = assignmentSolutionsByQuestionId?.[String(q.id)]
+                                                      const latex = String(sol?.latex || '')
+                                                      const fileUrl = String(sol?.fileUrl || '')
+                                                      if (!latex.trim() && !fileUrl.trim()) {
+                                                        return <div className="text-sm text-white/60">No solution saved yet.</div>
+                                                      }
+                                                      const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                                                      return (
+                                                        <div className="space-y-2">
+                                                          {latex.trim() ? (
+                                                            latexHtml ? (
+                                                              <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                                                            ) : (
+                                                              <div className="text-xs font-mono whitespace-pre-wrap break-words">{latex}</div>
+                                                            )
+                                                          ) : null}
+                                                          {fileUrl.trim() ? (
+                                                            <a href={fileUrl} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">Open uploaded solution</a>
+                                                          ) : null}
+                                                        </div>
+                                                      )
+                                                    })()}
+                                                  </div>
+
+                                                  {expandedSessionId && selectedAssignment?.id ? (
+                                                    <div>
+                                                      <Link
+                                                        className="btn btn-primary text-xs"
+                                                        href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/solution/${encodeURIComponent(String(q.id))}`}
+                                                      >
+                                                        {(() => {
+                                                          const solLatex = String(assignmentSolutionsByQuestionId?.[String(q.id)]?.latex || '')
+                                                          const solFileUrl = String(assignmentSolutionsByQuestionId?.[String(q.id)]?.fileUrl || '')
+                                                          return (solLatex.trim() || solFileUrl.trim()) ? 'Edit solution on canvas' : 'Solve on canvas'
+                                                        })()}
+                                                      </Link>
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                              ) : null}
                                               {isLearner && q?.id ? (
                                                 <div className="pt-2">
                                                   <div className="p-2 rounded border border-white/10 bg-white/5">

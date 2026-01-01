@@ -13,6 +13,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     || router.pathname === '/diagram'
     || router.pathname === '/jaas-demo'
     || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/q/[questionId]'
+    || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId]'
 
   return (
     <SessionProvider session={session}>

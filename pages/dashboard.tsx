@@ -1037,7 +1037,8 @@ export default function Dashboard() {
 
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
-    setLiveOverlayChromeVisible(true)
+    // Chrome should start hidden; it is revealed by tapping the top display.
+    setLiveOverlayChromeVisible(false)
     const windowId = 'canvas-live-window'
     const quizMode = Boolean(opts?.quizMode)
     setLiveWindows(prev => {
@@ -1166,7 +1167,8 @@ export default function Dashboard() {
     setActiveSessionId(sessionId)
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
-    setLiveOverlayChromeVisible(true)
+    // Chrome should start hidden; it is revealed by tapping the top display.
+    setLiveOverlayChromeVisible(false)
   }, [isSubscriptionBlocked])
 
   const openHeroLive = useCallback(() => {
@@ -1207,6 +1209,8 @@ export default function Dashboard() {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
+    // Keep chrome hidden by default.
+    setLiveOverlayChromeVisible(false)
   }
   const closeLiveOverlay = () => {
     setLiveOverlayOpen(false)
@@ -4634,7 +4638,6 @@ export default function Dashboard() {
                     onRequestVideoOverlay={
                       win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
                         ? () => {
-                          setLiveOverlayChromeVisible(true)
                           setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
                         }
                         : undefined
@@ -4650,12 +4653,12 @@ export default function Dashboard() {
                         : undefined
                     }
                     onToggleStudentMic={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                      win.kind === 'canvas'
                         ? handleToggleLiveStudentMic
                         : undefined
                     }
                     studentMicMuted={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                      win.kind === 'canvas'
                         ? liveMuteState.audioMuted
                         : undefined
                     }
@@ -4693,7 +4696,6 @@ export default function Dashboard() {
                         autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}
                         lessonAuthoring={win.lessonAuthoring}
                         onRequestVideoOverlay={() => {
-                          setLiveOverlayChromeVisible(true)
                           setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
                         }}
                         onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}

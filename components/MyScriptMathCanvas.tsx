@@ -777,6 +777,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
 
   useEffect(() => {
+    if (!onOverlayChromeVisibilityChange) return
+    if (!isOverlayMode || !isCompactViewport) return
+    onOverlayChromeVisibilityChange(false)
+  }, [isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+
+  useEffect(() => {
     return () => {
       clearOverlayChromeAutoHide()
     }

@@ -5593,13 +5593,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               ts: Date.now() + 2,
             })
           } else {
-            // No prior controller: default back to everyone unlocked.
+            // No prior controller captured: default back to the normal classroom behavior
+            // where the teacher has exclusive control and students are locked.
             await channel.publish('control', {
               clientId: clientIdRef.current,
               author: userDisplayName,
-              locked: false,
-              controllerId: ALL_STUDENTS_ID,
-              controllerName: 'All Students',
+              locked: true,
+              controllerId: clientIdRef.current,
+              controllerName: userDisplayName,
               ts: Date.now() + 2,
             })
           }
@@ -5614,8 +5615,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             author: userDisplayName,
             action: 'student-broadcast',
             enabled: Boolean(restorePublish),
-            controllerId: restoreControl?.controllerId || ALL_STUDENTS_ID,
-            controllerName: restoreControl?.controllerName || 'All Students',
+            controllerId: restoreControl?.controllerId || clientIdRef.current,
+            controllerName: restoreControl?.controllerName || userDisplayName,
             ts: Date.now() + 3,
           })
           setIsStudentPublishEnabled(Boolean(restorePublish))

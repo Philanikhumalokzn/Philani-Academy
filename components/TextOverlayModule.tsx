@@ -290,6 +290,15 @@ export default function TextOverlayModule(props: {
     studentLocalBoxesRef.current = studentLocalBoxes
   }, [studentLocalBoxes])
 
+  const quizFeedbackAutoHideTimerRef = useRef<number | null>(null)
+  const clearQuizFeedbackAutoHide = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (quizFeedbackAutoHideTimerRef.current != null) {
+      window.clearTimeout(quizFeedbackAutoHideTimerRef.current)
+      quizFeedbackAutoHideTimerRef.current = null
+    }
+  }, [])
+
   // Student-local overrides for the quiz prompt box.
   // Students should be able to move/resize/close the prompt without affecting others.
   const [localQuizOverride, setLocalQuizOverride] = useState<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
@@ -318,6 +327,7 @@ export default function TextOverlayModule(props: {
 
     const handler = () => {
       setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+      clearQuizFeedbackAutoHide()
       setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
       setStudentQuizTextResponse('')
       dispatchStudentQuizTextResponse('')
@@ -325,7 +335,7 @@ export default function TextOverlayModule(props: {
 
     window.addEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
     return () => window.removeEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
-  }, [dispatchStudentQuizTextResponse, isAdmin])
+  }, [clearQuizFeedbackAutoHide, dispatchStudentQuizTextResponse, isAdmin])
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
 
@@ -672,6 +682,23 @@ export default function TextOverlayModule(props: {
       const text = typeof detail?.text === 'string' ? detail.text : (detail?.text === null ? '' : undefined)
       const wantsVisible = typeof detail?.visible === 'boolean' ? detail.visible : undefined
 
+      // Student-only: auto-hide feedback after 30 seconds.
+      clearQuizFeedbackAutoHide()
+      if (wantsVisible !== false) {
+        quizFeedbackAutoHideTimerRef.current = window.setTimeout(() => {
+          setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
+          window.setTimeout(() => {
+            setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
+            setClosingPopupIds(prev => {
+              if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
+              const next = { ...prev }
+              delete next[QUIZ_FEEDBACK_BOX_ID]
+              return next
+            })
+          }, 230)
+        }, 30_000)
+      }
+
       setStudentLocalBoxes(prev => {
         const existing = prev.find(b => b.id === QUIZ_FEEDBACK_BOX_ID) || null
 
@@ -722,7 +749,7 @@ export default function TextOverlayModule(props: {
 
     window.addEventListener('philani-text:local-apply', handler as any)
     return () => window.removeEventListener('philani-text:local-apply', handler as any)
-  }, [isAdmin])
+  }, [clearQuizFeedbackAutoHide, isAdmin])
 
   const addBox = useCallback(async () => {
     if (!isAdmin) return
@@ -1235,6 +1262,7 @@ export default function TextOverlayModule(props: {
                         }, 230)
                         return
                       }
+                      clearQuizFeedbackAutoHide()
                       setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
                       window.setTimeout(() => {
                         setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))

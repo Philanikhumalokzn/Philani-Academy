@@ -48,8 +48,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Learners only fetch their own responses.
     const records = await learnerResponse.findMany({
       where: { sessionKey, userId },
-      orderBy: { updatedAt: 'desc' },
-      take: 50,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
     })
     return res.status(200).json({ responses: records })
   }
@@ -90,31 +90,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? Math.max(0, Math.min(9999, Math.trunc(quizPointIndex)))
       : null
 
-    try {
-      const record = await learnerResponse.upsert({
-        where: {
-          sessionKey_userId_quizId: {
-            sessionKey,
-            userId,
-            quizId: safeQuizId,
-          },
-        },
-        update: {
-          latex,
-          studentText: safeStudentText,
-          userEmail,
-          quizId: safeQuizId,
-          prompt: safePrompt,
-          quizLabel: safeQuizLabel,
-          quizPhaseKey: safeQuizPhaseKey,
-          quizPointId: safeQuizPointId,
-          quizPointIndex: safeQuizPointIndex,
-        },
-        create: {
+    const createRecord = async (quizIdToUse: string) => {
+      return await learnerResponse.create({
+        data: {
           sessionKey,
           userId,
           userEmail,
-          quizId: safeQuizId,
+          quizId: quizIdToUse,
           prompt: safePrompt,
           quizLabel: safeQuizLabel,
           quizPhaseKey: safeQuizPhaseKey,
@@ -124,16 +106,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           studentText: safeStudentText,
         },
       })
+    }
 
+    try {
+      const record = await createRecord(safeQuizId)
       return res.status(200).json(record)
     } catch (err: any) {
-      // Backwards-compat: if production DB still has the legacy unique constraint
-      // on (sessionKey, userId), inserting a second quiz (new quizId) will fail.
-      // In that case, update the existing single record so learners aren't blocked.
       const code = err?.code || err?.name
       const target = err?.meta?.target
       const targetStr = Array.isArray(target) ? target.join(',') : String(target || '')
-      const isLegacyUnique = code === 'P2002' && /sessionKey/i.test(targetStr) && /userId/i.test(targetStr)
+
+      // Backwards-compat: if DB still has UNIQUE(sessionKey,userId,quizId), create a distinct quizId per attempt.
+      const isTripletUnique = code === 'P2002' && /sessionKey/i.test(targetStr) && /userId/i.test(targetStr) && /quizId/i.test(targetStr)
+      if (isTripletUnique) {
+        try {
+          const attemptId = `${safeQuizId}-${Date.now().toString(36)}`
+          const record = await createRecord(attemptId)
+          return res.status(200).json(record)
+        } catch (retryErr) {
+          console.error('Retry response save failed', retryErr)
+        }
+      }
+
+      // Backwards-compat: legacy UNIQUE(sessionKey,userId) means history is impossible without migration.
+      // Update the existing record so learners aren't blocked.
+      const isLegacyUnique = code === 'P2002' && /sessionKey/i.test(targetStr) && /userId/i.test(targetStr) && !/quizId/i.test(targetStr)
       if (isLegacyUnique) {
         try {
           const existing = await learnerResponse.findFirst({
@@ -161,6 +158,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Fallback response save failed', fallbackErr)
         }
       }
+
       console.error('Failed to save response', err)
       return res.status(500).json({ message: err?.message || 'Failed to save response' })
     }

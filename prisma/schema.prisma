@@ -275,10 +275,10 @@ model LearnerResponse {
 
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([sessionKey, userId, quizId])
   @@index([sessionKey])
   @@index([sessionKey, updatedAt])
   @@index([sessionKey, userId, updatedAt])
+  @@index([sessionKey, userId, quizId, createdAt])
   @@index([sessionKey, quizPhaseKey, quizPointIndex, updatedAt])
 }
 

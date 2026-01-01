@@ -1224,7 +1224,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const controllerId = next?.controllerId
       const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
       hasExclusiveControlRef.current = isExclusiveController
-      const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+      const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || quizActiveRef.current || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -5469,15 +5469,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       if (enabled) {
         // Students must be able to write privately during quizzes.
-        // Unlock to all students and explicitly disable publishing.
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          locked: false,
-          controllerId: ALL_STUDENTS_ID,
-          controllerName: 'All Students',
-          ts: Date.now(),
-        })
+        // Do NOT change the global lock/controller state here; instead, clients allow local
+        // writing while `quizActive` is true. This ensures the board returns to its prior
+        // locked/unlocked state automatically when the quiz ends.
         await channel.publish('control', {
           clientId: clientIdRef.current,
           author: userDisplayName,
@@ -5485,7 +5479,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           enabled: false,
           controllerId: ALL_STUDENTS_ID,
           controllerName: 'All Students',
-          ts: Date.now() + 1,
+          ts: Date.now(),
         })
       }
       await channel.publish('control', {
@@ -5722,6 +5716,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       } catch (err) {
         console.warn('quiz-feedback API error', err)
+      }
+
+      // Timer-driven auto-submit: after showing feedback, auto-hide all quiz popups
+      // (including the restore button) so the board returns to a clean, pre-quiz state.
+      if (forceSubmit && skipConfirm) {
+        try {
+          if (typeof window !== 'undefined') {
+            window.setTimeout(() => {
+              try {
+                window.dispatchEvent(new CustomEvent('philani-quiz:finalize'))
+              } catch {}
+            }, 4500)
+          }
+        } catch {}
       }
 
       // Notify teacher immediately with the combined latex string.

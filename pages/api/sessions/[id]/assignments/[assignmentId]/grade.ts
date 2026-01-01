@@ -26,6 +26,35 @@ function extractJsonObject(text: string) {
   return raw
 }
 
+function stripJsonNoise(text: string) {
+  return (text || '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+}
+
+function repairCommonJsonIssues(text: string) {
+  // Fix common model mistakes: trailing commas before } or ]
+  // Example: {"a":1,}  or  [1,2,]
+  return (text || '').replace(/,\s*([}\]])/g, '$1')
+}
+
+function parseGeminiJsonStrict(rawText: string) {
+  const extracted = stripJsonNoise(extractJsonObject(rawText))
+  if (!extracted) throw new Error('Gemini returned empty JSON')
+
+  try {
+    return JSON.parse(extracted)
+  } catch (e1: any) {
+    const repaired = repairCommonJsonIssues(extracted)
+    try {
+      return JSON.parse(repaired)
+    } catch (e2: any) {
+      const msg = e2?.message || e1?.message || 'JSON parse error'
+      throw new Error(`${msg}. Raw JSON excerpt: ${repaired.slice(0, 300)}`)
+    }
+  }
+}
+
 type GeminiResultItem = { questionId: string; correctness: 'correct' | 'incorrect' }
 
 function normalizeCorrectness(value: unknown): 'correct' | 'incorrect' | null {
@@ -53,6 +82,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; content
         temperature: 0,
         topP: 0.1,
         maxOutputTokens: 1400,
+        responseMimeType: 'application/json',
       },
     } as any)
 
@@ -70,6 +100,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; content
           temperature: 0,
           topP: 0.1,
           maxOutputTokens: 1400,
+          responseMimeType: 'application/json',
         },
       }),
     })
@@ -205,7 +236,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const assignmentPrompt = clampText((assignment as any)?.gradingPrompt || '', 8000)
 
   const instruction =
-    'You are a strict auto-grader. Return ONLY valid JSON. No markdown, no commentary. ' +
+    'You are a strict auto-grader. Return ONLY valid JSON (RFC 8259). No markdown, no commentary, no trailing commas. ' +
     'Decide if each answer is exactly correct or incorrect compared to the teacher solution and prompts. ' +
     'Output schema EXACTLY:\n' +
     '{"results":[{"questionId":"...","correctness":"correct"|"incorrect"}]}'
@@ -221,8 +252,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const raw = await generateWithGemini({ apiKey: geminiApiKey, model, content })
     if (!raw) return res.status(500).json({ message: 'Gemini returned empty grading JSON' })
 
-    const jsonText = extractJsonObject(raw)
-    const parsed: any = JSON.parse(jsonText)
+    const parsed: any = parseGeminiJsonStrict(raw)
 
     const resultsArr: any[] = Array.isArray(parsed?.results) ? parsed.results : []
     const normalized: GeminiResultItem[] = []

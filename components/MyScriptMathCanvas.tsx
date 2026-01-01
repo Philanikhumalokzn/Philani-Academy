@@ -230,6 +230,7 @@ type MyScriptMathCanvasProps = {
     sessionId: string
     assignmentId: string
     questionId: string
+    initialLatex?: string
   }
   uiMode?: 'default' | 'overlay'
   defaultOrientation?: CanvasOrientation
@@ -745,6 +746,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     quizCombinedLatexRef.current = ''
     quizHasCommittedRef.current = false
     setStudentCommittedLatex('')
+
+    // Assignment editing: if we already have a saved response for this question,
+    // preload it into the committed preview so the learner can edit/resubmit.
+    const initialAssignmentLatex = (!isAdmin && assignmentSubmission?.initialLatex && typeof assignmentSubmission.initialLatex === 'string')
+      ? assignmentSubmission.initialLatex.trim()
+      : ''
+    if (initialAssignmentLatex) {
+      quizCombinedLatexRef.current = initialAssignmentLatex
+      quizHasCommittedRef.current = true
+      setStudentCommittedLatex(initialAssignmentLatex)
+    }
     setQuizActiveState(true)
     suppressBroadcastUntilTsRef.current = Date.now() + 600
     try {
@@ -755,7 +767,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setLatexOutput('')
     // NOTE: `captureFullSnapshot` is defined later in this component; do not reference it in deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQuiz, isAdmin, isQuizMode, playSnapSound, setQuizActiveState])
+  }, [assignmentSubmission?.initialLatex, initialQuiz, isAdmin, isQuizMode, playSnapSound, setQuizActiveState])
 
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 

@@ -24,6 +24,7 @@ export default function AssignmentQuestionPage() {
   const [error, setError] = useState<string | null>(null)
   const [assignment, setAssignment] = useState<any | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
+  const [existingResponseLatex, setExistingResponseLatex] = useState<string>('')
   const [metaVisible, setMetaVisible] = useState(false)
   const metaHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -68,6 +69,24 @@ export default function AssignmentQuestionPage() {
         const found = qs.find((q: any) => String(q?.id) === String(questionId)) || null
         setQuestion(found)
         if (!found) setError('Question not found')
+
+        // Fetch learner's saved response for this question (if any) so they can edit.
+        try {
+          const rr = await fetch(
+            `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/responses`,
+            { credentials: 'same-origin' }
+          )
+          const rdata = await rr.json().catch(() => ({}))
+          if (cancelled) return
+          if (rr.ok) {
+            const latex = String(rdata?.byQuestionId?.[String(questionId)]?.latex || '')
+            setExistingResponseLatex(latex)
+          } else {
+            setExistingResponseLatex('')
+          }
+        } catch {
+          if (!cancelled) setExistingResponseLatex('')
+        }
       } catch (err: any) {
         if (cancelled) return
         setError(err?.message || 'Failed to load assignment')
@@ -80,6 +99,20 @@ export default function AssignmentQuestionPage() {
       cancelled = true
     }
   }, [assignmentId, questionId, sessionId, status])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail as any
+      if (!detail) return
+      if (String(detail?.assignmentId || '') !== String(assignmentId)) return
+      if (String(detail?.questionId || '') !== String(questionId)) return
+      const latex = typeof detail?.latex === 'string' ? detail.latex : ''
+      setExistingResponseLatex(latex)
+    }
+    window.addEventListener('philani:assignment-response-saved', handler as any)
+    return () => window.removeEventListener('philani:assignment-response-saved', handler as any)
+  }, [assignmentId, questionId])
 
   const initialQuiz = useMemo(() => {
     if (!assignment || !question) return null
@@ -132,7 +165,7 @@ export default function AssignmentQuestionPage() {
                 isAdmin={false}
                 quizMode
                 initialQuiz={initialQuiz}
-                assignmentSubmission={{ sessionId, assignmentId, questionId }}
+                assignmentSubmission={{ sessionId, assignmentId, questionId, initialLatex: existingResponseLatex || undefined }}
                 isVisible
                 defaultOrientation="portrait"
               />

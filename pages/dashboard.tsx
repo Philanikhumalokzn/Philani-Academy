@@ -3860,7 +3860,9 @@ export default function Dashboard() {
                                                     className="btn btn-primary text-xs"
                                                     href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(q.id))}`}
                                                   >
-                                                    Answer on canvas
+                                                    {String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '').trim()
+                                                      ? 'Edit on canvas'
+                                                      : 'Answer on canvas'}
                                                   </Link>
                                                 </div>
                                               ) : null}

@@ -23,6 +23,7 @@ type AssignmentSubmissionConfig = {
   sessionId: string
   assignmentId: string
   questionId: string
+  initialLatex?: string
 }
 
 type Props = {

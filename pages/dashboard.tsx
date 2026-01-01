@@ -864,8 +864,9 @@ export default function Dashboard() {
   }, [applyLiveTeacherAudioVolume, liveTeacherAudioEnabled, liveParticipantsVersion])
 
   const handleToggleLiveStudentMic = useCallback(() => {
-    if (isOwnerUser) return
-    setLiveTeacherAudioEnabled(true)
+    if (!isOwnerUser) {
+      setLiveTeacherAudioEnabled(true)
+    }
     if (!liveControls) {
       pendingLiveMicToggleRef.current = true
       return

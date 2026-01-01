@@ -89,21 +89,26 @@ async function extractQuestionsWithGemini(opts: {
   const { apiKey, model, gradeLabel, mimeType, base64Data, filename, titleHint } = opts
 
   const prompt =
-    `You convert assignment pages into clean LaTeX questions for learners. ` +
+    `You are a verbatim extraction engine. ` +
+    `Transcribe the assignment exactly as written in the source. ` +
+    `CRITICAL: Do NOT rephrase, paraphrase, summarize, simplify, or “improve” any wording. ` +
+    `Preserve original wording, punctuation, capitalization, numbers, units, and question labels (e.g. “1.2”, “(a)”, “Question 7”). ` +
+    `Only convert mathematical notation into LaTeX when needed; do not rewrite surrounding text. ` +
     `Return ONLY valid JSON with this shape: ` +
     `{"title":"...","displayTitle":"...","sectionLabel":"...","questions":[{"latex":"..."}]}. ` +
     `Where:` +
-    `\n- title: a general assignment title (short).` +
-    `\n- displayTitle: the stable header for the assignment, ideally like "Question 7: Functions and Graphs" when the source indicates a question number/topic.` +
+    `\n- title: copied from the source header if present (no rewording). If missing, use the title hint.` +
+    `\n- displayTitle: copied from the source header if present (no rewording). If missing, reuse title.` +
     `\n- sectionLabel: a short section/tag label inferred from the source (e.g. "Analysis", "Algebra", "Geometry"). Keep it 1-2 words.` +
     `\n- questions: the extracted LaTeX questions/sub-questions.` +
     `\n\nRules:` +
     `\n- Produce 1 question per item in questions[].` +
-    `\n- Keep each question latex concise and self-contained.` +
+    `\n- Split ONLY on explicit question boundaries visible in the source. If unsure, keep content together rather than re-grouping.` +
     `\n- If you include math, wrap it in $...$ or $$...$$.` +
     `\n- Do NOT include solutions.` +
     `\n- Preserve the order from the source.` +
-    `\n- If the source contains instructions plus multiple sub-questions, split into separate items when reasonable.` +
+    `\n- Keep instruction lines verbatim (e.g., “Show all working”, “Give your answer to 2 d.p.”).` +
+    `\n- Do NOT invent missing text; if something is unreadable, insert a short placeholder like “[illegible]”.` +
     `\n- Grade level: ${gradeLabel}.` +
     `\n\nTitle hint: ${titleHint || filename || 'Assignment'}.`
 
@@ -126,6 +131,11 @@ async function extractQuestionsWithGemini(opts: {
           ],
         },
       ],
+      config: {
+        temperature: 0,
+        topP: 0.1,
+        maxOutputTokens: 2000,
+      },
     } as any)
 
     const text = response?.text
@@ -147,8 +157,10 @@ async function extractQuestionsWithGemini(opts: {
           },
         ],
         generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 1500,
+          temperature: 0,
+          topP: 0.1,
+          maxOutputTokens: 2000,
+          responseMimeType: 'application/json',
         },
       }),
     })

@@ -5,10 +5,12 @@ type Body = {
   gradeLabel?: string | null
   prompt?: string
   studentLatex?: string
+  studentText?: string
 }
 
 const MAX_PROMPT = 2000
 const MAX_LATEX = 20000
+const MAX_STUDENT_TEXT = 5000
 
 function clampText(value: unknown, maxLen: number) {
   if (typeof value !== 'string') return ''
@@ -16,8 +18,8 @@ function clampText(value: unknown, maxLen: number) {
   return trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed
 }
 
-async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; prompt: string; studentLatex: string }) {
-  const { apiKey, model, gradeLabel, prompt, studentLatex } = opts
+async function generateWithGemini(opts: { apiKey: string; model: string; gradeLabel: string | null; prompt: string; studentLatex: string; studentText: string }) {
+  const { apiKey, model, gradeLabel, prompt, studentLatex, studentText } = opts
 
   const instruction =
     'You are a friendly math tutor. ' +
@@ -32,7 +34,8 @@ async function generateWithGemini(opts: { apiKey: string; model: string; gradeLa
     `Context:\n` +
     `Grade: ${gradeLabel || 'unknown'}\n` +
     `Quiz prompt:\n${prompt || '(unknown)'}\n\n` +
-    `Student answer (LaTeX):\n${studentLatex || '(empty)'}\n`
+    `Student work (canvas/LaTeX):\n${studentLatex || '(empty)'}\n\n` +
+    `Student typed answer:\n${studentText || '(empty)'}\n`
 
   // Prefer the official SDK, with REST fallback.
   try {
@@ -98,9 +101,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const gradeLabel = (typeof body.gradeLabel === 'string' ? body.gradeLabel : null)
   const prompt = clampText(body.prompt, MAX_PROMPT)
   const studentLatex = clampText(body.studentLatex, MAX_LATEX)
+  const studentText = clampText(body.studentText, MAX_STUDENT_TEXT)
 
-  if (!studentLatex) {
-    return res.status(400).json({ message: 'studentLatex is required' })
+  if (!studentLatex && !studentText) {
+    return res.status(400).json({ message: 'Either studentLatex or studentText is required' })
   }
 
   try {
@@ -110,6 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       gradeLabel,
       prompt,
       studentLatex,
+      studentText,
     })
 
     if (!text) {

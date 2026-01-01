@@ -269,6 +269,7 @@ model LearnerResponse {
   quizPointIndex Int?
   prompt     String?
   latex      String
+  studentText String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

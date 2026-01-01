@@ -4,6 +4,7 @@ import prisma from '../../../../lib/prisma'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 const MAX_LATEX_LENGTH = 50000
+const MAX_STUDENT_TEXT_LENGTH = 5000
 const MAX_PROMPT_LENGTH = 5000
 const MAX_QUIZ_ID_LENGTH = 80
 const MAX_QUIZ_LABEL_LENGTH = 40
@@ -54,13 +55,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { latex, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex } = req.body || {}
+    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex } = req.body || {}
     if (!latex || typeof latex !== 'string') {
       return res.status(400).json({ message: 'Latex is required' })
     }
     if (latex.length > MAX_LATEX_LENGTH) {
       return res.status(400).json({ message: 'Latex is too large' })
     }
+
+    const safeStudentText = (typeof studentText === 'string' && studentText.trim().length > 0)
+      ? studentText.trim().slice(0, MAX_STUDENT_TEXT_LENGTH)
+      : null
 
     const safeQuizId = (typeof quizId === 'string' && quizId.trim().length > 0)
       ? quizId.trim().slice(0, MAX_QUIZ_ID_LENGTH)
@@ -96,6 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         update: {
           latex,
+          studentText: safeStudentText,
           userEmail,
           quizId: safeQuizId,
           prompt: safePrompt,
@@ -115,6 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           quizPointId: safeQuizPointId,
           quizPointIndex: safeQuizPointIndex,
           latex,
+          studentText: safeStudentText,
         },
       })
 
@@ -138,6 +145,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               where: { id: existing.id },
               data: {
                 latex,
+                studentText: safeStudentText,
                 userEmail,
                 quizId: safeQuizId,
                 prompt: safePrompt,

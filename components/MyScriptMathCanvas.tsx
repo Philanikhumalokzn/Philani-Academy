@@ -401,12 +401,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizPhaseKeyRef = useRef<string>('')
   const quizPointIdRef = useRef<string>('')
   const quizPointIndexRef = useRef<number>(-1)
+  const studentQuizTextResponseRef = useRef<string>('')
   const quizEndsAtRef = useRef<number | null>(null)
   const quizDurationSecRef = useRef<number | null>(null)
   const quizAutoSubmitTriggeredRef = useRef(false)
   const quizCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
   const initialQuizAppliedRef = useRef<string | null>(null)
+
+  // Student typed response (from quiz popup in TextOverlayModule)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const detail = (event as any)?.detail
+      const text = typeof detail?.text === 'string' ? detail.text : ''
+      studentQuizTextResponseRef.current = text
+    }
+    window.addEventListener('philani-quiz:text-response', handler as any)
+    return () => window.removeEventListener('philani-quiz:text-response', handler as any)
+  }, [])
 
   const clearQuizCountdown = useCallback(() => {
     if (quizCountdownIntervalRef.current) {
@@ -5366,6 +5379,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           endsAt = Date.now() + durationSec * 1000
         }
 
+        // Admin moderation: allow teacher to override the suggested timer before broadcasting.
+        // Keep UX simple (native prompt), but validate and clamp.
+        if (typeof window !== 'undefined') {
+          try {
+            const suggestedMin = Math.max(1, Math.round(durationSec / 60))
+            const entered = window.prompt(
+              `Time limit in minutes (suggested ${suggestedMin}):`,
+              String(suggestedMin)
+            )
+            if (entered === null) {
+              return
+            }
+            const raw = entered.trim()
+            if (raw) {
+              const asNumber = Number(raw)
+              if (Number.isFinite(asNumber) && asNumber > 0) {
+                const nextSec = Math.round(asNumber * 60)
+                const clampedSec = Math.max(30, Math.min(1800, nextSec))
+                durationSec = clampedSec
+                endsAt = Date.now() + clampedSec * 1000
+              }
+            }
+          } catch {}
+        }
+
         // Create a new quiz instance id each time quiz mode starts.
         try {
           quizId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
@@ -5606,6 +5644,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           latex: combined,
+          studentText: (studentQuizTextResponseRef.current || '').trim() || undefined,
           quizId: quizIdRef.current || undefined,
           prompt: quizPromptRef.current || undefined,
           quizLabel: quizLabelRef.current || undefined,
@@ -5630,6 +5669,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             gradeLabel: gradeLabel || undefined,
             prompt: quizPromptRef.current || undefined,
             studentLatex: combined,
+            studentText: (studentQuizTextResponseRef.current || '').trim() || undefined,
           }),
         })
         if (fbRes.ok) {

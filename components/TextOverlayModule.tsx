@@ -51,6 +51,7 @@ const randomId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 const SCRIPT_BOX_ID = 'lesson-script-text'
 const QUIZ_BOX_ID = 'quiz-prompt'
 const QUIZ_FEEDBACK_BOX_ID = 'quiz-feedback'
+const QUIZ_RESPONSE_EVENT = 'philani-quiz:text-response'
 
 const MIN_BOX_PX_W = 140
 const MIN_BOX_PX_H = 56
@@ -295,6 +296,18 @@ export default function TextOverlayModule(props: {
   useEffect(() => {
     localQuizOverrideRef.current = localQuizOverride
   }, [localQuizOverride])
+
+  const [studentQuizTextResponse, setStudentQuizTextResponse] = useState('')
+  const lastDispatchedStudentQuizTextRef = useRef<string>('')
+  const dispatchStudentQuizTextResponse = useCallback((text: string) => {
+    if (typeof window === 'undefined') return
+    const normalized = typeof text === 'string' ? text : ''
+    if (normalized === lastDispatchedStudentQuizTextRef.current) return
+    lastDispatchedStudentQuizTextRef.current = normalized
+    try {
+      window.dispatchEvent(new CustomEvent(QUIZ_RESPONSE_EVENT, { detail: { text: normalized } }))
+    } catch {}
+  }, [])
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
 
@@ -1083,6 +1096,20 @@ export default function TextOverlayModule(props: {
     return Array.from(byId.values())
   }, [boxes, isAdmin, studentLocalBoxes])
 
+  // When quiz prompt box disappears, clear the typed response so the next quiz starts clean.
+  useEffect(() => {
+    if (isAdmin) return
+    const quizBox = mergedBoxes.find(b => b.id === QUIZ_BOX_ID) || null
+    const quizVisible = Boolean(quizBox?.visible) && !Boolean(localQuizOverrideRef.current?.hidden)
+    if (quizVisible) return
+    if (!studentQuizTextResponse) {
+      dispatchStudentQuizTextResponse('')
+      return
+    }
+    setStudentQuizTextResponse('')
+    dispatchStudentQuizTextResponse('')
+  }, [dispatchStudentQuizTextResponse, isAdmin, mergedBoxes, studentQuizTextResponse])
+
   const renderBoxes = mergedBoxes
     .filter(b => {
       const isClosing = Boolean(closingPopupIds[b.id])
@@ -1195,6 +1222,28 @@ export default function TextOverlayModule(props: {
                   </button>
                 )}
                 <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
+
+                {!isAdmin && isQuizBox && (
+                  <div className="mt-3">
+                    <div className="mb-1 text-xs text-white/80">Your typed answer (optional)</div>
+                    <textarea
+                      className="w-full rounded-xl border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none"
+                      style={{ minHeight: 88, resize: 'vertical', userSelect: 'text', touchAction: 'auto' }}
+                      value={studentQuizTextResponse}
+                      onChange={e => {
+                        const next = e.target.value
+                        setStudentQuizTextResponse(next)
+                        dispatchStudentQuizTextResponse(next)
+                      }}
+                      placeholder="Type your answer here…"
+                      onPointerDown={e => {
+                        // Let students type without dragging the popup.
+                        e.stopPropagation()
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </div>
+                )}
 
                 {isQuizBox && (
                   <button

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -122,6 +122,35 @@ export default function BoardPage() {
   const [studentMicEnabled, setStudentMicEnabled] = useState(false)
   const [jitsiControls, setJitsiControls] = useState<JitsiControls | null>(null)
   const [jitsiMuteState, setJitsiMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
+  const [participantsVersion, setParticipantsVersion] = useState(0)
+
+  const applyTeacherAudioVolume = useCallback(async (enabled: boolean) => {
+    if (isBoardAdmin) return
+    const controls: any = jitsiControls as any
+    if (!controls || typeof controls.getRoomsInfo !== 'function' || typeof controls.setParticipantVolume !== 'function') return
+    try {
+      const info = await controls.getRoomsInfo()
+      const rooms = Array.isArray(info?.rooms) ? info.rooms : []
+      const mainRoom = rooms.find((r: any) => r?.isMainRoom) || rooms[0]
+      const participants = Array.isArray(mainRoom?.participants) ? mainRoom.participants : []
+      const moderatorIds = participants
+        .filter((p: any) => p?.role === 'moderator' && typeof p?.id === 'string')
+        .map((p: any) => p.id as string)
+
+      const volume = enabled ? 1 : 0
+      moderatorIds.forEach((id: string) => {
+        try {
+          controls.setParticipantVolume(id, volume)
+        } catch {}
+      })
+    } catch {
+      // ignore
+    }
+  }, [isBoardAdmin, jitsiControls])
+
+  useEffect(() => {
+    void applyTeacherAudioVolume(teacherAudioEnabled)
+  }, [applyTeacherAudioVolume, teacherAudioEnabled, participantsVersion])
 
   const shouldMountJitsi = Boolean(
     status === 'authenticated' &&
@@ -255,12 +284,9 @@ export default function BoardPage() {
                       return
                     }
 
-                    // Student: connect/disconnect to pull teacher audio.
+                    // Student: keep the meeting connected, just locally mute/unmute teacher audio.
+                    // This uses Jitsi's per-participant playback volume control.
                     setTeacherAudioEnabled(prev => !prev)
-                    if (teacherAudioEnabled && !studentMicEnabled && !teacherVideoVisible) {
-                      setTeacherVideoVisible(false)
-                      setStudentMicEnabled(false)
-                    }
                   }}
                 >
                   <span className="sr-only">Teacher audio</span>
@@ -443,6 +469,7 @@ export default function BoardPage() {
                 startWithVideoMuted={startWithVideoMuted}
                 onControlsChange={setJitsiControls}
                 onMuteStateChange={setJitsiMuteState}
+                onParticipantEvent={() => setParticipantsVersion(v => v + 1)}
               />
             )}
           </>

@@ -15,8 +15,6 @@ type LiveOverlayWindowProps = {
   onRequestVideoOverlay?: () => void
   onToggleTeacherAudio?: () => void
   teacherAudioEnabled?: boolean
-  onTeacherVolumeChange?: (value: number) => void
-  teacherVolume?: number
   onToggleStudentMic?: () => void
   studentMicMuted?: boolean
   position: Point
@@ -45,8 +43,6 @@ export default function LiveOverlayWindow({
   onRequestVideoOverlay,
   onToggleTeacherAudio,
   teacherAudioEnabled,
-  onTeacherVolumeChange,
-  teacherVolume,
   onToggleStudentMic,
   studentMicMuted,
   position,
@@ -264,31 +260,6 @@ export default function LiveOverlayWindow({
 
         {isCanvasWindow && (
           <div className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
-            {typeof onTeacherVolumeChange === 'function' && typeof teacherVolume === 'number' && (
-              <label className="live-window__volume" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="sr-only">Teacher volume</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={teacherVolume}
-                  onPointerDown={e => e.stopPropagation()}
-                  onClick={e => e.stopPropagation()}
-                  onChange={e => {
-                    e.stopPropagation()
-                    const next = Number(e.target.value)
-                    if (Number.isNaN(next)) return
-                    try {
-                      onTeacherVolumeChange(next)
-                    } catch {}
-                  }}
-                  aria-label="Teacher volume"
-                  style={{ width: 84 }}
-                />
-              </label>
-            )}
-
             {typeof onToggleTeacherAudio === 'function' && (
               <button
                 type="button"

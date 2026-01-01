@@ -26,12 +26,13 @@ type FloatingJitsiWindowProps = {
   silentJoin?: boolean
   onControlsChange?: (controls: JitsiControls | null) => void
   onMuteStateChange?: (state: JitsiMuteState) => void
+  onParticipantEvent?: () => void
   toolbarButtons?: string[]
   startWithAudioMuted?: boolean
   startWithVideoMuted?: boolean
 }
 
-export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoint, isOwner, gradeLabel, boundsRef, visible = true, silentJoin = false, onControlsChange, onMuteStateChange, toolbarButtons, startWithAudioMuted, startWithVideoMuted }: FloatingJitsiWindowProps) {
+export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoint, isOwner, gradeLabel, boundsRef, visible = true, silentJoin = false, onControlsChange, onMuteStateChange, onParticipantEvent, toolbarButtons, startWithAudioMuted, startWithVideoMuted }: FloatingJitsiWindowProps) {
   const [position, setPosition] = useState({ x: 24, y: 24 })
   const [size, setSize] = useState({ width: 360, height: 240 })
   const [isMinimized, setIsMinimized] = useState(false)
@@ -241,6 +242,7 @@ export default function FloatingJitsiWindow({ roomName, displayName, tokenEndpoi
             startWithVideoMuted={startWithVideoMuted}
             onControlsChange={onControlsChange}
             onMuteStateChange={onMuteStateChange}
+            onParticipantEvent={onParticipantEvent}
           />
         </div>
       )}

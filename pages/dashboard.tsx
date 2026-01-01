@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
-import JitsiRoom, { JitsiControls, JitsiMuteState, JitsiParticipantInfo } from '../components/JitsiRoom'
+import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -482,8 +482,6 @@ export default function Dashboard() {
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
   const [liveTeacherAudioEnabled, setLiveTeacherAudioEnabled] = useState(true)
-  const [liveTeacherVolume, setLiveTeacherVolume] = useState(1)
-  const [liveTeacherParticipantId, setLiveTeacherParticipantId] = useState<string | null>(null)
   const pendingLiveMicToggleRef = useRef(false)
 
   useEffect(() => {
@@ -821,6 +819,11 @@ export default function Dashboard() {
   const canLaunchCanvasOverlay = status === 'authenticated' && Boolean(selectedGrade)
   const canJoinLiveClass = canLaunchCanvasOverlay
 
+  const [liveParticipantsVersion, setLiveParticipantsVersion] = useState(0)
+  const bumpLiveParticipantsVersion = useCallback(() => {
+    setLiveParticipantsVersion(v => v + 1)
+  }, [])
+
   useEffect(() => {
     if (!liveOverlayOpen) return
     if (isOwnerUser) return
@@ -829,19 +832,36 @@ export default function Dashboard() {
 
   const handleToggleLiveTeacherAudio = useCallback(() => {
     if (isOwnerUser) return
-    setLiveTeacherAudioEnabled(prev => {
-      const next = !prev
-      if (!next) {
-        pendingLiveMicToggleRef.current = false
+    setLiveTeacherAudioEnabled(prev => !prev)
+  }, [isOwnerUser])
+
+  const applyLiveTeacherAudioVolume = useCallback(async (enabled: boolean) => {
+    if (isOwnerUser) return
+    const controls: any = liveControls as any
+    if (!controls || typeof controls.getRoomsInfo !== 'function' || typeof controls.setParticipantVolume !== 'function') return
+    try {
+      const info = await controls.getRoomsInfo()
+      const rooms = Array.isArray(info?.rooms) ? info.rooms : []
+      const mainRoom = rooms.find((r: any) => r?.isMainRoom) || rooms[0]
+      const participants = Array.isArray(mainRoom?.participants) ? mainRoom.participants : []
+      const moderatorIds = participants
+        .filter((p: any) => p?.role === 'moderator' && typeof p?.id === 'string')
+        .map((p: any) => p.id as string)
+
+      const volume = enabled ? 1 : 0
+      moderatorIds.forEach((id: string) => {
         try {
-          liveControls?.hangup()
+          controls.setParticipantVolume(id, volume)
         } catch {}
-        setLiveControls(null)
-        setLiveMuteState({ audioMuted: true, videoMuted: true })
-      }
-      return next
-    })
+      })
+    } catch {
+      // ignore; volume control is best-effort
+    }
   }, [isOwnerUser, liveControls])
+
+  useEffect(() => {
+    void applyLiveTeacherAudioVolume(liveTeacherAudioEnabled)
+  }, [applyLiveTeacherAudioVolume, liveTeacherAudioEnabled, liveParticipantsVersion])
 
   const handleToggleLiveStudentMic = useCallback(() => {
     if (isOwnerUser) return
@@ -854,54 +874,6 @@ export default function Dashboard() {
       liveControls.toggleAudio()
     } catch {}
   }, [isOwnerUser, liveControls])
-
-  const handleLiveParticipantsChange = useCallback(
-    (list: JitsiParticipantInfo[]) => {
-      if (isOwnerUser) return
-      const localId = list.find(p => p.isLocal)?.id
-      const remote = list.filter(p => p.id && p.id !== localId)
-      const moderator = remote.find(p => (p as any)?.role === 'moderator')
-      const nextId = (moderator || remote[0])?.id || null
-
-      if (process.env.NODE_ENV !== 'production') {
-        try {
-          console.log('[DEV] Jitsi participants', list)
-          console.log('[DEV] resolved teacher participant', { localId, nextId, remoteCount: remote.length })
-        } catch {}
-      }
-
-      setLiveTeacherParticipantId(nextId || null)
-      if (nextId && liveControls?.setParticipantVolume) {
-        try {
-          liveControls.setParticipantVolume(nextId, liveTeacherVolume)
-        } catch {}
-      }
-    },
-    [isOwnerUser, liveControls, liveTeacherVolume]
-  )
-
-  useEffect(() => {
-    if (!liveControls?.setParticipantVolume) return
-    if (!liveTeacherParticipantId) return
-    try {
-      liveControls.setParticipantVolume(liveTeacherParticipantId, liveTeacherVolume)
-    } catch {}
-  }, [liveControls, liveTeacherParticipantId, liveTeacherVolume])
-
-  const handleTeacherVolumeChange = useCallback(
-    (value: number) => {
-      if (isOwnerUser) return
-      const clamped = Math.min(Math.max(value, 0), 1)
-      setLiveTeacherVolume(clamped)
-      setLiveTeacherAudioEnabled(true)
-      if (liveTeacherParticipantId && liveControls?.setParticipantVolume) {
-        try {
-          liveControls.setParticipantVolume(liveTeacherParticipantId, clamped)
-        } catch {}
-      }
-    },
-    [isOwnerUser, liveControls, liveTeacherParticipantId]
-  )
 
   const getNextWindowZ = useCallback(() => {
     windowZCounterRef.current += 1
@@ -4622,7 +4594,7 @@ export default function Dashboard() {
               <div className="live-call-overlay__floating-actions">
               </div>
               {canJoinLiveClass && activeSessionId ? (
-                (isOwnerUser || liveTeacherAudioEnabled) ? (
+                (
                   <JitsiRoom
                     roomName={gradeRoomName}
                     displayName={session?.user?.name || session?.user?.email}
@@ -4636,9 +4608,9 @@ export default function Dashboard() {
                     startWithVideoMuted
                     onControlsChange={setLiveControls}
                     onMuteStateChange={setLiveMuteState}
-                    onParticipantsChange={handleLiveParticipantsChange}
+                    onParticipantEvent={bumpLiveParticipantsVersion}
                   />
-                ) : null
+                )
               ) : (
                 <div className="live-call-overlay__placeholder">
                   <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
@@ -4675,16 +4647,6 @@ export default function Dashboard() {
                     teacherAudioEnabled={
                       win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
                         ? liveTeacherAudioEnabled
-                        : undefined
-                    }
-                    onTeacherVolumeChange={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? handleTeacherVolumeChange
-                        : undefined
-                    }
-                    teacherVolume={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? liveTeacherVolume
                         : undefined
                     }
                     onToggleStudentMic={

@@ -482,6 +482,7 @@ export default function Dashboard() {
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
   const [liveTeacherAudioEnabled, setLiveTeacherAudioEnabled] = useState(true)
+  const [liveModeratorParticipantId, setLiveModeratorParticipantId] = useState<string | null>(null)
   const pendingLiveMicToggleRef = useRef(false)
 
   useEffect(() => {
@@ -492,6 +493,14 @@ export default function Dashboard() {
       liveControls.toggleAudio()
     } catch {}
   }, [liveControls])
+
+  useEffect(() => {
+    if (!liveControls?.setParticipantVolume) return
+    if (!liveModeratorParticipantId) return
+    try {
+      liveControls.setParticipantVolume(liveModeratorParticipantId, liveTeacherAudioEnabled ? 1 : 0)
+    } catch {}
+  }, [liveControls, liveModeratorParticipantId, liveTeacherAudioEnabled])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [liveOverrideSessionId, setLiveOverrideSessionId] = useState<string | null>(null)
   const [resolvedLiveSessionId, setResolvedLiveSessionId] = useState<string | null>(null)
@@ -829,17 +838,14 @@ export default function Dashboard() {
     if (isOwnerUser) return
     setLiveTeacherAudioEnabled(prev => {
       const next = !prev
-      if (!next) {
-        pendingLiveMicToggleRef.current = false
+      if (liveModeratorParticipantId && typeof liveControls?.setParticipantVolume === 'function') {
         try {
-          liveControls?.hangup()
+          liveControls.setParticipantVolume(liveModeratorParticipantId, next ? 1 : 0)
         } catch {}
-        setLiveControls(null)
-        setLiveMuteState({ audioMuted: true, videoMuted: true })
       }
       return next
     })
-  }, [isOwnerUser, liveControls])
+  }, [isOwnerUser, liveControls, liveModeratorParticipantId])
 
   const handleToggleLiveStudentMic = useCallback(() => {
     if (isOwnerUser) return
@@ -4572,22 +4578,21 @@ export default function Dashboard() {
               <div className="live-call-overlay__floating-actions">
               </div>
               {canJoinLiveClass && activeSessionId ? (
-                (isOwnerUser || liveTeacherAudioEnabled) ? (
-                  <JitsiRoom
-                    roomName={gradeRoomName}
-                    displayName={session?.user?.name || session?.user?.email}
-                    sessionId={activeSessionId}
-                    tokenEndpoint={null}
-                    passwordEndpoint={null}
-                    isOwner={isOwnerUser}
-                    showControls={false}
-                    silentJoin
-                    startWithAudioMuted
-                    startWithVideoMuted
-                    onControlsChange={setLiveControls}
-                    onMuteStateChange={setLiveMuteState}
-                  />
-                ) : null
+                <JitsiRoom
+                  roomName={gradeRoomName}
+                  displayName={session?.user?.name || session?.user?.email}
+                  sessionId={activeSessionId}
+                  tokenEndpoint={null}
+                  passwordEndpoint={null}
+                  isOwner={isOwnerUser}
+                  showControls={false}
+                  silentJoin
+                  startWithAudioMuted
+                  startWithVideoMuted
+                  onControlsChange={setLiveControls}
+                  onMuteStateChange={setLiveMuteState}
+                  onModeratorIdChange={setLiveModeratorParticipantId}
+                />
               ) : (
                 <div className="live-call-overlay__placeholder">
                   <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>

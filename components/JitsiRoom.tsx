@@ -4,6 +4,7 @@ export type JitsiControls = {
   toggleAudio: () => void
   toggleVideo: () => void
   hangup: () => void
+  setParticipantVolume?: (participantId: string, volume: number) => void
 }
 
 export type JitsiMuteState = {
@@ -24,6 +25,7 @@ type Props = {
   silentJoin?: boolean
   onControlsChange?: (controls: JitsiControls | null) => void
   onMuteStateChange?: (state: JitsiMuteState) => void
+  onModeratorIdChange?: (participantId: string | null) => void
   toolbarButtons?: string[]
   startWithAudioMuted?: boolean
   startWithVideoMuted?: boolean
@@ -42,6 +44,7 @@ export default function JitsiRoom({
   silentJoin = false,
   onControlsChange,
   onMuteStateChange,
+  onModeratorIdChange,
   toolbarButtons,
   startWithAudioMuted,
   startWithVideoMuted,
@@ -52,10 +55,37 @@ export default function JitsiRoom({
   const [videoMuted, setVideoMuted] = useState(Boolean(startWithVideoMuted))
   const audioMutedRef = useRef(Boolean(startWithAudioMuted))
   const videoMutedRef = useRef(Boolean(startWithVideoMuted))
+  const [localParticipantId, setLocalParticipantId] = useState<string | null>(null)
+  const [remoteModeratorId, setRemoteModeratorId] = useState<string | null>(null)
   const [initError, setInitError] = useState<string | null>(null)
   const [lobbyEnabled, setLobbyEnabled] = useState<boolean | null>(true)
   const [lobbyError, setLobbyError] = useState<string | null>(null)
   const [lobbyBusy, setLobbyBusy] = useState(false)
+
+  const participantsRef = useRef<Record<string, { id: string; role?: string }>>({})
+
+  const syncModerator = useCallback(
+    (maybeId?: string | null) => {
+      const current = participantsRef.current
+      if (maybeId) {
+        const p = current[maybeId]
+        if (p && p.role === 'moderator' && maybeId !== localParticipantId) {
+          if (remoteModeratorId !== maybeId) {
+            setRemoteModeratorId(maybeId)
+            onModeratorIdChange?.(maybeId)
+          }
+          return
+        }
+      }
+      const firstModerator = Object.values(current).find(p => p.role === 'moderator' && p.id !== localParticipantId)
+      const nextId = firstModerator?.id || null
+      if (remoteModeratorId !== nextId) {
+        setRemoteModeratorId(nextId)
+        onModeratorIdChange?.(nextId)
+      }
+    },
+    [localParticipantId, onModeratorIdChange, remoteModeratorId]
+  )
 
   useEffect(() => {
     audioMutedRef.current = audioMuted
@@ -80,11 +110,26 @@ export default function JitsiRoom({
     apiRef.current.executeCommand('hangup')
   }, [])
 
+  const setParticipantVolume = useCallback((participantId: string, volume: number) => {
+    if (!apiRef.current || !participantId) return
+    try {
+      if (typeof apiRef.current.setParticipantVolume === 'function') {
+        apiRef.current.setParticipantVolume(participantId, volume)
+        return
+      }
+      if (typeof apiRef.current.executeCommand === 'function') {
+        apiRef.current.executeCommand('setParticipantVolume', participantId, volume)
+      }
+    } catch {
+      // ignore volume failures
+    }
+  }, [])
+
   useEffect(() => {
     let mounted = true
     setInitError(null)
-  setLobbyError(null)
-  setLobbyEnabled(true)
+    setLobbyError(null)
+    setLobbyEnabled(true)
 
     const loadScript = (url?: string) => {
       return new Promise<void>((resolve, reject) => {
@@ -102,13 +147,16 @@ export default function JitsiRoom({
 
     const init = async () => {
       try {
-  const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
-  const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
+        participantsRef.current = {}
+        setRemoteModeratorId(null)
+        onModeratorIdChange?.(null)
+        const domain = (process.env.NEXT_PUBLIC_JITSI_DOMAIN as string) || '8x8.vc'
+        const apiUrl = (process.env.NEXT_PUBLIC_JITSI_API_URL as string) || 'https://8x8.vc/libs/external_api.min.js'
 
         await loadScript(apiUrl)
         if (!mounted) return
 
-  let roomName = initialRoomName
+        let roomName = initialRoomName
         let jwtToken: string | undefined
 
         const tokenUrl = tokenEndpoint ?? (sessionId != null ? `/api/sessions/${sessionId}/token` : null)
@@ -174,7 +222,7 @@ export default function JitsiRoom({
         }
 
         apiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options)
-        onControlsChange?.({ toggleAudio, toggleVideo, hangup })
+        onControlsChange?.({ toggleAudio, toggleVideo, hangup, setParticipantVolume })
 
         // Initial best-effort sync (Jitsi will emit events as it settles).
         try {
@@ -189,6 +237,10 @@ export default function JitsiRoom({
 
         // attach listeners safely
         try {
+          apiRef.current.addEventListener('videoConferenceJoined', (e: any) => {
+            const id = e?.id || e?.userID || null
+            if (id) setLocalParticipantId(id)
+          })
           apiRef.current.addEventListener('audioMuteStatusChanged', (e: any) => {
             const next = Boolean(e?.muted)
             audioMutedRef.current = next
@@ -204,6 +256,24 @@ export default function JitsiRoom({
             try {
               onMuteStateChange?.({ audioMuted: audioMutedRef.current, videoMuted: next })
             } catch {}
+          })
+          apiRef.current.addEventListener('participantJoined', (e: any) => {
+            const pid = e?.id
+            if (!pid) return
+            participantsRef.current[pid] = { id: pid, role: e?.role }
+            syncModerator(pid)
+          })
+          apiRef.current.addEventListener('participantLeft', (e: any) => {
+            const pid = e?.id
+            if (!pid) return
+            delete participantsRef.current[pid]
+            if (pid === remoteModeratorId) syncModerator(null)
+          })
+          apiRef.current.addEventListener('participantRoleChanged', (e: any) => {
+            const pid = e?.id
+            if (!pid) return
+            participantsRef.current[pid] = { id: pid, role: e?.role }
+            syncModerator(pid)
           })
         } catch (err) {
           // ignore
@@ -268,7 +338,7 @@ export default function JitsiRoom({
         delete (apiRef.current as any)._lobbyToggleListener
       }
     }
-  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, onMuteStateChange, startWithAudioMuted, startWithVideoMuted, toggleAudio, toggleVideo, hangup, toolbarButtons])
+  }, [initialRoomName, sessionId, displayName, tokenEndpoint, passwordEndpoint, isOwner, onControlsChange, onMuteStateChange, onModeratorIdChange, startWithAudioMuted, startWithVideoMuted, toggleAudio, toggleVideo, hangup, setParticipantVolume, syncModerator, toolbarButtons])
 
   const toggleLobby = async () => {
     if (!apiRef.current) return

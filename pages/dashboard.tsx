@@ -4570,18 +4570,6 @@ export default function Dashboard() {
                 )
               })()}
               <div className="live-call-overlay__floating-actions">
-                <button
-                  type="button"
-                  onClick={() => showCanvasWindow(activeSessionId)}
-                  disabled={!canLaunchCanvasOverlay}
-                  className="live-call-overlay__canvas-toggle"
-                  aria-label="Open canvas"
-                >
-                  Canvas
-                </button>
-                <button type="button" className="live-call-overlay__close" onClick={closeLiveOverlay} aria-label="Close live class">
-                  ×
-                </button>
               </div>
               {canJoinLiveClass && activeSessionId && (isOwnerUser || liveTeacherAudioEnabled) ? (
                 <JitsiRoom
@@ -4653,6 +4641,11 @@ export default function Dashboard() {
                     studentMicMuted={
                       win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
                         ? liveMuteState.audioMuted
+                        : undefined
+                    }
+                    onCloseOverlay={
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? closeLiveOverlay
                         : undefined
                     }
                     position={win.position}

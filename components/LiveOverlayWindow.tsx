@@ -31,6 +31,7 @@ type LiveOverlayWindowProps = {
   onRequestFullscreen?: (id: string) => void
   onPositionChange: (id: string, position: Point) => void
   onResize?: (id: string, payload: { width: number; height: number; position: Point }) => void
+  onCloseOverlay?: () => void
   children: ReactNode
 }
 
@@ -58,6 +59,7 @@ export default function LiveOverlayWindow({
   onRequestFullscreen,
   onPositionChange,
   onResize,
+  onCloseOverlay,
   children
 }: LiveOverlayWindowProps) {
   const isCanvasWindow = Boolean(className?.includes('live-window--canvas'))
@@ -258,6 +260,24 @@ export default function LiveOverlayWindow({
 
         {isCanvasWindow && (
           <div className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
+            {typeof onCloseOverlay === 'function' && (
+              <button
+                type="button"
+                title="Close live class"
+                aria-label="Close live class"
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  try {
+                    onCloseOverlay()
+                  } catch {}
+                }}
+              >
+                ×
+              </button>
+            )}
+
             {typeof onToggleTeacherAudio === 'function' && (
               <button
                 type="button"
@@ -340,20 +360,6 @@ export default function LiveOverlayWindow({
                 </svg>
               </button>
             )}
-
-            <button
-              type="button"
-              title="Close"
-              aria-label="Close canvas"
-              onPointerDown={e => e.stopPropagation()}
-              onClick={e => {
-                e.preventDefault()
-                e.stopPropagation()
-                onClose(id)
-              }}
-            >
-              ×
-            </button>
           </div>
         )}
       </div>

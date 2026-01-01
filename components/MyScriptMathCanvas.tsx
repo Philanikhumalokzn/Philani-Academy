@@ -154,6 +154,7 @@ type QuizControlMessage = {
   action: 'quiz'
   phase: 'active' | 'inactive' | 'submit'
   enabled?: boolean
+  preQuizControl?: ControlState
   quizId?: string
   quizLabel?: string
   quizPhaseKey?: string
@@ -408,6 +409,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
   const initialQuizAppliedRef = useRef<string | null>(null)
+
+  // Student: snapshot the pre-quiz lock/control state so we can restore it after the quiz.
+  // This must represent the state BEFORE the teacher unlocks for the quiz.
+  const preQuizControlStateRef = useRef<ControlState>(null)
+  const preQuizControlCapturedRef = useRef(false)
 
   // Student typed response (from quiz popup in TextOverlayModule)
   useEffect(() => {
@@ -3763,6 +3769,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             // Students: enter/exit quiz mode via teacher broadcast.
             if (!isAdmin) {
               if (phase === 'active') {
+                // Capture the pre-quiz control state once per quiz so we can restore it
+                // after the student receives AI feedback (or when the teacher ends the quiz).
+                if (!preQuizControlCapturedRef.current) {
+                  const pre = (data as any)?.preQuizControl
+                  if (pre === null) {
+                    preQuizControlStateRef.current = null
+                    preQuizControlCapturedRef.current = true
+                  } else if (pre && typeof pre === 'object' && typeof (pre as any).controllerId === 'string') {
+                    preQuizControlStateRef.current = {
+                      controllerId: String((pre as any).controllerId),
+                      controllerName: typeof (pre as any).controllerName === 'string' ? String((pre as any).controllerName) : undefined,
+                      ts: (typeof (pre as any).ts === 'number' && Number.isFinite((pre as any).ts)) ? Math.trunc((pre as any).ts) : Date.now(),
+                    }
+                    preQuizControlCapturedRef.current = true
+                  } else {
+                    // Fallback (less accurate): snapshot whatever control state we currently have.
+                    preQuizControlStateRef.current = controlStateRef.current ?? null
+                    preQuizControlCapturedRef.current = true
+                  }
+                }
+
                 quizIdRef.current = typeof data.quizId === 'string' ? data.quizId : ''
                 quizPromptRef.current = typeof data.prompt === 'string' ? data.prompt : ''
                 quizLabelRef.current = typeof data.quizLabel === 'string' ? data.quizLabel : ''
@@ -3827,6 +3854,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 quizPhaseKeyRef.current = ''
                 quizPointIdRef.current = ''
                 quizPointIndexRef.current = -1
+
+                // Restore pre-quiz lock/control state.
+                if (!forceEditableForAssignment && preQuizControlCapturedRef.current) {
+                  const prior = preQuizControlStateRef.current
+                  preQuizControlStateRef.current = null
+                  preQuizControlCapturedRef.current = false
+                  updateControlState(prior)
+                }
+
                 // Restore baseline snapshot (so student returns to pre-quiz view).
                 const baseline = quizBaselineSnapshotRef.current
                 quizBaselineSnapshotRef.current = null
@@ -5201,6 +5237,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       let durationSec: number | undefined
       let endsAt: number | undefined
 
+      // Snapshot current control state BEFORE we unlock students for the quiz.
+      // Students use this to restore the board to its prior state after receiving AI feedback.
+      const preQuizControl: ControlState = enabled ? (controlStateRef.current ?? null) : null
+
       const phaseKey = lessonScriptPhaseKey
       const pointIndex = lessonScriptPointIndex
       const pointId = lessonScriptV2ActivePoint?.id || ''
@@ -5501,6 +5541,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         action: 'quiz',
         phase: enabled ? 'active' : 'inactive',
         enabled,
+        preQuizControl: enabled ? preQuizControl : undefined,
         quizId: enabled ? quizId : undefined,
         quizLabel: enabled ? quizLabel : undefined,
         quizPhaseKey: enabled ? phaseKey : undefined,
@@ -5753,6 +5794,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setStudentCommittedLatex('')
       setQuizActiveState(false)
       clearQuizCountdown()
+
+      // Restore the pre-quiz lock/control state (what the board was before the quiz started).
+      if (!forceEditableForAssignment && preQuizControlCapturedRef.current) {
+        const prior = preQuizControlStateRef.current
+        preQuizControlStateRef.current = null
+        preQuizControlCapturedRef.current = false
+        updateControlState(prior)
+      }
+
       if (baseline) {
         await applyPageSnapshot(baseline)
       } else {
@@ -5761,7 +5811,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, isAdmin, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, updateControlState, userDisplayName, userId])
 
   useEffect(() => {
     if (isAdmin) return
@@ -5772,16 +5822,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (quizAutoSubmitTriggeredRef.current) return
     quizAutoSubmitTriggeredRef.current = true
     void (async () => {
-      try {
-        await studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
-      } finally {
-        // After timer expiry, stop student editing again until teacher explicitly unlocks.
-        if (!forceEditableForAssignment) {
-          updateControlState({ controllerId: '__quiz-locked__', controllerName: 'Teacher', ts: Date.now() })
-        }
-      }
+      await studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
     })()
-  }, [forceEditableForAssignment, isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit, updateControlState])
+  }, [isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
 
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return

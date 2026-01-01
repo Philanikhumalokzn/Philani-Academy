@@ -53,7 +53,6 @@ const QUIZ_BOX_ID = 'quiz-prompt'
 const QUIZ_FEEDBACK_BOX_ID = 'quiz-feedback'
 const QUIZ_RESPONSE_EVENT = 'philani-quiz:text-response'
 const QUIZ_SUBMITTED_EVENT = 'philani-quiz:submitted'
-const QUIZ_FINALIZE_EVENT = 'philani-quiz:finalize'
 
 const MIN_BOX_PX_W = 140
 const MIN_BOX_PX_H = 56
@@ -293,8 +292,8 @@ export default function TextOverlayModule(props: {
 
   // Student-local overrides for the quiz prompt box.
   // Students should be able to move/resize/close the prompt without affecting others.
-  const [localQuizOverride, setLocalQuizOverride] = useState<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean; dismissed?: boolean }>(null)
-  const localQuizOverrideRef = useRef<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean; dismissed?: boolean }>(null)
+  const [localQuizOverride, setLocalQuizOverride] = useState<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
+  const localQuizOverrideRef = useRef<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
   useEffect(() => {
     localQuizOverrideRef.current = localQuizOverride
   }, [localQuizOverride])
@@ -326,22 +325,6 @@ export default function TextOverlayModule(props: {
 
     window.addEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
     return () => window.removeEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
-  }, [dispatchStudentQuizTextResponse, isAdmin])
-
-  // Student-only: hard-finalize after timer auto-submit. This hides quiz popups AND disables restore.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (isAdmin) return
-
-    const handler = () => {
-      setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true, dismissed: true }))
-      setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
-      setStudentQuizTextResponse('')
-      dispatchStudentQuizTextResponse('')
-    }
-
-    window.addEventListener(QUIZ_FINALIZE_EVENT, handler as any)
-    return () => window.removeEventListener(QUIZ_FINALIZE_EVENT, handler as any)
   }, [dispatchStudentQuizTextResponse, isAdmin])
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
@@ -1157,7 +1140,6 @@ export default function TextOverlayModule(props: {
   const showRestoreQuizButton = useMemo(() => {
     if (isAdmin) return false
     if (!localQuizOverrideRef.current?.hidden) return false
-    if (localQuizOverrideRef.current?.dismissed) return false
     const quizBox = mergedBoxes.find(b => b.id === QUIZ_BOX_ID) || null
     return Boolean(quizBox?.visible)
   }, [isAdmin, mergedBoxes])
@@ -1243,7 +1225,7 @@ export default function TextOverlayModule(props: {
                       if (isQuizBox) {
                         setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
                         window.setTimeout(() => {
-                          setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true, dismissed: false }))
+                          setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
                           setClosingPopupIds(prev => {
                             if (!prev[QUIZ_BOX_ID]) return prev
                             const next = { ...prev }

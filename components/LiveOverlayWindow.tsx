@@ -260,24 +260,6 @@ export default function LiveOverlayWindow({
 
         {isCanvasWindow && (
           <div className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
-            {typeof onCloseOverlay === 'function' && (
-              <button
-                type="button"
-                title="Close live class"
-                aria-label="Close live class"
-                onPointerDown={e => e.stopPropagation()}
-                onClick={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  try {
-                    onCloseOverlay()
-                  } catch {}
-                }}
-              >
-                ×
-              </button>
-            )}
-
             {typeof onToggleTeacherAudio === 'function' && (
               <button
                 type="button"
@@ -358,6 +340,24 @@ export default function LiveOverlayWindow({
                   <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
                   <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
                 </svg>
+              </button>
+            )}
+
+            {typeof onCloseOverlay === 'function' && (
+              <button
+                type="button"
+                title="Close live class"
+                aria-label="Close live class"
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  try {
+                    onCloseOverlay()
+                  } catch {}
+                }}
+              >
+                ×
               </button>
             )}
           </div>

@@ -1137,6 +1137,13 @@ export default function TextOverlayModule(props: {
     })
     .sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
 
+  const showRestoreQuizButton = useMemo(() => {
+    if (isAdmin) return false
+    if (!localQuizOverrideRef.current?.hidden) return false
+    const quizBox = mergedBoxes.find(b => b.id === QUIZ_BOX_ID) || null
+    return Boolean(quizBox?.visible)
+  }, [isAdmin, mergedBoxes])
+
   return (
     <>
       <div
@@ -1152,6 +1159,7 @@ export default function TextOverlayModule(props: {
           const isQuizFeedbackBox = box.id === QUIZ_FEEDBACK_BOX_ID
           const isQuizPopupBox = isQuizBox || isQuizFeedbackBox
           const isClosing = Boolean(closingPopupIds[box.id])
+          const allowCanvasInkThrough = !isAdmin && isQuizPopupBox
           const effective = (!isAdmin && isQuizBox && localQuizOverrideRef.current)
             ? {
                 ...box,
@@ -1177,6 +1185,9 @@ export default function TextOverlayModule(props: {
                 minHeight: shouldAutoFitHeight ? undefined : MIN_BOX_PX_H,
                 zIndex: 520 + box.z,
                 transform: isQuizFeedbackBox ? 'translateX(-50%)' : undefined,
+                // Critical: allow handwriting on the canvas even if the quiz popup overlaps it.
+                // We keep specific interactive controls (close, textarea) as pointer-events:auto.
+                pointerEvents: allowCanvasInkThrough ? 'none' : 'auto',
               }}
               onPointerDown={event => onBoxPointerDown(box, event)}
               onPointerMove={onBoxPointerMove}
@@ -1196,12 +1207,14 @@ export default function TextOverlayModule(props: {
                   overflow: shouldAutoFitHeight ? 'hidden' : 'auto',
                   touchAction: 'none',
                   userSelect: 'none',
+                  pointerEvents: allowCanvasInkThrough ? 'none' : 'auto',
                 }}
               >
                 {(isQuizBox || isQuizFeedbackBox) && (
                   <button
                     type="button"
                     className="absolute right-2 top-2 px-2 py-1 text-xs text-white/80 hover:text-white"
+                    style={{ pointerEvents: 'auto' }}
                     onClick={async e => {
                       e.preventDefault()
                       e.stopPropagation()
@@ -1233,6 +1246,10 @@ export default function TextOverlayModule(props: {
                         })
                       }, 230)
                     }}
+                    onPointerDown={e => {
+                      // Prevent the drag handler from swallowing a click on mobile.
+                      e.stopPropagation()
+                    }}
                     aria-label="Close"
                     title="Close"
                   >
@@ -1246,7 +1263,7 @@ export default function TextOverlayModule(props: {
                     <div className="mb-1 text-xs text-white/80">Your typed answer (optional)</div>
                     <textarea
                       className="w-full rounded-xl border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none"
-                      style={{ minHeight: 88, resize: 'vertical', userSelect: 'text', touchAction: 'auto' }}
+                      style={{ minHeight: 88, resize: 'vertical', userSelect: 'text', touchAction: 'auto', pointerEvents: 'auto' }}
                       value={studentQuizTextResponse}
                       onChange={e => {
                         const next = e.target.value
@@ -1278,6 +1295,23 @@ export default function TextOverlayModule(props: {
             </div>
           )
         })}
+
+        {showRestoreQuizButton && (
+          <button
+            type="button"
+            className="pointer-events-auto fixed right-3 bottom-20 z-[700] rounded-full border border-white/15 bg-black/60 px-3 py-2 text-xs text-white/90"
+            style={{ backdropFilter: 'blur(10px)' }}
+            onClick={e => {
+              e.preventDefault()
+              e.stopPropagation()
+              setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: false }))
+            }}
+            aria-label="Show quiz prompt"
+            title="Show quiz prompt"
+          >
+            Show quiz
+          </button>
+        )}
 
         {isAdmin && contextMenu && (
           <div

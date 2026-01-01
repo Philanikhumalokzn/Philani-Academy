@@ -7357,20 +7357,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     )
                   ) : useStackedStudentLayout ? (
                     <div className="h-full flex flex-col">
-                      {latexProjectionMarkup ? (
-                        <div
-                          className="text-slate-900 leading-relaxed"
-                          style={latexOverlayStyle}
-                          dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
-                        />
-                      ) : isAssignmentView ? null : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
-                        </div>
-                      )}
-
-                      {!isAdmin && quizActive && !isAssignmentView && (
-                        <div className="mt-3 pt-3 border-t border-slate-200">
+                      {!isAdmin && quizActive && !isAssignmentView ? (
+                        <>
                           {quizTimeLeftSec != null && (
                             <div className="mb-2 flex items-center justify-end text-xs text-slate-500">
                               Time left: {formatCountdown(quizTimeLeftSec)}
@@ -7383,8 +7371,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               dangerouslySetInnerHTML={{ __html: studentQuizLatexPreviewMarkup }}
                             />
                           ) : (
-                            <p className="text-slate-500 text-sm">Write your answer below to see your LaTeX here.</p>
+                            <div className="w-full h-full flex items-center justify-center">
+                              <p className="text-slate-500 text-sm text-center">Write your answer below to see your LaTeX here.</p>
+                            </div>
                           )}
+                        </>
+                      ) : latexProjectionMarkup ? (
+                        <div
+                          className="text-slate-900 leading-relaxed"
+                          style={latexOverlayStyle}
+                          dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
+                        />
+                      ) : isAssignmentView ? null : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                         </div>
                       )}
                     </div>

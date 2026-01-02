@@ -580,6 +580,10 @@ export default function Dashboard() {
   const [assignmentSolutionUploadNonceByQuestionId, setAssignmentSolutionUploadNonceByQuestionId] = useState<Record<string, number>>({})
   const [assignmentSolutionUploadingQuestionId, setAssignmentSolutionUploadingQuestionId] = useState<string | null>(null)
 
+  const [assignmentSolutionMarkingPlanDraftByQuestionId, setAssignmentSolutionMarkingPlanDraftByQuestionId] = useState<Record<string, string>>({})
+  const [assignmentSolutionMarkingPlanSavingQuestionId, setAssignmentSolutionMarkingPlanSavingQuestionId] = useState<string | null>(null)
+  const [assignmentSolutionMarkingPlanGeneratingQuestionId, setAssignmentSolutionMarkingPlanGeneratingQuestionId] = useState<string | null>(null)
+
   const [assignmentMasterGradingPrompt, setAssignmentMasterGradingPrompt] = useState('')
   const [assignmentGradingPromptByQuestionId, setAssignmentGradingPromptByQuestionId] = useState<Record<string, string>>({})
   const [assignmentGradingPromptSavingScope, setAssignmentGradingPromptSavingScope] = useState<string | null>(null)
@@ -1638,6 +1642,9 @@ export default function Dashboard() {
         setAssignmentSolutionsError(null)
         setAssignmentSolutionUploadFilesByQuestionId({})
         setAssignmentSolutionUploadNonceByQuestionId({})
+        setAssignmentSolutionMarkingPlanDraftByQuestionId({})
+        setAssignmentSolutionMarkingPlanSavingQuestionId(null)
+        setAssignmentSolutionMarkingPlanGeneratingQuestionId(null)
         if (isLearner) {
           void fetchAssignmentResponses(sessionId, assignmentId)
         } else {
@@ -1653,6 +1660,7 @@ export default function Dashboard() {
       setAssignmentGradeSummary(null)
       setAssignmentGradeError(null)
       setAssignmentSolutionsByQuestionId({})
+      setAssignmentSolutionMarkingPlanDraftByQuestionId({})
     } catch (err: any) {
       setSelectedAssignment(null)
       setSelectedAssignmentError(err?.message || 'Network error')
@@ -1666,6 +1674,9 @@ export default function Dashboard() {
       setAssignmentGradingPromptByQuestionId({})
       setAssignmentSolutionUploadFilesByQuestionId({})
       setAssignmentSolutionUploadNonceByQuestionId({})
+      setAssignmentSolutionMarkingPlanDraftByQuestionId({})
+      setAssignmentSolutionMarkingPlanSavingQuestionId(null)
+      setAssignmentSolutionMarkingPlanGeneratingQuestionId(null)
     } finally {
       setSelectedAssignmentLoading(false)
     }
@@ -1816,7 +1827,17 @@ export default function Dashboard() {
       )
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        setAssignmentSolutionsByQuestionId((data?.byQuestionId && typeof data.byQuestionId === 'object') ? data.byQuestionId : {})
+        const byQ = (data?.byQuestionId && typeof data.byQuestionId === 'object') ? data.byQuestionId : {}
+        setAssignmentSolutionsByQuestionId(byQ)
+        setAssignmentSolutionMarkingPlanDraftByQuestionId(() => {
+          const next: Record<string, string> = {}
+          for (const [qid, sol] of Object.entries(byQ)) {
+            const teacher = String((sol as any)?.teacherMarkingPlan || '')
+            const ai = String((sol as any)?.aiMarkingPlan || '')
+            next[String(qid)] = teacher.trim() ? teacher : ai
+          }
+          return next
+        })
         return
       }
       setAssignmentSolutionsByQuestionId({})
@@ -1858,6 +1879,58 @@ export default function Dashboard() {
       alert(err?.message || 'Upload failed')
     } finally {
       setAssignmentSolutionUploadingQuestionId(null)
+    }
+  }
+
+  async function saveAssignmentSolutionMarkingPlan(sessionId: string, assignmentId: string, questionId: string, planText: string) {
+    if (isLearner) return
+    if (assignmentSolutionMarkingPlanSavingQuestionId === String(questionId)) return
+
+    setAssignmentSolutionMarkingPlanSavingQuestionId(String(questionId))
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions/marking-plan`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', questionId: String(questionId), planText: String(planText || '') }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Save failed (${res.status})`)
+      alert('Marking plan saved.')
+      void fetchAssignmentSolutions(sessionId, assignmentId)
+    } catch (err: any) {
+      alert(err?.message || 'Save failed')
+    } finally {
+      setAssignmentSolutionMarkingPlanSavingQuestionId(null)
+    }
+  }
+
+  async function generateAssignmentSolutionMarkingPlan(sessionId: string, assignmentId: string, questionId: string) {
+    if (isLearner) return
+    if (assignmentSolutionMarkingPlanGeneratingQuestionId === String(questionId)) return
+
+    setAssignmentSolutionMarkingPlanGeneratingQuestionId(String(questionId))
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions/marking-plan`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'generate', questionId: String(questionId) }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Generate failed (${res.status})`)
+      alert('Gemini marking plan generated.')
+      void fetchAssignmentSolutions(sessionId, assignmentId)
+    } catch (err: any) {
+      alert(err?.message || 'Generate failed')
+    } finally {
+      setAssignmentSolutionMarkingPlanGeneratingQuestionId(null)
     }
   }
 
@@ -4172,6 +4245,65 @@ export default function Dashboard() {
                                                       >
                                                         {assignmentSolutionUploadingQuestionId === String(q.id) ? 'Uploading…' : 'Upload solution'}
                                                       </button>
+                                                    </div>
+                                                  ) : null}
+
+                                                  {expandedSessionId && selectedAssignment?.id && q?.id ? (
+                                                    <div className="pt-2">
+                                                      <div className="text-xs text-white/70 mb-1">Gemini marking plan (editable source of truth)</div>
+                                                      {(() => {
+                                                        const sol = assignmentSolutionsByQuestionId?.[String(q.id)]
+                                                        const teacher = String(sol?.teacherMarkingPlan || '')
+                                                        const ai = String(sol?.aiMarkingPlan || '')
+                                                        const label = teacher.trim()
+                                                          ? 'Using teacher edited plan'
+                                                          : (ai.trim() ? 'Using Gemini draft (edit + save to override)' : 'No plan generated yet')
+                                                        return <div className="text-xs muted mb-1">{label}</div>
+                                                      })()}
+                                                      <textarea
+                                                        className="input w-full text-xs"
+                                                        rows={4}
+                                                        placeholder="Generate a marking plan with Gemini, then edit it. Saving makes it the rubric Gemini must follow when grading."
+                                                        value={String(assignmentSolutionMarkingPlanDraftByQuestionId?.[String(q.id)] ?? '')}
+                                                        onChange={e => {
+                                                          const value = e.target.value
+                                                          setAssignmentSolutionMarkingPlanDraftByQuestionId(prev => ({
+                                                            ...prev,
+                                                            [String(q.id)]: value,
+                                                          }))
+                                                        }}
+                                                      />
+                                                      <div className="pt-2 flex flex-wrap gap-2">
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-secondary text-xs"
+                                                          disabled={assignmentSolutionMarkingPlanGeneratingQuestionId === String(q.id)}
+                                                          onClick={() => {
+                                                            void generateAssignmentSolutionMarkingPlan(
+                                                              expandedSessionId,
+                                                              String(selectedAssignment.id),
+                                                              String(q.id)
+                                                            )
+                                                          }}
+                                                        >
+                                                          {assignmentSolutionMarkingPlanGeneratingQuestionId === String(q.id) ? 'Generating…' : 'Generate with Gemini'}
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-primary text-xs"
+                                                          disabled={assignmentSolutionMarkingPlanSavingQuestionId === String(q.id)}
+                                                          onClick={() => {
+                                                            void saveAssignmentSolutionMarkingPlan(
+                                                              expandedSessionId,
+                                                              String(selectedAssignment.id),
+                                                              String(q.id),
+                                                              String(assignmentSolutionMarkingPlanDraftByQuestionId?.[String(q.id)] || '')
+                                                            )
+                                                          }}
+                                                        >
+                                                          {assignmentSolutionMarkingPlanSavingQuestionId === String(q.id) ? 'Saving…' : 'Save marking plan'}
+                                                        </button>
+                                                      </div>
                                                     </div>
                                                   ) : null}
 

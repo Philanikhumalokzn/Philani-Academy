@@ -207,6 +207,11 @@ model AssignmentSolution {
   contentType   String?
   size          Int?
 
+  // Gemini-generated marking plan/rubric based on the teacher solution.
+  aiMarkingPlan      String?
+  // Teacher/admin edited marking plan that overrides aiMarkingPlan.
+  teacherMarkingPlan String?
+
   createdBy     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

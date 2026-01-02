@@ -55,6 +55,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         fileName: true,
         contentType: true,
         size: true,
+        aiMarkingPlan: true,
+        teacherMarkingPlan: true,
         createdBy: true,
         updatedAt: true,
       },

@@ -162,6 +162,17 @@ export default function Dashboard() {
     }
   }, [])
 
+  const splitLatexIntoSteps = useCallback((latex: unknown) => {
+    const raw = typeof latex === 'string' ? latex.replace(/\r\n/g, '\n').trim() : ''
+    if (!raw) return [] as string[]
+    const withNewlines = raw.replace(/\\\\/g, '\n')
+    const steps = withNewlines
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean)
+    return steps.slice(0, 30)
+  }, [])
+
   const renderTextWithKatex = useCallback((text: unknown) => {
     const input = typeof text === 'string' ? text : ''
     if (!input) return input
@@ -572,6 +583,8 @@ export default function Dashboard() {
   const [assignmentGradeLoading, setAssignmentGradeLoading] = useState(false)
   const [assignmentGradeError, setAssignmentGradeError] = useState<string | null>(null)
   const [assignmentGradeByQuestionId, setAssignmentGradeByQuestionId] = useState<Record<string, 'correct' | 'incorrect'>>({})
+  const [assignmentEarnedMarksByQuestionId, setAssignmentEarnedMarksByQuestionId] = useState<Record<string, number>>({})
+  const [assignmentStepFeedbackByQuestionId, setAssignmentStepFeedbackByQuestionId] = useState<Record<string, any[]>>({})
   const [assignmentGradeSummary, setAssignmentGradeSummary] = useState<{ earnedPoints: number; totalPoints: number; percentage: number } | null>(null)
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
   const [assignmentSolutionsLoading, setAssignmentSolutionsLoading] = useState(false)
@@ -1760,6 +1773,8 @@ export default function Dashboard() {
           void fetchAssignmentGrade(sessionId, assignmentId)
         } else {
           setAssignmentGradeByQuestionId({})
+          setAssignmentEarnedMarksByQuestionId({})
+          setAssignmentStepFeedbackByQuestionId({})
           setAssignmentGradeSummary(null)
           setAssignmentGradeError(null)
         }
@@ -1769,12 +1784,16 @@ export default function Dashboard() {
       setAssignmentResponsesError(data?.message || `Failed to load assignment responses (${res.status})`)
       setAssignmentSubmittedAt(null)
       setAssignmentGradeByQuestionId({})
+      setAssignmentEarnedMarksByQuestionId({})
+      setAssignmentStepFeedbackByQuestionId({})
       setAssignmentGradeSummary(null)
     } catch (err: any) {
       setAssignmentResponsesByQuestionId({})
       setAssignmentResponsesError(err?.message || 'Network error')
       setAssignmentSubmittedAt(null)
       setAssignmentGradeByQuestionId({})
+      setAssignmentEarnedMarksByQuestionId({})
+      setAssignmentStepFeedbackByQuestionId({})
       setAssignmentGradeSummary(null)
     } finally {
       setAssignmentResponsesLoading(false)
@@ -1795,6 +1814,8 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setAssignmentGradeByQuestionId({})
+        setAssignmentEarnedMarksByQuestionId({})
+        setAssignmentStepFeedbackByQuestionId({})
         setAssignmentGradeSummary(null)
         // 409 = assignment not submitted yet; keep silent.
         if (res.status !== 409) {
@@ -1806,14 +1827,25 @@ export default function Dashboard() {
       const grade = data?.grade
       const results: any[] = Array.isArray(grade?.results) ? grade.results : []
       const next: Record<string, 'correct' | 'incorrect'> = {}
+      const earned: Record<string, number> = {}
+      const stepsByQ: Record<string, any[]> = {}
       for (const r of results) {
         const qid = String(r?.questionId || '')
         const correctness = String(r?.correctness || '')
         if (!qid) continue
         next[qid] = correctness === 'correct' ? 'correct' : 'incorrect'
+
+        if (typeof r?.earnedMarks === 'number' || typeof r?.earnedMarks === 'string') {
+          const n = Number(r.earnedMarks)
+          if (Number.isFinite(n)) earned[qid] = Math.trunc(n)
+        }
+        const stepArr = Array.isArray(r?.steps) ? r.steps : (Array.isArray(r?.stepFeedback) ? r.stepFeedback : null)
+        if (Array.isArray(stepArr)) stepsByQ[qid] = stepArr
       }
 
       setAssignmentGradeByQuestionId(next)
+      setAssignmentEarnedMarksByQuestionId(earned)
+      setAssignmentStepFeedbackByQuestionId(stepsByQ)
       setAssignmentGradeSummary({
         earnedPoints: Number(grade?.earnedPoints || 0) || 0,
         totalPoints: Number(grade?.totalPoints || 0) || 0,
@@ -1821,6 +1853,8 @@ export default function Dashboard() {
       })
     } catch (err: any) {
       setAssignmentGradeByQuestionId({})
+      setAssignmentEarnedMarksByQuestionId({})
+      setAssignmentStepFeedbackByQuestionId({})
       setAssignmentGradeSummary(null)
       setAssignmentGradeError(err?.message || 'Network error')
     } finally {
@@ -4223,14 +4257,15 @@ export default function Dashboard() {
                                                 <span>Question {idx + 1}</span>
                                                 {isLearner && assignmentSubmittedAt && q?.id ? (
                                                   (() => {
-                                                    const correctness = assignmentGradeByQuestionId?.[String(q.id)]
-                                                    if (correctness === 'correct') {
-                                                      return <span className="text-green-500">✓</span>
-                                                    }
-                                                    if (correctness === 'incorrect') {
-                                                      return <span className="text-red-500">✕</span>
-                                                    }
-                                                    return null
+                                                    const qid = String(q.id)
+                                                    const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
+                                                    const explicitEarned = assignmentEarnedMarksByQuestionId?.[qid]
+                                                    const correctness = assignmentGradeByQuestionId?.[qid]
+                                                    const earned = (typeof explicitEarned === 'number')
+                                                      ? explicitEarned
+                                                      : (correctness === 'correct' ? maxPoints : 0)
+                                                    const color = earned > 0 ? 'text-green-500' : 'text-red-500'
+                                                    return <span className={color}>({earned}/{maxPoints})</span>
                                                   })()
                                                 ) : null}
                                               </summary>
@@ -4477,10 +4512,53 @@ export default function Dashboard() {
                                                   <div className="p-2 rounded border border-white/10 bg-white/5">
                                                     <div className="text-xs text-white/70 mb-1">Your response</div>
                                                     {(() => {
+                                                      const qid = String(q.id)
                                                       const latex = String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '')
                                                       if (!latex.trim()) {
                                                         return <div className="text-sm text-white/60">Not submitted yet.</div>
                                                       }
+
+                                                      const stepFeedback = assignmentStepFeedbackByQuestionId?.[qid]
+                                                      const steps = splitLatexIntoSteps(latex)
+                                                      if (assignmentSubmittedAt && Array.isArray(stepFeedback) && steps.length) {
+                                                        const byStep = new Map<number, any>()
+                                                        for (const s of stepFeedback) {
+                                                          const idx = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
+                                                          if (Number.isFinite(idx) && idx > 0) byStep.set(Math.trunc(idx), s)
+                                                        }
+
+                                                        return (
+                                                          <div className="space-y-2">
+                                                            {steps.map((stepLatex, i) => {
+                                                              const stepNum = i + 1
+                                                              const fb = byStep.get(stepNum)
+                                                              const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
+                                                              const isCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : (Number.isFinite(awarded) && awarded > 0)
+                                                              const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
+
+                                                              const html = renderKatexDisplayHtml(stepLatex)
+                                                              const line = html
+                                                                ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
+                                                                : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
+
+                                                              return (
+                                                                <div key={`${qid}-step-${stepNum}`} className="flex items-start gap-2">
+                                                                  <div className="w-5 shrink-0 pt-0.5 text-right">
+                                                                    {isCorrect ? <span className="text-green-500">✓</span> : null}
+                                                                  </div>
+                                                                  <div className="min-w-0 flex-1">
+                                                                    {line}
+                                                                    {!isCorrect && feedbackText ? (
+                                                                      <div className="text-xs text-white/70 mt-1">{feedbackText}</div>
+                                                                    ) : null}
+                                                                  </div>
+                                                                </div>
+                                                              )
+                                                            })}
+                                                          </div>
+                                                        )
+                                                      }
+
                                                       const html = renderKatexDisplayHtml(latex)
                                                       if (html) {
                                                         return (

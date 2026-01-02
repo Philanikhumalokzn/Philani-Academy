@@ -102,6 +102,45 @@ function parseGeminiJsonStrict(rawText: string) {
 
 type GeminiResultItem = { questionId: string; correctness: 'correct' | 'incorrect' }
 
+type GeminiStepItem = {
+  step: number
+  awardedMarks: number
+  isCorrect: boolean
+  feedback?: string
+}
+
+type GeminiMarksResultItem = {
+  questionId: string
+  earnedMarks: number
+  totalMarks?: number
+  correctness?: 'correct' | 'incorrect'
+  steps?: GeminiStepItem[]
+}
+
+function clampInt(value: unknown, min: number, max: number) {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return min
+  const i = Math.trunc(n)
+  if (i < min) return min
+  if (i > max) return max
+  return i
+}
+
+function splitLatexIntoSteps(latex: string) {
+  const raw = (latex || '').replace(/\r\n/g, '\n').trim()
+  if (!raw) return []
+
+  // Treat LaTeX line breaks as steps. This is intentionally simple and stable.
+  const withNewlines = raw.replace(/\\\\/g, '\n')
+  const steps = withNewlines
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+
+  // Keep prompts bounded.
+  return steps.slice(0, 30)
+}
+
 function normalizeCorrectness(value: unknown): 'correct' | 'incorrect' | null {
   if (typeof value !== 'string') return null
   const v = value.trim().toLowerCase()
@@ -112,6 +151,10 @@ function normalizeCorrectness(value: unknown): 'correct' | 'incorrect' | null {
 
 async function generateWithGemini(opts: { apiKey: string; model: string; content: string }) {
   const { apiKey, model, content } = opts
+
+  // Scale output tokens a bit with prompt size to reduce truncation.
+  const approxChars = content.length
+  const maxOutputTokens = Math.max(1600, Math.min(7000, 1600 + Math.floor(approxChars / 40)))
 
   // Prefer official SDK, with REST fallback (matches existing patterns in this repo).
   try {
@@ -126,7 +169,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; content
       config: {
         temperature: 0,
         topP: 0.1,
-        maxOutputTokens: 1400,
+        maxOutputTokens,
         responseMimeType: 'application/json',
       },
     } as any)
@@ -144,7 +187,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; content
         generationConfig: {
           temperature: 0,
           topP: 0.1,
-          maxOutputTokens: 1400,
+          maxOutputTokens,
           responseMimeType: 'application/json',
         },
       }),
@@ -253,6 +296,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const responseByQ = new Map<string, string>()
   for (const r of responses) responseByQ.set(String(r.questionId), String(r.latex || ''))
 
+  const studentStepsByQ = new Map<string, string[]>()
+  for (const q of assignment.questions || []) {
+    const qId = String(q.id)
+    const studentLatex = clampText(responseByQ.get(qId) || '', MAX_TEXT)
+    studentStepsByQ.set(qId, splitLatexIntoSteps(studentLatex))
+  }
+
   const solByQ = new Map<string, { latex: string; fileUrl: string; aiMarkingPlan: string; teacherMarkingPlan: string; aiWorkedSolution: string; teacherWorkedSolution: string }>()
   for (const s of solutions) {
     solByQ.set(String(s.questionId), {
@@ -269,6 +319,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const qId = String(q.id)
     const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
     const studentLatex = clampText(responseByQ.get(qId) || '', MAX_TEXT)
+    const studentSteps = studentStepsByQ.get(qId) || []
     const sol = solByQ.get(qId)
     const solLatex = clampText(sol?.latex || '', MAX_TEXT)
     const solFileUrl = clampText(sol?.fileUrl || '', 2000)
@@ -279,6 +330,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return (
       `QuestionId: ${qId}\n` +
       `MaxPoints: ${maxPoints}\n` +
+      `StudentStepCount: ${studentSteps.length}\n` +
+      (studentSteps.length ? `StudentSteps (1-indexed):\n${studentSteps.map((s, i) => `${i + 1}: ${clampText(s, 800)}`).join('\n')}\n` : '') +
       (prompt ? `TeacherPrompt:\n${prompt}\n` : '') +
       (markingPlan ? `TeacherMarkingPlan:\n${markingPlan}\n` : '') +
       (workedSolution ? `TeacherWorkedSolution:\n${workedSolution}\n` : '') +
@@ -295,9 +348,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     'You are a strict auto-grader. Return ONLY valid JSON (RFC 8259). No markdown, no commentary, no trailing commas. ' +
     'If TeacherMarkingPlan is present, treat it as the authoritative rubric (source of truth). ' +
     'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
-    'Decide if each answer is exactly correct or incorrect compared to the teacher solution and prompts. ' +
+    'Award method marks per step. Use StudentSteps as the ONLY step references (1-indexed). ' +
+    'Be concise to save compute: for incorrect steps, feedback must be short (<=120 chars) and either a brief reason or the corrected step. ' +
     'Output schema EXACTLY:\n' +
-    '{"results":[{"questionId":"...","correctness":"correct"|"incorrect"}]}'
+    '{"results":[{"questionId":"...","earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":"..."}]}]}'
 
   const content =
     `${instruction}\n\n` +
@@ -313,13 +367,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parsed: any = parseGeminiJsonStrict(raw)
 
     const resultsArr: any[] = Array.isArray(parsed?.results) ? parsed.results : []
-    const normalized: GeminiResultItem[] = []
+    const normalized: GeminiMarksResultItem[] = []
 
     for (const q of assignment.questions || []) {
       const qId = String(q.id)
-      const found = resultsArr.find(r => String(r?.questionId || '') === qId)
-      const correctness = normalizeCorrectness(found?.correctness)
-      normalized.push({ questionId: qId, correctness: correctness || 'incorrect' })
+      const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
+      const stepCount = (studentStepsByQ.get(qId) || []).length
+
+      const found: any = resultsArr.find(r => String(r?.questionId || '') === qId)
+
+      const earnedMarks = clampInt(found?.earnedMarks, 0, maxPoints)
+      const correctness: 'correct' | 'incorrect' = earnedMarks >= maxPoints ? 'correct' : 'incorrect'
+
+      const stepsArr: any[] = Array.isArray(found?.steps)
+        ? found.steps
+        : (Array.isArray(found?.stepFeedback) ? found.stepFeedback : [])
+
+      const steps: GeminiStepItem[] = []
+      for (let i = 1; i <= stepCount; i += 1) {
+        const item = stepsArr.find(s => Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0) === i)
+        const awardedMarks = clampInt(item?.awardedMarks ?? item?.awarded ?? item?.marks ?? 0, 0, maxPoints)
+        const isCorrect = (typeof item?.isCorrect === 'boolean') ? Boolean(item.isCorrect) : (awardedMarks > 0)
+        const feedback = clampText(item?.feedback ?? item?.note ?? item?.why ?? item?.correctStep ?? '', 200)
+        steps.push({ step: i, awardedMarks, isCorrect, feedback: feedback || undefined })
+      }
+
+      normalized.push({
+        questionId: qId,
+        earnedMarks,
+        totalMarks: maxPoints,
+        correctness,
+        steps,
+      })
     }
 
     const totalPoints = (assignment.questions || []).reduce((sum: number, q: any) => {
@@ -330,8 +409,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const earnedPoints = (assignment.questions || []).reduce((sum: number, q: any) => {
       const qId = String(q.id)
       const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
-      const verdict = normalized.find(r => r.questionId === qId)?.correctness
-      return sum + (verdict === 'correct' ? maxPoints : 0)
+      const earned = normalized.find(r => r.questionId === qId)?.earnedMarks
+      return sum + clampInt(earned, 0, maxPoints)
     }, 0)
 
     const percentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0

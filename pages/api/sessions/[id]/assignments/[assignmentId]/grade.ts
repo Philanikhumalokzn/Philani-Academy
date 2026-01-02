@@ -348,7 +348,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     'You are a strict auto-grader. Return ONLY valid JSON (RFC 8259). No markdown, no commentary, no trailing commas. ' +
     'If TeacherMarkingPlan is present, treat it as the authoritative rubric (source of truth). ' +
     'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
-    'Award method marks per step. Use StudentSteps as the ONLY step references (1-indexed). ' +
+    'Award method marks per step based on TeacherPrompt / TeacherMarkingPlan and MaxPoints. ' +
+    'Use StudentSteps as the ONLY step references (1-indexed) and return a steps[] entry for EVERY step 1..StudentStepCount. ' +
+    'awardedMarks must be an integer >=0; the sum of awardedMarks across steps must be <= MaxPoints and should reflect earnedMarks. ' +
+    'Set earnedMarks as an integer 0..MaxPoints representing the total marks earned for that question. ' +
     'Be concise to save compute: for incorrect steps, feedback must be short (<=120 chars) and either a brief reason or the corrected step. ' +
     'Output schema EXACTLY:\n' +
     '{"results":[{"questionId":"...","earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":"..."}]}]}'
@@ -376,21 +379,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const found: any = resultsArr.find(r => String(r?.questionId || '') === qId)
 
-      const earnedMarks = clampInt(found?.earnedMarks, 0, maxPoints)
-      const correctness: 'correct' | 'incorrect' = earnedMarks >= maxPoints ? 'correct' : 'incorrect'
-
       const stepsArr: any[] = Array.isArray(found?.steps)
         ? found.steps
         : (Array.isArray(found?.stepFeedback) ? found.stepFeedback : [])
 
+      let remaining = maxPoints
+      let sumAwarded = 0
       const steps: GeminiStepItem[] = []
       for (let i = 1; i <= stepCount; i += 1) {
         const item = stepsArr.find(s => Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0) === i)
-        const awardedMarks = clampInt(item?.awardedMarks ?? item?.awarded ?? item?.marks ?? 0, 0, maxPoints)
+        const rawAward = item?.awardedMarks ?? item?.awarded ?? item?.marks ?? 0
+        const awardedMarks = clampInt(rawAward, 0, remaining)
+        remaining -= awardedMarks
+        sumAwarded += awardedMarks
+
         const isCorrect = (typeof item?.isCorrect === 'boolean') ? Boolean(item.isCorrect) : (awardedMarks > 0)
         const feedback = clampText(item?.feedback ?? item?.note ?? item?.why ?? item?.correctStep ?? '', 200)
         steps.push({ step: i, awardedMarks, isCorrect, feedback: feedback || undefined })
       }
+
+      // Prefer step marks as the source of truth for earnedMarks when present.
+      const earnedMarks = (stepCount > 0 && Array.isArray(stepsArr) && stepsArr.length > 0)
+        ? clampInt(sumAwarded, 0, maxPoints)
+        : clampInt(found?.earnedMarks, 0, maxPoints)
+
+      const correctness: 'correct' | 'incorrect' = earnedMarks >= maxPoints ? 'correct' : 'incorrect'
 
       normalized.push({
         questionId: qId,

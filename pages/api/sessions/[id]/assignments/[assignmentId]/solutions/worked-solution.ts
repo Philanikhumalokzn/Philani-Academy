@@ -7,14 +7,13 @@ import { normalizeGradeInput } from '../../../../../../../lib/grades'
 
 const MAX_QUESTION_ID_LENGTH = 80
 const MAX_ASSIGNMENT_ID_LENGTH = 80
+const MAX_INLINE_FILE_BYTES = 6 * 1024 * 1024
 
 function clampText(value: unknown, maxLen: number) {
   if (typeof value !== 'string') return ''
   const t = value.trim()
   return t.length > maxLen ? t.slice(0, maxLen) : t
 }
-
-const MAX_INLINE_FILE_BYTES = 6 * 1024 * 1024 // Keep requests small-ish (base64 expands size)
 
 function guessMimeType(fileUrl: string, fallback?: string | null) {
   const hinted = (fallback || '').trim()
@@ -31,7 +30,6 @@ async function loadInlineFileFromUrl(fileUrl: string, contentTypeHint?: string |
   const url = (fileUrl || '').trim()
   if (!url) return null
 
-  // If stored locally under /sessions/... we can read from public/.
   if (url.startsWith('/')) {
     const fullPath = path.join(process.cwd(), 'public', url.replace(/^\/+/, ''))
     const buf = await fs.readFile(fullPath)
@@ -40,7 +38,6 @@ async function loadInlineFileFromUrl(fileUrl: string, contentTypeHint?: string |
     return { tooLarge: false as const, mimeType: guessMimeType(url, contentTypeHint), base64: buf.toString('base64') }
   }
 
-  // Remote (e.g. Vercel Blob public URL)
   if (url.startsWith('http://') || url.startsWith('https://')) {
     const resp = await fetch(url)
     if (!resp.ok) return null
@@ -79,12 +76,12 @@ async function generateWithGemini(opts: { apiKey: string; model: string; text: s
       config: {
         temperature: 0,
         topP: 0.1,
-        maxOutputTokens: 2400,
+        maxOutputTokens: 2600,
       },
     } as any)
 
-    const text = response?.text
-    return typeof text === 'string' ? text.trim() : ''
+    const out = response?.text
+    return typeof out === 'string' ? out.trim() : ''
   } catch (sdkErr: any) {
     const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
 
@@ -96,7 +93,7 @@ async function generateWithGemini(opts: { apiKey: string; model: string; text: s
         generationConfig: {
           temperature: 0,
           topP: 0.1,
-          maxOutputTokens: 2400,
+          maxOutputTokens: 2600,
         },
       }),
     })
@@ -151,7 +148,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end(`Method ${req.method} Not Allowed`)
   }
 
-  const { questionId, action, planText } = req.body || {}
+  const { questionId, action, solutionText } = req.body || {}
 
   const safeQuestionId = (typeof questionId === 'string' && questionId.trim())
     ? questionId.trim().slice(0, MAX_QUESTION_ID_LENGTH)
@@ -169,7 +166,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })
   if (!question) return res.status(404).json({ message: 'Question not found' })
 
-  const existing = await prisma.assignmentSolution.findUnique({
+  const assignmentSolution = (prisma as any).assignmentSolution as any
+
+  const existing = await assignmentSolution.findUnique({
     where: { questionId: safeQuestionId },
     select: {
       id: true,
@@ -177,23 +176,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       latex: true,
       fileUrl: true,
       contentType: true,
+      aiWorkedSolution: true,
+      teacherWorkedSolution: true,
       aiMarkingPlan: true,
       teacherMarkingPlan: true,
     },
   })
 
   if (!existing) {
-    return res.status(409).json({ message: 'Save a solution first (canvas and/or upload) before generating a marking plan.' })
+    return res.status(409).json({ message: 'Save a solution first (canvas and/or upload) before generating a worked solution.' })
   }
 
   if (safeAction === 'save') {
-    const text = typeof planText === 'string' ? planText : ''
+    const text = typeof solutionText === 'string' ? solutionText : ''
     const trimmed = text.trim()
 
-    const updated = await prisma.assignmentSolution.update({
+    const updated = await assignmentSolution.update({
       where: { questionId: safeQuestionId },
       data: {
-        teacherMarkingPlan: trimmed ? trimmed : null,
+        teacherWorkedSolution: trimmed ? trimmed : null,
         createdBy: (token as any)?.email ? String((token as any).email) : null,
       },
     })
@@ -201,7 +202,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true, solution: updated })
   }
 
-  // generate
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
   if (!geminiApiKey) {
     return res.status(500).json({ message: 'Gemini is not configured (missing GEMINI_API_KEY)', providerUsed: 'gemini' })
@@ -209,39 +209,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const model = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash'
 
-  const solLatex = clampText(existing.latex || '', 16000)
+  const teacherCanvasLatex = clampText(existing.latex || '', 16000)
   const solFileUrl = clampText(existing.fileUrl || '', 2000)
-  if (!solLatex && !solFileUrl) {
-    return res.status(409).json({ message: 'No solution content found (save canvas solution or upload a file first).' })
-  }
+  const markingPlan = clampText((existing.teacherMarkingPlan || existing.aiMarkingPlan || ''), 12000)
 
   const inlineFile = solFileUrl ? await loadInlineFileFromUrl(solFileUrl, existing.contentType || null) : null
 
-  const teacherPrompt = clampText(question.gradingPrompt || '', 4000)
-
   const instruction =
-    'You are an expert teacher. Create a COMPLETE marking plan/rubric for grading this question.\n' +
+    'You are an expert teacher. Produce a fully worked solution for the question.\n' +
     'Use ALL available info: (1) teacher canvas solution LaTeX, (2) uploaded PDF/image solution (if provided), and (3) your own math understanding.\n' +
-    'Return plain text only (no JSON, no markdown code fences).\n' +
-    'Include: expected method/steps, final answer expectations, required intermediate steps, common mistakes, and how to award marks (step-by-step).\n' +
-    'If the teacher solution is incomplete, fill in missing steps explicitly.'
+    'Return plain text only. DO NOT use markdown code fences.\n' +
+    'Write a complete, step-by-step solution. Prefer LaTeX math for equations.\n' +
+    'Include the final answer clearly. If teacher solution is incomplete, fill in missing steps explicitly.'
 
-  const content =
+  const prompt =
     `${instruction}\n\n` +
-    `QuestionId: ${question.id}\n` +
-    (teacherPrompt ? `TeacherGradingPrompt:\n${teacherPrompt}\n\n` : '') +
+    `QuestionId: ${question.id}\n\n` +
+    (markingPlan ? `TeacherMarkingPlan (authoritative rubric):\n${markingPlan}\n\n` : '') +
     `QuestionLatex:\n${clampText(question.latex || '', 20000)}\n\n` +
-    `TeacherSolutionLatex:\n${solLatex || '(none)'}\n` +
-    (solFileUrl ? `TeacherSolutionFileUrl: ${solFileUrl}\n` : '') +
-    (inlineFile && (inlineFile as any).tooLarge ? 'TeacherSolutionFileInline: (omitted; file too large to attach inline)\n' : '')
+    `TeacherCanvasSolutionLatex:\n${teacherCanvasLatex || '(none)'}\n` +
+    (solFileUrl ? `TeacherUploadedSolutionFileUrl: ${solFileUrl}\n` : '') +
+    (inlineFile && (inlineFile as any).tooLarge ? 'TeacherUploadedSolutionFileInline: (omitted; file too large to attach inline)\n' : '')
 
-  const plan = await generateWithGemini({ apiKey: geminiApiKey, model, text: content, inlineFile: (inlineFile && !(inlineFile as any).tooLarge) ? (inlineFile as any) : null })
-  if (!plan) return res.status(500).json({ message: 'Gemini returned empty marking plan' })
+  const worked = await generateWithGemini({
+    apiKey: geminiApiKey,
+    model,
+    text: prompt,
+    inlineFile: (inlineFile && !(inlineFile as any).tooLarge) ? (inlineFile as any) : null,
+  })
 
-  const updated = await prisma.assignmentSolution.update({
+  if (!worked) return res.status(500).json({ message: 'Gemini returned empty worked solution' })
+
+  const updated = await assignmentSolution.update({
     where: { questionId: safeQuestionId },
     data: {
-      aiMarkingPlan: plan,
+      aiWorkedSolution: worked,
       createdBy: (token as any)?.email ? String((token as any).email) : null,
     },
   })

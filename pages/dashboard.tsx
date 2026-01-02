@@ -584,6 +584,10 @@ export default function Dashboard() {
   const [assignmentSolutionMarkingPlanSavingQuestionId, setAssignmentSolutionMarkingPlanSavingQuestionId] = useState<string | null>(null)
   const [assignmentSolutionMarkingPlanGeneratingQuestionId, setAssignmentSolutionMarkingPlanGeneratingQuestionId] = useState<string | null>(null)
 
+  const [assignmentSolutionWorkedSolutionDraftByQuestionId, setAssignmentSolutionWorkedSolutionDraftByQuestionId] = useState<Record<string, string>>({})
+  const [assignmentSolutionWorkedSolutionSavingQuestionId, setAssignmentSolutionWorkedSolutionSavingQuestionId] = useState<string | null>(null)
+  const [assignmentSolutionWorkedSolutionGeneratingQuestionId, setAssignmentSolutionWorkedSolutionGeneratingQuestionId] = useState<string | null>(null)
+
   const [assignmentMasterGradingPrompt, setAssignmentMasterGradingPrompt] = useState('')
   const [assignmentGradingPromptByQuestionId, setAssignmentGradingPromptByQuestionId] = useState<Record<string, string>>({})
   const [assignmentGradingPromptSavingScope, setAssignmentGradingPromptSavingScope] = useState<string | null>(null)
@@ -1645,6 +1649,9 @@ export default function Dashboard() {
         setAssignmentSolutionMarkingPlanDraftByQuestionId({})
         setAssignmentSolutionMarkingPlanSavingQuestionId(null)
         setAssignmentSolutionMarkingPlanGeneratingQuestionId(null)
+        setAssignmentSolutionWorkedSolutionDraftByQuestionId({})
+        setAssignmentSolutionWorkedSolutionSavingQuestionId(null)
+        setAssignmentSolutionWorkedSolutionGeneratingQuestionId(null)
         if (isLearner) {
           void fetchAssignmentResponses(sessionId, assignmentId)
         } else {
@@ -1661,6 +1668,7 @@ export default function Dashboard() {
       setAssignmentGradeError(null)
       setAssignmentSolutionsByQuestionId({})
       setAssignmentSolutionMarkingPlanDraftByQuestionId({})
+      setAssignmentSolutionWorkedSolutionDraftByQuestionId({})
     } catch (err: any) {
       setSelectedAssignment(null)
       setSelectedAssignmentError(err?.message || 'Network error')
@@ -1677,6 +1685,9 @@ export default function Dashboard() {
       setAssignmentSolutionMarkingPlanDraftByQuestionId({})
       setAssignmentSolutionMarkingPlanSavingQuestionId(null)
       setAssignmentSolutionMarkingPlanGeneratingQuestionId(null)
+      setAssignmentSolutionWorkedSolutionDraftByQuestionId({})
+      setAssignmentSolutionWorkedSolutionSavingQuestionId(null)
+      setAssignmentSolutionWorkedSolutionGeneratingQuestionId(null)
     } finally {
       setSelectedAssignmentLoading(false)
     }
@@ -1838,6 +1849,15 @@ export default function Dashboard() {
           }
           return next
         })
+        setAssignmentSolutionWorkedSolutionDraftByQuestionId(() => {
+          const next: Record<string, string> = {}
+          for (const [qid, sol] of Object.entries(byQ)) {
+            const teacher = String((sol as any)?.teacherWorkedSolution || '')
+            const ai = String((sol as any)?.aiWorkedSolution || '')
+            next[String(qid)] = teacher.trim() ? teacher : ai
+          }
+          return next
+        })
         return
       }
       setAssignmentSolutionsByQuestionId({})
@@ -1931,6 +1951,58 @@ export default function Dashboard() {
       alert(err?.message || 'Generate failed')
     } finally {
       setAssignmentSolutionMarkingPlanGeneratingQuestionId(null)
+    }
+  }
+
+  async function saveAssignmentSolutionWorkedSolution(sessionId: string, assignmentId: string, questionId: string, solutionText: string) {
+    if (isLearner) return
+    if (assignmentSolutionWorkedSolutionSavingQuestionId === String(questionId)) return
+
+    setAssignmentSolutionWorkedSolutionSavingQuestionId(String(questionId))
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions/worked-solution`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', questionId: String(questionId), solutionText: String(solutionText || '') }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Save failed (${res.status})`)
+      alert('Worked solution saved.')
+      void fetchAssignmentSolutions(sessionId, assignmentId)
+    } catch (err: any) {
+      alert(err?.message || 'Save failed')
+    } finally {
+      setAssignmentSolutionWorkedSolutionSavingQuestionId(null)
+    }
+  }
+
+  async function generateAssignmentSolutionWorkedSolution(sessionId: string, assignmentId: string, questionId: string) {
+    if (isLearner) return
+    if (assignmentSolutionWorkedSolutionGeneratingQuestionId === String(questionId)) return
+
+    setAssignmentSolutionWorkedSolutionGeneratingQuestionId(String(questionId))
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/solutions/worked-solution`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'generate', questionId: String(questionId) }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Generate failed (${res.status})`)
+      alert('Gemini worked solution generated.')
+      void fetchAssignmentSolutions(sessionId, assignmentId)
+    } catch (err: any) {
+      alert(err?.message || 'Generate failed')
+    } finally {
+      setAssignmentSolutionWorkedSolutionGeneratingQuestionId(null)
     }
   }
 
@@ -4302,6 +4374,65 @@ export default function Dashboard() {
                                                           }}
                                                         >
                                                           {assignmentSolutionMarkingPlanSavingQuestionId === String(q.id) ? 'Saving…' : 'Save marking plan'}
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  ) : null}
+
+                                                  {expandedSessionId && selectedAssignment?.id && q?.id ? (
+                                                    <div className="pt-2">
+                                                      <div className="text-xs text-white/70 mb-1">Gemini worked solution (editable source of truth)</div>
+                                                      {(() => {
+                                                        const sol = assignmentSolutionsByQuestionId?.[String(q.id)]
+                                                        const teacher = String(sol?.teacherWorkedSolution || '')
+                                                        const ai = String(sol?.aiWorkedSolution || '')
+                                                        const label = teacher.trim()
+                                                          ? 'Using teacher edited worked solution'
+                                                          : (ai.trim() ? 'Using Gemini draft (edit + save to override)' : 'No worked solution generated yet')
+                                                        return <div className="text-xs muted mb-1">{label}</div>
+                                                      })()}
+                                                      <textarea
+                                                        className="input w-full text-xs"
+                                                        rows={6}
+                                                        placeholder="Generate a fully worked solution with Gemini (uses canvas LaTeX + uploaded PDF/image). Edit it, then save to make it the source of truth."
+                                                        value={String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[String(q.id)] ?? '')}
+                                                        onChange={e => {
+                                                          const value = e.target.value
+                                                          setAssignmentSolutionWorkedSolutionDraftByQuestionId(prev => ({
+                                                            ...prev,
+                                                            [String(q.id)]: value,
+                                                          }))
+                                                        }}
+                                                      />
+                                                      <div className="pt-2 flex flex-wrap gap-2">
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-secondary text-xs"
+                                                          disabled={assignmentSolutionWorkedSolutionGeneratingQuestionId === String(q.id)}
+                                                          onClick={() => {
+                                                            void generateAssignmentSolutionWorkedSolution(
+                                                              expandedSessionId,
+                                                              String(selectedAssignment.id),
+                                                              String(q.id)
+                                                            )
+                                                          }}
+                                                        >
+                                                          {assignmentSolutionWorkedSolutionGeneratingQuestionId === String(q.id) ? 'Generating…' : 'Generate worked solution'}
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-primary text-xs"
+                                                          disabled={assignmentSolutionWorkedSolutionSavingQuestionId === String(q.id)}
+                                                          onClick={() => {
+                                                            void saveAssignmentSolutionWorkedSolution(
+                                                              expandedSessionId,
+                                                              String(selectedAssignment.id),
+                                                              String(q.id),
+                                                              String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[String(q.id)] || '')
+                                                            )
+                                                          }}
+                                                        >
+                                                          {assignmentSolutionWorkedSolutionSavingQuestionId === String(q.id) ? 'Saving…' : 'Save worked solution'}
                                                         </button>
                                                       </div>
                                                     </div>

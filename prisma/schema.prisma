@@ -212,6 +212,11 @@ model AssignmentSolution {
   // Teacher/admin edited marking plan that overrides aiMarkingPlan.
   teacherMarkingPlan String?
 
+  // Gemini-generated worked solution (typically LaTeX) based on teacher solution + uploads.
+  aiWorkedSolution      String?
+  // Teacher/admin edited worked solution that overrides aiWorkedSolution.
+  teacherWorkedSolution String?
+
   createdBy     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

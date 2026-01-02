@@ -253,13 +253,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const responseByQ = new Map<string, string>()
   for (const r of responses) responseByQ.set(String(r.questionId), String(r.latex || ''))
 
-  const solByQ = new Map<string, { latex: string; fileUrl: string; aiMarkingPlan: string; teacherMarkingPlan: string }>()
+  const solByQ = new Map<string, { latex: string; fileUrl: string; aiMarkingPlan: string; teacherMarkingPlan: string; aiWorkedSolution: string; teacherWorkedSolution: string }>()
   for (const s of solutions) {
     solByQ.set(String(s.questionId), {
       latex: String((s as any).latex || ''),
       fileUrl: String((s as any).fileUrl || ''),
       aiMarkingPlan: String((s as any).aiMarkingPlan || ''),
       teacherMarkingPlan: String((s as any).teacherMarkingPlan || ''),
+      aiWorkedSolution: String((s as any).aiWorkedSolution || ''),
+      teacherWorkedSolution: String((s as any).teacherWorkedSolution || ''),
     })
   }
 
@@ -271,6 +273,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const solLatex = clampText(sol?.latex || '', MAX_TEXT)
     const solFileUrl = clampText(sol?.fileUrl || '', 2000)
     const markingPlan = clampText((sol?.teacherMarkingPlan || sol?.aiMarkingPlan || ''), 12000)
+    const workedSolution = clampText((sol?.teacherWorkedSolution || sol?.aiWorkedSolution || ''), 16000)
     const prompt = clampText((q as any)?.gradingPrompt || '', 4000)
 
     return (
@@ -278,6 +281,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       `MaxPoints: ${maxPoints}\n` +
       (prompt ? `TeacherPrompt:\n${prompt}\n` : '') +
       (markingPlan ? `TeacherMarkingPlan:\n${markingPlan}\n` : '') +
+      (workedSolution ? `TeacherWorkedSolution:\n${workedSolution}\n` : '') +
       `QuestionLatex:\n${clampText(String(q.latex || ''), MAX_TEXT)}\n\n` +
       `TeacherSolutionLatex:\n${solLatex || '(none)'}\n` +
       (solFileUrl ? `TeacherSolutionFileUrl: ${solFileUrl}\n` : '') +
@@ -290,6 +294,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const instruction =
     'You are a strict auto-grader. Return ONLY valid JSON (RFC 8259). No markdown, no commentary, no trailing commas. ' +
     'If TeacherMarkingPlan is present, treat it as the authoritative rubric (source of truth). ' +
+    'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
     'Decide if each answer is exactly correct or incorrect compared to the teacher solution and prompts. ' +
     'Output schema EXACTLY:\n' +
     '{"results":[{"questionId":"...","correctness":"correct"|"incorrect"}]}'

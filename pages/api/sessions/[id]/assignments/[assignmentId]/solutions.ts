@@ -57,6 +57,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         size: true,
         aiMarkingPlan: true,
         teacherMarkingPlan: true,
+        aiWorkedSolution: true,
+        teacherWorkedSolution: true,
         createdBy: true,
         updatedAt: true,
       },

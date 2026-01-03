@@ -40,7 +40,8 @@ This runs migrations against the hosted DB and creates an admin user.
 - Vercel will build on push. Once the build completes, open your app URL.
 
 Notes and troubleshooting
-- Make sure `prisma/schema.prisma` uses `provider = "postgresql"` in production or uses the same schema; Prisma Client will be generated during Vercel build if configured.
+- Migrations are intentionally NOT run in Vercel or CI (billing/connection constraints). Always run `npx prisma migrate deploy` locally against the hosted DB.
+- Prisma Client is generated during the build (`npm run build` runs `prisma generate`).
 - If you use environment variables in build time, set them in Vercel for the Build step too.
 - For support connecting to Supabase from Vercel, ensure the DB allows connections from Vercel's IPs (Supabase generally supports this).
 
@@ -48,8 +49,4 @@ Security
 - Never commit secrets to the repo.
 - After seeding the admin, rotate the seeded password.
 
-If you want, I can:
-- Add a `scripts/deploy-vercel.ps1` helper (it will only print commands to run locally).
-- Add a `prisma` preview configuration for Postgres.
-
-Tell me which extras to add and I will create them in the repo.
+Tip: You can use `scripts/deploy-vercel.ps1` as a local helper to print the migration commands to run.

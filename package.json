@@ -5,11 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run prisma:generate && next build",
-    "vercel-build": "node scripts/vercel_migrate.js && npm run prisma:generate && next build",
     "start": "next start",
     "prisma:generate": "prisma generate && node scripts/fix_prisma_client.js",
     "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "resend:domains": "node scripts/manage_resend_domain.js"
   },

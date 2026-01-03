@@ -1353,7 +1353,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }),
     [closeOverlayControls, openOverlayControls, toggleOverlayControls]
-                      {isAdmin ? renderOverlayAdminControls() : renderToolbarBlock()}
+  )
 
   const runCanvasAction = useCallback((action: () => void | Promise<void>) => {
     if (typeof action === 'function') {
@@ -1366,7 +1366,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [clearOverlayAutoHide, isOverlayMode])
 
   const getLessonScriptPhaseSteps = useCallback(
-              {isAdmin ? renderOverlayAdminControls() : renderToolbarBlock()}
+    (resolved: any, phaseKey: LessonScriptPhaseKey): string[] => {
       if (!resolved || typeof resolved !== 'object') return []
       const phases = (resolved as any).phases
       if (!phases || typeof phases !== 'object') return []
@@ -7255,36 +7255,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           )}
         </div>
       )}
-    </div>
-  )
-
-  const renderOverlayAdminControls = () => (
-    <div className="canvas-toolbar">
-      <div className="canvas-toolbar__buttons">
-        <button
-          className="btn"
-          type="button"
-          onClick={() => runCanvasAction(clearAllStudentCanvases)}
-          disabled={status !== 'ready' || Boolean(fatalError)}
-        >
-          Wipe All Student Canvases
-        </button>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => runCanvasAction(allowAllStudentsEditing)}
-          disabled={status !== 'ready' || Boolean(fatalError)}
-        >
-          Allow All Students to Edit
-        </button>
-        <button
-          className="btn"
-          type="button"
-          disabled={status !== 'ready' || Boolean(fatalError)}
-        >
-          Toggle Display
-        </button>
-      </div>
     </div>
   )
 

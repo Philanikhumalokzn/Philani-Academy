@@ -6158,8 +6158,10 @@ export default function Dashboard() {
                         : undefined
                     }
                     onCloseOverlay={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? closeLiveOverlay
+                      win.kind === 'canvas'
+                        ? (liveOverlayMode === 'canvas'
+                          ? closeLiveOverlay
+                          : (!(win.isAdminOverride ?? isOwnerUser) ? closeLiveOverlay : undefined))
                         : undefined
                     }
                     position={win.position}

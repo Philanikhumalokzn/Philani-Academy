@@ -7,6 +7,7 @@ import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
+import { isSpecialTestStudentEmail } from '../lib/testUsers'
 
 import BrandLogo from '../components/BrandLogo'
 
@@ -672,6 +673,7 @@ export default function Dashboard() {
   const isAdmin = normalizedRole === 'admin'
   const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const isLearner = normalizedRole === 'student'
+  const isTestStudent = useMemo(() => isSpecialTestStudentEmail(session?.user?.email || ''), [session?.user?.email])
   const learnerNotesLabel = isLearner ? 'Saved notes' : 'LaTeX saves'
   const learnerNotesLabelLower = isLearner ? 'saved notes' : 'LaTeX saves'
   const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
@@ -4590,7 +4592,7 @@ export default function Dashboard() {
                                               ) : null}
                                               {isLearner && expandedSessionId && selectedAssignment?.id && q?.id ? (
                                                 <div className="pt-2">
-                                                  {assignmentSubmittedAt ? (
+                                                  {assignmentSubmittedAt && !isTestStudent ? (
                                                     <button type="button" className="btn btn-primary text-xs opacity-60 cursor-not-allowed" disabled>
                                                       Editing locked
                                                     </button>

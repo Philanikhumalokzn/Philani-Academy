@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../../../lib/grades'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../../../lib/subscription'
+import { isSpecialTestStudentEmail } from '../../../../../../lib/testUsers'
 
 const MAX_ASSIGNMENT_ID_LENGTH = 80
 
@@ -18,7 +19,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const role = (token as any)?.role as string | undefined
   const authUserId = ((token as any)?.id || (token as any)?.sub || '') as string
+  const userEmail = ((token as any)?.email || null) as string | null
   const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  const isTestStudent = isSpecialTestStudentEmail(userEmail)
 
   if (!authUserId) return res.status(401).json({ message: 'Unauthorized' })
 
@@ -83,6 +87,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       submittedAt: new Date(),
     },
   })
+
+  // For the special test account: allow re-grading after resubmission by clearing any
+  // existing persisted grade (grade is re-generated on next GET /grade).
+  if (isTestStudent) {
+    try {
+      await (prisma as any).assignmentGrade.delete({
+        where: {
+          assignmentId_userId: {
+            assignmentId,
+            userId: authUserId,
+          },
+        },
+      })
+    } catch {
+      // ignore (no grade yet)
+    }
+  }
 
   return res.status(200).json({ submitted: true, submittedAt: record?.submittedAt || null })
 }

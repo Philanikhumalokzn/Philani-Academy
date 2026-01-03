@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../../../lib/grades'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../../../lib/subscription'
+import { isSpecialTestStudentEmail } from '../../../../../../lib/testUsers'
 
 const MAX_LATEX_LENGTH = 50000
 const MAX_QUESTION_ID_LENGTH = 80
@@ -22,6 +23,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const authUserId = ((token as any)?.id || (token as any)?.sub || '') as string
   const userEmail = ((token as any)?.email || null) as string | null
   const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  const isTestStudent = isSpecialTestStudentEmail(userEmail)
 
   if (!authUserId) return res.status(401).json({ message: 'Unauthorized' })
 
@@ -99,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       select: { submittedAt: true },
     })
-    if (submission?.submittedAt) {
+    if (submission?.submittedAt && !isTestStudent) {
       return res.status(409).json({ message: 'Assignment already submitted. Editing is locked.' })
     }
 

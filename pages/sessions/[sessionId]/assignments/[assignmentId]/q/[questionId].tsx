@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
+import { isSpecialTestStudentEmail } from '../../../../../../lib/testUsers'
 
 const StackedCanvasWindow = dynamic(() => import('../../../../../../components/StackedCanvasWindow'), { ssr: false })
 
@@ -20,6 +21,7 @@ export default function AssignmentQuestionPage() {
     return (anySession?.user?.id || session?.user?.email || '') as string
   }, [session])
   const userDisplayName = session?.user?.name || session?.user?.email || ''
+  const isTestStudent = useMemo(() => isSpecialTestStudentEmail(session?.user?.email || ''), [session])
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -241,7 +243,7 @@ export default function AssignmentQuestionPage() {
       {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
       {loading ? <div className="absolute top-2 left-2 right-2 z-50 text-white/70 text-sm">Loading…</div> : null}
 
-      {submittedAt ? (
+      {submittedAt && !isTestStudent ? (
         <div className="absolute inset-0 flex items-center justify-center p-6">
           <div className="max-w-lg w-full rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
             <div className="text-lg font-semibold">Assignment submitted</div>

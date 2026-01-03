@@ -588,6 +588,14 @@ export default function Dashboard() {
   const [assignmentTotalMarksByQuestionId, setAssignmentTotalMarksByQuestionId] = useState<Record<string, number>>({})
   const [assignmentStepFeedbackByQuestionId, setAssignmentStepFeedbackByQuestionId] = useState<Record<string, any[]>>({})
   const [assignmentGradeSummary, setAssignmentGradeSummary] = useState<{ earnedPoints: number; totalPoints: number; percentage: number } | null>(null)
+
+  const [adminAssignmentSubmissions, setAdminAssignmentSubmissions] = useState<any[]>([])
+  const [adminAssignmentSubmissionsLoading, setAdminAssignmentSubmissionsLoading] = useState(false)
+  const [adminAssignmentSubmissionsError, setAdminAssignmentSubmissionsError] = useState<string | null>(null)
+  const [adminSelectedSubmissionUserId, setAdminSelectedSubmissionUserId] = useState<string | null>(null)
+  const [adminSelectedSubmissionDetail, setAdminSelectedSubmissionDetail] = useState<any | null>(null)
+  const [adminSelectedSubmissionLoading, setAdminSelectedSubmissionLoading] = useState(false)
+  const [adminSelectedSubmissionError, setAdminSelectedSubmissionError] = useState<string | null>(null)
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
   const [assignmentSolutionsLoading, setAssignmentSolutionsLoading] = useState(false)
   const [assignmentSolutionsError, setAssignmentSolutionsError] = useState<string | null>(null)
@@ -1658,6 +1666,12 @@ export default function Dashboard() {
         setAssignmentGradeByQuestionId({})
         setAssignmentGradeSummary(null)
         setAssignmentGradeError(null)
+
+        setAdminAssignmentSubmissions([])
+        setAdminAssignmentSubmissionsError(null)
+        setAdminSelectedSubmissionUserId(null)
+        setAdminSelectedSubmissionDetail(null)
+        setAdminSelectedSubmissionError(null)
         setAssignmentSolutionsByQuestionId({})
         setAssignmentSolutionsError(null)
         setAssignmentSolutionUploadFilesByQuestionId({})
@@ -1672,6 +1686,9 @@ export default function Dashboard() {
           void fetchAssignmentResponses(sessionId, assignmentId)
         } else {
           void fetchAssignmentSolutions(sessionId, assignmentId)
+          if (isAdmin) {
+            void fetchAdminAssignmentSubmissions(sessionId, assignmentId)
+          }
         }
         return
       }
@@ -1706,6 +1723,58 @@ export default function Dashboard() {
       setAssignmentSolutionWorkedSolutionGeneratingQuestionId(null)
     } finally {
       setSelectedAssignmentLoading(false)
+    }
+  }
+
+  async function fetchAdminAssignmentSubmissions(sessionId: string, assignmentId: string) {
+    if (!isAdmin) return
+    if (adminAssignmentSubmissionsLoading) return
+    setAdminAssignmentSubmissionsError(null)
+    setAdminAssignmentSubmissionsLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/submissions`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAdminAssignmentSubmissions([])
+        setAdminAssignmentSubmissionsError(data?.message || `Failed to load submissions (${res.status})`)
+        return
+      }
+      setAdminAssignmentSubmissions(Array.isArray(data?.submissions) ? data.submissions : [])
+    } catch (err: any) {
+      setAdminAssignmentSubmissions([])
+      setAdminAssignmentSubmissionsError(err?.message || 'Network error')
+    } finally {
+      setAdminAssignmentSubmissionsLoading(false)
+    }
+  }
+
+  async function fetchAdminSubmissionDetail(sessionId: string, assignmentId: string, userId: string) {
+    if (!isAdmin) return
+    if (!userId) return
+    if (adminSelectedSubmissionLoading) return
+
+    setAdminSelectedSubmissionError(null)
+    setAdminSelectedSubmissionLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/submissions/${encodeURIComponent(userId)}`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAdminSelectedSubmissionDetail(null)
+        setAdminSelectedSubmissionError(data?.message || `Failed to load submission (${res.status})`)
+        return
+      }
+      setAdminSelectedSubmissionDetail(data)
+    } catch (err: any) {
+      setAdminSelectedSubmissionDetail(null)
+      setAdminSelectedSubmissionError(err?.message || 'Network error')
+    } finally {
+      setAdminSelectedSubmissionLoading(false)
     }
   }
 
@@ -4654,6 +4723,214 @@ export default function Dashboard() {
                                                     {assignmentGradingPromptSavingScope === 'assignment' ? 'Saving…' : 'Save assignment grading prompt'}
                                                   </button>
                                                 </div>
+                                              </div>
+                                            </div>
+                                          ) : null}
+
+                                          {isAdmin && expandedSessionId && selectedAssignment?.id ? (
+                                            <div className="pt-3">
+                                              <div className="p-3 rounded border border-white/10 bg-white/5 space-y-2">
+                                                <div className="text-sm font-semibold">Student submissions</div>
+
+                                                {adminAssignmentSubmissionsError ? (
+                                                  <div className="text-sm text-red-600">{adminAssignmentSubmissionsError}</div>
+                                                ) : adminAssignmentSubmissionsLoading ? (
+                                                  <div className="text-sm muted">Loading submissions…</div>
+                                                ) : adminAssignmentSubmissions.length === 0 ? (
+                                                  <div className="text-sm text-white/70">No submissions yet.</div>
+                                                ) : (
+                                                  <div className="space-y-2">
+                                                    {adminAssignmentSubmissions.map((s: any) => {
+                                                      const uid = String(s?.userId || '')
+                                                      const email = String(s?.user?.email || '')
+                                                      const name = String(s?.user?.name || '')
+                                                      const label = (name || email || uid || 'Student').trim()
+                                                      const grade = s?.grade
+                                                      const gradeText = grade
+                                                        ? `${Number(grade?.earnedPoints || 0)}/${Number(grade?.totalPoints || 0)} (${Number.isFinite(Number(grade?.percentage)) ? `${Number(grade?.percentage).toFixed(0)}%` : '0%'})`
+                                                        : 'Not graded'
+
+                                                      return (
+                                                        <button
+                                                          key={`sub-${uid}`}
+                                                          type="button"
+                                                          className={
+                                                            `w-full text-left p-2 rounded border border-white/10 ${adminSelectedSubmissionUserId === uid ? 'bg-white/10' : 'bg-white/5'}`
+                                                          }
+                                                          onClick={() => {
+                                                            setAdminSelectedSubmissionUserId(uid)
+                                                            void fetchAdminSubmissionDetail(expandedSessionId, String(selectedAssignment.id), uid)
+                                                          }}
+                                                        >
+                                                          <div className="flex items-center justify-between gap-2">
+                                                            <div className="text-sm font-medium break-words">{label}</div>
+                                                            <div className="text-xs text-white/70">{gradeText}</div>
+                                                          </div>
+                                                          {s?.submittedAt ? (
+                                                            <div className="text-xs muted mt-1">
+                                                              {(() => {
+                                                                try {
+                                                                  return new Date(String(s.submittedAt)).toLocaleString()
+                                                                } catch {
+                                                                  return ''
+                                                                }
+                                                              })()}
+                                                            </div>
+                                                          ) : null}
+                                                        </button>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                )}
+
+                                                {adminSelectedSubmissionUserId ? (
+                                                  <div className="pt-3 border-t border-white/10 space-y-2">
+                                                    {adminSelectedSubmissionError ? (
+                                                      <div className="text-sm text-red-600">{adminSelectedSubmissionError}</div>
+                                                    ) : adminSelectedSubmissionLoading ? (
+                                                      <div className="text-sm muted">Loading submission…</div>
+                                                    ) : adminSelectedSubmissionDetail ? (
+                                                      (() => {
+                                                        const detail = adminSelectedSubmissionDetail
+                                                        const submission = detail?.submission
+                                                        const grade = detail?.grade
+                                                        const gradingJson = detail?.gradingJson
+                                                        const responsesByQ = detail?.responses?.byQuestionId || {}
+                                                        const gradeResults: any[] = Array.isArray(grade?.results) ? grade.results : []
+                                                        const gradeByQ = new Map<string, any>()
+                                                        for (const r of gradeResults) {
+                                                          const qid = String(r?.questionId || '')
+                                                          if (qid) gradeByQ.set(qid, r)
+                                                        }
+
+                                                        return (
+                                                          <div className="space-y-3">
+                                                            <div className="text-sm">
+                                                              <div className="font-semibold">Selected submission</div>
+                                                              <div className="text-xs text-white/70">
+                                                                {(submission?.user?.name || submission?.user?.email || submission?.userId || '').toString()}
+                                                              </div>
+                                                              {submission?.submittedAt ? (
+                                                                <div className="text-xs muted">
+                                                                  {(() => {
+                                                                    try {
+                                                                      return new Date(String(submission.submittedAt)).toLocaleString()
+                                                                    } catch {
+                                                                      return ''
+                                                                    }
+                                                                  })()}
+                                                                </div>
+                                                              ) : null}
+                                                              {grade ? (
+                                                                <div className="text-xs text-white/80 mt-1">
+                                                                  Grade: {Number(grade?.earnedPoints || 0)}/{Number(grade?.totalPoints || 0)} ({Number.isFinite(Number(grade?.percentage)) ? `${Number(grade?.percentage).toFixed(0)}%` : '0%'})
+                                                                </div>
+                                                              ) : (
+                                                                <div className="text-xs text-white/70 mt-1">Not graded yet.</div>
+                                                              )}
+                                                            </div>
+
+                                                            {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length ? (
+                                                              <div className="space-y-2">
+                                                                {selectedAssignment.questions.map((q: any, idx: number) => {
+                                                                  const qid = String(q?.id || '')
+                                                                  const respLatex = String(responsesByQ?.[qid]?.latex || '')
+                                                                  const result = gradeByQ.get(qid)
+                                                                  const earnedMarks = (typeof result?.earnedMarks === 'number' || typeof result?.earnedMarks === 'string') ? Number(result.earnedMarks) : null
+                                                                  const totalMarks = (typeof result?.totalMarks === 'number' || typeof result?.totalMarks === 'string') ? Number(result.totalMarks) : null
+                                                                  const stepFeedback = Array.isArray(result?.steps) ? result.steps : (Array.isArray(result?.stepFeedback) ? result.stepFeedback : [])
+
+                                                                  return (
+                                                                    <details key={`admin-sub-q-${qid || idx}`} className="border border-white/10 rounded p-2" open={idx === 0}>
+                                                                      <summary className="cursor-pointer font-medium text-sm flex items-center justify-between gap-2">
+                                                                        <span>Question {idx + 1}</span>
+                                                                        {grade && Number.isFinite(earnedMarks as any) && Number.isFinite(totalMarks as any) ? (
+                                                                          <span className={Number(earnedMarks) > 0 ? 'text-green-500' : 'text-red-500'}>({Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))})</span>
+                                                                        ) : null}
+                                                                      </summary>
+
+                                                                      <div className="pt-2 text-sm whitespace-pre-wrap break-words">
+                                                                        {renderTextWithKatex(String(q?.latex || ''))}
+                                                                      </div>
+
+                                                                      <div className="pt-2">
+                                                                        <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                                          <div className="text-xs text-white/70 mb-1">Student response</div>
+                                                                          {respLatex.trim() ? (
+                                                                            (() => {
+                                                                              const steps = splitLatexIntoSteps(respLatex)
+                                                                              if (Array.isArray(stepFeedback) && stepFeedback.length && steps.length) {
+                                                                                const byStep = new Map<number, any>()
+                                                                                for (const s of stepFeedback) {
+                                                                                  const idx2 = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
+                                                                                  if (Number.isFinite(idx2) && idx2 > 0) byStep.set(Math.trunc(idx2), s)
+                                                                                }
+
+                                                                                return (
+                                                                                  <div className="space-y-2">
+                                                                                    {steps.map((stepLatex, i) => {
+                                                                                      const stepNum = i + 1
+                                                                                      const fb = byStep.get(stepNum)
+                                                                                      const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
+                                                                                      const isCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : (Number.isFinite(awarded) && awarded > 0)
+                                                                                      const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
+
+                                                                                      const html = renderKatexDisplayHtml(stepLatex)
+                                                                                      const line = html
+                                                                                        ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
+                                                                                        : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
+
+                                                                                      return (
+                                                                                        <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-2">
+                                                                                          <div className="w-12 shrink-0 pt-0.5 text-right">
+                                                                                            <div className={Number.isFinite(awarded) && awarded > 0 ? 'text-green-500 text-xs' : 'text-white/60 text-xs'}>
+                                                                                              {Number.isFinite(awarded) ? `${Math.trunc(awarded)}` : '0'}
+                                                                                            </div>
+                                                                                          </div>
+                                                                                          <div className="min-w-0 flex-1">
+                                                                                            {line}
+                                                                                            {feedbackText ? (
+                                                                                              <div className="text-xs text-white/70 mt-1">{feedbackText}</div>
+                                                                                            ) : null}
+                                                                                          </div>
+                                                                                        </div>
+                                                                                      )
+                                                                                    })}
+                                                                                  </div>
+                                                                                )
+                                                                              }
+
+                                                                              const html = renderKatexDisplayHtml(respLatex)
+                                                                              if (html) return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                                                              return <div className="text-xs font-mono whitespace-pre-wrap break-words">{respLatex}</div>
+                                                                            })()
+                                                                          ) : (
+                                                                            <div className="text-sm text-white/60">(empty)</div>
+                                                                          )}
+                                                                        </div>
+                                                                      </div>
+                                                                    </details>
+                                                                  )
+                                                                })}
+                                                              </div>
+                                                            ) : null}
+
+                                                            <div className="pt-2">
+                                                              <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                                <div className="text-xs text-white/70 mb-1">Final grading JSON object</div>
+                                                                {gradingJson ? (
+                                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{JSON.stringify(gradingJson, null, 2)}</pre>
+                                                                ) : (
+                                                                  <div className="text-sm text-white/60">No grade JSON yet.</div>
+                                                                )}
+                                                              </div>
+                                                            </div>
+                                                          </div>
+                                                        )
+                                                      })()
+                                                    ) : null}
+                                                  </div>
+                                                ) : null}
                                               </div>
                                             </div>
                                           ) : null}

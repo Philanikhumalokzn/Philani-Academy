@@ -29,18 +29,97 @@ export default function AssignmentQuestionPage() {
   const [submittedAt, setSubmittedAt] = useState<string | null>(null)
   const [metaVisible, setMetaVisible] = useState(false)
 
-  const renderKatexDisplayHtml = useCallback((latex: unknown) => {
-    const value = typeof latex === 'string' ? latex.trim() : ''
-    if (!value) return ''
-    try {
-      return katex.renderToString(value, {
-        displayMode: true,
-        throwOnError: false,
-        strict: 'ignore',
-      })
-    } catch {
-      return ''
+  const renderTextWithKatex = useCallback((text: unknown) => {
+    const input = typeof text === 'string' ? text : ''
+    if (!input) return input
+
+    const nodes: Array<string | { display: boolean; expr: string }> = []
+    let i = 0
+
+    const pushText = (s: string) => {
+      if (!s) return
+      const last = nodes[nodes.length - 1]
+      if (typeof last === 'string') nodes[nodes.length - 1] = last + s
+      else nodes.push(s)
     }
+
+    const tryReadDelimited = (open: string, close: string, display: boolean) => {
+      if (!input.startsWith(open, i)) return false
+      const start = i + open.length
+      const end = input.indexOf(close, start)
+      if (end < 0) return false
+      const expr = input.slice(start, end).trim()
+      i = end + close.length
+      if (!expr) {
+        pushText(open + close)
+        return true
+      }
+      nodes.push({ display, expr })
+      return true
+    }
+
+    while (i < input.length) {
+      if (tryReadDelimited('$$', '$$', true)) continue
+      if (tryReadDelimited('\\[', '\\]', true)) continue
+      if (tryReadDelimited('\\(', '\\)', false)) continue
+
+      // Inline $...$ (ignore escaped \$)
+      if (input[i] === '$' && (i === 0 || input[i - 1] !== '\\')) {
+        if (input[i + 1] === '$') {
+          pushText('$')
+          i += 1
+          continue
+        }
+        const start = i + 1
+        let end = start
+        while (end < input.length) {
+          if (input[end] === '$' && input[end - 1] !== '\\') break
+          end += 1
+        }
+        if (end < input.length && input[end] === '$') {
+          const expr = input.slice(start, end).trim()
+          i = end + 1
+          if (!expr) {
+            pushText('$$')
+            continue
+          }
+          nodes.push({ display: false, expr })
+          continue
+        }
+      }
+
+      // Plain text
+      let j = i + 1
+      while (j < input.length) {
+        const c = input[j]
+        if (c === '$') break
+        if (c === '\\' && (input.startsWith('\\[', j) || input.startsWith('\\(', j))) break
+        j += 1
+      }
+      pushText(input.slice(i, j))
+      i = j
+    }
+
+    return nodes.map((n, idx) => {
+      if (typeof n === 'string') return <span key={`t-${idx}`} className="whitespace-pre-wrap break-words">{n}</span>
+      try {
+        const html = katex.renderToString(n.expr, {
+          displayMode: n.display,
+          throwOnError: false,
+          strict: 'ignore',
+          errorColor: 'currentColor',
+        })
+        return (
+          <span
+            key={`k-${idx}`}
+            className={n.display ? 'block leading-relaxed' : 'inline leading-relaxed'}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )
+      } catch {
+        return <span key={`e-${idx}`} className="whitespace-pre-wrap break-words">{n.expr}</span>
+      }
+    })
   }, [])
 
   useEffect(() => {
@@ -211,24 +290,15 @@ export default function AssignmentQuestionPage() {
             }}
           >
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.35em] text-white/70">Assignment</div>
-              <div className="font-semibold break-words text-white">
-                {(assignment as any)?.displayTitle || assignment?.title || 'Assignment'}
-              </div>
-              <div className="text-sm text-white/80">
-                {((assignment as any)?.sectionLabel || (assignment as any)?.session?.title || 'Assignment').toString()}
-                {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+              <div className="text-xs text-white/80 flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-white">{(assignment as any)?.displayTitle || assignment?.title || 'Assignment'}</span>
+                {question?.order != null ? <span className="text-white/80">• Q{Number(question.order) + 1}</span> : null}
+                {(assignment as any)?.sectionLabel || (assignment as any)?.session?.title
+                  ? <span className="text-white/70">• {String((assignment as any)?.sectionLabel || (assignment as any)?.session?.title || '')}</span>
+                  : null}
               </div>
               {question?.latex ? (
-                <div className="mt-2 text-sm text-white/90">
-                  {(() => {
-                    const html = renderKatexDisplayHtml(String(question.latex || ''))
-                    if (html) {
-                      return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                    }
-                    return <div className="whitespace-pre-wrap break-words">{String(question.latex || '')}</div>
-                  })()}
-                </div>
+                <div className="mt-2 text-sm text-white">{renderTextWithKatex(String(question.latex || ''))}</div>
               ) : null}
             </div>
             <Link href="/dashboard" className="btn btn-ghost shrink-0" onClick={e => e.stopPropagation()}>

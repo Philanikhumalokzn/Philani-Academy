@@ -30,6 +30,7 @@ const DASHBOARD_SECTIONS = [
 
 type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
 type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
+type OverlaySectionId = Exclude<SectionId, 'overview'>
 
 type Announcement = {
   id: string
@@ -478,13 +479,23 @@ export default function Dashboard() {
   const [myResponsesLoading, setMyResponsesLoading] = useState(false)
   const [myResponsesError, setMyResponsesError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
+  const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
+  const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
     useEffect(() => {
       if (!router.isReady) return
       const section = router.query.section
       if (typeof section !== 'string') return
       const valid = (DASHBOARD_SECTIONS as readonly any[]).some(s => s?.id === section)
       if (valid) {
-        setActiveSection(section as SectionId)
+        const next = section as SectionId
+        if (next === 'overview') {
+          setActiveSection('overview')
+          setDashboardSectionOverlay(null)
+        } else {
+          setActiveSection(next)
+          setDashboardSectionOverlay(next as OverlaySectionId)
+          setAccountSnapshotOverlayOpen(false)
+        }
       }
     }, [router.isReady, router.query.section])
 
@@ -566,6 +577,17 @@ export default function Dashboard() {
 
   const [createLessonOverlayOpen, setCreateLessonOverlayOpen] = useState(false)
   const [liveLessonSelectorOverlayOpen, setLiveLessonSelectorOverlayOpen] = useState(false)
+
+  const openDashboardOverlay = useCallback((section: OverlaySectionId) => {
+    setDashboardSectionOverlay(section)
+    setActiveSection(section)
+    setAccountSnapshotOverlayOpen(false)
+  }, [])
+
+  const closeDashboardOverlay = useCallback(() => {
+    setDashboardSectionOverlay(null)
+    setActiveSection('overview')
+  }, [])
 
   const [assignments, setAssignments] = useState<any[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
@@ -1006,8 +1028,13 @@ export default function Dashboard() {
       const normalized = panel.toLowerCase()
       const allowed: SectionId[] = ['overview', 'live', 'announcements', 'sessions', 'users', 'billing']
       const next = allowed.find(x => x === normalized)
-      if (next && next !== activeSection) {
-        setActiveSection(next)
+      if (next) {
+        if (next === 'overview') {
+          setActiveSection('overview')
+          setDashboardSectionOverlay(null)
+        } else {
+          openDashboardOverlay(next as OverlaySectionId)
+        }
       }
       return
     }
@@ -1017,7 +1044,7 @@ export default function Dashboard() {
     if (panel === 'sessions') {
       setMobilePanels(prev => ({ ...prev, sessions: true }))
     }
-  }, [isMobile, isAdmin, activeSection, openMobileAnnouncements, router.isReady, router.query.panel])
+  }, [isMobile, isAdmin, activeSection, openDashboardOverlay, openMobileAnnouncements, router.isReady, router.query.panel])
 
   const showMobileHeroEdit = useCallback(() => {
     setMobileHeroBgEditVisible(true)
@@ -2954,9 +2981,8 @@ export default function Dashboard() {
     </div>
   )
 
-  const renderAccountSnapshotCard = () => (
-    <div className="card dashboard-card space-y-3">
-      <h2 className="text-lg font-semibold">Account snapshot</h2>
+  const renderAccountSnapshotBody = () => (
+    <>
       <dl className="grid gap-2 text-sm text-white">
         <div>
           <dt className="font-medium text-white">Email</dt>
@@ -2975,6 +3001,13 @@ export default function Dashboard() {
         <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
         <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
       </div>
+    </>
+  )
+
+  const renderAccountSnapshotCard = () => (
+    <div className="card dashboard-card space-y-3">
+      <h2 className="text-lg font-semibold">Account snapshot</h2>
+      {renderAccountSnapshotBody()}
     </div>
   )
 
@@ -2983,7 +3016,20 @@ export default function Dashboard() {
     if (!showGradeWorkspace) {
       return (
         <div className="space-y-6">
-          {renderAccountSnapshotCard()}
+          <div className="card dashboard-card">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-3 text-left"
+              onClick={() => {
+                setAccountSnapshotOverlayOpen(true)
+                setDashboardSectionOverlay(null)
+                setActiveSection('overview')
+              }}
+            >
+              <span className="text-lg font-semibold">Account snapshot</span>
+              <span className="text-sm muted">Open</span>
+            </button>
+          </div>
         </div>
       )
     }
@@ -2991,7 +3037,20 @@ export default function Dashboard() {
       <div className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-2">
           {renderGradeWorkspaceCard()}
-          {renderAccountSnapshotCard()}
+          <div className="card dashboard-card">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-3 text-left"
+              onClick={() => {
+                setAccountSnapshotOverlayOpen(true)
+                setDashboardSectionOverlay(null)
+                setActiveSection('overview')
+              }}
+            >
+              <span className="text-lg font-semibold">Account snapshot</span>
+              <span className="text-sm muted">Open</span>
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -5525,8 +5584,8 @@ export default function Dashboard() {
     </div>
   )
 
-  const renderSection = () => {
-    switch (activeSection) {
+  const renderSection = (id: SectionId) => {
+    switch (id) {
       case 'live':
         return <LiveSection />
       case 'announcements':
@@ -5549,12 +5608,18 @@ export default function Dashboard() {
       <div className="space-y-3">
         <div className="hidden lg:grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
           {availableSections.map(section => {
-            const isActive = activeSection === section.id
+            const isActive = section.id === 'overview' ? activeSection === 'overview' : dashboardSectionOverlay === section.id
             return (
               <button
                 key={section.id}
                 type="button"
-                onClick={() => setActiveSection(section.id)}
+                onClick={() => {
+                  if (section.id === 'overview') {
+                    closeDashboardOverlay()
+                    return
+                  }
+                  openDashboardOverlay(section.id as OverlaySectionId)
+                }}
                 className={`rounded-2xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 ${
                   isActive
                     ? 'border-blue-500 bg-white text-slate-900 shadow-lg focus:ring-blue-200'
@@ -5570,12 +5635,18 @@ export default function Dashboard() {
 
         <div className="lg:hidden grid grid-cols-2 gap-3">
           {availableSections.map(section => {
-            const isActive = activeSection === section.id
+            const isActive = section.id === 'overview' ? activeSection === 'overview' : dashboardSectionOverlay === section.id
             return (
               <button
                 key={section.id}
                 type="button"
-                onClick={() => setActiveSection(section.id)}
+                onClick={() => {
+                  if (section.id === 'overview') {
+                    closeDashboardOverlay()
+                    return
+                  }
+                  openDashboardOverlay(section.id as OverlaySectionId)
+                }}
                 className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 ${
                   isActive
                     ? 'bg-white text-[#04123b] border-white focus:ring-white/40 shadow-lg'
@@ -5721,7 +5792,7 @@ export default function Dashboard() {
 
               <SectionNav />
               <section className="min-w-0 space-y-6">
-                {renderSection()}
+                <OverviewSection />
               </section>
 
               {status === 'authenticated' && (
@@ -5853,12 +5924,12 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className="btn btn-ghost text-xs"
-                    onClick={() => toggleMobilePanel('sessions')}
+                    onClick={() => setMobilePanels(prev => ({ ...prev, sessions: true }))}
                   >
-                    {mobilePanels.sessions ? 'Hide' : 'Show'}
+                    Open
                   </button>
                 </div>
-                {mobilePanels.sessions && <div className="space-y-4">{renderSessionsSection()}</div>}
+                <div className="text-sm text-white/70">Open sessions in an overlay.</div>
               </section>
 
               {renderOverviewCards({ hideGradeWorkspace: true })}
@@ -5897,11 +5968,81 @@ export default function Dashboard() {
             <SectionNav />
 
             <section className="min-w-0 space-y-6">
-              {renderSection()}
+              <OverviewSection />
             </section>
           </>
         )}
       </div>
+
+      {dashboardSectionOverlay && (
+        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/40" onClick={closeDashboardOverlay} />
+          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeDashboardOverlay}>
+            <div className="card h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold break-words">
+                    {(DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === dashboardSectionOverlay)?.label || 'Section'}
+                  </div>
+                </div>
+                <button type="button" className="btn btn-ghost" onClick={closeDashboardOverlay} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                {renderSection(dashboardSectionOverlay)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {accountSnapshotOverlayOpen && (
+        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setAccountSnapshotOverlayOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setAccountSnapshotOverlayOpen(false)}>
+            <div className="card h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold break-words">Account snapshot</div>
+                </div>
+                <button type="button" className="btn btn-ghost" onClick={() => setAccountSnapshotOverlayOpen(false)} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {renderAccountSnapshotBody()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isAdmin && isMobile && mobilePanels.sessions && (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))} />
+          <div className="absolute inset-x-0 bottom-0" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}>
+            <div className="card h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold break-words">Sessions</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                {renderSessionsSection()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </main>
       {liveOverlayOpen && (
         <div

@@ -487,6 +487,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const requestedUserId = (typeof req.query.userId === 'string' ? req.query.userId : '')
   const targetUserId = role === 'student' ? authUserId : (requestedUserId || '')
 
+  const debugEnabled = (role === 'admin' || role === 'teacher') && (
+    req.query.debug === '1' || req.query.debug === 'true' || req.headers['x-debug'] === '1'
+  )
+
   if (!targetUserId) {
     return res.status(400).json({ message: 'userId is required (teachers/admin). Students may omit userId.' })
   }
@@ -674,6 +678,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const earnedMarks = (stepCount > 0 && modelProvidedStepMarks)
         ? clampInt(sumAwarded, 0, resolvedTotalMarks)
         : clampInt(found?.earnedMarks, 0, resolvedTotalMarks)
+
+      if (debugEnabled) {
+        console.info('[grading_debug]', {
+          sessionId: sessionRecord.id,
+          assignmentId: assignment.id,
+          targetUserId,
+          questionId: qId,
+          stepCount,
+          hasStepSignals: modelProvidedStepMarks,
+          configuredPoints,
+          inferredFromText,
+          inferredFromModel: found?.totalMarks,
+          resolvedTotalMarks,
+          modelEarnedMarks: found?.earnedMarks,
+          sumAwarded,
+          computedEarnedMarks: earnedMarks,
+        })
+      }
 
       const correctness: 'correct' | 'incorrect' = earnedMarks >= resolvedTotalMarks ? 'correct' : 'incorrect'
 

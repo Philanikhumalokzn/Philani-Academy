@@ -4573,12 +4573,14 @@ export default function Dashboard() {
 
                                                               return (
                                                                 <div key={`${qid}-step-${stepNum}`} className="flex items-start gap-2">
-                                                                  <div className="w-5 shrink-0 pt-0.5 text-right">
-                                                                    {isCorrect ? <span className="text-green-500">✓</span> : null}
+                                                                  <div className="w-12 shrink-0 pt-0.5 text-right">
+                                                                    <div className={Number.isFinite(awarded) && awarded > 0 ? 'text-green-500 text-xs' : 'text-white/60 text-xs'}>
+                                                                      {Number.isFinite(awarded) ? `${awarded}` : '0'}
+                                                                    </div>
                                                                   </div>
                                                                   <div className="min-w-0 flex-1">
                                                                     {line}
-                                                                    {!isCorrect && feedbackText ? (
+                                                                    {feedbackText ? (
                                                                       <div className="text-xs text-white/70 mt-1">{feedbackText}</div>
                                                                     ) : null}
                                                                   </div>

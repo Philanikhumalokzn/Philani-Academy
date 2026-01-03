@@ -199,56 +199,80 @@ function normalizeCorrectness(value: unknown): 'correct' | 'incorrect' | null {
 async function generateWithGemini(opts: { apiKey: string; model: string; content: string }) {
   const { apiKey, model, content } = opts
 
-  // Scale output tokens a bit with prompt size to reduce truncation.
+  // Output length:
+  // - Default: scale with prompt size to reduce truncation.
+  // - Override: GEMINI_MAX_OUTPUT_TOKENS (can be set very high; we'll allow up to 1,000,000).
+  // Note: If the chosen value is not supported by the API/model, we retry with a smaller fallback.
   const approxChars = content.length
-  const maxOutputTokens = Math.max(1600, Math.min(7000, 1600 + Math.floor(approxChars / 40)))
+  const computedDefault = Math.max(1600, 1600 + Math.floor(approxChars / 35))
+  const envMaxRaw = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || '')
+  const envMax = Number.isFinite(envMaxRaw) && envMaxRaw > 0 ? Math.trunc(envMaxRaw) : null
+  const initialMaxOutputTokens = Math.max(1, Math.min(1_000_000, envMax ?? computedDefault))
 
-  // Prefer official SDK, with REST fallback (matches existing patterns in this repo).
-  try {
-    const mod: any = await import('@google/genai')
-    const GoogleGenAI = mod?.GoogleGenAI
-    if (typeof GoogleGenAI !== 'function') throw new Error('GoogleGenAI not available')
+  const shouldRetryTokenLimit = (message: string) => {
+    const m = (message || '').toLowerCase()
+    return m.includes('maxoutputtokens') || m.includes('max output tokens') || m.includes('invalid argument')
+  }
 
-    const ai = new GoogleGenAI({ apiKey })
-    const response = await ai.models.generateContent({
-      model,
-      contents: content,
-      config: {
-        temperature: 0,
-        topP: 0.1,
-        maxOutputTokens,
-        responseMimeType: 'application/json',
-      },
-    } as any)
+  const tryOnce = async (maxOutputTokens: number) => {
+    // Prefer official SDK, with REST fallback (matches existing patterns in this repo).
+    try {
+      const mod: any = await import('@google/genai')
+      const GoogleGenAI = mod?.GoogleGenAI
+      if (typeof GoogleGenAI !== 'function') throw new Error('GoogleGenAI not available')
 
-    const text = response?.text
-    return typeof text === 'string' ? text.trim() : ''
-  } catch (sdkErr: any) {
-    const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: content }] }],
-        generationConfig: {
+      const ai = new GoogleGenAI({ apiKey })
+      const response = await ai.models.generateContent({
+        model,
+        contents: content,
+        config: {
           temperature: 0,
           topP: 0.1,
           maxOutputTokens,
           responseMimeType: 'application/json',
         },
-      }),
-    })
+      } as any)
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      const detail = sdkErr?.message ? `; sdkErr=${sdkErr.message}` : ''
-      throw new Error(`Gemini error (${res.status}): ${text}${detail}`)
+      const text = response?.text
+      return typeof text === 'string' ? text.trim() : ''
+    } catch (sdkErr: any) {
+      const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: content }] }],
+          generationConfig: {
+            temperature: 0,
+            topP: 0.1,
+            maxOutputTokens,
+            responseMimeType: 'application/json',
+          },
+        }),
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        const detail = sdkErr?.message ? `; sdkErr=${sdkErr.message}` : ''
+        throw new Error(`Gemini error (${res.status}): ${text}${detail}`)
+      }
+
+      const data: any = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('')
+      return typeof text === 'string' ? text.trim() : ''
     }
+  }
 
-    const data: any = await res.json()
-    const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('')
-    return typeof text === 'string' ? text.trim() : ''
+  try {
+    return await tryOnce(initialMaxOutputTokens)
+  } catch (err: any) {
+    const msg = String(err?.message || err || '')
+    // If the API rejects a huge maxOutputTokens, retry with a conservative fallback.
+    if (initialMaxOutputTokens > 8192 && shouldRetryTokenLimit(msg)) {
+      return await tryOnce(8192)
+    }
+    throw err
   }
 }
 
@@ -391,6 +415,13 @@ function extractQuestionBlocks(rawText: string) {
     if (typeof m.index === 'number' && m[1]) matches.push({ index: m.index, id: String(m[1]) })
   }
   return matches.sort((a, b) => a.index - b.index)
+}
+
+function getQuestionIdsMentionedInText(rawText: string) {
+  const blocks = extractQuestionBlocks(rawText)
+  const set = new Set<string>()
+  for (const b of blocks) set.add(String(b.id))
+  return set
 }
 
 function extractQuestionSegment(rawText: string, qId: string, blocks: Array<{ index: number; id: string }>) {
@@ -581,9 +612,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   }
 
-  const questionBlocks = (assignment.questions || []).map((q: any) => {
-    const qId = String(q.id)
-    const configuredPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : null
+  const orderedQuestionIds = (assignment.questions || []).map((q: any) => String(q.id))
+  const stepCountsByQuestionId: Record<string, number> = {}
+  for (const qId of orderedQuestionIds) stepCountsByQuestionId[qId] = (studentStepsByQ.get(qId) || []).length
+
+  const questionBlockById = new Map<string, string>()
+  for (const q of (assignment.questions || [])) {
+    const qId = String((q as any)?.id || '')
+    if (!qId) continue
+    const configuredPoints = (typeof (q as any).points === 'number' && Number.isFinite((q as any).points) && (q as any).points > 0) ? Math.trunc((q as any).points) : null
     const studentLatex = clampText(responseByQ.get(qId) || '', MAX_TEXT)
     const studentSteps = studentStepsByQ.get(qId) || []
     const sol = solByQ.get(qId)
@@ -593,7 +630,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const workedSolution = clampText((sol?.teacherWorkedSolution || sol?.aiWorkedSolution || ''), 16000)
     const prompt = clampText((q as any)?.gradingPrompt || '', 4000)
 
-    return (
+    const block = (
       `QuestionId: ${qId}\n` +
       `ConfiguredPoints: ${configuredPoints == null ? '(none)' : configuredPoints}\n` +
       `StudentStepCount: ${studentSteps.length}\n` +
@@ -601,18 +638,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       (prompt ? `TeacherPrompt:\n${prompt}\n` : '') +
       (markingPlan ? `TeacherMarkingPlan:\n${markingPlan}\n` : '') +
       (workedSolution ? `TeacherWorkedSolution:\n${workedSolution}\n` : '') +
-      `QuestionLatex:\n${clampText(String(q.latex || ''), MAX_TEXT)}\n\n` +
+      `QuestionLatex:\n${clampText(String((q as any).latex || ''), MAX_TEXT)}\n\n` +
       `TeacherSolutionLatex:\n${solLatex || '(none)'}\n` +
       (solFileUrl ? `TeacherSolutionFileUrl: ${solFileUrl}\n` : '') +
       `StudentAnswerLatex:\n${studentLatex || '(empty)'}\n`
     )
-  }).join('\n---\n')
+    questionBlockById.set(qId, block)
+  }
+
+  const questionBlocks = orderedQuestionIds
+    .map(qid => questionBlockById.get(String(qid)) || '')
+    .filter(Boolean)
+    .join('\n---\n')
 
   const assignmentPrompt = clampText((assignment as any)?.gradingPrompt || '', 8000)
-
-  const stepCountsByQuestionId: Record<string, number> = {}
-  const orderedQuestionIds = (assignment.questions || []).map((q: any) => String(q.id))
-  for (const qId of orderedQuestionIds) stepCountsByQuestionId[qId] = (studentStepsByQ.get(qId) || []).length
 
   const responseTemplate = clampText(buildResponseTemplate(orderedQuestionIds, stepCountsByQuestionId), 12000)
 
@@ -639,8 +678,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `Questions:\n${questionBlocks}\n`
 
   try {
-    const raw = await generateWithGemini({ apiKey: geminiApiKey, model, content })
+    let raw = await generateWithGemini({ apiKey: geminiApiKey, model, content })
     if (!raw) return res.status(500).json({ message: 'Gemini returned empty grading JSON' })
+
+    // If Gemini output is truncated / missing questionIds, re-ask once for ONLY the missing questions.
+    const mentioned = getQuestionIdsMentionedInText(raw)
+    const missing = orderedQuestionIds.filter(qid => !mentioned.has(String(qid)))
+    if (missing.length > 0) {
+      const retryStepCounts: Record<string, number> = {}
+      for (const qid of missing) retryStepCounts[String(qid)] = stepCountsByQuestionId[String(qid)] ?? 0
+      const retryTemplate = clampText(buildResponseTemplate(missing, retryStepCounts), 12000)
+      const retryBlocks = missing
+        .map(qid => questionBlockById.get(String(qid)) || '')
+        .filter(Boolean)
+        .join('\n---\n')
+
+      const retryInstruction =
+        instruction +
+        ` You are grading ONLY these questionIds (in order): ${missing.join(', ')}.`
+
+      const retryContent =
+        `${retryInstruction}\n\n` +
+        `JSON_TEMPLATE_TO_FILL (return exactly this structure, only change values):\n${retryTemplate}\n\n` +
+        `AssignmentId: ${assignment.id}\n` +
+        `StudentUserId: ${targetUserId}\n\n` +
+        (assignmentPrompt ? `AssignmentMasterPrompt:\n${assignmentPrompt}\n\n` : '') +
+        `Questions:\n${retryBlocks}\n`
+
+      const retryRaw = await generateWithGemini({ apiKey: geminiApiKey, model, content: retryContent })
+      if (retryRaw) {
+        raw = `${raw}\n\n---RETRY_FOR_MISSING_QUESTIONS---\n\n${retryRaw}`
+      }
+    }
 
     const rawToStore = clampText(raw, 50000)
 

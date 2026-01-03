@@ -334,6 +334,122 @@ async function bounceJsonUntilValid(opts: {
   throw new Error(`${msg}. Raw JSON excerpt: ${excerpt}`)
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function extractFirstInt(text: string, key: string) {
+  const re = new RegExp(`${escapeRegExp(key)}\\s*"?\\s*:\\s*(-?\\d+)`, 'i')
+  const m = String(text || '').match(re)
+  if (!m?.[1]) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) ? Math.trunc(n) : null
+}
+
+function extractFirstBool(text: string, key: string) {
+  const re = new RegExp(`${escapeRegExp(key)}\\s*"?\\s*:\\s*(true|false)`, 'i')
+  const m = String(text || '').match(re)
+  if (!m?.[1]) return null
+  return m[1].toLowerCase() === 'true'
+}
+
+function extractFirstString(text: string, key: string) {
+  // Prefer quoted strings; if missing, return null.
+  const s = String(text || '')
+  const reDouble = new RegExp(`${escapeRegExp(key)}\\s*"?\\s*:\\s*"([^"\\r\\n]*)`, 'i')
+  const m1 = s.match(reDouble)
+  if (m1?.[1] != null) return m1[1]
+  const reSingle = new RegExp(`${escapeRegExp(key)}\\s*"?\\s*:\\s*'([^'\\r\\n]*)`, 'i')
+  const m2 = s.match(reSingle)
+  if (m2?.[1] != null) return m2[1]
+  return null
+}
+
+function buildResponseTemplate(questionIds: string[], stepCountsByQuestionId: Record<string, number>) {
+  const results = questionIds.map(questionId => {
+    const stepCount = Math.max(0, Math.min(50, Math.trunc(Number(stepCountsByQuestionId[questionId] ?? 0))))
+    return {
+      questionId,
+      totalMarks: 1,
+      earnedMarks: 0,
+      steps: Array.from({ length: stepCount }, (_, idx) => ({
+        step: idx + 1,
+        awardedMarks: 0,
+        isCorrect: false,
+        feedback: '',
+      })),
+    }
+  })
+  return JSON.stringify({ results }, null, 2)
+}
+
+function extractQuestionBlocks(rawText: string) {
+  const s = String(rawText || '')
+  const re = /questionId\s*"?\s*:\s*"?([a-z0-9_-]{6,})"?/gi
+  const matches: Array<{ index: number; id: string }> = []
+  for (const m of s.matchAll(re)) {
+    if (typeof m.index === 'number' && m[1]) matches.push({ index: m.index, id: String(m[1]) })
+  }
+  return matches.sort((a, b) => a.index - b.index)
+}
+
+function extractQuestionSegment(rawText: string, qId: string, blocks: Array<{ index: number; id: string }>) {
+  const s = String(rawText || '')
+  const hitIndex = blocks.findIndex(b => b.id === qId)
+  if (hitIndex < 0) return ''
+  const start = blocks[hitIndex].index
+  const end = (hitIndex + 1 < blocks.length) ? blocks[hitIndex + 1].index : s.length
+  return s.slice(start, end)
+}
+
+function extractStepSlice(questionSegment: string, stepNumber: number) {
+  const s = String(questionSegment || '')
+  const reThis = new RegExp(`step\\s*"?\\s*:\\s*${stepNumber}\\b`, 'i')
+  const m = s.match(reThis)
+  if (!m || m.index == null) return ''
+  const start = m.index
+  const reNext = new RegExp(`step\\s*"?\\s*:\\s*${stepNumber + 1}\\b`, 'i')
+  const tail = s.slice(start + 1)
+  const mNext = tail.match(reNext)
+  const end = mNext && mNext.index != null ? start + 1 + mNext.index : Math.min(s.length, start + 900)
+  return s.slice(start, end)
+}
+
+function extractGeminiResultsFromText(rawText: string, questionIds: string[], stepCountsByQuestionId: Record<string, number>) {
+  const blocks = extractQuestionBlocks(rawText)
+  const results: Array<{ questionId: string; totalMarks?: number; earnedMarks?: number; steps?: any[] }> = []
+
+  for (const qId of questionIds) {
+    const seg = extractQuestionSegment(rawText, qId, blocks)
+    const totalMarks = extractFirstInt(seg, 'totalMarks')
+    const earnedMarks = extractFirstInt(seg, 'earnedMarks')
+
+    const stepCount = Math.max(0, Math.min(50, Math.trunc(Number(stepCountsByQuestionId[qId] ?? 0))))
+    const steps: any[] = []
+    for (let step = 1; step <= stepCount; step += 1) {
+      const stepSlice = extractStepSlice(seg, step)
+      const awardedMarks = extractFirstInt(stepSlice, 'awardedMarks')
+      const isCorrect = extractFirstBool(stepSlice, 'isCorrect')
+      const feedback = extractFirstString(stepSlice, 'feedback')
+      steps.push({
+        step,
+        awardedMarks: awardedMarks == null ? 0 : awardedMarks,
+        isCorrect: isCorrect == null ? (awardedMarks != null && awardedMarks > 0) : isCorrect,
+        feedback: feedback == null ? '' : feedback,
+      })
+    }
+
+    results.push({
+      questionId: qId,
+      totalMarks: totalMarks == null ? undefined : totalMarks,
+      earnedMarks: earnedMarks == null ? undefined : earnedMarks,
+      steps,
+    })
+  }
+
+  return results
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionIdParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
   const assignmentIdParam = Array.isArray((req.query as any).assignmentId) ? (req.query as any).assignmentId[0] : (req.query as any).assignmentId
@@ -473,8 +589,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const assignmentPrompt = clampText((assignment as any)?.gradingPrompt || '', 8000)
 
+  const stepCountsByQuestionId: Record<string, number> = {}
+  const orderedQuestionIds = (assignment.questions || []).map((q: any) => String(q.id))
+  for (const qId of orderedQuestionIds) stepCountsByQuestionId[qId] = (studentStepsByQ.get(qId) || []).length
+
+  const responseTemplate = clampText(buildResponseTemplate(orderedQuestionIds, stepCountsByQuestionId), 12000)
+
   const instruction =
-    'You are a strict auto-grader. Return ONLY valid JSON (RFC 8259). No markdown, no commentary, no trailing commas. ' +
+    'You are a strict auto-grader. Return ONLY a JSON object in the EXACT template provided (same keys/order). ' +
+    'Do NOT add any extra keys. Do NOT add markdown. Do NOT add commentary. ' +
+    'If you cannot decide a value, use 0 / false / "" but keep the template valid. ' +
     'If TeacherMarkingPlan is present, treat it as the authoritative rubric (source of truth). ' +
     'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
     'Award method marks per step based on TeacherPrompt / TeacherMarkingPlan and totalMarks. ' +
@@ -482,13 +606,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     'You MUST set totalMarks for each question (integer >= 1). Infer it from TeacherPrompt / TeacherMarkingPlan when ConfiguredPoints is (none). ' +
     'awardedMarks must be an integer >=0; the sum of awardedMarks across steps must be <= totalMarks and should reflect earnedMarks. ' +
     'Set earnedMarks as an integer 0..totalMarks representing the total marks earned for that question. ' +
-    'Never omit a value: if unsure, use 0 (or null where appropriate), but ALWAYS output valid JSON. ' +
     'Be concise to save compute: for incorrect steps, feedback must be short (<=120 chars) and either a brief reason or the corrected step. ' +
-    'Output schema EXACTLY:\n' +
-    '{"results":[{"questionId":"...","totalMarks":1,"earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":"..."}]}]}'
+    'Output MUST be parseable JSON. Do not use trailing commas.'
 
   const content =
     `${instruction}\n\n` +
+    `JSON_TEMPLATE_TO_FILL (return exactly this structure, only change values):\n${responseTemplate}\n\n` +
     `AssignmentId: ${assignment.id}\n` +
     `StudentUserId: ${targetUserId}\n\n` +
     (assignmentPrompt ? `AssignmentMasterPrompt:\n${assignmentPrompt}\n\n` : '') +
@@ -498,26 +621,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const raw = await generateWithGemini({ apiKey: geminiApiKey, model, content })
     if (!raw) return res.status(500).json({ message: 'Gemini returned empty grading JSON' })
 
-    // Two-pass safety: (1) grade, (2) send the JSON back to Gemini to strictly validate/fix.
-    const questionIds = (assignment.questions || []).map((q: any) => String(q.id))
-    const stepCountsByQuestionId: Record<string, number> = {}
-    for (const qId of questionIds) stepCountsByQuestionId[qId] = (studentStepsByQ.get(qId) || []).length
-
-    const candidate = getBestEffortJsonCandidate(raw)
-    if (!candidate) {
-      throw new Error('Gemini returned empty grading JSON')
-    }
-
-    const parsed: any = await bounceJsonUntilValid({
-      apiKey: geminiApiKey,
-      model,
-      initialCandidate: candidate,
-      questionIds,
-      stepCountsByQuestionId,
-      maxAttempts: 4,
-    })
-
-    const resultsArr: any[] = Array.isArray(parsed?.results) ? parsed.results : []
+    // Deterministic parsing: treat Gemini output as text and extract only the fields we need.
+    // This avoids depending on JSON.parse of potentially malformed JSON.
+    const resultsArr: any[] = extractGeminiResultsFromText(raw, orderedQuestionIds, stepCountsByQuestionId)
     const normalized: GeminiMarksResultItem[] = []
 
     for (const q of assignment.questions || []) {

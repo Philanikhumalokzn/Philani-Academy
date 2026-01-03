@@ -343,23 +343,21 @@ export default function LiveOverlayWindow({
               </button>
             )}
 
-            {typeof onCloseOverlay === 'function' && (
-              <button
-                type="button"
-                title="Close live class"
-                aria-label="Close live class"
-                onPointerDown={e => e.stopPropagation()}
-                onClick={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  try {
-                    onCloseOverlay()
-                  } catch {}
-                }}
-              >
-                ×
-              </button>
-            )}
+            <button
+              type="button"
+              title="Close canvas"
+              aria-label="Close canvas"
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
+                try {
+                  onClose(id)
+                } catch {}
+              }}
+            >
+              ×
+            </button>
           </div>
         )}
       </div>

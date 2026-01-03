@@ -1353,7 +1353,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }),
     [closeOverlayControls, openOverlayControls, toggleOverlayControls]
-  )
+                      {isAdmin ? renderOverlayAdminControls() : renderToolbarBlock()}
 
   const runCanvasAction = useCallback((action: () => void | Promise<void>) => {
     if (typeof action === 'function') {
@@ -1366,7 +1366,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [clearOverlayAutoHide, isOverlayMode])
 
   const getLessonScriptPhaseSteps = useCallback(
-    (resolved: any, phaseKey: LessonScriptPhaseKey): string[] => {
+              {isAdmin ? renderOverlayAdminControls() : renderToolbarBlock()}
       if (!resolved || typeof resolved !== 'object') return []
       const phases = (resolved as any).phases
       if (!phases || typeof phases !== 'object') return []
@@ -4557,6 +4557,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }
 
+  const allowAllStudentsEditing = useCallback(async () => {
+    if (!isAdmin) return
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        locked: false,
+        controllerId: ALL_STUDENTS_ID,
+        controllerName: 'All Students',
+        ts,
+      })
+      lastControlBroadcastTsRef.current = ts
+      updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: 'All Students', ts })
+    } catch (err) {
+      console.warn('Failed to grant all students editing rights', err)
+    }
+  }, [isAdmin, updateControlState, userDisplayName])
+
   useEffect(() => {
     if (!isAdmin) return
     if (status !== 'ready') return
@@ -7237,6 +7258,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     </div>
   )
 
+  const renderOverlayAdminControls = () => (
+    <div className="canvas-toolbar">
+      <div className="canvas-toolbar__buttons">
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(clearAllStudentCanvases)}
+          disabled={status !== 'ready' || Boolean(fatalError)}
+        >
+          Wipe All Student Canvases
+        </button>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(allowAllStudentsEditing)}
+          disabled={status !== 'ready' || Boolean(fatalError)}
+        >
+          Allow All Students to Edit
+        </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={status !== 'ready' || Boolean(fatalError)}
+        >
+          Toggle Display
+        </button>
+      </div>
+    </div>
+  )
+
+  const renderOverlayAdminControls = () => (
+    <div className="canvas-toolbar">
+      <div className="canvas-toolbar__buttons">
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(clearAllStudentCanvases)}
+          disabled={status !== 'ready' || Boolean(fatalError)}
+        >
+          Wipe All Student Canvases
+        </button>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => runCanvasAction(allowAllStudentsEditing)}
+          disabled={status !== 'ready' || Boolean(fatalError)}
+        >
+          Allow All Students to Edit
+        </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={status !== 'ready' || Boolean(fatalError)}
+        >
+          Toggle Display
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div className={isOverlayMode ? 'h-full' : undefined}>
       <div className={`flex flex-col gap-3${isOverlayMode ? ' h-full min-h-0' : ''}`}>
@@ -7305,7 +7386,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               )}
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className="h-full bg-slate-50 rounded-lg p-3 overflow-auto relative"
+                  className="h-full bg-white rounded-lg p-3 overflow-auto relative"
                   ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={() => {
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
@@ -8116,7 +8197,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }}
                     >
                       <p className="canvas-overlay-controls__title">Canvas controls</p>
-                      {renderToolbarBlock()}
+                      {isAdmin ? renderOverlayAdminControls() : renderToolbarBlock()}
                       <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
                         Return to drawing
                       </button>
@@ -9024,7 +9105,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               kickOverlayAutoHide()
             }}>
               <p className="canvas-overlay-controls__title">Canvas controls</p>
-              {renderToolbarBlock()}
+              {isAdmin ? renderOverlayAdminControls() : renderToolbarBlock()}
               <button type="button" className="canvas-overlay-controls__dismiss" onClick={closeOverlayControls}>
                 Return to drawing
               </button>

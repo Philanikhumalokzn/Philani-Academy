@@ -6097,25 +6097,6 @@ export default function Dashboard() {
                   </>
                 )
               })()}
-              <div className="live-call-overlay__floating-actions">
-                {liveWindows.some(win => win.id === 'canvas-live-window' && win.kind === 'canvas' && !win.minimized) && (
-                  <button
-                    type="button"
-                    className="live-call-overlay__close"
-                    onClick={() => {
-                      if (closeLiveOverlayOnCanvasClose) {
-                        setLiveWindows([])
-                        closeLiveOverlay()
-                        return
-                      }
-                      closeLiveWindow('canvas-live-window')
-                    }}
-                    aria-label="Close"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
               {canJoinLiveClass && activeSessionId ? (
                 (
                   <JitsiRoom

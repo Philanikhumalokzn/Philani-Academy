@@ -3402,7 +3402,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         await waitForHostSize()
         if (cancelled) return
 
-        const options: any = {
+        const options = {
           configuration: {
             server: {
               scheme,
@@ -3422,41 +3422,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           },
         }
 
-        if (isOverlayMode) {
-          // Canvas-only overlay: native white UI + black ink.
-          options.configuration.theme = {
-            ink: {
-              color: '#000000',
-            },
-          }
-          options.override = {
-            cssClass: 'pa-iink-editor--white',
-          }
-          try {
-            host.style.background = '#fff'
-            host.style.color = '#000'
-          } catch {}
-        }
-
         const editor = await window.iink.Editor.load(host, 'MATH', options)
         if (cancelled) {
           editor.destroy?.()
           return
-        }
-
-        if (isOverlayMode) {
-          try {
-            ;(editor as any).theme = {
-              ink: {
-                color: '#000000',
-              },
-            }
-          } catch {}
-          try {
-            ;(editor as any).penStyle = {
-              color: '#000000',
-            }
-          } catch {}
         }
 
         editorInstanceRef.current = editor
@@ -3479,7 +3448,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
           if (!isAdmin && lockedOutRef.current) {
-            // Not in control: allow local ink to persist (no auto-revert).
+            enforceAuthoritativeSnapshot()
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
@@ -5023,7 +4992,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [latexRenderOptions.fontScale, latexRenderOptions.textAlign]
   )
 
-  const disableCanvasInput = isViewOnly
+  const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
@@ -7274,7 +7243,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         {useStackedStudentLayout && (
           <div
             ref={studentStackRef}
-            className={`border rounded p-0 shadow-sm flex flex-col relative${isOverlayMode ? ' border-white/10 bg-transparent text-slate-100' : ' bg-white'}`}
+            className="border rounded bg-white p-0 shadow-sm flex flex-col relative"
             style={{
               flex: isOverlayMode ? 1 : undefined,
               minHeight: isOverlayMode ? '100%' : '520px',
@@ -7334,9 +7303,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
                 </div>
               )}
-              <div className={`${isOverlayMode ? 'px-0 py-0' : isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
+              <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className={`h-full overflow-auto relative${isOverlayMode ? ' bg-white text-slate-900' : ' border rounded-lg p-3 bg-slate-50 border-slate-200'}`}
+                  className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
                   ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={() => {
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
@@ -7402,7 +7371,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       type="button"
                       aria-label={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}
                       title={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}
-                      className={`absolute right-3 bottom-3 p-0 m-0 bg-transparent border-0 focus:outline-none focus:ring-0${isOverlayMode ? ' text-slate-200 hover:text-white' : ' text-slate-700 hover:text-slate-900'}`}
+                      className="absolute right-3 bottom-3 p-0 m-0 bg-transparent border-0 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-0"
                       onClick={e => {
                         e.preventDefault()
                         e.stopPropagation()
@@ -7431,13 +7400,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   {isAdmin ? (
                     latexProjectionMarkup ? (
                       <div
-                        className={`${isOverlayMode ? 'text-slate-100' : 'text-slate-900'} leading-relaxed`}
+                        className="text-slate-900 leading-relaxed"
                         style={latexOverlayStyle}
                         dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <p className={`${isOverlayMode ? 'text-slate-300' : 'text-slate-500'} text-sm text-center`}>Convert to notes to preview the typeset LaTeX here.</p>
+                        <p className="text-slate-500 text-sm text-center">Convert to notes to preview the typeset LaTeX here.</p>
                       </div>
                     )
                   ) : useStackedStudentLayout ? (
@@ -7445,49 +7414,49 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       {!isAdmin && quizActive && !isAssignmentView ? (
                         <>
                           {quizTimeLeftSec != null && (
-                            <div className={`mb-2 flex items-center justify-end text-xs ${isOverlayMode ? 'text-slate-300' : 'text-slate-500'}`}>
+                            <div className="mb-2 flex items-center justify-end text-xs text-slate-500">
                               Time left: {formatCountdown(quizTimeLeftSec)}
                             </div>
                           )}
                           {latexProjectionMarkup ? (
                             <div
-                              className={`${isOverlayMode ? 'text-slate-100' : 'text-slate-700'} font-semibold leading-relaxed`}
+                              className="text-slate-700 font-semibold leading-relaxed"
                               style={latexOverlayStyle}
                               dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <p className={`${isOverlayMode ? 'text-slate-300' : 'text-slate-500'} text-sm text-center`}>Write your answer below to see your LaTeX here.</p>
+                              <p className="text-slate-500 text-sm text-center">Write your answer below to see your LaTeX here.</p>
                             </div>
                           )}
                         </>
                       ) : latexProjectionMarkup ? (
                         <div
-                          className={`${isOverlayMode ? 'text-slate-900' : 'text-slate-900'} leading-relaxed`}
+                          className="text-slate-900 leading-relaxed"
                           style={latexOverlayStyle}
                           dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                         />
                       ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <p className={`${isOverlayMode ? 'text-slate-500' : 'text-slate-500'} text-sm text-center`}>Waiting for teacher notes…</p>
+                          <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                         </div>
                       )}
                     </div>
                   ) : latexDisplayState.enabled ? (
                     latexProjectionMarkup ? (
                       <div
-                        className={`${isOverlayMode ? 'text-slate-900' : 'text-slate-900'} leading-relaxed`}
+                        className="text-slate-900 leading-relaxed"
                         style={latexOverlayStyle}
                         dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <p className={`${isOverlayMode ? 'text-slate-500' : 'text-slate-500'} text-sm text-center`}>Waiting for teacher notes…</p>
+                        <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                       </div>
                     )
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <p className={`${isOverlayMode ? 'text-slate-500' : 'text-slate-500'} text-sm text-center`}>Teacher hasn’t shared notes yet.</p>
+                      <p className="text-slate-500 text-sm text-center">Teacher hasn’t shared notes yet.</p>
                     </div>
                   )}
                 </div>
@@ -7497,7 +7466,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className={`relative z-20 flex items-center justify-center px-4 py-2 cursor-row-resize select-none${isOverlayMode ? ' bg-white' : ' bg-white'}`}
+              className="relative z-20 flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
@@ -7519,8 +7488,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 } catch {}
               }}
             >
-              <div className={`w-full h-0.5 relative${isOverlayMode ? ' bg-white' : ' bg-slate-200'}`}>
-                <div className={`absolute left-1/2 -translate-x-1/2 w-10 h-1.5 rounded-full${isOverlayMode ? ' bg-slate-300' : ' bg-slate-400'}`} />
+              <div className="w-full h-0.5 bg-slate-200 relative">
+                <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
               </div>
             </div>
             <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
@@ -8053,13 +8022,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   <button
                                     key={`${mobileModulePicker.type}-${index}`}
                                     type="button"
-                                    className={`text-left px-3 py-2 rounded-md border ${isOverlayMode ? 'border-white/10 bg-slate-950 hover:bg-slate-900 text-slate-100' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                                    className="text-left px-3 py-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50"
                                     onClick={() => {
                                       closeMobileModulePicker()
                                       void applyLessonScriptPlaybackV2(lessonScriptPhaseKey, lessonScriptPointIndex, index)
                                     }}
                                   >
-                                    <div className={`text-[12px] truncate ${isOverlayMode ? 'text-slate-100' : 'text-slate-900'}`}>{label}</div>
+                                    <div className="text-[12px] text-slate-900 truncate">{label}</div>
                                   </button>
                                 )
                               })}
@@ -8071,7 +8040,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ) : null}
               </div>
 
-              <div className={`relative overflow-hidden flex flex-col flex-1 min-h-0${isOverlayMode ? ' bg-transparent text-slate-900' : ' border rounded bg-white'}`}>
+              <div className="border rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
@@ -8100,7 +8069,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
 
                 {(status === 'loading' || status === 'idle') && (
-                  <div className={`absolute inset-0 flex items-center justify-center text-sm ${isOverlayMode ? 'text-slate-300 bg-slate-950/80' : 'text-slate-500 bg-white/70'}`}>
+                  <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
                     Preparing collaborative canvas…
                   </div>
                 )}
@@ -8110,15 +8079,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </div>
                 )}
                 {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
-                  <div className={`absolute inset-0 flex items-center justify-center text-center px-4 overflow-auto${isOverlayMode ? ' bg-slate-950/95' : ' bg-white/95 backdrop-blur-sm'}`}>
+                  <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
                     {latexProjectionMarkup ? (
                       <div
-                        className={`${isOverlayMode ? 'text-slate-100' : 'text-slate-900'} leading-relaxed max-w-3xl`}
+                        className="text-slate-900 leading-relaxed max-w-3xl"
                         style={latexOverlayStyle}
                         dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                       />
                     ) : (
-                      <p className={`${isOverlayMode ? 'text-slate-300' : 'text-slate-500'} text-sm`}>Waiting for teacher notes…</p>
+                      <p className="text-slate-500 text-sm">Waiting for teacher notes…</p>
                     )}
                   </div>
                 )}

@@ -502,6 +502,7 @@ export default function Dashboard() {
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
+  const [closeLiveOverlayOnCanvasClose, setCloseLiveOverlayOnCanvasClose] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
   const [liveTeacherAudioEnabled, setLiveTeacherAudioEnabled] = useState(true)
@@ -520,7 +521,6 @@ export default function Dashboard() {
   const [resolvedLiveSessionId, setResolvedLiveSessionId] = useState<string | null>(null)
   const [liveSelectionBusy, setLiveSelectionBusy] = useState(false)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
-  const [liveOverlayMode, setLiveOverlayMode] = useState<'call' | 'canvas'>('call')
   const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([])
@@ -977,8 +977,16 @@ export default function Dashboard() {
   }, [getNextWindowZ])
 
   const closeLiveWindow = useCallback((id: string) => {
-    setLiveWindows(prev => prev.filter(win => win.id !== id))
-  }, [])
+    setLiveWindows(prev => {
+      const next = prev.filter(win => win.id !== id)
+      if (id === 'canvas-live-window' && closeLiveOverlayOnCanvasClose && next.length === 0) {
+        setLiveOverlayOpen(false)
+        setLiveOverlayDismissed(true)
+        setCloseLiveOverlayOnCanvasClose(false)
+      }
+      return next
+    })
+  }, [closeLiveOverlayOnCanvasClose])
 
   const toggleMinimizeLiveWindow = useCallback((id: string) => {
     setLiveWindows(prev => prev.map(win => {
@@ -1118,8 +1126,11 @@ export default function Dashboard() {
     }
     if (nextSessionId !== activeSessionId) setActiveSessionId(nextSessionId)
 
+    // If the live overlay is not already open, this canvas open should behave like a standard overlay.
+    // Closing the canvas should fall back to the layer beneath (dashboard overlay), not leave the live overlay shell open.
+    setCloseLiveOverlayOnCanvasClose(!liveOverlayOpen)
+
     setLiveOverlayDismissed(false)
-    setLiveOverlayMode('canvas')
     setLiveOverlayOpen(true)
     // Chrome should start hidden; it is revealed by tapping the top display.
     setLiveOverlayChromeVisible(false)
@@ -1168,7 +1179,7 @@ export default function Dashboard() {
       }
       return [...prev, baseWindow]
     })
-  }, [canLaunchCanvasOverlay, isSubscriptionBlocked, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ, activeSessionId])
+  }, [canLaunchCanvasOverlay, isSubscriptionBlocked, activeSessionId, liveOverlayOpen, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
 
   const showLessonAuthoringCanvasWindow = useCallback((opts: { phaseKey: LessonPhaseKey; pointId: string }) => {
     if (!isTeacherOrAdminUser) {
@@ -1177,7 +1188,6 @@ export default function Dashboard() {
     }
 
     setLiveOverlayDismissed(false)
-  setLiveOverlayMode('canvas')
     setLiveOverlayOpen(true)
 
     const boardId = buildLessonAuthoringBoardId('canvas', opts.phaseKey, opts.pointId)
@@ -1250,8 +1260,8 @@ export default function Dashboard() {
       return
     }
     setActiveSessionId(sessionId)
+    setCloseLiveOverlayOnCanvasClose(false)
     setLiveOverlayDismissed(false)
-    setLiveOverlayMode('call')
     setLiveOverlayOpen(true)
     // Chrome should start hidden; it is revealed by tapping the top display.
     setLiveOverlayChromeVisible(false)
@@ -1293,8 +1303,8 @@ export default function Dashboard() {
   }, [openLiveForSession])
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
+    setCloseLiveOverlayOnCanvasClose(false)
     setLiveOverlayDismissed(false)
-    setLiveOverlayMode('call')
     setLiveOverlayOpen(true)
     // Keep chrome hidden by default.
     setLiveOverlayChromeVisible(false)
@@ -1302,6 +1312,7 @@ export default function Dashboard() {
   const closeLiveOverlay = () => {
     setLiveOverlayOpen(false)
     setLiveOverlayDismissed(true)
+    setCloseLiveOverlayOnCanvasClose(false)
   }
   const handleLiveControl = (action: 'mute' | 'video' | 'leave') => {
     if (!liveControls) return
@@ -6051,72 +6062,85 @@ export default function Dashboard() {
       </main>
       {liveOverlayOpen && (
         <div
-          className={`live-call-overlay${liveWindows.some(win => win.kind === 'canvas' && !win.minimized) ? ' live-call-overlay--canvas-open' : ''}${liveOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}${liveOverlayMode === 'canvas' ? ' live-call-overlay--canvas-only' : ''}`}
+          className={`live-call-overlay${liveWindows.some(win => win.kind === 'canvas' && !win.minimized) ? ' live-call-overlay--canvas-open' : ''}${liveOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}`}
           role="dialog"
           aria-modal="true"
         >
-          <div
-            className="live-call-overlay__backdrop"
-            onClick={liveOverlayMode === 'canvas' ? closeLiveOverlay : undefined}
-          />
+          <div className="live-call-overlay__backdrop" />
           <div className="live-call-overlay__panel" ref={stageRef}>
-            {liveOverlayMode !== 'canvas' && (
-              <div className="live-call-overlay__video relative">
-                {/** When the canvas window is open, mount overlays inside the canvas to avoid duplicate prompt boxes. */}
-                {/** (Otherwise the same TextOverlayModule renders twice: here and in StackedCanvasWindow.) */}
-                {(() => {
-                  const canvasOpen = liveWindows.some(win => win.kind === 'canvas' && !win.minimized)
-                  if (canvasOpen) return null
-                  return (
-                    <>
-                      {activeSessionId && (
-                        <DiagramOverlayModule
-                          boardId={String(activeSessionId)}
-                          gradeLabel={selectedGrade ? activeGradeLabel : null}
-                          userId={realtimeUserId}
-                          userDisplayName={realtimeDisplayName}
-                          isAdmin={isOwnerUser}
-                        />
-                      )}
-                      {activeSessionId && (
-                        <TextOverlayModule
-                          boardId={String(activeSessionId)}
-                          gradeLabel={selectedGrade ? activeGradeLabel : null}
-                          userId={realtimeUserId}
-                          userDisplayName={realtimeDisplayName}
-                          isAdmin={isOwnerUser}
-                        />
-                      )}
-                    </>
-                  )
-                })()}
-                <div className="live-call-overlay__floating-actions" />
-                {canJoinLiveClass && activeSessionId ? (
-                  (
-                    <JitsiRoom
-                      roomName={gradeRoomName}
-                      displayName={session?.user?.name || session?.user?.email}
-                      sessionId={activeSessionId}
-                      tokenEndpoint={null}
-                      passwordEndpoint={null}
-                      isOwner={isOwnerUser}
-                      showControls={false}
-                      silentJoin
-                      startWithAudioMuted
-                      startWithVideoMuted
-                      onControlsChange={setLiveControls}
-                      onMuteStateChange={setLiveMuteState}
-                      onParticipantEvent={bumpLiveParticipantsVersion}
-                    />
-                  )
-                ) : (
-                  <div className="live-call-overlay__placeholder">
-                    <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
-                    <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
-                  </div>
+            <div className="live-call-overlay__video relative">
+              {/** When the canvas window is open, mount overlays inside the canvas to avoid duplicate prompt boxes. */}
+              {/** (Otherwise the same TextOverlayModule renders twice: here and in StackedCanvasWindow.) */}
+              {(() => {
+                const canvasOpen = liveWindows.some(win => win.kind === 'canvas' && !win.minimized)
+                if (canvasOpen) return null
+                return (
+                  <>
+              {activeSessionId && (
+                <DiagramOverlayModule
+                  boardId={String(activeSessionId)}
+                  gradeLabel={selectedGrade ? activeGradeLabel : null}
+                  userId={realtimeUserId}
+                  userDisplayName={realtimeDisplayName}
+                  isAdmin={isOwnerUser}
+                />
+              )}
+              {activeSessionId && (
+                <TextOverlayModule
+                  boardId={String(activeSessionId)}
+                  gradeLabel={selectedGrade ? activeGradeLabel : null}
+                  userId={realtimeUserId}
+                  userDisplayName={realtimeDisplayName}
+                  isAdmin={isOwnerUser}
+                />
+              )}
+                  </>
+                )
+              })()}
+              <div className="live-call-overlay__floating-actions">
+                {liveWindows.some(win => win.id === 'canvas-live-window' && win.kind === 'canvas' && !win.minimized) && (
+                  <button
+                    type="button"
+                    className="live-call-overlay__close"
+                    onClick={() => {
+                      if (closeLiveOverlayOnCanvasClose) {
+                        setLiveWindows([])
+                        closeLiveOverlay()
+                        return
+                      }
+                      closeLiveWindow('canvas-live-window')
+                    }}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
                 )}
               </div>
-            )}
+              {canJoinLiveClass && activeSessionId ? (
+                (
+                  <JitsiRoom
+                    roomName={gradeRoomName}
+                    displayName={session?.user?.name || session?.user?.email}
+                    sessionId={activeSessionId}
+                    tokenEndpoint={null}
+                    passwordEndpoint={null}
+                    isOwner={isOwnerUser}
+                    showControls={false}
+                    silentJoin
+                    startWithAudioMuted
+                    startWithVideoMuted
+                    onControlsChange={setLiveControls}
+                    onMuteStateChange={setLiveMuteState}
+                    onParticipantEvent={bumpLiveParticipantsVersion}
+                  />
+                )
+              ) : (
+                <div className="live-call-overlay__placeholder">
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
+                  <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
+                </div>
+              )}
+            </div>
             {liveWindows.length > 0 && (
               <div className="live-overlay-stage">
                 {liveWindows.map(win => (
@@ -6158,10 +6182,8 @@ export default function Dashboard() {
                         : undefined
                     }
                     onCloseOverlay={
-                      win.kind === 'canvas'
-                        ? (liveOverlayMode === 'canvas'
-                          ? closeLiveOverlay
-                          : (!(win.isAdminOverride ?? isOwnerUser) ? closeLiveOverlay : undefined))
+                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
+                        ? closeLiveOverlay
                         : undefined
                     }
                     position={win.position}

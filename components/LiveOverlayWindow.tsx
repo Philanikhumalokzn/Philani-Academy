@@ -346,9 +346,8 @@ export default function LiveOverlayWindow({
             {typeof onCloseOverlay === 'function' && (
               <button
                 type="button"
-                className="live-window__close-overlay"
-                title="Close canvas"
-                aria-label="Close canvas"
+                title="Close live class"
+                aria-label="Close live class"
                 onPointerDown={e => e.stopPropagation()}
                 onClick={e => {
                   e.preventDefault()

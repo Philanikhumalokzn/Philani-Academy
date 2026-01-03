@@ -5023,7 +5023,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [latexRenderOptions.fontScale, latexRenderOptions.textAlign]
   )
 
-  const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
+  const disableCanvasInput = isViewOnly
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
@@ -7336,7 +7336,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               )}
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className={`h-full border rounded-lg p-3 overflow-auto relative${isOverlayMode ? ' bg-slate-950 border-white/10 text-slate-100' : ' bg-slate-50 border-slate-200'}`}
+                  className={`h-full border rounded-lg p-3 overflow-auto relative${isOverlayMode ? ' bg-white border-slate-200 text-slate-900' : ' bg-slate-50 border-slate-200'}`}
                   ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={() => {
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
@@ -7497,7 +7497,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
-              className={`relative z-20 flex items-center justify-center px-4 py-2 cursor-row-resize select-none${isOverlayMode ? ' bg-slate-950' : ' bg-white'}`}
+              className={`relative z-20 flex items-center justify-center px-4 py-2 cursor-row-resize select-none${isOverlayMode ? ' bg-white' : ' bg-white'}`}
               style={{ touchAction: 'none' }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
@@ -7519,8 +7519,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 } catch {}
               }}
             >
-              <div className={`w-full h-0.5 relative${isOverlayMode ? ' bg-white/20' : ' bg-slate-200'}`}>
-                <div className={`absolute left-1/2 -translate-x-1/2 w-10 h-1.5 rounded-full${isOverlayMode ? ' bg-white/30' : ' bg-slate-400'}`} />
+              <div className={`w-full h-0.5 relative${isOverlayMode ? ' bg-white' : ' bg-slate-200'}`}>
+                <div className={`absolute left-1/2 -translate-x-1/2 w-10 h-1.5 rounded-full${isOverlayMode ? ' bg-slate-300' : ' bg-slate-400'}`} />
               </div>
             </div>
             <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>

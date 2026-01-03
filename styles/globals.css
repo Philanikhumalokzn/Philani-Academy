@@ -999,8 +999,9 @@ td{color:#f8fafc;}
 
 /* Keep the peek header glassy, but shift it from blue to gray for the canvas-only theme. */
 .live-call-overlay--canvas-only .live-window--canvas .live-window__header{
-  background:rgba(255,255,255,0.92);
-  border-color:rgba(0,0,0,0.12);
+  background:transparent;
+  border:none;
+  box-shadow:none;
   backdrop-filter:none;
 }
 
@@ -1008,6 +1009,9 @@ td{color:#f8fafc;}
 .live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls{position:relative;z-index:9;color:#000;}
 .live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls button{color:#000;opacity:1;}
 .live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls svg{fill:currentColor;opacity:1;}
+
+.live-call-overlay--canvas-only .live-window--canvas .live-window__title{color:#000;}
+.live-call-overlay--canvas-only .live-window--canvas .live-window__eyebrow{color:rgba(0,0,0,0.55);}
 
 /* iink editor surface (MyScript) in canvas-only overlay mode */
 .pa-iink-editor--white{background:#fff !important;color:#000;}

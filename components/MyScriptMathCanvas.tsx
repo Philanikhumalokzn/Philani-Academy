@@ -1116,6 +1116,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [studentSplitRatio])
 
   useEffect(() => {
+    if (!useStackedStudentLayout) return
+    requestEditorResize()
+  }, [requestEditorResize, studentSplitRatio, useStackedStudentLayout])
+
+  useEffect(() => {
     isStudentPublishEnabledRef.current = isStudentPublishEnabled
   }, [isStudentPublishEnabled])
 
@@ -7361,7 +7366,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     setAdminDraftLatex(adminSteps[index]?.latex || '')
                   } : undefined}
                 >
-                  {isAdmin && (
+                  {isAdmin && !isAssignmentSolutionAuthoring && (
                     <button
                       type="button"
                       aria-label={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}
@@ -7487,7 +7492,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
               </div>
             </div>
-            <div className="px-4 pb-3" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
+            <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
                 {canPersistLatex ? (
                   (() => {
@@ -7736,9 +7741,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     <button
                       type="button"
                       className="px-2 py-1"
-                      title="Send step"
+                      title={isAssignmentSolutionAuthoring ? 'Commit / Save' : 'Send step'}
                       onClick={async () => {
-                      if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) {
+                      if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
                         if (lockedOutRef.current) return
                         await studentQuizCommitOrSubmit()
                         return
@@ -8035,9 +8040,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ) : null}
               </div>
 
-              <div
-                className="border rounded bg-white relative h-full overflow-hidden flex flex-col"
-              >
+              <div className="border rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
@@ -8257,70 +8260,62 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <label className="btn btn-secondary" style={{ cursor: diagramBusy ? 'not-allowed' : 'pointer' }}>
+                    Upload
                     <input
-                      className="input"
-                      placeholder="Optional title"
-                      value={diagramTitleInput}
-                      onChange={e => setDiagramTitleInput(e.target.value)}
-                    />
-                    <label className="btn btn-secondary" style={{ cursor: diagramBusy ? 'not-allowed' : 'pointer' }}>
-                      Upload
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        disabled={diagramBusy}
-                        onChange={async e => {
-                          const file = e.target.files?.[0]
-                          if (!file) return
-                          setDiagramBusy(true)
-                          try {
-                            const form = new FormData()
-                            form.append('sessionKey', channelName)
-                            form.append('file', file)
-                            const uploadRes = await fetch('/api/diagrams/upload', { method: 'POST', credentials: 'same-origin', body: form })
-                            if (!uploadRes.ok) throw new Error('Upload failed')
-                            const uploadPayload = await uploadRes.json()
-                            const url = uploadPayload?.url
-                            if (!url) throw new Error('Missing URL')
-                            const createRes = await fetch('/api/diagrams', {
-                              method: 'POST',
-                              credentials: 'same-origin',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || file.name }),
-                            })
-                            if (!createRes.ok) throw new Error('Create failed')
-                            const createdPayload = await createRes.json()
-                            const diagram = createdPayload?.diagram
-                            if (diagram?.id) {
-                              const record: any = {
-                                id: String(diagram.id),
-                                title: typeof diagram.title === 'string' ? diagram.title : '',
-                                imageUrl: String(diagram.imageUrl || url),
-                                order: typeof diagram.order === 'number' ? diagram.order : 0,
-                                annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
-                              }
-                              setDiagrams(prev => {
-                                if (prev.some(d => d.id === record.id)) return prev
-                                const next = [...prev, record]
-                                next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
-                                return next
-                              })
-                              await publishDiagramMessage({ kind: 'add', diagram: record })
-                              await setDiagramOverlayState({ activeDiagramId: record.id, isOpen: true })
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      disabled={diagramBusy}
+                      onChange={async e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        setDiagramBusy(true)
+                        try {
+                          const form = new FormData()
+                          form.append('sessionKey', channelName)
+                          form.append('file', file)
+                          const uploadRes = await fetch('/api/diagrams/upload', { method: 'POST', credentials: 'same-origin', body: form })
+                          if (!uploadRes.ok) throw new Error('Upload failed')
+                          const uploadPayload = await uploadRes.json()
+                          const url = uploadPayload?.url
+                          if (!url) throw new Error('Missing URL')
+                          const createRes = await fetch('/api/diagrams', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || file.name }),
+                          })
+                          if (!createRes.ok) throw new Error('Create failed')
+                          const createdPayload = await createRes.json()
+                          const diagram = createdPayload?.diagram
+                          if (diagram?.id) {
+                            const record: any = {
+                              id: String(diagram.id),
+                              title: typeof diagram.title === 'string' ? diagram.title : '',
+                              imageUrl: String(diagram.imageUrl || url),
+                              order: typeof diagram.order === 'number' ? diagram.order : 0,
+                              annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
                             }
-                          } catch (err) {
-                            console.warn('Upload diagram failed', err)
+                            setDiagrams(prev => {
+                              if (prev.some(d => d.id === record.id)) return prev
+                              const next = [...prev, record]
+                              next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+                              return next
+                            })
+                            await publishDiagramMessage({ kind: 'add', diagram: record })
+                            await setDiagramOverlayState({ activeDiagramId: record.id, isOpen: true })
                           }
-                          setDiagramBusy(false)
-                          try {
-                            e.target.value = ''
-                          } catch {}
-                        }}
-                      />
-                    </label>
-                  </div>
+                        } catch (err) {
+                          console.warn('Upload diagram failed', err)
+                        }
+                        setDiagramBusy(false)
+                        try {
+                          e.target.value = ''
+                        } catch {}
+                      }}
+                    />
+                  </label>
 
                   <p className="text-[11px] text-slate-600">Tip: paste an image into this panel to add it.</p>
                 </div>

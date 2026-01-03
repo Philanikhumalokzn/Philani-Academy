@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
@@ -19,6 +20,16 @@ const WINDOW_PADDING_Y = 12
 const MOBILE_HERO_BG_MIN_WIDTH = 1280
 const MOBILE_HERO_BG_MIN_HEIGHT = 720
 const MOBILE_HERO_BG_MAX_WIDTH = 1920
+
+function OverlayPortal(props: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  if (!mounted) return null
+  return createPortal(props.children, document.body)
+}
+
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -578,6 +589,13 @@ export default function Dashboard() {
 
   const [createLessonOverlayOpen, setCreateLessonOverlayOpen] = useState(false)
   const [liveLessonSelectorOverlayOpen, setLiveLessonSelectorOverlayOpen] = useState(false)
+
+  const topStackOverlayOpen =
+    Boolean(liveOverlayOpen) ||
+    Boolean(lessonAuthoringDiagramOverlay) ||
+    Boolean(createLessonOverlayOpen) ||
+    Boolean(liveLessonSelectorOverlayOpen) ||
+    Boolean(sessionDetailsOpen)
 
   const openDashboardOverlay = useCallback((section: OverlaySectionId) => {
     setDashboardSectionOverlay(section)
@@ -3352,13 +3370,14 @@ export default function Dashboard() {
             </div>
 
             {createLessonOverlayOpen && (
-              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-                <div className="absolute inset-0 bg-black/40" onClick={() => setCreateLessonOverlayOpen(false)} />
-                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateLessonOverlayOpen(false)}>
-                  <div
-                    className="card h-full max-h-[92vh] overflow-hidden flex flex-col"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+              <OverlayPortal>
+                <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+                  <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateLessonOverlayOpen(false)} />
+                  <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateLessonOverlayOpen(false)}>
+                    <div
+                      className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                     <div className="p-3 border-b flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold break-words">Create lesson</div>
@@ -3546,9 +3565,10 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </OverlayPortal>
             )}
           </>
         )}
@@ -3569,13 +3589,14 @@ export default function Dashboard() {
             </div>
 
             {liveLessonSelectorOverlayOpen && (
-              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-                <div className="absolute inset-0 bg-black/40" onClick={() => setLiveLessonSelectorOverlayOpen(false)} />
-                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setLiveLessonSelectorOverlayOpen(false)}>
-                  <div
-                    className="card h-full max-h-[92vh] overflow-hidden flex flex-col"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+              <OverlayPortal>
+                <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+                  <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setLiveLessonSelectorOverlayOpen(false)} />
+                  <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setLiveLessonSelectorOverlayOpen(false)}>
+                    <div
+                      className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                     <div className="p-3 border-b flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold break-words">Live lesson selector</div>
@@ -3670,9 +3691,10 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </OverlayPortal>
             )}
           </>
         )}
@@ -3832,13 +3854,14 @@ export default function Dashboard() {
         </div>
 
         {sessionDetailsOpen && (
-          <div className="fixed inset-0 z-50">
-            <div className="absolute inset-0 bg-black/40" onClick={closeSessionDetails} />
-            <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeSessionDetails}>
-              <div
-                className="card h-full max-h-[92vh] overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
+          <OverlayPortal>
+            <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+              <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeSessionDetails} />
+              <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeSessionDetails}>
+                <div
+                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
                 {sessionDetailsView === 'pastList' ? (
                   <>
                     <div className="p-3 border-b flex items-start justify-between gap-3">
@@ -5356,9 +5379,10 @@ export default function Dashboard() {
                     </div>
                   </>
                 )}
+                </div>
               </div>
             </div>
-          </div>
+          </OverlayPortal>
         )}
       </div>
     )
@@ -5826,8 +5850,12 @@ export default function Dashboard() {
           ) : (
             <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
               {mobilePanels.announcements && (
-                <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
-                  <div className="absolute inset-0 bg-black/60" onClick={closeMobileAnnouncements} />
+                <div
+                  className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                  role="dialog"
+                  aria-modal="true"
+                >
+                  <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeMobileAnnouncements} />
                   <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-[#06184a] shadow-2xl overflow-hidden">
                     <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
                       <div className="font-semibold text-white">Announcements</div>
@@ -5991,10 +6019,14 @@ export default function Dashboard() {
       </div>
 
       {dashboardSectionOverlay && (
-        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/40" onClick={closeDashboardOverlay} />
+        <div
+          className={`fixed inset-0 z-40 transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeDashboardOverlay} />
           <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeDashboardOverlay}>
-            <div className="card h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-3 border-b flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold break-words">
@@ -6014,10 +6046,14 @@ export default function Dashboard() {
       )}
 
       {accountSnapshotOverlayOpen && (
-        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setAccountSnapshotOverlayOpen(false)} />
+        <div
+          className={`fixed inset-0 z-40 transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setAccountSnapshotOverlayOpen(false)} />
           <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setAccountSnapshotOverlayOpen(false)}>
-            <div className="card h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-3 border-b flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold break-words">Account snapshot</div>
@@ -6035,10 +6071,14 @@ export default function Dashboard() {
       )}
 
       {!isAdmin && isMobile && mobilePanels.sessions && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))} />
+        <div
+          className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))} />
           <div className="absolute inset-x-0 bottom-0" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}>
-            <div className="card h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-3 border-b flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold break-words">Sessions</div>

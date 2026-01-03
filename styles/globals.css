@@ -19,12 +19,40 @@
   100% { transform: translateY(8px) scale(0.985); opacity: 0; }
 }
 
+@keyframes philaniOverlayFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes philaniOverlayBackdropIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
 .philani-quiz-pop {
   animation: philaniQuizPop 260ms ease-out;
 }
 
 .philani-quiz-pop-out {
   animation: philaniQuizPopOut 220ms ease-in forwards;
+}
+
+.philani-overlay-backdrop {
+  background: rgba(0,0,0,0.68);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.philani-overlay-panel {
+  background: rgba(8,14,30,0.97);
+}
+
+.philani-overlay-enter {
+  animation: philaniOverlayFadeIn 170ms ease-out both;
+}
+
+.philani-overlay-backdrop-enter {
+  animation: philaniOverlayBackdropIn 170ms ease-out both;
 }
 
 

@@ -4660,7 +4660,10 @@ export default function Dashboard() {
                                                               const stepNum = i + 1
                                                               const fb = byStep.get(stepNum)
                                                               const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
-                                                              const isCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : (Number.isFinite(awarded) && awarded > 0)
+                                                              const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
+                                                              const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
+                                                              const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
+                                                              const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
                                                               const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
 
                                                               const html = renderKatexDisplayHtml(stepLatex)
@@ -4674,20 +4677,39 @@ export default function Dashboard() {
                                                                     {line}
                                                                   </div>
                                                                   <div className="shrink-0 flex items-start gap-2">
-                                                                    <span
-                                                                      className={isCorrect ? 'text-green-500' : 'text-red-500'}
-                                                                      aria-label={isCorrect ? 'Correct step' : 'Incorrect step'}
-                                                                      title={isCorrect ? 'Correct' : 'Incorrect'}
-                                                                    >
-                                                                      <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                        {isCorrect ? (
-                                                                          <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
-                                                                        ) : (
-                                                                          <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
-                                                                        )}
-                                                                      </svg>
-                                                                    </span>
-                                                                    {!isCorrect ? (
+                                                                    {awardedInt > 0 ? (
+                                                                      <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
+                                                                        {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                                          <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                            <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
+                                                                          </svg>
+                                                                        ))}
+                                                                        {awardedInt > 12 ? (
+                                                                          <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                                        ) : null}
+                                                                      </span>
+                                                                    ) : isCorrect ? (
+                                                                      <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                                        <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                          <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                        </svg>
+                                                                      </span>
+                                                                    ) : (
+                                                                      isSignificant ? (
+                                                                        <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                                          <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                            <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
+                                                                          </svg>
+                                                                        </span>
+                                                                      ) : (
+                                                                        <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                                          <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                            <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                          </svg>
+                                                                        </span>
+                                                                      )
+                                                                    )}
+                                                                    {!isCorrect && awardedInt === 0 ? (
                                                                       <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
                                                                         {(feedbackText || 'Check this step').slice(0, 160)}
                                                                       </div>
@@ -4930,7 +4952,10 @@ export default function Dashboard() {
                                                                                       const stepNum = i + 1
                                                                                       const fb = byStep.get(stepNum)
                                                                                       const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
-                                                                                      const isCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : (Number.isFinite(awarded) && awarded > 0)
+                                                                                      const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
+                                                                                      const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
+                                                                                      const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
+                                                                                      const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
                                                                                       const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
 
                                                                                       const html = renderKatexDisplayHtml(stepLatex)
@@ -4944,20 +4969,39 @@ export default function Dashboard() {
                                                                                             {line}
                                                                                           </div>
                                                                                           <div className="shrink-0 flex items-start gap-2">
-                                                                                            <span
-                                                                                              className={isCorrect ? 'text-green-500' : 'text-red-500'}
-                                                                                              aria-label={isCorrect ? 'Correct step' : 'Incorrect step'}
-                                                                                              title={isCorrect ? 'Correct' : 'Incorrect'}
-                                                                                            >
-                                                                                              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                                                {isCorrect ? (
-                                                                                                  <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
-                                                                                                ) : (
-                                                                                                  <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
-                                                                                                )}
-                                                                                              </svg>
-                                                                                            </span>
-                                                                                            {!isCorrect ? (
+                                                                                            {awardedInt > 0 ? (
+                                                                                              <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
+                                                                                                {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                                                                  <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                                                    <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
+                                                                                                  </svg>
+                                                                                                ))}
+                                                                                                {awardedInt > 12 ? (
+                                                                                                  <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                                                                ) : null}
+                                                                                              </span>
+                                                                                            ) : isCorrect ? (
+                                                                                              <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                                                                <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                                                  <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                                                </svg>
+                                                                                              </span>
+                                                                                            ) : (
+                                                                                              isSignificant ? (
+                                                                                                <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                                                                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                                                    <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
+                                                                                                  </svg>
+                                                                                                </span>
+                                                                                              ) : (
+                                                                                                <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                                                                  <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                                                    <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                                                  </svg>
+                                                                                                </span>
+                                                                                              )
+                                                                                            )}
+                                                                                            {!isCorrect && awardedInt === 0 ? (
                                                                                               <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
                                                                                                 {(feedbackText || 'Check this step').slice(0, 160)}
                                                                                               </div>

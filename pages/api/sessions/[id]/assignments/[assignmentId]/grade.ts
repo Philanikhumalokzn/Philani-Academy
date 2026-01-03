@@ -124,6 +124,7 @@ type GeminiStepItem = {
   step: number
   awardedMarks: number
   isCorrect: boolean
+  isSignificant?: boolean
   feedback?: string
 }
 
@@ -295,12 +296,12 @@ async function validateAndFixJsonWithGemini(opts: {
     'The "results" array MUST contain exactly one entry per questionId in the provided list, in the same order. ' +
     'Each entry MUST have keys in this exact order: questionId, totalMarks, earnedMarks, steps. ' +
     'steps MUST be an array with exactly stepCount entries (stepCount provided per questionId). ' +
-    'Each step entry MUST have keys in this exact order: step, awardedMarks, isCorrect, feedback. ' +
-    'If a value is missing/invalid, fill a safe default: totalMarks>=1 int, earnedMarks>=0 int, awardedMarks>=0 int, isCorrect boolean, feedback string ("" allowed). ' +
+    'Each step entry MUST have keys in this exact order: step, awardedMarks, isCorrect, isSignificant, feedback. ' +
+    'If a value is missing/invalid, fill a safe default: totalMarks>=1 int, earnedMarks>=0 int, awardedMarks>=0 int, isCorrect boolean, isSignificant boolean, feedback string ("" allowed). ' +
     'Never omit required keys.'
 
   const schemaExample =
-    '{"results":[{"questionId":"...","totalMarks":1,"earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":""}]}]}'
+    '{"results":[{"questionId":"...","totalMarks":1,"earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"isSignificant":true,"feedback":""}]}]}'
 
   const fixerPrompt =
     `${fixerInstruction}\n\n` +
@@ -400,6 +401,7 @@ function buildResponseTemplate(questionIds: string[], stepCountsByQuestionId: Re
         step: idx + 1,
         awardedMarks: 0,
         isCorrect: false,
+        isSignificant: true,
         feedback: '',
       })),
     }
@@ -462,15 +464,17 @@ function extractGeminiResultsFromText(rawText: string, questionIds: string[], st
       const stepSlice = extractStepSlice(seg, step)
       const awardedMarks = extractFirstInt(stepSlice, 'awardedMarks')
       const isCorrect = extractFirstBool(stepSlice, 'isCorrect')
+      const isSignificant = extractFirstBool(stepSlice, 'isSignificant')
       const feedback = extractFirstString(stepSlice, 'feedback')
 
-      if (awardedMarks != null || isCorrect != null || feedback != null) {
+      if (awardedMarks != null || isCorrect != null || isSignificant != null || feedback != null) {
         hasStepSignals = true
       }
       steps.push({
         step,
         awardedMarks: awardedMarks == null ? 0 : awardedMarks,
         isCorrect: isCorrect == null ? (awardedMarks != null && awardedMarks > 0) : isCorrect,
+        isSignificant: isSignificant == null ? undefined : isSignificant,
         feedback: feedback == null ? '' : feedback,
       })
     }
@@ -663,6 +667,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
     'Award method marks per step based on TeacherPrompt / TeacherMarkingPlan and totalMarks. ' +
     'Use StudentSteps as the ONLY step references (1-indexed) and return a steps[] entry for EVERY step 1..StudentStepCount. ' +
+    'Each step MUST include isSignificant (boolean): significant=true only if that step would affect marks under the marking scheme; significant=false for steps that would not contribute marks. ' +
+    'If a step is incorrect but insignificant, set awardedMarks=0, isCorrect=false, isSignificant=false and include brief feedback. ' +
+    'If a step is correct but insignificant, set awardedMarks=0, isCorrect=true, isSignificant=false and leave feedback empty unless truly necessary. ' +
     'You MUST set totalMarks for each question (integer >= 1). Infer it from TeacherPrompt / TeacherMarkingPlan when ConfiguredPoints is (none). ' +
     'awardedMarks must be an integer >=0; the sum of awardedMarks across steps must be <= totalMarks and should reflect earnedMarks. ' +
     'Set earnedMarks as an integer 0..totalMarks representing the total marks earned for that question. ' +

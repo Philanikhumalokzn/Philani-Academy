@@ -7305,7 +7305,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               )}
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className="h-full bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto relative"
+                  className="h-full bg-slate-50 rounded-lg p-3 overflow-auto relative"
                   ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={() => {
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
@@ -7488,9 +7488,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 } catch {}
               }}
             >
-              <div className="w-full h-0.5 bg-slate-200 relative">
-                <div className="absolute left-1/2 -translate-x-1/2 w-10 h-1.5 bg-slate-400 rounded-full" />
-              </div>
+              <div className="w-10 h-1.5 bg-slate-400 rounded-full" />
             </div>
             <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
@@ -8040,7 +8038,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ) : null}
               </div>
 
-              <div className="border rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
+              <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"

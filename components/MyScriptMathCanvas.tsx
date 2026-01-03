@@ -3479,7 +3479,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
           if (!isAdmin && lockedOutRef.current) {
-            enforceAuthoritativeSnapshot()
+            // Not in control: allow local ink to persist (no auto-revert).
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
@@ -7334,9 +7334,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
                 </div>
               )}
-              <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
+              <div className={`${isOverlayMode ? 'px-0 py-0' : isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className={`h-full border rounded-lg p-3 overflow-auto relative${isOverlayMode ? ' bg-white border-slate-200 text-slate-900' : ' bg-slate-50 border-slate-200'}`}
+                  className={`h-full overflow-auto relative${isOverlayMode ? ' bg-white text-slate-900' : ' border rounded-lg p-3 bg-slate-50 border-slate-200'}`}
                   ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={() => {
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
@@ -7463,31 +7463,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         </>
                       ) : latexProjectionMarkup ? (
                         <div
-                          className={`${isOverlayMode ? 'text-slate-100' : 'text-slate-900'} leading-relaxed`}
+                          className={`${isOverlayMode ? 'text-slate-900' : 'text-slate-900'} leading-relaxed`}
                           style={latexOverlayStyle}
                           dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                         />
                       ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <p className={`${isOverlayMode ? 'text-slate-300' : 'text-slate-500'} text-sm text-center`}>Waiting for teacher notes…</p>
+                          <p className={`${isOverlayMode ? 'text-slate-500' : 'text-slate-500'} text-sm text-center`}>Waiting for teacher notes…</p>
                         </div>
                       )}
                     </div>
                   ) : latexDisplayState.enabled ? (
                     latexProjectionMarkup ? (
                       <div
-                        className={`${isOverlayMode ? 'text-slate-100' : 'text-slate-900'} leading-relaxed`}
+                        className={`${isOverlayMode ? 'text-slate-900' : 'text-slate-900'} leading-relaxed`}
                         style={latexOverlayStyle}
                         dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <p className={`${isOverlayMode ? 'text-slate-300' : 'text-slate-500'} text-sm text-center`}>Waiting for teacher notes…</p>
+                        <p className={`${isOverlayMode ? 'text-slate-500' : 'text-slate-500'} text-sm text-center`}>Waiting for teacher notes…</p>
                       </div>
                     )
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <p className={`${isOverlayMode ? 'text-slate-300' : 'text-slate-500'} text-sm text-center`}>Teacher hasn’t shared notes yet.</p>
+                      <p className={`${isOverlayMode ? 'text-slate-500' : 'text-slate-500'} text-sm text-center`}>Teacher hasn’t shared notes yet.</p>
                     </div>
                   )}
                 </div>
@@ -8071,7 +8071,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ) : null}
               </div>
 
-              <div className={`border rounded relative overflow-hidden flex flex-col flex-1 min-h-0${isOverlayMode ? ' border-white/10 bg-transparent text-slate-100' : ' bg-white'}`}>
+              <div className={`relative overflow-hidden flex flex-col flex-1 min-h-0${isOverlayMode ? ' bg-transparent text-slate-900' : ' border rounded bg-white'}`}>
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"

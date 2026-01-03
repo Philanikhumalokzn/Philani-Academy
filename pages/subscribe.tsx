@@ -196,7 +196,7 @@ export default function Subscribe() {
         <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/70 via-[#041448]/55 to-[#031641]/70" aria-hidden="true" />
 
         <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/35 backdrop-blur-md" aria-hidden="true" />
+          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" aria-hidden="true" />
 
           <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-white/5 shadow-2xl overflow-hidden">
             <div className="p-3 border-b border-white/10 flex items-center justify-end">

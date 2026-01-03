@@ -310,7 +310,7 @@ export default function MobileTopChrome() {
       {notificationsOpen && (
         <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" data-mobile-chrome-ignore>
           <div
-            className="absolute inset-0 bg-black/35 backdrop-blur-md"
+            className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
             onClick={closeNotifications}
             aria-hidden="true"
           />

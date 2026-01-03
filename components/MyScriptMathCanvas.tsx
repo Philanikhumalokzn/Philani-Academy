@@ -3423,18 +3423,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         if (isOverlayMode) {
-          // Canvas-only overlay: pure black UI + vivid white ink.
+          // Canvas-only overlay: native white UI + black ink.
           options.configuration.theme = {
             ink: {
-              color: '#FFFFFF',
+              color: '#000000',
             },
           }
           options.override = {
-            cssClass: 'pa-iink-editor--black',
+            cssClass: 'pa-iink-editor--white',
           }
           try {
-            host.style.background = '#000'
-            host.style.color = '#fff'
+            host.style.background = '#fff'
+            host.style.color = '#000'
           } catch {}
         }
 
@@ -3448,13 +3448,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           try {
             ;(editor as any).theme = {
               ink: {
-                color: '#FFFFFF',
+                color: '#000000',
               },
             }
           } catch {}
           try {
             ;(editor as any).penStyle = {
-              color: '#FFFFFF',
+              color: '#000000',
             }
           } catch {}
         }

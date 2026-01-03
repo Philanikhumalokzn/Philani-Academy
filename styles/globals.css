@@ -982,7 +982,7 @@ td{color:#f8fafc;}
 .live-call-overlay--canvas-only{align-items:stretch;justify-content:stretch;}
 .live-call-overlay--canvas-only .live-call-overlay__panel{width:100vw;height:100vh;height:100dvh;padding:0;border-radius:0;border:none;background:transparent;box-shadow:none;}
 .live-call-overlay--canvas-only .live-call-overlay__backdrop{
-  background:#000;
+  background:#fff;
 }
 
 /* Remove the glass window shell for the fullscreen canvas; let the board background own the look. */
@@ -993,25 +993,25 @@ td{color:#f8fafc;}
 /* Chalkboard surface inside the canvas container. */
 .live-call-overlay--canvas-only .live-canvas-window__body{
   border-radius:0;
-  background:#000;
+  background:#fff;
   box-shadow:none;
 }
 
 /* Keep the peek header glassy, but shift it from blue to gray for the canvas-only theme. */
 .live-call-overlay--canvas-only .live-window--canvas .live-window__header{
-  background:rgba(0,0,0,0.92);
-  border-color:rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.92);
+  border-color:rgba(0,0,0,0.12);
   backdrop-filter:none;
 }
 
-/* Canvas-only overlay: ensure header icons are vivid white and on top. */
-.live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls{position:relative;z-index:9;color:#fff;}
-.live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls button{color:#fff;opacity:1;}
+/* Canvas-only overlay: black foreground on native white. */
+.live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls{position:relative;z-index:9;color:#000;}
+.live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls button{color:#000;opacity:1;}
 .live-call-overlay--canvas-only .live-window--canvas .live-window__header-controls svg{fill:currentColor;opacity:1;}
 
 /* iink editor surface (MyScript) in canvas-only overlay mode */
-.pa-iink-editor--black{background:#000 !important;color:#fff;}
-.pa-iink-editor--black canvas{background:#000 !important;}
+.pa-iink-editor--white{background:#fff !important;color:#000;}
+.pa-iink-editor--white canvas{background:#fff !important;}
 .live-window--canvas.live-window--chrome-visible .live-window__header{
   opacity:1;
   pointer-events:auto;

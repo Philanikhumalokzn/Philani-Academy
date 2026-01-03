@@ -520,6 +520,7 @@ export default function Dashboard() {
   const [resolvedLiveSessionId, setResolvedLiveSessionId] = useState<string | null>(null)
   const [liveSelectionBusy, setLiveSelectionBusy] = useState(false)
   const [liveWindows, setLiveWindows] = useState<LiveWindowConfig[]>([])
+  const [liveOverlayMode, setLiveOverlayMode] = useState<'call' | 'canvas'>('call')
   const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([])
@@ -1118,6 +1119,7 @@ export default function Dashboard() {
     if (nextSessionId !== activeSessionId) setActiveSessionId(nextSessionId)
 
     setLiveOverlayDismissed(false)
+    setLiveOverlayMode('canvas')
     setLiveOverlayOpen(true)
     // Chrome should start hidden; it is revealed by tapping the top display.
     setLiveOverlayChromeVisible(false)
@@ -1175,6 +1177,7 @@ export default function Dashboard() {
     }
 
     setLiveOverlayDismissed(false)
+  setLiveOverlayMode('canvas')
     setLiveOverlayOpen(true)
 
     const boardId = buildLessonAuthoringBoardId('canvas', opts.phaseKey, opts.pointId)
@@ -1248,6 +1251,7 @@ export default function Dashboard() {
     }
     setActiveSessionId(sessionId)
     setLiveOverlayDismissed(false)
+    setLiveOverlayMode('call')
     setLiveOverlayOpen(true)
     // Chrome should start hidden; it is revealed by tapping the top display.
     setLiveOverlayChromeVisible(false)
@@ -1290,6 +1294,7 @@ export default function Dashboard() {
   const handleShowLiveOverlay = () => {
     if (!canJoinLiveClass) return
     setLiveOverlayDismissed(false)
+    setLiveOverlayMode('call')
     setLiveOverlayOpen(true)
     // Keep chrome hidden by default.
     setLiveOverlayChromeVisible(false)
@@ -6046,68 +6051,72 @@ export default function Dashboard() {
       </main>
       {liveOverlayOpen && (
         <div
-          className={`live-call-overlay${liveWindows.some(win => win.kind === 'canvas' && !win.minimized) ? ' live-call-overlay--canvas-open' : ''}${liveOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}`}
+          className={`live-call-overlay${liveWindows.some(win => win.kind === 'canvas' && !win.minimized) ? ' live-call-overlay--canvas-open' : ''}${liveOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}${liveOverlayMode === 'canvas' ? ' live-call-overlay--canvas-only' : ''}`}
           role="dialog"
           aria-modal="true"
         >
-          <div className="live-call-overlay__backdrop" />
+          <div
+            className="live-call-overlay__backdrop"
+            onClick={liveOverlayMode === 'canvas' ? closeLiveOverlay : undefined}
+          />
           <div className="live-call-overlay__panel" ref={stageRef}>
-            <div className="live-call-overlay__video relative">
-              {/** When the canvas window is open, mount overlays inside the canvas to avoid duplicate prompt boxes. */}
-              {/** (Otherwise the same TextOverlayModule renders twice: here and in StackedCanvasWindow.) */}
-              {(() => {
-                const canvasOpen = liveWindows.some(win => win.kind === 'canvas' && !win.minimized)
-                if (canvasOpen) return null
-                return (
-                  <>
-              {activeSessionId && (
-                <DiagramOverlayModule
-                  boardId={String(activeSessionId)}
-                  gradeLabel={selectedGrade ? activeGradeLabel : null}
-                  userId={realtimeUserId}
-                  userDisplayName={realtimeDisplayName}
-                  isAdmin={isOwnerUser}
-                />
-              )}
-              {activeSessionId && (
-                <TextOverlayModule
-                  boardId={String(activeSessionId)}
-                  gradeLabel={selectedGrade ? activeGradeLabel : null}
-                  userId={realtimeUserId}
-                  userDisplayName={realtimeDisplayName}
-                  isAdmin={isOwnerUser}
-                />
-              )}
-                  </>
-                )
-              })()}
-              <div className="live-call-overlay__floating-actions">
+            {liveOverlayMode !== 'canvas' && (
+              <div className="live-call-overlay__video relative">
+                {/** When the canvas window is open, mount overlays inside the canvas to avoid duplicate prompt boxes. */}
+                {/** (Otherwise the same TextOverlayModule renders twice: here and in StackedCanvasWindow.) */}
+                {(() => {
+                  const canvasOpen = liveWindows.some(win => win.kind === 'canvas' && !win.minimized)
+                  if (canvasOpen) return null
+                  return (
+                    <>
+                      {activeSessionId && (
+                        <DiagramOverlayModule
+                          boardId={String(activeSessionId)}
+                          gradeLabel={selectedGrade ? activeGradeLabel : null}
+                          userId={realtimeUserId}
+                          userDisplayName={realtimeDisplayName}
+                          isAdmin={isOwnerUser}
+                        />
+                      )}
+                      {activeSessionId && (
+                        <TextOverlayModule
+                          boardId={String(activeSessionId)}
+                          gradeLabel={selectedGrade ? activeGradeLabel : null}
+                          userId={realtimeUserId}
+                          userDisplayName={realtimeDisplayName}
+                          isAdmin={isOwnerUser}
+                        />
+                      )}
+                    </>
+                  )
+                })()}
+                <div className="live-call-overlay__floating-actions" />
+                {canJoinLiveClass && activeSessionId ? (
+                  (
+                    <JitsiRoom
+                      roomName={gradeRoomName}
+                      displayName={session?.user?.name || session?.user?.email}
+                      sessionId={activeSessionId}
+                      tokenEndpoint={null}
+                      passwordEndpoint={null}
+                      isOwner={isOwnerUser}
+                      showControls={false}
+                      silentJoin
+                      startWithAudioMuted
+                      startWithVideoMuted
+                      onControlsChange={setLiveControls}
+                      onMuteStateChange={setLiveMuteState}
+                      onParticipantEvent={bumpLiveParticipantsVersion}
+                    />
+                  )
+                ) : (
+                  <div className="live-call-overlay__placeholder">
+                    <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
+                    <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
+                  </div>
+                )}
               </div>
-              {canJoinLiveClass && activeSessionId ? (
-                (
-                  <JitsiRoom
-                    roomName={gradeRoomName}
-                    displayName={session?.user?.name || session?.user?.email}
-                    sessionId={activeSessionId}
-                    tokenEndpoint={null}
-                    passwordEndpoint={null}
-                    isOwner={isOwnerUser}
-                    showControls={false}
-                    silentJoin
-                    startWithAudioMuted
-                    startWithVideoMuted
-                    onControlsChange={setLiveControls}
-                    onMuteStateChange={setLiveMuteState}
-                    onParticipantEvent={bumpLiveParticipantsVersion}
-                  />
-                )
-              ) : (
-                <div className="live-call-overlay__placeholder">
-                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Select a session</p>
-                  <p className="text-white text-lg font-semibold text-center">Choose a scheduled session to join the live class.</p>
-                </div>
-              )}
-            </div>
+            )}
             {liveWindows.length > 0 && (
               <div className="live-overlay-stage">
                 {liveWindows.map(win => (

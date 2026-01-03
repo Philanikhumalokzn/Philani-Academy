@@ -977,6 +977,33 @@ td{color:#f8fafc;}
   transform:translateY(-6px);
   transition:opacity 0.65s ease, transform 0.35s ease;
 }
+
+/* Canvas-only overlay: full-screen opaque chalkboard with subtle wood texture. */
+.live-call-overlay--canvas-only{align-items:stretch;justify-content:stretch;}
+.live-call-overlay--canvas-only .live-call-overlay__panel{width:100vw;height:100vh;height:100dvh;padding:0;border-radius:0;border:none;background:transparent;box-shadow:none;}
+.live-call-overlay--canvas-only .live-call-overlay__backdrop{
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255,255,255,0.05), transparent 40%),
+    radial-gradient(circle at 80% 15%, rgba(255,255,255,0.035), transparent 45%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0, rgba(255,255,255,0.02) 2px, rgba(0,0,0,0) 10px, rgba(0,0,0,0) 22px),
+    linear-gradient(180deg, rgba(2,6,24,1) 0%, rgba(3,7,18,1) 55%, rgba(2,6,24,1) 100%);
+}
+
+/* Remove the glass window shell for the fullscreen canvas; let the board background own the look. */
+.live-call-overlay--canvas-only .live-window--canvas{background:transparent;border:none;box-shadow:none;backdrop-filter:none;}
+.live-call-overlay--canvas-only .live-window--fullscreen{border-radius:0;}
+.live-call-overlay--canvas-only .live-window--canvas .live-window__body{padding:0;}
+
+/* Chalkboard surface inside the canvas container. */
+.live-call-overlay--canvas-only .live-canvas-window__body{
+  border-radius:0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255,255,255,0.04), transparent 35%),
+    radial-gradient(circle at 70% 35%, rgba(255,255,255,0.03), transparent 40%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0, rgba(255,255,255,0.015) 2px, rgba(0,0,0,0) 12px, rgba(0,0,0,0) 26px),
+    linear-gradient(180deg, rgba(2,6,24,1), rgba(1,4,16,1));
+  box-shadow:inset 0 0 45px rgba(0,0,0,0.6);
+}
 .live-window--canvas.live-window--chrome-visible .live-window__header{
   opacity:1;
   pointer-events:auto;

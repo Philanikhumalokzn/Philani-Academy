@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
+import katex from 'katex'
 
 const StackedCanvasWindow = dynamic(() => import('../../../../../../components/StackedCanvasWindow'), { ssr: false })
 
@@ -28,6 +29,30 @@ export default function AssignmentSolutionQuestionPage() {
   const [assignment, setAssignment] = useState<any | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
   const [existingSolutionLatex, setExistingSolutionLatex] = useState<string>('')
+  const [metaVisible, setMetaVisible] = useState(false)
+
+  const renderKatexDisplayHtml = useCallback((latex: unknown) => {
+    const value = typeof latex === 'string' ? latex.trim() : ''
+    if (!value) return ''
+    try {
+      return katex.renderToString(value, {
+        displayMode: true,
+        throwOnError: false,
+        strict: 'ignore',
+      })
+    } catch {
+      return ''
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      setMetaVisible(v => !v)
+    }
+    window.addEventListener('philani:assignment-meta-peek', handler as any)
+    return () => window.removeEventListener('philani:assignment-meta-peek', handler as any)
+  }, [])
 
   useEffect(() => {
     if (!sessionId || !assignmentId || !questionId) return
@@ -167,6 +192,46 @@ export default function AssignmentSolutionQuestionPage() {
               />
             )
           })()}
+        </div>
+      ) : null}
+
+      {metaVisible ? (
+        <div className="absolute top-3 left-3 right-3 z-50">
+          <div
+            className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
+            style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+            role="button"
+            tabIndex={0}
+            onClick={() => setMetaVisible(false)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') setMetaVisible(false)
+            }}
+          >
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.35em] text-white/70">Assignment</div>
+              <div className="font-semibold break-words text-white">
+                {(assignment as any)?.displayTitle || assignment?.title || 'Assignment'}
+              </div>
+              <div className="text-sm text-white/80">
+                {((assignment as any)?.sectionLabel || (assignment as any)?.session?.title || 'Assignment').toString()}
+                {question?.order != null ? ` • Q${Number(question.order) + 1}` : ''}
+              </div>
+              {question?.latex ? (
+                <div className="mt-2 text-sm text-white/90">
+                  {(() => {
+                    const html = renderKatexDisplayHtml(String(question.latex || ''))
+                    if (html) {
+                      return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                    }
+                    return <div className="whitespace-pre-wrap break-words">{String(question.latex || '')}</div>
+                  })()}
+                </div>
+              ) : null}
+            </div>
+            <Link href="/dashboard" className="btn btn-ghost shrink-0" onClick={e => e.stopPropagation()}>
+              Back
+            </Link>
+          </div>
         </div>
       ) : null}
     </div>

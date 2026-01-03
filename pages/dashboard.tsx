@@ -4669,16 +4669,28 @@ export default function Dashboard() {
                                                                 : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
 
                                                               return (
-                                                                <div key={`${qid}-step-${stepNum}`} className="flex items-start gap-2">
-                                                                  <div className="w-12 shrink-0 pt-0.5 text-right">
-                                                                    <div className={Number.isFinite(awarded) && awarded > 0 ? 'text-green-500 text-xs' : 'text-white/60 text-xs'}>
-                                                                      {Number.isFinite(awarded) ? `${awarded}` : '0'}
-                                                                    </div>
-                                                                  </div>
+                                                                <div key={`${qid}-step-${stepNum}`} className="flex items-start gap-3">
                                                                   <div className="min-w-0 flex-1">
                                                                     {line}
-                                                                    {feedbackText ? (
-                                                                      <div className="text-xs text-white/70 mt-1">{feedbackText}</div>
+                                                                  </div>
+                                                                  <div className="shrink-0 flex items-start gap-2">
+                                                                    <span
+                                                                      className={isCorrect ? 'text-green-500' : 'text-red-500'}
+                                                                      aria-label={isCorrect ? 'Correct step' : 'Incorrect step'}
+                                                                      title={isCorrect ? 'Correct' : 'Incorrect'}
+                                                                    >
+                                                                      <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                        {isCorrect ? (
+                                                                          <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
+                                                                        ) : (
+                                                                          <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
+                                                                        )}
+                                                                      </svg>
+                                                                    </span>
+                                                                    {!isCorrect ? (
+                                                                      <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                                                                        {(feedbackText || 'Check this step').slice(0, 160)}
+                                                                      </div>
                                                                     ) : null}
                                                                   </div>
                                                                 </div>
@@ -4927,16 +4939,28 @@ export default function Dashboard() {
                                                                                         : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
 
                                                                                       return (
-                                                                                        <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-2">
-                                                                                          <div className="w-12 shrink-0 pt-0.5 text-right">
-                                                                                            <div className={Number.isFinite(awarded) && awarded > 0 ? 'text-green-500 text-xs' : 'text-white/60 text-xs'}>
-                                                                                              {Number.isFinite(awarded) ? `${Math.trunc(awarded)}` : '0'}
-                                                                                            </div>
-                                                                                          </div>
+                                                                                        <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-3">
                                                                                           <div className="min-w-0 flex-1">
                                                                                             {line}
-                                                                                            {feedbackText ? (
-                                                                                              <div className="text-xs text-white/70 mt-1">{feedbackText}</div>
+                                                                                          </div>
+                                                                                          <div className="shrink-0 flex items-start gap-2">
+                                                                                            <span
+                                                                                              className={isCorrect ? 'text-green-500' : 'text-red-500'}
+                                                                                              aria-label={isCorrect ? 'Correct step' : 'Incorrect step'}
+                                                                                              title={isCorrect ? 'Correct' : 'Incorrect'}
+                                                                                            >
+                                                                                              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                                                {isCorrect ? (
+                                                                                                  <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
+                                                                                                ) : (
+                                                                                                  <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
+                                                                                                )}
+                                                                                              </svg>
+                                                                                            </span>
+                                                                                            {!isCorrect ? (
+                                                                                              <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                                                                                                {(feedbackText || 'Check this step').slice(0, 160)}
+                                                                                              </div>
                                                                                             ) : null}
                                                                                           </div>
                                                                                         </div>

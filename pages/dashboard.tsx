@@ -596,6 +596,8 @@ export default function Dashboard() {
   const [adminSelectedSubmissionDetail, setAdminSelectedSubmissionDetail] = useState<any | null>(null)
   const [adminSelectedSubmissionLoading, setAdminSelectedSubmissionLoading] = useState(false)
   const [adminSelectedSubmissionError, setAdminSelectedSubmissionError] = useState<string | null>(null)
+  const [adminRegradeLoading, setAdminRegradeLoading] = useState(false)
+  const [adminRegradeError, setAdminRegradeError] = useState<string | null>(null)
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
   const [assignmentSolutionsLoading, setAssignmentSolutionsLoading] = useState(false)
   const [assignmentSolutionsError, setAssignmentSolutionsError] = useState<string | null>(null)
@@ -1775,6 +1777,32 @@ export default function Dashboard() {
       setAdminSelectedSubmissionError(err?.message || 'Network error')
     } finally {
       setAdminSelectedSubmissionLoading(false)
+    }
+  }
+
+  async function adminRegradeSubmission(sessionId: string, assignmentId: string, userId: string) {
+    if (!isAdmin) return
+    if (!userId) return
+    if (adminRegradeLoading) return
+
+    setAdminRegradeError(null)
+    setAdminRegradeLoading(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/grade?userId=${encodeURIComponent(userId)}&force=1`,
+        { credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAdminRegradeError(data?.message || `Failed to re-grade (${res.status})`)
+        return
+      }
+
+      void fetchAdminSubmissionDetail(sessionId, assignmentId, userId)
+    } catch (err: any) {
+      setAdminRegradeError(err?.message || 'Network error')
+    } finally {
+      setAdminRegradeLoading(false)
     }
   }
 
@@ -4795,6 +4823,7 @@ export default function Dashboard() {
                                                         const submission = detail?.submission
                                                         const grade = detail?.grade
                                                         const gradingJson = detail?.gradingJson
+                                                        const rawGeminiOutput = String(detail?.rawGeminiOutput || '')
                                                         const responsesByQ = detail?.responses?.byQuestionId || {}
                                                         const gradeResults: any[] = Array.isArray(grade?.results) ? grade.results : []
                                                         const gradeByQ = new Map<string, any>()
@@ -4828,6 +4857,23 @@ export default function Dashboard() {
                                                               ) : (
                                                                 <div className="text-xs text-white/70 mt-1">Not graded yet.</div>
                                                               )}
+
+                                                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <button
+                                                                  type="button"
+                                                                  className="btn btn-secondary text-xs"
+                                                                  disabled={adminRegradeLoading}
+                                                                  onClick={() => {
+                                                                    if (!expandedSessionId || !selectedAssignment?.id || !adminSelectedSubmissionUserId) return
+                                                                    void adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), String(adminSelectedSubmissionUserId))
+                                                                  }}
+                                                                >
+                                                                  {adminRegradeLoading ? 'Re-grading…' : 'Re-grade this submission'}
+                                                                </button>
+                                                                {adminRegradeError ? (
+                                                                  <div className="text-xs text-red-600">{adminRegradeError}</div>
+                                                                ) : null}
+                                                              </div>
                                                             </div>
 
                                                             {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length ? (
@@ -4922,6 +4968,17 @@ export default function Dashboard() {
                                                                   <pre className="text-xs font-mono whitespace-pre-wrap break-words">{JSON.stringify(gradingJson, null, 2)}</pre>
                                                                 ) : (
                                                                   <div className="text-sm text-white/60">No grade JSON yet.</div>
+                                                                )}
+                                                              </div>
+                                                            </div>
+
+                                                            <div className="pt-2">
+                                                              <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                                <div className="text-xs text-white/70 mb-1">Raw Gemini output (parser input)</div>
+                                                                {rawGeminiOutput.trim() ? (
+                                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{rawGeminiOutput}</pre>
+                                                                ) : (
+                                                                  <div className="text-sm text-white/60">Not available for this grade (requires re-grade after migration).</div>
                                                                 )}
                                                               </div>
                                                             </div>

@@ -136,6 +136,9 @@ model AssignmentGrade {
   // Shape: [{ questionId: string, correctness: 'correct'|'incorrect' }]
   results      Json
 
+  // Raw model output used by the deterministic parser (admin debug).
+  rawGeminiOutput String? @db.Text
+
   earnedPoints Int
   totalPoints  Int
   percentage   Float

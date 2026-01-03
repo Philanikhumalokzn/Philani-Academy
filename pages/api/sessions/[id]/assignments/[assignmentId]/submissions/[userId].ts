@@ -59,6 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })
 
   const gradingJson = grade ? { results: (grade as any).results } : null
+  const rawGeminiOutput = grade ? String((grade as any).rawGeminiOutput || '') : ''
 
   return res.status(200).json({
     submission,
@@ -66,5 +67,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     responses: { byQuestionId },
     grade,
     gradingJson,
+    rawGeminiOutput,
   })
 }

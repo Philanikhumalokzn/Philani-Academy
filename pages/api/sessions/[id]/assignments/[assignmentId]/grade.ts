@@ -491,6 +491,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     req.query.debug === '1' || req.query.debug === 'true' || req.headers['x-debug'] === '1'
   )
 
+  const forceRegrade = (role === 'admin') && (
+    req.query.force === '1' || req.query.force === 'true' || req.headers['x-force-regrade'] === '1'
+  )
+
   if (!targetUserId) {
     return res.status(400).json({ message: 'userId is required (teachers/admin). Students may omit userId.' })
   }
@@ -518,10 +522,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     where: { sessionId: sessionRecord.id, assignmentId: String(assignmentIdParam), userId: String(targetUserId) },
   })
 
-  if (existing) {
+  if (existing && !forceRegrade) {
     return res.status(200).json({
       graded: true,
       grade: existing,
+    })
+  }
+
+  if (existing && forceRegrade) {
+    // Unique per assignment+user, so delete the existing record before re-creating.
+    await (prisma as any).assignmentGrade.deleteMany({
+      where: { sessionId: sessionRecord.id, assignmentId: String(assignmentIdParam), userId: String(targetUserId) },
     })
   }
 
@@ -631,6 +642,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const raw = await generateWithGemini({ apiKey: geminiApiKey, model, content })
     if (!raw) return res.status(500).json({ message: 'Gemini returned empty grading JSON' })
 
+    const rawToStore = clampText(raw, 50000)
+
     // Deterministic parsing: treat Gemini output as text and extract only the fields we need.
     // This avoids depending on JSON.parse of potentially malformed JSON.
     const resultsArr: any[] = extractGeminiResultsFromText(raw, orderedQuestionIds, stepCountsByQuestionId)
@@ -717,12 +730,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const percentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0
 
-    const created = await prisma.assignmentGrade.create({
+    const created = await (prisma as any).assignmentGrade.create({
       data: {
         sessionId: sessionRecord.id,
         assignmentId: assignment.id,
         userId: String(targetUserId),
         results: normalized as any,
+        rawGeminiOutput: rawToStore || null,
         earnedPoints,
         totalPoints,
         percentage,

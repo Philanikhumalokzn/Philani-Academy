@@ -111,6 +111,13 @@ function parseGeminiJsonStrict(rawText: string) {
   }
 }
 
+function getBestEffortJsonCandidate(rawText: string) {
+  const extracted = stripJsonNoise(extractJsonObject(rawText))
+  if (!extracted) return ''
+  const repaired = repairCommonJsonIssues(extracted)
+  return closeTruncatedJson(repaired)
+}
+
 type GeminiResultItem = { questionId: string; correctness: 'correct' | 'incorrect' }
 
 type GeminiStepItem = {
@@ -243,6 +250,43 @@ async function generateWithGemini(opts: { apiKey: string; model: string; content
     const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('')
     return typeof text === 'string' ? text.trim() : ''
   }
+}
+
+async function validateAndFixJsonWithGemini(opts: {
+  apiKey: string
+  model: string
+  candidateJson: string
+  questionIds: string[]
+  stepCountsByQuestionId: Record<string, number>
+}) {
+  const { apiKey, model, candidateJson, questionIds, stepCountsByQuestionId } = opts
+
+  const boundedCandidate = clampText(candidateJson, 12000)
+  const boundedQuestionIds = questionIds.slice(0, 200)
+
+  const fixerInstruction =
+    'You are a JSON validator/fixer. Output ONLY valid JSON (RFC 8259). No markdown, no commentary. ' +
+    'Use double quotes for all keys/strings. Do not include trailing commas. ' +
+    'Return an object with exactly one key: "results" (an array). ' +
+    'The "results" array MUST contain exactly one entry per questionId in the provided list, in the same order. ' +
+    'Each entry MUST have keys in this exact order: questionId, totalMarks, earnedMarks, steps. ' +
+    'steps MUST be an array with exactly stepCount entries (stepCount provided per questionId). ' +
+    'Each step entry MUST have keys in this exact order: step, awardedMarks, isCorrect, feedback. ' +
+    'If a value is missing/invalid, fill a safe default: totalMarks>=1 int, earnedMarks>=0 int, awardedMarks>=0 int, isCorrect boolean, feedback string ("" allowed). ' +
+    'Never omit required keys.'
+
+  const schemaExample =
+    '{"results":[{"questionId":"...","totalMarks":1,"earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":""}]}]}'
+
+  const fixerPrompt =
+    `${fixerInstruction}\n\n` +
+    `RequiredQuestionIds (ordered):\n${boundedQuestionIds.map(id => `- ${id}`).join('\n')}\n\n` +
+    `StepCountsByQuestionId (integers):\n${JSON.stringify(stepCountsByQuestionId)}\n\n` +
+    `SchemaExample:\n${schemaExample}\n\n` +
+    `CandidateJsonToFix:\n${boundedCandidate}\n`
+
+  const raw = await generateWithGemini({ apiKey, model, content: fixerPrompt })
+  return typeof raw === 'string' ? raw.trim() : ''
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -409,7 +453,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const raw = await generateWithGemini({ apiKey: geminiApiKey, model, content })
     if (!raw) return res.status(500).json({ message: 'Gemini returned empty grading JSON' })
 
-    const parsed: any = parseGeminiJsonStrict(raw)
+    // Two-pass safety: (1) grade, (2) send the JSON back to Gemini to strictly validate/fix.
+    const questionIds = (assignment.questions || []).map((q: any) => String(q.id))
+    const stepCountsByQuestionId: Record<string, number> = {}
+    for (const qId of questionIds) stepCountsByQuestionId[qId] = (studentStepsByQ.get(qId) || []).length
+
+    const candidate = getBestEffortJsonCandidate(raw)
+    let fixed = ''
+    try {
+      fixed = await validateAndFixJsonWithGemini({
+        apiKey: geminiApiKey,
+        model,
+        candidateJson: candidate,
+        questionIds,
+        stepCountsByQuestionId,
+      })
+    } catch {
+      fixed = ''
+    }
+
+    // Strict mode: only trust the second-pass (validator/fixer) output.
+    if (!fixed) {
+      throw new Error('Gemini JSON validation pass returned empty output')
+    }
+
+    const parsed: any = parseGeminiJsonStrict(fixed)
 
     const resultsArr: any[] = Array.isArray(parsed?.results) ? parsed.results : []
     const normalized: GeminiMarksResultItem[] = []

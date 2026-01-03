@@ -3402,7 +3402,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         await waitForHostSize()
         if (cancelled) return
 
-        const options = {
+        const options: any = {
           configuration: {
             server: {
               scheme,
@@ -3422,10 +3422,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           },
         }
 
+        if (isOverlayMode) {
+          // Canvas-only overlay: pure black UI + vivid white ink.
+          options.configuration.theme = {
+            ink: {
+              color: '#FFFFFF',
+            },
+          }
+          options.override = {
+            cssClass: 'pa-iink-editor--black',
+          }
+          try {
+            host.style.background = '#000'
+            host.style.color = '#fff'
+          } catch {}
+        }
+
         const editor = await window.iink.Editor.load(host, 'MATH', options)
         if (cancelled) {
           editor.destroy?.()
           return
+        }
+
+        if (isOverlayMode) {
+          try {
+            ;(editor as any).theme = {
+              ink: {
+                color: '#FFFFFF',
+              },
+            }
+          } catch {}
+          try {
+            ;(editor as any).penStyle = {
+              color: '#FFFFFF',
+            }
+          } catch {}
         }
 
         editorInstanceRef.current = editor

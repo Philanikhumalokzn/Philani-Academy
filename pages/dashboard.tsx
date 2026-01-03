@@ -2059,8 +2059,17 @@ export default function Dashboard() {
     if (assignmentSubmitting) return
     setAssignmentSubmitError(null)
 
-    alert('Submitting will lock this assignment. You will no longer be able to edit your answers after submission.')
-    const ok = confirm('Submit this assignment now?')
+    if (!isTestStudent) {
+      alert('Submitting will lock this assignment. You will no longer be able to edit your answers after submission.')
+    }
+
+    const ok = confirm(
+      isTestStudent
+        ? assignmentSubmittedAt
+          ? 'Resubmit this assignment now? (Test account: editing stays unlocked)'
+          : 'Submit this assignment now? (Test account: editing stays unlocked)'
+        : 'Submit this assignment now?'
+    )
     if (!ok) return
 
     setAssignmentSubmitting(true)
@@ -2074,7 +2083,11 @@ export default function Dashboard() {
         throw new Error(data?.message || `Submit failed (${res.status})`)
       }
       setAssignmentSubmittedAt(data?.submittedAt ? String(data.submittedAt) : new Date().toISOString())
-      alert('Assignment submitted.')
+      if (isTestStudent) {
+        setAssignmentGradeSummary(null)
+        setAssignmentGradeError(null)
+      }
+      alert(isTestStudent && assignmentSubmittedAt ? 'Assignment resubmitted.' : 'Assignment submitted.')
       void fetchAssignmentResponses(sessionId, assignmentId)
     } catch (err: any) {
       setAssignmentSubmitError(err?.message || 'Submit failed')
@@ -4661,7 +4674,9 @@ export default function Dashboard() {
                                                       }
                                                     })()}
                                                   </div>
-                                                  <div className="text-xs text-white/70 mt-1">Editing is locked.</div>
+                                                  <div className="text-xs text-white/70 mt-1">
+                                                    {isTestStudent ? 'Test account: editing is unlocked.' : 'Editing is locked.'}
+                                                  </div>
 
                                                   {assignmentGradeError ? (
                                                     <div className="text-xs text-red-600 mt-2">{assignmentGradeError}</div>
@@ -4678,6 +4693,19 @@ export default function Dashboard() {
                                                           ? `${assignmentGradeSummary.percentage.toFixed(0)}%`
                                                           : '0%'})
                                                       </div>
+                                                    </div>
+                                                  ) : null}
+
+                                                  {isTestStudent ? (
+                                                    <div className="mt-3">
+                                                      <button
+                                                        type="button"
+                                                        className="btn btn-primary w-full"
+                                                        disabled={assignmentSubmitting}
+                                                        onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
+                                                      >
+                                                        {assignmentSubmitting ? 'Submitting…' : 'Resubmit Assignment'}
+                                                      </button>
                                                     </div>
                                                   ) : null}
                                                 </div>

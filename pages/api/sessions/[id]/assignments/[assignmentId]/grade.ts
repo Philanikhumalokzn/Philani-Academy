@@ -289,6 +289,51 @@ async function validateAndFixJsonWithGemini(opts: {
   return typeof raw === 'string' ? raw.trim() : ''
 }
 
+async function bounceJsonUntilValid(opts: {
+  apiKey: string
+  model: string
+  initialCandidate: string
+  questionIds: string[]
+  stepCountsByQuestionId: Record<string, number>
+  maxAttempts?: number
+}) {
+  const { apiKey, model, initialCandidate, questionIds, stepCountsByQuestionId } = opts
+  const maxAttempts = Math.max(2, Math.min(6, opts.maxAttempts ?? 4))
+
+  let candidate = clampText(initialCandidate, 12000)
+  let lastFixed = ''
+  let lastErr: any = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastFixed = await validateAndFixJsonWithGemini({
+      apiKey,
+      model,
+      candidateJson: candidate,
+      questionIds,
+      stepCountsByQuestionId,
+    })
+
+    if (!lastFixed) {
+      lastErr = new Error(`Gemini JSON validation pass returned empty output (attempt ${attempt}/${maxAttempts})`)
+      // Try again using the last candidate (already repaired/closed).
+      continue
+    }
+
+    try {
+      return parseGeminiJsonStrict(lastFixed)
+    } catch (err: any) {
+      lastErr = err
+      // Locally repair the fixer output (strip noise, remove trailing commas, fill missing values, close truncation)
+      // and send it back again. This is format-only; no re-grading context is included.
+      candidate = getBestEffortJsonCandidate(lastFixed) || clampText(lastFixed, 12000)
+    }
+  }
+
+  const excerpt = clampText(lastFixed || candidate, 300)
+  const msg = lastErr?.message || 'JSON parse error'
+  throw new Error(`${msg}. Raw JSON excerpt: ${excerpt}`)
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionIdParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
   const assignmentIdParam = Array.isArray((req.query as any).assignmentId) ? (req.query as any).assignmentId[0] : (req.query as any).assignmentId
@@ -459,25 +504,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     for (const qId of questionIds) stepCountsByQuestionId[qId] = (studentStepsByQ.get(qId) || []).length
 
     const candidate = getBestEffortJsonCandidate(raw)
-    let fixed = ''
-    try {
-      fixed = await validateAndFixJsonWithGemini({
-        apiKey: geminiApiKey,
-        model,
-        candidateJson: candidate,
-        questionIds,
-        stepCountsByQuestionId,
-      })
-    } catch {
-      fixed = ''
+    if (!candidate) {
+      throw new Error('Gemini returned empty grading JSON')
     }
 
-    // Strict mode: only trust the second-pass (validator/fixer) output.
-    if (!fixed) {
-      throw new Error('Gemini JSON validation pass returned empty output')
-    }
-
-    const parsed: any = parseGeminiJsonStrict(fixed)
+    const parsed: any = await bounceJsonUntilValid({
+      apiKey: geminiApiKey,
+      model,
+      initialCandidate: candidate,
+      questionIds,
+      stepCountsByQuestionId,
+      maxAttempts: 4,
+    })
 
     const resultsArr: any[] = Array.isArray(parsed?.results) ? parsed.results : []
     const normalized: GeminiMarksResultItem[] = []

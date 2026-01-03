@@ -564,6 +564,9 @@ export default function Dashboard() {
   const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
   const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex' | 'assignments' | 'responses'>('materials')
 
+  const [createLessonOverlayOpen, setCreateLessonOverlayOpen] = useState(false)
+  const [liveLessonSelectorOverlayOpen, setLiveLessonSelectorOverlayOpen] = useState(false)
+
   const [assignments, setAssignments] = useState<any[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
@@ -3166,263 +3169,6 @@ export default function Dashboard() {
 
     return (
       <div className="space-y-6">
-        {canCreateSession && (
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold">Create session</h2>
-            {!selectedGrade ? (
-              <div className="text-sm muted">Select a grade before creating a session.</div>
-            ) : (
-              <form onSubmit={createSession} className="space-y-3">
-                <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
-                <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
-                <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
-                <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
-
-                <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
-                  <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
-                  <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
-
-                  {([
-                    { key: 'engage', label: 'Engage' },
-                    { key: 'explore', label: 'Explore' },
-                    { key: 'explain', label: 'Explain' },
-                    { key: 'elaborate', label: 'Elaborate' },
-                    { key: 'evaluate', label: 'Evaluate' },
-                  ] as Array<{ key: LessonPhaseKey; label: string }>).map(phase => (
-                    <div key={phase.key} className="space-y-2">
-                      <p className="text-sm font-medium">{phase.label}</p>
-
-                      {(lessonScriptDraft[phase.key] || []).length === 0 ? (
-                        <div className="text-xs muted">No points yet.</div>
-                      ) : null}
-
-                      {(lessonScriptDraft[phase.key] || []).map((point, pointIndex) => (
-                        <div key={point.id} className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold">Point {pointIndex + 1}</p>
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              onClick={() => {
-                                setLessonScriptDraft(prev => ({
-                                  ...prev,
-                                  [phase.key]: (prev[phase.key] || []).filter(p => p.id !== point.id),
-                                }))
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                          <input
-                            className="input"
-                            placeholder="Point title (optional)"
-                            value={point.title}
-                            onChange={e => {
-                              const value = e.target.value
-                              setLessonScriptDraft(prev => ({
-                                ...prev,
-                                [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, title: value } : p)),
-                              }))
-                            }}
-                          />
-                          <textarea
-                            className="input min-h-[80px]"
-                            placeholder="Text module (headings, prompts, explanations)"
-                            value={point.text}
-                            onChange={e => {
-                              const value = e.target.value
-                              setLessonScriptDraft(prev => ({
-                                ...prev,
-                                [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, text: value } : p)),
-                              }))
-                            }}
-                          />
-
-                          <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-xs font-semibold">Diagram module</div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  onClick={() => {
-                                    if (!canAuthorLessonModules) return
-                                    if (typeof window !== 'undefined') {
-                                      persistLessonScriptDraftToStorage(lessonScriptDraft)
-                                    }
-                                    openDiagramPickerForPoint(phase.key, point.id)
-                                  }}
-                                  disabled={!canAuthorLessonModules || diagramUploading}
-                                >
-                                  {diagramUploading && diagramUploadTarget?.pointId === point.id ? 'Uploading…' : 'Open diagram module'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  onClick={() => {
-                                    setLessonScriptDraft(prev => ({
-                                      ...prev,
-                                      [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, diagramSnapshot: null } : p)),
-                                    }))
-                                  }}
-                                  disabled={!point.diagramSnapshot}
-                                >
-                                  Clear
-                                </button>
-                              </div>
-                            </div>
-                            <div className="text-xs muted">
-                              {point.diagramSnapshot ? `Saved: ${point.diagramSnapshot.title}` : 'No diagram saved to this point yet.'}
-                            </div>
-                          </div>
-
-                          <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-xs font-semibold">LaTeX module</div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  onClick={() => {
-                                    if (typeof window !== 'undefined') {
-                                      persistLessonScriptDraftToStorage(lessonScriptDraft)
-                                    }
-                                    showLessonAuthoringCanvasWindow({ phaseKey: phase.key, pointId: point.id })
-                                  }}
-                                  disabled={!canAuthorLessonModules}
-                                >
-                                  Open canvas
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  onClick={() => {
-                                    setLessonScriptDraft(prev => ({
-                                      ...prev,
-                                      [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, latex: '', latexHistory: [] } : p)),
-                                    }))
-                                  }}
-                                  disabled={!point.latex}
-                                >
-                                  Clear
-                                </button>
-                              </div>
-                            </div>
-                            <div className="text-xs muted">
-                              {point.latex ? `Saved: ${(point.latex || '').slice(0, 80)}${point.latex.length > 80 ? '…' : ''}` : 'No LaTeX saved to this point yet.'}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => {
-                          setLessonScriptDraft(prev => ({
-                            ...prev,
-                            [phase.key]: [...(prev[phase.key] || []), newPointDraft()],
-                          }))
-                        }}
-                      >
-                        Add point
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div>
-                  <button className="btn btn-primary" type="submit">Create</button>
-                </div>
-              </form>
-            )}
-          </div>
-        )}
-
-  {/* Lesson authoring should mirror delivery: use the same canvas overlay experience. */}
-
-        {isAdmin && selectedGrade && (
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold">Live lesson selector</h2>
-            <p className="text-sm muted">
-              Current lessons are determined by the scheduled timeframe. By default, the current lesson is live.
-              You can override by selecting a past session.
-            </p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="live-session"
-                  checked={!liveOverrideSessionId}
-                  onChange={async () => {
-                    setLiveSelectionBusy(true)
-                    try {
-                      await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
-                        method: 'PUT',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ grade: selectedGrade, overrideSessionId: '' }),
-                      })
-                      await fetchLiveSelectionForGrade(selectedGrade)
-                    } finally {
-                      setLiveSelectionBusy(false)
-                    }
-                  }}
-                  disabled={liveSelectionBusy}
-                />
-                <span>Auto (use the current lesson in its timeframe)</span>
-              </label>
-              {pastSessions.length === 0 ? (
-                <div className="text-sm muted">No past sessions to override yet.</div>
-              ) : (
-                <div className="space-y-2">
-                  {pastSessions.slice(0, 8).map(s => (
-                    <label key={s.id} className="flex items-start gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="live-session"
-                        checked={liveOverrideSessionId === String(s.id)}
-                        onChange={async () => {
-                          setLiveSelectionBusy(true)
-                          try {
-                            const res = await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
-                              method: 'PUT',
-                              credentials: 'same-origin',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ grade: selectedGrade, overrideSessionId: String(s.id) }),
-                            })
-                            if (!res.ok) {
-                              const data = await res.json().catch(() => ({}))
-                              alert(data?.message || `Failed to set live session (${res.status})`)
-                            }
-                            await fetchLiveSelectionForGrade(selectedGrade)
-                          } finally {
-                            setLiveSelectionBusy(false)
-                          }
-                        }}
-                        disabled={liveSelectionBusy}
-                      />
-                      <span className="min-w-0">
-                        <span className="font-medium break-words">{s.title}</span>
-                        <span className="block text-xs muted">{new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="text-sm">
-              <span className="font-medium">Resolved live session:</span>{' '}
-              {resolvedLiveSessionId && sessionById.get(resolvedLiveSessionId)
-                ? sessionById.get(resolvedLiveSessionId).title
-                : defaultCurrentSessionId && sessionById.get(defaultCurrentSessionId)
-                ? sessionById.get(defaultCurrentSessionId).title
-                : 'None'}
-            </div>
-          </div>
-        )}
-
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Current lesson — {activeGradeLabel}</h2>
           {sessionsError ? (
@@ -3517,8 +3263,347 @@ export default function Dashboard() {
           )}
         </div>
 
+        {canCreateSession && (
+          <>
+            <div className="card">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between gap-3 text-left"
+                onClick={() => setCreateLessonOverlayOpen(true)}
+              >
+                <span className="text-lg font-semibold">Create lesson</span>
+                <span className="text-sm muted">Open</span>
+              </button>
+            </div>
+
+            {createLessonOverlayOpen && (
+              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+                <div className="absolute inset-0 bg-black/40" onClick={() => setCreateLessonOverlayOpen(false)} />
+                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateLessonOverlayOpen(false)}>
+                  <div
+                    className="card h-full max-h-[92vh] overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="p-3 border-b flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold break-words">Create lesson</div>
+                        <div className="text-sm muted">Create a session for {activeGradeLabel} learners.</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setCreateLessonOverlayOpen(false)}
+                        aria-label="Close"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3">
+                      <div className="space-y-3">
+                        {!selectedGrade ? (
+                          <div className="text-sm muted">Select a grade before creating a session.</div>
+                        ) : (
+                          <form onSubmit={createSession} className="space-y-3">
+                            <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
+                            <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+                            <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
+                            <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
+                            <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
+
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
+                              <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
+                              <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
+
+                              {([
+                                { key: 'engage', label: 'Engage' },
+                                { key: 'explore', label: 'Explore' },
+                                { key: 'explain', label: 'Explain' },
+                                { key: 'elaborate', label: 'Elaborate' },
+                                { key: 'evaluate', label: 'Evaluate' },
+                              ] as Array<{ key: LessonPhaseKey; label: string }>).map(phase => (
+                                <div key={phase.key} className="space-y-2">
+                                  <p className="text-sm font-medium">{phase.label}</p>
+
+                                  {(lessonScriptDraft[phase.key] || []).length === 0 ? (
+                                    <div className="text-xs muted">No points yet.</div>
+                                  ) : null}
+
+                                  {(lessonScriptDraft[phase.key] || []).map((point, pointIndex) => (
+                                    <div key={point.id} className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="text-xs font-semibold">Point {pointIndex + 1}</p>
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost"
+                                          onClick={() => {
+                                            setLessonScriptDraft(prev => ({
+                                              ...prev,
+                                              [phase.key]: (prev[phase.key] || []).filter(p => p.id !== point.id),
+                                            }))
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                      <input
+                                        className="input"
+                                        placeholder="Point title (optional)"
+                                        value={point.title}
+                                        onChange={e => {
+                                          const value = e.target.value
+                                          setLessonScriptDraft(prev => ({
+                                            ...prev,
+                                            [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, title: value } : p)),
+                                          }))
+                                        }}
+                                      />
+                                      <textarea
+                                        className="input min-h-[80px]"
+                                        placeholder="Text module (headings, prompts, explanations)"
+                                        value={point.text}
+                                        onChange={e => {
+                                          const value = e.target.value
+                                          setLessonScriptDraft(prev => ({
+                                            ...prev,
+                                            [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, text: value } : p)),
+                                          }))
+                                        }}
+                                      />
+
+                                      <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-xs font-semibold">Diagram module</div>
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              onClick={() => {
+                                                if (!canAuthorLessonModules) return
+                                                if (typeof window !== 'undefined') {
+                                                  persistLessonScriptDraftToStorage(lessonScriptDraft)
+                                                }
+                                                openDiagramPickerForPoint(phase.key, point.id)
+                                              }}
+                                              disabled={!canAuthorLessonModules || diagramUploading}
+                                            >
+                                              {diagramUploading && diagramUploadTarget?.pointId === point.id ? 'Uploading…' : 'Open diagram module'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              onClick={() => {
+                                                setLessonScriptDraft(prev => ({
+                                                  ...prev,
+                                                  [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, diagramSnapshot: null } : p)),
+                                                }))
+                                              }}
+                                              disabled={!point.diagramSnapshot}
+                                            >
+                                              Clear
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="text-xs muted">
+                                          {point.diagramSnapshot ? `Saved: ${point.diagramSnapshot.title}` : 'No diagram saved to this point yet.'}
+                                        </div>
+                                      </div>
+
+                                      <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-xs font-semibold">LaTeX module</div>
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              onClick={() => {
+                                                if (typeof window !== 'undefined') {
+                                                  persistLessonScriptDraftToStorage(lessonScriptDraft)
+                                                }
+                                                showLessonAuthoringCanvasWindow({ phaseKey: phase.key, pointId: point.id })
+                                              }}
+                                              disabled={!canAuthorLessonModules}
+                                            >
+                                              Open canvas
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              onClick={() => {
+                                                setLessonScriptDraft(prev => ({
+                                                  ...prev,
+                                                  [phase.key]: (prev[phase.key] || []).map(p => (p.id === point.id ? { ...p, latex: '', latexHistory: [] } : p)),
+                                                }))
+                                              }}
+                                              disabled={!point.latex}
+                                            >
+                                              Clear
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="text-xs muted">
+                                          {point.latex ? `Saved: ${(point.latex || '').slice(0, 80)}${point.latex.length > 80 ? '…' : ''}` : 'No LaTeX saved to this point yet.'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => {
+                                      setLessonScriptDraft(prev => ({
+                                        ...prev,
+                                        [phase.key]: [...(prev[phase.key] || []), newPointDraft()],
+                                      }))
+                                    }}
+                                  >
+                                    Add point
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div>
+                              <button className="btn btn-primary" type="submit">Create</button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Lesson authoring should mirror delivery: use the same canvas overlay experience. */}
+
+        {isAdmin && selectedGrade && (
+          <>
+            <div className="card">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between gap-3 text-left"
+                onClick={() => setLiveLessonSelectorOverlayOpen(true)}
+              >
+                <span className="text-lg font-semibold">Live lesson selector</span>
+                <span className="text-sm muted">Open</span>
+              </button>
+            </div>
+
+            {liveLessonSelectorOverlayOpen && (
+              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+                <div className="absolute inset-0 bg-black/40" onClick={() => setLiveLessonSelectorOverlayOpen(false)} />
+                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setLiveLessonSelectorOverlayOpen(false)}>
+                  <div
+                    className="card h-full max-h-[92vh] overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="p-3 border-b flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold break-words">Live lesson selector</div>
+                        <div className="text-sm muted">Override the automatically resolved live lesson.</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setLiveLessonSelectorOverlayOpen(false)}
+                        aria-label="Close"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3">
+                      <div className="space-y-3">
+                        <p className="text-sm muted">
+                          Current lessons are determined by the scheduled timeframe. By default, the current lesson is live.
+                          You can override by selecting a past session.
+                        </p>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name="live-session"
+                              checked={!liveOverrideSessionId}
+                              onChange={async () => {
+                                setLiveSelectionBusy(true)
+                                try {
+                                  await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
+                                    method: 'PUT',
+                                    credentials: 'same-origin',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ grade: selectedGrade, overrideSessionId: '' }),
+                                  })
+                                  await fetchLiveSelectionForGrade(selectedGrade)
+                                } finally {
+                                  setLiveSelectionBusy(false)
+                                }
+                              }}
+                              disabled={liveSelectionBusy}
+                            />
+                            <span>Auto (use the current lesson in its timeframe)</span>
+                          </label>
+                          {pastSessions.length === 0 ? (
+                            <div className="text-sm muted">No past sessions to override yet.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {pastSessions.slice(0, 8).map(s => (
+                                <label key={s.id} className="flex items-start gap-2 text-sm">
+                                  <input
+                                    type="radio"
+                                    name="live-session"
+                                    checked={liveOverrideSessionId === String(s.id)}
+                                    onChange={async () => {
+                                      setLiveSelectionBusy(true)
+                                      try {
+                                        const res = await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
+                                          method: 'PUT',
+                                          credentials: 'same-origin',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ grade: selectedGrade, overrideSessionId: String(s.id) }),
+                                        })
+                                        if (!res.ok) {
+                                          const data = await res.json().catch(() => ({}))
+                                          alert(data?.message || `Failed to set live session (${res.status})`)
+                                        }
+                                        await fetchLiveSelectionForGrade(selectedGrade)
+                                      } finally {
+                                        setLiveSelectionBusy(false)
+                                      }
+                                    }}
+                                    disabled={liveSelectionBusy}
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="font-medium break-words">{s.title}</span>
+                                    <span className="block text-xs muted">{new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}</span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-sm">
+                          <span className="font-medium">Resolved live session:</span>{' '}
+                          {resolvedLiveSessionId && sessionById.get(resolvedLiveSessionId)
+                            ? sessionById.get(resolvedLiveSessionId).title
+                            : defaultCurrentSessionId && sessionById.get(defaultCurrentSessionId)
+                            ? sessionById.get(defaultCurrentSessionId).title
+                            : 'None'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">Scheduled sessions — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold">Scheduled lesson — {activeGradeLabel}</h2>
           {isAdmin && (
             <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
               <div className="font-medium">Subscription gating</div>

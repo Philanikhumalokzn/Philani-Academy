@@ -417,7 +417,7 @@ function extractStepSlice(questionSegment: string, stepNumber: number) {
 
 function extractGeminiResultsFromText(rawText: string, questionIds: string[], stepCountsByQuestionId: Record<string, number>) {
   const blocks = extractQuestionBlocks(rawText)
-  const results: Array<{ questionId: string; totalMarks?: number; earnedMarks?: number; steps?: any[] }> = []
+  const results: Array<{ questionId: string; totalMarks?: number; earnedMarks?: number; steps?: any[]; hasStepSignals?: boolean }> = []
 
   for (const qId of questionIds) {
     const seg = extractQuestionSegment(rawText, qId, blocks)
@@ -426,11 +426,16 @@ function extractGeminiResultsFromText(rawText: string, questionIds: string[], st
 
     const stepCount = Math.max(0, Math.min(50, Math.trunc(Number(stepCountsByQuestionId[qId] ?? 0))))
     const steps: any[] = []
+    let hasStepSignals = false
     for (let step = 1; step <= stepCount; step += 1) {
       const stepSlice = extractStepSlice(seg, step)
       const awardedMarks = extractFirstInt(stepSlice, 'awardedMarks')
       const isCorrect = extractFirstBool(stepSlice, 'isCorrect')
       const feedback = extractFirstString(stepSlice, 'feedback')
+
+      if (awardedMarks != null || isCorrect != null || feedback != null) {
+        hasStepSignals = true
+      }
       steps.push({
         step,
         awardedMarks: awardedMarks == null ? 0 : awardedMarks,
@@ -444,6 +449,7 @@ function extractGeminiResultsFromText(rawText: string, questionIds: string[], st
       totalMarks: totalMarks == null ? undefined : totalMarks,
       earnedMarks: earnedMarks == null ? undefined : earnedMarks,
       steps,
+      hasStepSignals,
     })
   }
 
@@ -661,8 +667,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         steps.push({ step: i, awardedMarks, isCorrect, feedback: feedback || undefined })
       }
 
-      // Prefer step marks as the source of truth for earnedMarks when present.
-      const earnedMarks = (stepCount > 0 && Array.isArray(stepsArr) && stepsArr.length > 0)
+      // Prefer step marks as the source of truth for earnedMarks ONLY when the model actually
+      // provided step fields. The deterministic extractor always builds a steps[] array (default
+      // zeros), so we must not treat that as evidence of model-provided step marking.
+      const modelProvidedStepMarks = Boolean(found?.hasStepSignals)
+      const earnedMarks = (stepCount > 0 && modelProvidedStepMarks)
         ? clampInt(sumAwarded, 0, resolvedTotalMarks)
         : clampInt(found?.earnedMarks, 0, resolvedTotalMarks)
 

@@ -117,6 +117,35 @@ type GeminiMarksResultItem = {
   steps?: GeminiStepItem[]
 }
 
+function extractTotalMarksFromText(text: string) {
+  const t = (text || '').toLowerCase()
+  if (!t.trim()) return null
+
+  // Common patterns: "(3 marks)", "3 marks", "out of 3", "/3".
+  const candidates: number[] = []
+  const markRe = /\b(\d{1,3})\s*(?:marks?|pts?|points?)\b/g
+  for (const m of t.matchAll(markRe)) {
+    const n = Number(m[1])
+    if (Number.isFinite(n)) candidates.push(Math.trunc(n))
+  }
+
+  const outOfRe = /\bout\s+of\s+(\d{1,3})\b/g
+  for (const m of t.matchAll(outOfRe)) {
+    const n = Number(m[1])
+    if (Number.isFinite(n)) candidates.push(Math.trunc(n))
+  }
+
+  const slashRe = /\/(\d{1,3})\b/g
+  for (const m of t.matchAll(slashRe)) {
+    const n = Number(m[1])
+    if (Number.isFinite(n)) candidates.push(Math.trunc(n))
+  }
+
+  const best = candidates.filter(n => n > 0 && n <= 100)
+  if (!best.length) return null
+  return Math.max(...best)
+}
+
 function clampInt(value: unknown, min: number, max: number) {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return min
@@ -317,7 +346,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const questionBlocks = (assignment.questions || []).map((q: any) => {
     const qId = String(q.id)
-    const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
+    const configuredPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : null
     const studentLatex = clampText(responseByQ.get(qId) || '', MAX_TEXT)
     const studentSteps = studentStepsByQ.get(qId) || []
     const sol = solByQ.get(qId)
@@ -329,7 +358,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return (
       `QuestionId: ${qId}\n` +
-      `MaxPoints: ${maxPoints}\n` +
+      `ConfiguredPoints: ${configuredPoints == null ? '(none)' : configuredPoints}\n` +
       `StudentStepCount: ${studentSteps.length}\n` +
       (studentSteps.length ? `StudentSteps (1-indexed):\n${studentSteps.map((s, i) => `${i + 1}: ${clampText(s, 800)}`).join('\n')}\n` : '') +
       (prompt ? `TeacherPrompt:\n${prompt}\n` : '') +
@@ -350,11 +379,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
     'Award method marks per step based on TeacherPrompt / TeacherMarkingPlan and MaxPoints. ' +
     'Use StudentSteps as the ONLY step references (1-indexed) and return a steps[] entry for EVERY step 1..StudentStepCount. ' +
+    'You MUST set totalMarks for each question (integer >= 1). Infer it from TeacherPrompt / TeacherMarkingPlan when ConfiguredPoints is (none). ' +
     'awardedMarks must be an integer >=0; the sum of awardedMarks across steps must be <= MaxPoints and should reflect earnedMarks. ' +
     'Set earnedMarks as an integer 0..MaxPoints representing the total marks earned for that question. ' +
     'Be concise to save compute: for incorrect steps, feedback must be short (<=120 chars) and either a brief reason or the corrected step. ' +
     'Output schema EXACTLY:\n' +
-    '{"results":[{"questionId":"...","earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":"..."}]}]}'
+    '{"results":[{"questionId":"...","totalMarks":1,"earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":"..."}]}]}'
 
   const content =
     `${instruction}\n\n` +
@@ -374,16 +404,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     for (const q of assignment.questions || []) {
       const qId = String(q.id)
-      const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
+      const configuredPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : null
       const stepCount = (studentStepsByQ.get(qId) || []).length
 
       const found: any = resultsArr.find(r => String(r?.questionId || '') === qId)
+
+      const sol = solByQ.get(qId)
+      const teacherPrompt = clampText((q as any)?.gradingPrompt || '', 8000)
+      const teacherPlan = clampText((sol?.teacherMarkingPlan || sol?.aiMarkingPlan || ''), 12000)
+      const inferredFromText = extractTotalMarksFromText(`${teacherPrompt}\n${teacherPlan}`)
+      const inferredFromModel = clampInt(found?.totalMarks, 1, 100)
+      const resolvedTotalMarks = configuredPoints != null
+        ? configuredPoints
+        : Math.max(1, inferredFromText || 1, inferredFromModel || 1)
 
       const stepsArr: any[] = Array.isArray(found?.steps)
         ? found.steps
         : (Array.isArray(found?.stepFeedback) ? found.stepFeedback : [])
 
-      let remaining = maxPoints
+      let remaining = resolvedTotalMarks
       let sumAwarded = 0
       const steps: GeminiStepItem[] = []
       for (let i = 1; i <= stepCount; i += 1) {
@@ -400,30 +439,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Prefer step marks as the source of truth for earnedMarks when present.
       const earnedMarks = (stepCount > 0 && Array.isArray(stepsArr) && stepsArr.length > 0)
-        ? clampInt(sumAwarded, 0, maxPoints)
-        : clampInt(found?.earnedMarks, 0, maxPoints)
+        ? clampInt(sumAwarded, 0, resolvedTotalMarks)
+        : clampInt(found?.earnedMarks, 0, resolvedTotalMarks)
 
-      const correctness: 'correct' | 'incorrect' = earnedMarks >= maxPoints ? 'correct' : 'incorrect'
+      const correctness: 'correct' | 'incorrect' = earnedMarks >= resolvedTotalMarks ? 'correct' : 'incorrect'
 
       normalized.push({
         questionId: qId,
         earnedMarks,
-        totalMarks: maxPoints,
+        totalMarks: resolvedTotalMarks,
         correctness,
         steps,
       })
     }
 
-    const totalPoints = (assignment.questions || []).reduce((sum: number, q: any) => {
-      const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
-      return sum + maxPoints
-    }, 0)
+    const totalPoints = normalized.reduce((sum: number, r) => sum + clampInt(r?.totalMarks, 1, 100), 0)
 
-    const earnedPoints = (assignment.questions || []).reduce((sum: number, q: any) => {
-      const qId = String(q.id)
-      const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
-      const earned = normalized.find(r => r.questionId === qId)?.earnedMarks
-      return sum + clampInt(earned, 0, maxPoints)
+    const earnedPoints = normalized.reduce((sum: number, r) => {
+      const total = clampInt(r?.totalMarks, 1, 100)
+      return sum + clampInt(r?.earnedMarks, 0, total)
     }, 0)
 
     const percentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0

@@ -584,6 +584,7 @@ export default function Dashboard() {
   const [assignmentGradeError, setAssignmentGradeError] = useState<string | null>(null)
   const [assignmentGradeByQuestionId, setAssignmentGradeByQuestionId] = useState<Record<string, 'correct' | 'incorrect'>>({})
   const [assignmentEarnedMarksByQuestionId, setAssignmentEarnedMarksByQuestionId] = useState<Record<string, number>>({})
+  const [assignmentTotalMarksByQuestionId, setAssignmentTotalMarksByQuestionId] = useState<Record<string, number>>({})
   const [assignmentStepFeedbackByQuestionId, setAssignmentStepFeedbackByQuestionId] = useState<Record<string, any[]>>({})
   const [assignmentGradeSummary, setAssignmentGradeSummary] = useState<{ earnedPoints: number; totalPoints: number; percentage: number } | null>(null)
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
@@ -1774,6 +1775,7 @@ export default function Dashboard() {
         } else {
           setAssignmentGradeByQuestionId({})
           setAssignmentEarnedMarksByQuestionId({})
+          setAssignmentTotalMarksByQuestionId({})
           setAssignmentStepFeedbackByQuestionId({})
           setAssignmentGradeSummary(null)
           setAssignmentGradeError(null)
@@ -1785,6 +1787,7 @@ export default function Dashboard() {
       setAssignmentSubmittedAt(null)
       setAssignmentGradeByQuestionId({})
       setAssignmentEarnedMarksByQuestionId({})
+      setAssignmentTotalMarksByQuestionId({})
       setAssignmentStepFeedbackByQuestionId({})
       setAssignmentGradeSummary(null)
     } catch (err: any) {
@@ -1793,6 +1796,7 @@ export default function Dashboard() {
       setAssignmentSubmittedAt(null)
       setAssignmentGradeByQuestionId({})
       setAssignmentEarnedMarksByQuestionId({})
+      setAssignmentTotalMarksByQuestionId({})
       setAssignmentStepFeedbackByQuestionId({})
       setAssignmentGradeSummary(null)
     } finally {
@@ -1815,6 +1819,7 @@ export default function Dashboard() {
       if (!res.ok) {
         setAssignmentGradeByQuestionId({})
         setAssignmentEarnedMarksByQuestionId({})
+        setAssignmentTotalMarksByQuestionId({})
         setAssignmentStepFeedbackByQuestionId({})
         setAssignmentGradeSummary(null)
         // 409 = assignment not submitted yet; keep silent.
@@ -1828,6 +1833,7 @@ export default function Dashboard() {
       const results: any[] = Array.isArray(grade?.results) ? grade.results : []
       const next: Record<string, 'correct' | 'incorrect'> = {}
       const earned: Record<string, number> = {}
+      const totals: Record<string, number> = {}
       const stepsByQ: Record<string, any[]> = {}
       for (const r of results) {
         const qid = String(r?.questionId || '')
@@ -1839,12 +1845,17 @@ export default function Dashboard() {
           const n = Number(r.earnedMarks)
           if (Number.isFinite(n)) earned[qid] = Math.trunc(n)
         }
+        if (typeof r?.totalMarks === 'number' || typeof r?.totalMarks === 'string') {
+          const n = Number(r.totalMarks)
+          if (Number.isFinite(n)) totals[qid] = Math.trunc(n)
+        }
         const stepArr = Array.isArray(r?.steps) ? r.steps : (Array.isArray(r?.stepFeedback) ? r.stepFeedback : null)
         if (Array.isArray(stepArr)) stepsByQ[qid] = stepArr
       }
 
       setAssignmentGradeByQuestionId(next)
       setAssignmentEarnedMarksByQuestionId(earned)
+      setAssignmentTotalMarksByQuestionId(totals)
       setAssignmentStepFeedbackByQuestionId(stepsByQ)
       setAssignmentGradeSummary({
         earnedPoints: Number(grade?.earnedPoints || 0) || 0,
@@ -1854,6 +1865,7 @@ export default function Dashboard() {
     } catch (err: any) {
       setAssignmentGradeByQuestionId({})
       setAssignmentEarnedMarksByQuestionId({})
+      setAssignmentTotalMarksByQuestionId({})
       setAssignmentStepFeedbackByQuestionId({})
       setAssignmentGradeSummary(null)
       setAssignmentGradeError(err?.message || 'Network error')
@@ -4258,7 +4270,10 @@ export default function Dashboard() {
                                                 {isLearner && assignmentSubmittedAt && q?.id ? (
                                                   (() => {
                                                     const qid = String(q.id)
-                                                    const maxPoints = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
+                                                    const fallbackMax = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
+                                                    const maxPoints = (typeof assignmentTotalMarksByQuestionId?.[qid] === 'number')
+                                                      ? assignmentTotalMarksByQuestionId[qid]
+                                                      : fallbackMax
                                                     const explicitEarned = assignmentEarnedMarksByQuestionId?.[qid]
                                                     const correctness = assignmentGradeByQuestionId?.[qid]
                                                     const earned = (typeof explicitEarned === 'number')

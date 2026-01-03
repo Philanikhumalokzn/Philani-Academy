@@ -35,7 +35,18 @@ function stripJsonNoise(text: string) {
 function repairCommonJsonIssues(text: string) {
   // Fix common model mistakes: trailing commas before } or ]
   // Example: {"a":1,}  or  [1,2,]
-  return (text || '').replace(/,\s*([}\]])/g, '$1')
+  let s = (text || '')
+
+  // Trailing commas before a closer
+  s = s.replace(/,\s*([}\]])/g, '$1')
+
+  // Missing values after a colon. Example: {"earnedMarks":}]}
+  // Insert a placeholder so JSON.parse can succeed; downstream normalization will clamp defaults.
+  s = s.replace(/:\s*(?=[}\]])/g, ': null')
+  s = s.replace(/:\s*(?=,)/g, ': null')
+  s = s.replace(/:\s*$/g, ': null')
+
+  return s
 }
 
 function closeTruncatedJson(text: string) {
@@ -377,11 +388,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     'You are a strict auto-grader. Return ONLY valid JSON (RFC 8259). No markdown, no commentary, no trailing commas. ' +
     'If TeacherMarkingPlan is present, treat it as the authoritative rubric (source of truth). ' +
     'If TeacherWorkedSolution is present, treat it as authoritative solution context. ' +
-    'Award method marks per step based on TeacherPrompt / TeacherMarkingPlan and MaxPoints. ' +
+    'Award method marks per step based on TeacherPrompt / TeacherMarkingPlan and totalMarks. ' +
     'Use StudentSteps as the ONLY step references (1-indexed) and return a steps[] entry for EVERY step 1..StudentStepCount. ' +
     'You MUST set totalMarks for each question (integer >= 1). Infer it from TeacherPrompt / TeacherMarkingPlan when ConfiguredPoints is (none). ' +
-    'awardedMarks must be an integer >=0; the sum of awardedMarks across steps must be <= MaxPoints and should reflect earnedMarks. ' +
-    'Set earnedMarks as an integer 0..MaxPoints representing the total marks earned for that question. ' +
+    'awardedMarks must be an integer >=0; the sum of awardedMarks across steps must be <= totalMarks and should reflect earnedMarks. ' +
+    'Set earnedMarks as an integer 0..totalMarks representing the total marks earned for that question. ' +
+    'Never omit a value: if unsure, use 0 (or null where appropriate), but ALWAYS output valid JSON. ' +
     'Be concise to save compute: for incorrect steps, feedback must be short (<=120 chars) and either a brief reason or the corrected step. ' +
     'Output schema EXACTLY:\n' +
     '{"results":[{"questionId":"...","totalMarks":1,"earnedMarks":0,"steps":[{"step":1,"awardedMarks":0,"isCorrect":false,"feedback":"..."}]}]}'

@@ -5424,9 +5424,10 @@ export default function Dashboard() {
       >
         {isMobile ? (
           isAdmin ? (
-            <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
-              <div className="relative sticky top-2 z-30">
-                <section
+            <div className="flex-1 flex flex-col py-4">
+              <div className="fixed inset-x-2 top-2 z-30">
+                <div className="relative">
+                  <section
                   data-mobile-chrome-ignore
                   className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
                   onDragEnter={(e) => {
@@ -5585,29 +5586,32 @@ export default function Dashboard() {
                     <BrandLogo height={36} className="drop-shadow-[0_16px_35px_rgba(3,5,20,0.6)]" />
                     <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
                   </div>
-                </section>
-                <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
+                  </section>
+                  <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
+                </div>
               </div>
 
-              <SectionNav />
-              <section className="min-w-0 space-y-6">
-                <OverviewSection />
-              </section>
+              <div className="pt-[248px] space-y-5">
+                <SectionNav />
+                <section className="min-w-0 space-y-6">
+                  <OverviewSection />
+                </section>
 
-              {status === 'authenticated' && (
-                <div className="pt-2 flex justify-center">
-                  <button
-                    type="button"
-                    className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
-                    onClick={() => signOut({ callbackUrl: '/' })}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
+                {status === 'authenticated' && (
+                  <div className="pt-2 flex justify-center">
+                    <button
+                      type="button"
+                      className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
+                      onClick={() => signOut({ callbackUrl: '/' })}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
+            <div className="flex-1 flex flex-col py-4">
               {mobilePanels.announcements && (
                 <div
                   className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -5629,7 +5633,8 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="relative sticky top-2 z-30">
+              <div className="fixed inset-x-2 top-2 z-30">
+              <div className="relative">
               <section
                 data-mobile-chrome-ignore
                 className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
@@ -5793,7 +5798,9 @@ export default function Dashboard() {
 
               <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
               </div>
+              </div>
 
+              <div className="pt-[248px] space-y-5">
               <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-white">Sessions</div>
@@ -5834,6 +5841,7 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+              </div>
             </div>
           )
         ) : (

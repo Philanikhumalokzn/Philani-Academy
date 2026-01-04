@@ -28,6 +28,9 @@ model User {
   grade     Grade?
   avatar    String?
   statusBio String? @db.VarChar(100)
+  // shared: visible only to shared groups (default)
+  // discoverable: shows up in Discover search + minimal profile is viewable
+  // private: only you + admins/instructors
   profileVisibility String @default("shared")
   dateOfBirth DateTime?
   phoneNumber String @default("")
@@ -59,6 +62,11 @@ model User {
 
   groupMemberships LearningGroupMember[]
   groupsCreated LearningGroup[] @relation("GroupCreatedBy")
+
+  receivedGroupInvites GroupInvite[] @relation("GroupInvitedUser")
+  sentGroupInvites GroupInvite[] @relation("GroupInvitedBy")
+  groupJoinRequests GroupJoinRequest[] @relation("GroupJoinRequestedBy")
+  notifications Notification[]
 }
 
 model LearningGroup {
@@ -70,10 +78,14 @@ model LearningGroup {
   createdBy     User?    @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   joinCode      String   @unique
   joinCodeActive Boolean @default(true)
+  allowJoinRequests Boolean @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   members       LearningGroupMember[]
+
+  invites       GroupInvite[]
+  joinRequests  GroupJoinRequest[]
 }
 
 model LearningGroupMember {
@@ -89,6 +101,56 @@ model LearningGroupMember {
   @@unique([groupId, userId])
   @@index([userId])
   @@index([groupId])
+}
+
+model GroupInvite {
+  id            String   @id @default(cuid())
+  groupId       String
+  invitedUserId String
+  invitedById   String?
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  respondedAt   DateTime?
+
+  group         LearningGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  invitedUser   User          @relation("GroupInvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedBy     User?         @relation("GroupInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, invitedUserId, status])
+  @@index([invitedUserId, status])
+  @@index([groupId, status])
+}
+
+model GroupJoinRequest {
+  id            String   @id @default(cuid())
+  groupId       String
+  requestedById String
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  respondedAt   DateTime?
+
+  group         LearningGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  requestedBy   User          @relation("GroupJoinRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, requestedById, status])
+  @@index([requestedById, status])
+  @@index([groupId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String?
+  body      String?
+  data      Json?
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
 
 model UserSubscription {

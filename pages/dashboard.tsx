@@ -36,6 +36,7 @@ const DASHBOARD_SECTIONS = [
   { id: 'announcements', label: 'Announcements', description: 'Communicate updates', roles: ['admin', 'teacher', 'student'] },
   { id: 'sessions', label: 'Sessions', description: 'Schedule classes & materials', roles: ['admin', 'teacher', 'student'] },
   { id: 'groups', label: 'Groups', description: 'Classmates & groupmates', roles: ['admin', 'teacher', 'student'] },
+  { id: 'discover', label: 'Discover', description: 'Find people & join groups', roles: ['admin', 'teacher', 'student'] },
   { id: 'users', label: 'Learners', description: 'Manage enrolments', roles: ['admin'] },
   { id: 'billing', label: 'Billing', description: 'Subscription plans', roles: ['admin'] }
 ] as const
@@ -740,6 +741,7 @@ export default function Dashboard() {
       type: string
       grade: string | null
       joinCodeActive: boolean
+      allowJoinRequests?: boolean
       membersCount: number
       createdAt: string
       updatedAt: string
@@ -767,6 +769,24 @@ export default function Dashboard() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<GroupMemberRow[]>([])
   const [selectedGroupLoading, setSelectedGroupLoading] = useState(false)
+  const [selectedGroupJoinCode, setSelectedGroupJoinCode] = useState<string | null>(null)
+  const [selectedGroupAllowJoinRequests, setSelectedGroupAllowJoinRequests] = useState<boolean>(true)
+  const [selectedGroupCreatedById, setSelectedGroupCreatedById] = useState<string | null>(null)
+  const [regenerateJoinCodeBusy, setRegenerateJoinCodeBusy] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteBusy, setInviteBusy] = useState(false)
+
+  const [discoverQuery, setDiscoverQuery] = useState('')
+  const [discoverLoading, setDiscoverLoading] = useState(false)
+  const [discoverError, setDiscoverError] = useState<string | null>(null)
+  const [discoverResults, setDiscoverResults] = useState<any[]>([])
+  const [discoverSelectedUser, setDiscoverSelectedUser] = useState<any | null>(null)
+  const [discoverUserLoading, setDiscoverUserLoading] = useState(false)
+
+  const [actionInvites, setActionInvites] = useState<any[]>([])
+  const [actionJoinRequests, setActionJoinRequests] = useState<any[]>([])
+  const [activityFeed, setActivityFeed] = useState<any[]>([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
 
   const [createGroupName, setCreateGroupName] = useState('')
   const [createGroupType, setCreateGroupType] = useState<'class' | 'cohort' | 'study_group'>('study_group')
@@ -904,6 +924,9 @@ export default function Dashboard() {
       const nextMembers = Array.isArray(data?.members) ? data.members : []
       setSelectedGroupMembers(nextMembers)
       setSelectedGroupId(groupId)
+      setSelectedGroupJoinCode(typeof data?.joinCode === 'string' && data.joinCode.trim() ? data.joinCode.trim() : null)
+      setSelectedGroupAllowJoinRequests(typeof data?.allowJoinRequests === 'boolean' ? data.allowJoinRequests : true)
+      setSelectedGroupCreatedById(typeof data?.createdById === 'string' ? data.createdById : null)
     } catch (err: any) {
       alert(err?.message || 'Failed to load group')
       setSelectedGroupMembers([])
@@ -912,14 +935,130 @@ export default function Dashboard() {
     }
   }, [])
 
+  const loadNotifications = useCallback(async () => {
+    if (status !== 'authenticated') return
+    setNotificationsLoading(true)
+    try {
+      const res = await fetch('/api/notifications', { credentials: 'same-origin' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed to load notifications')
+      setActionInvites(Array.isArray(data?.invites) ? data.invites : [])
+      setActionJoinRequests(Array.isArray(data?.joinRequests) ? data.joinRequests : [])
+      setActivityFeed(Array.isArray(data?.activity) ? data.activity : [])
+    } catch (err: any) {
+      console.warn('loadNotifications error', err)
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }, [status])
+
+  const searchDiscover = useCallback(async (query: string) => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setDiscoverResults([])
+      return
+    }
+    setDiscoverLoading(true)
+    setDiscoverError(null)
+    try {
+      const res = await fetch(`/api/discover/users?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Search failed')
+      setDiscoverResults(Array.isArray(data) ? data : [])
+    } catch (err: any) {
+      setDiscoverError(err?.message || 'Search failed')
+    } finally {
+      setDiscoverLoading(false)
+    }
+  }, [])
+
+  const openDiscoverUser = useCallback(async (userId: string) => {
+    setDiscoverSelectedUser(null)
+    setDiscoverUserLoading(true)
+    try {
+      const res = await fetch(`/api/discover/user/${encodeURIComponent(userId)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed to load profile')
+      setDiscoverSelectedUser(data)
+    } catch (err: any) {
+      setDiscoverError(err?.message || 'Failed to load profile')
+    } finally {
+      setDiscoverUserLoading(false)
+    }
+  }, [])
+
+  const requestJoinGroup = useCallback(async (groupId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(groupId)}/request-join`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed to request to join')
+      await loadNotifications()
+      alert('Request sent')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to request to join')
+    }
+  }, [loadNotifications])
+
+  const respondInvite = useCallback(async (inviteId: string, action: 'accept' | 'decline') => {
+    try {
+      const res = await fetch(`/api/groups/invites/${encodeURIComponent(inviteId)}/respond`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed')
+      await loadNotifications()
+      await loadMyGroups()
+    } catch (err: any) {
+      alert(err?.message || 'Failed')
+    }
+  }, [loadMyGroups, loadNotifications])
+
+  const respondJoinRequest = useCallback(async (requestId: string, action: 'accept' | 'decline') => {
+    try {
+      const res = await fetch(`/api/groups/requests/${encodeURIComponent(requestId)}/respond`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed')
+      await loadNotifications()
+      if (selectedGroupId) await loadGroupMembers(selectedGroupId)
+    } catch (err: any) {
+      alert(err?.message || 'Failed')
+    }
+  }, [loadGroupMembers, loadNotifications, selectedGroupId])
+
   useEffect(() => {
     if (dashboardSectionOverlay !== 'groups') return
     setSelectedGroupId(null)
     setSelectedGroupMembers([])
+    setSelectedGroupJoinCode(null)
+    setSelectedGroupAllowJoinRequests(true)
+    setSelectedGroupCreatedById(null)
+    setInviteEmail('')
     setProfilePeek(null)
     setProfilePeekError(null)
     void loadMyGroups()
-  }, [dashboardSectionOverlay, loadMyGroups])
+    void loadNotifications()
+  }, [dashboardSectionOverlay, loadMyGroups, loadNotifications])
+
+  useEffect(() => {
+    if (dashboardSectionOverlay !== 'discover') return
+    setDiscoverError(null)
+    setDiscoverResults([])
+    setDiscoverSelectedUser(null)
+    void loadNotifications()
+  }, [dashboardSectionOverlay, loadNotifications])
 
   const createGroup = useCallback(async () => {
     const name = createGroupName.trim()
@@ -988,6 +1127,59 @@ export default function Dashboard() {
       setJoinBusy(false)
     }
   }, [joinCode, loadGroupMembers, loadMyGroups])
+
+  const regenerateSelectedGroupJoinCode = useCallback(async () => {
+    if (!selectedGroupId) return
+    setRegenerateJoinCodeBusy(true)
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(selectedGroupId)}/regenerate-join-code`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to regenerate (${res.status})`)
+      const code = typeof data?.joinCode === 'string' ? data.joinCode.trim() : ''
+      setSelectedGroupJoinCode(code || null)
+      if (code) {
+        try {
+          await navigator.clipboard?.writeText(code)
+        } catch {
+          // ignore
+        }
+      }
+      alert(code ? `New join code copied: ${code}` : 'Join code regenerated')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to regenerate join code')
+    } finally {
+      setRegenerateJoinCodeBusy(false)
+    }
+  }, [selectedGroupId])
+
+  const sendSelectedGroupInvite = useCallback(async () => {
+    if (!selectedGroupId) return
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) return
+    setInviteBusy(true)
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(selectedGroupId)}/invite`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to invite (${res.status})`)
+      setInviteEmail('')
+      await loadNotifications()
+      alert('Invite sent')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to send invite')
+    } finally {
+      setInviteBusy(false)
+    }
+  }, [inviteEmail, loadNotifications, selectedGroupId])
 
   const openProfilePeek = useCallback(async (userId: string) => {
     if (!userId) return
@@ -5205,6 +5397,105 @@ export default function Dashboard() {
 
             {selectedGroupId && (
               <section className="space-y-2">
+                {(() => {
+                  const myId = (session as any)?.user?.id as string | undefined
+                  const membership = myGroups.find((g) => g.group.id === selectedGroupId)
+                  const myRole = membership?.memberRole || ''
+                  const canManage =
+                    normalizedRole === 'admin' ||
+                    normalizedRole === 'teacher' ||
+                    myRole === 'owner' ||
+                    myRole === 'instructor' ||
+                    (myId && selectedGroupCreatedById && myId === selectedGroupCreatedById)
+
+                  if (!canManage) return null
+
+                  const pendingForGroup = actionJoinRequests.filter((r) => String(r?.groupId || r?.group?.id || '') === selectedGroupId)
+
+                  return (
+                    <>
+                      <div className="card p-3 space-y-3">
+                        <div className="text-sm font-semibold text-white">Join code</div>
+                        {selectedGroupJoinCode ? (
+                          <div className="flex items-center gap-2">
+                            <input className="input flex-1" value={selectedGroupJoinCode} readOnly />
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard?.writeText(selectedGroupJoinCode)
+                                  alert('Copied')
+                                } catch {
+                                  alert('Unable to copy')
+                                }
+                              }}
+                            >
+                              Copy
+                            </button>
+                            <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
+                              {regenerateJoinCodeBusy ? 'Regenerating…' : 'Regenerate'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm muted flex-1">Join code hidden for members.</div>
+                            <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
+                              {regenerateJoinCodeBusy ? 'Regenerating…' : 'Regenerate'}
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="text-sm font-semibold text-white">Invite by email</div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="input flex-1"
+                            placeholder="learner@example.com"
+                            value={inviteEmail}
+                            onChange={(e) => setInviteEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                void sendSelectedGroupInvite()
+                              }
+                            }}
+                          />
+                          <button type="button" className="btn btn-secondary" disabled={inviteBusy || !inviteEmail.trim()} onClick={() => void sendSelectedGroupInvite()}>
+                            {inviteBusy ? 'Sending…' : 'Invite'}
+                          </button>
+                        </div>
+
+                        {selectedGroupAllowJoinRequests && (
+                          <div className="text-xs muted">Learners can also request to join from Discover (if your profile is discoverable).</div>
+                        )}
+                      </div>
+
+                      <div className="card p-3 space-y-2">
+                        <div className="text-sm font-semibold text-white">Join requests</div>
+                        {notificationsLoading ? (
+                          <div className="text-sm muted">Loading…</div>
+                        ) : pendingForGroup.length === 0 ? (
+                          <div className="text-sm muted">No pending requests.</div>
+                        ) : (
+                          <div className="grid gap-2">
+                            {pendingForGroup.map((r: any) => (
+                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                                <div className="text-sm text-white/90">
+                                  {(r.requestedBy?.name || r.requestedBy?.email || 'Learner')} wants to join
+                                </div>
+                                <div className="mt-2 flex gap-2">
+                                  <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
+                                  <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
+
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-white">Members</div>
                   {selectedGroupLoading && <div className="text-xs muted">Loading…</div>}
@@ -5305,6 +5596,152 @@ export default function Dashboard() {
                 ) : null}
               </section>
             )}
+          </div>
+        )
+      case 'discover':
+        return (
+          <div className="space-y-3">
+            <section className="card p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-white">Notifications</div>
+                <button type="button" className="btn btn-ghost" onClick={() => void loadNotifications()} disabled={notificationsLoading}>
+                  Refresh
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-white">Invitations</div>
+                {notificationsLoading ? (
+                  <div className="text-sm muted">Loading…</div>
+                ) : actionInvites.length === 0 ? (
+                  <div className="text-sm muted">No invitations.</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {actionInvites.map((inv: any) => (
+                      <div key={inv.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-sm text-white/90">Join {inv.group?.name || 'a group'}</div>
+                        <div className="text-xs muted">Invited by {(inv.invitedBy?.name || inv.invitedBy?.email || 'someone')}</div>
+                        <div className="mt-2 flex gap-2">
+                          <button type="button" className="btn btn-secondary" onClick={() => void respondInvite(inv.id, 'accept')}>Accept</button>
+                          <button type="button" className="btn btn-ghost" onClick={() => void respondInvite(inv.id, 'decline')}>Decline</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-white">Join requests (your groups)</div>
+                {notificationsLoading ? (
+                  <div className="text-sm muted">Loading…</div>
+                ) : actionJoinRequests.length === 0 ? (
+                  <div className="text-sm muted">No pending join requests.</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {actionJoinRequests.map((r: any) => (
+                      <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-sm text-white/90">{(r.requestedBy?.name || r.requestedBy?.email || 'Learner')} → {r.group?.name || 'Group'}</div>
+                        <div className="mt-2 flex gap-2">
+                          <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
+                          <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-white">Activity</div>
+                {notificationsLoading ? (
+                  <div className="text-sm muted">Loading…</div>
+                ) : activityFeed.length === 0 ? (
+                  <div className="text-sm muted">No recent activity.</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {activityFeed.slice(0, 10).map((n: any) => (
+                      <div key={n.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="text-sm text-white/90">{n.title || n.type}</div>
+                        {n.body && <div className="text-xs text-white/75 mt-1">{n.body}</div>}
+                        <div className="text-[11px] muted mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="card p-3 space-y-3">
+              <div className="text-sm font-semibold text-white">Discover</div>
+              <div className="flex items-center gap-2">
+                <input
+                  className="input flex-1"
+                  placeholder="Search by name, email, or school"
+                  value={discoverQuery}
+                  onChange={(e) => setDiscoverQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void searchDiscover(discoverQuery)
+                    }
+                  }}
+                />
+                <button type="button" className="btn btn-secondary" disabled={discoverLoading || discoverQuery.trim().length < 2} onClick={() => void searchDiscover(discoverQuery)}>
+                  {discoverLoading ? 'Searching…' : 'Search'}
+                </button>
+              </div>
+              {discoverError && <div className="text-sm text-red-200">{discoverError}</div>}
+
+              {discoverResults.length > 0 && (
+                <div className="grid gap-2">
+                  {discoverResults.map((u: any) => (
+                    <button key={u.id} type="button" className="card p-3 text-left" onClick={() => void openDiscoverUser(u.id)}>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                          {u.avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={u.avatar} alt={u.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-semibold">{String(u.name || 'U').slice(0, 1).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-white truncate">{u.name}</div>
+                          <div className="text-xs muted truncate">{u.schoolName ? `${u.schoolName} • ` : ''}{u.statusBio || ''}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {discoverUserLoading && <div className="text-sm muted">Loading profile…</div>}
+              {discoverSelectedUser && (
+                <div className="card p-3 space-y-2">
+                  <div className="text-sm font-semibold text-white">{discoverSelectedUser.name}</div>
+                  {discoverSelectedUser.statusBio && <div className="text-sm text-white/85">{discoverSelectedUser.statusBio}</div>}
+                  <div className="text-xs muted">Request to join one of their groups:</div>
+                  {Array.isArray(discoverSelectedUser.groups) && discoverSelectedUser.groups.length > 0 ? (
+                    <div className="grid gap-2">
+                      {discoverSelectedUser.groups.map((g: any) => (
+                        <div key={g.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <div className="font-semibold text-white">{g.name}</div>
+                          <div className="text-xs muted">{String(g.type || '').replace('_', ' ')}{g.grade ? ` • ${gradeToLabel(g.grade as GradeValue)}` : ''}{` • ${g.membersCount || 0} members`}</div>
+                          <div className="mt-2">
+                            <button type="button" className="btn btn-secondary" onClick={() => void requestJoinGroup(g.id)}>
+                              Request to join
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm muted">No joinable groups shown.</div>
+                  )}
+                </div>
+              )}
+            </section>
           </div>
         )
       case 'users':

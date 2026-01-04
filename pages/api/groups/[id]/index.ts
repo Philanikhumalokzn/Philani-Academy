@@ -17,10 +17,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = (await getUserRole(req)) || 'student'
   const isPrivileged = role === 'admin' || role === 'teacher'
 
-  if (!isPrivileged) {
-    const membership = await prisma.learningGroupMember.findFirst({ where: { groupId, userId } })
-    if (!membership) return res.status(403).json({ message: 'Forbidden' })
-  }
+  const requesterMembership = await prisma.learningGroupMember.findFirst({ where: { groupId, userId } })
+
+  if (!isPrivileged && !requesterMembership) return res.status(403).json({ message: 'Forbidden' })
 
   const group = await prisma.learningGroup.findUnique({
     where: { id: groupId },
@@ -48,6 +47,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!group) return res.status(404).json({ message: 'Group not found' })
 
+  const canSeeJoinCode =
+    isPrivileged ||
+    group.createdById === userId ||
+    requesterMembership?.memberRole === 'owner' ||
+    requesterMembership?.memberRole === 'instructor'
+
   const members = group.members.map((m) => ({
     membershipId: m.id,
     memberRole: m.memberRole,
@@ -69,6 +74,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     type: group.type,
     grade: group.grade,
     joinCodeActive: group.joinCodeActive,
+    allowJoinRequests: (group as any).allowJoinRequests ?? true,
+    createdById: group.createdById,
+    joinCode: canSeeJoinCode ? (group as any).joinCode : null,
     membersCount: (group as any)?._count?.members ?? members.length,
     members,
   })

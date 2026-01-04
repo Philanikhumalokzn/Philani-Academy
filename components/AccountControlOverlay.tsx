@@ -93,7 +93,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
   const [schoolName, setSchoolName] = useState('')
   const [popiConsent, setPopiConsent] = useState(true)
   const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null)
-  const [profileVisibility, setProfileVisibility] = useState<'shared' | 'private'>('shared')
+  const [profileVisibility, setProfileVisibility] = useState<'shared' | 'discoverable' | 'private'>('shared')
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -140,7 +140,8 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
       setSchoolName(data.schoolName || '')
       setPopiConsent(Boolean(data.consentToPolicies))
       setConsentTimestamp(data.consentTimestamp || null)
-      setProfileVisibility((data as any)?.profileVisibility === 'private' ? 'private' : 'shared')
+      const rawVisibility = String((data as any)?.profileVisibility || 'shared').toLowerCase()
+      setProfileVisibility(rawVisibility === 'private' ? 'private' : rawVisibility === 'discoverable' ? 'discoverable' : 'shared')
     } catch (err: any) {
       setError(err?.message || 'Unable to load profile')
     } finally {
@@ -262,7 +263,8 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     if ((original.schoolName || '') !== nextSchool) payload.schoolName = nextSchool
 
     const nextVisibility = profileVisibility
-    const originalVisibility = (original as any)?.profileVisibility === 'private' ? 'private' : 'shared'
+    const originalVisibilityRaw = String((original as any)?.profileVisibility || 'shared').toLowerCase()
+    const originalVisibility = originalVisibilityRaw === 'private' ? 'private' : originalVisibilityRaw === 'discoverable' ? 'discoverable' : 'shared'
     if (originalVisibility !== nextVisibility) payload.profileVisibility = nextVisibility
 
     if (Boolean(original.consentToPolicies) !== Boolean(popiConsent)) payload.popiConsent = popiConsent
@@ -482,11 +484,19 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                   <div className="p-3 pt-0 space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-white/90">Profile visibility</label>
-                      <select className="input" value={profileVisibility} onChange={e => setProfileVisibility(e.target.value === 'private' ? 'private' : 'shared')}>
+                      <select
+                        className="input"
+                        value={profileVisibility}
+                        onChange={e => {
+                          const v = e.target.value
+                          setProfileVisibility(v === 'private' ? 'private' : v === 'discoverable' ? 'discoverable' : 'shared')
+                        }}
+                      >
                         <option value="shared">Classmates & groupmates (shared groups only)</option>
+                        <option value="discoverable">Discoverable (searchable by others)</option>
                         <option value="private">Private (only you + admins/instructors)</option>
                       </select>
-                      <p className="mt-1 text-xs text-white/70">Others can view your profile only if you share a class/group (unless you set Private).</p>
+                      <p className="mt-1 text-xs text-white/70">Discoverable makes you searchable in Discover. Shared limits viewing to shared groups. Private hides you.</p>
                     </div>
                     <label className="flex items-start space-x-2 text-sm text-white/90">
                       <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} />

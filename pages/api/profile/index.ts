@@ -233,9 +233,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (hasKey(body, 'profileVisibility')) {
       const raw = asString(body.profileVisibility).toLowerCase()
-      const allowed = new Set(['shared', 'private'])
+      const allowed = new Set(['shared', 'private', 'discoverable'])
       if (!raw || !allowed.has(raw)) {
-        errors.push('Profile visibility must be shared or private')
+        errors.push('Profile visibility must be shared, discoverable, or private')
       } else {
         data.profileVisibility = raw
       }

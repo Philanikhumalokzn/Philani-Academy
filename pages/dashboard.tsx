@@ -721,6 +721,7 @@ export default function Dashboard() {
   const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarEditArmed, setAvatarEditArmed] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const effectiveAvatarUrl = (profileAvatarUrl || learnerAvatarUrl || '').trim() || null
   const learnerInitials = useMemo(() => {
@@ -4939,6 +4940,7 @@ export default function Dashboard() {
           const file = e.target.files?.[0]
           if (file) void uploadAvatar(file)
           e.target.value = ''
+          setAvatarEditArmed(false)
         }}
         style={{ display: 'none' }}
       />
@@ -5027,7 +5029,7 @@ export default function Dashboard() {
                     <button
                       type="button"
                       className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                      onClick={() => avatarInputRef.current?.click()}
+                      onClick={() => setAvatarEditArmed(v => !v)}
                       disabled={avatarUploading}
                       aria-label="Edit avatar"
                     >
@@ -5040,9 +5042,10 @@ export default function Dashboard() {
                     <button
                       type="button"
                       aria-label="Update avatar"
-                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
                       onClick={(e) => {
                         e.stopPropagation()
+                        setAvatarEditArmed(false)
                         avatarInputRef.current?.click()
                       }}
                       disabled={avatarUploading}
@@ -5181,7 +5184,7 @@ export default function Dashboard() {
                     <button
                       type="button"
                       className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                      onClick={() => avatarInputRef.current?.click()}
+                      onClick={() => setAvatarEditArmed(v => !v)}
                       disabled={avatarUploading}
                       aria-label="Edit avatar"
                     >
@@ -5194,9 +5197,10 @@ export default function Dashboard() {
                     <button
                       type="button"
                       aria-label="Update avatar"
-                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
                       onClick={(e) => {
                         e.stopPropagation()
+                        setAvatarEditArmed(false)
                         avatarInputRef.current?.click()
                       }}
                       disabled={avatarUploading}

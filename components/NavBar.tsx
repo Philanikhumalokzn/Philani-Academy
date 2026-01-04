@@ -11,6 +11,7 @@ export default function NavBar() {
 
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarEditArmed, setAvatarEditArmed] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const isDashboard = router.pathname === '/dashboard'
 
@@ -131,6 +132,7 @@ export default function NavBar() {
                       const file = e.target.files?.[0]
                       if (file) void uploadAvatar(file)
                       e.target.value = ''
+                      setAvatarEditArmed(false)
                     }}
                   />
                   {isDashboard ? (
@@ -139,7 +141,7 @@ export default function NavBar() {
                         type="button"
                         className="flex items-center"
                         aria-label="Edit avatar"
-                        onClick={() => avatarInputRef.current?.click()}
+                        onClick={() => setAvatarEditArmed(v => !v)}
                         disabled={avatarUploading}
                       >
                         <img src={effectiveAvatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
@@ -147,10 +149,11 @@ export default function NavBar() {
                       <button
                         type="button"
                         aria-label="Update avatar"
-                        className={`absolute -bottom-2 -right-2 inline-flex items-center justify-center h-7 w-7 rounded-lg border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                        className={`absolute -bottom-2 -right-2 inline-flex items-center justify-center h-7 w-7 rounded-lg border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
+                          setAvatarEditArmed(false)
                           avatarInputRef.current?.click()
                         }}
                         disabled={avatarUploading}

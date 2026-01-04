@@ -345,7 +345,7 @@ export default function MobileTopChrome() {
 
             <div className="p-3 overflow-auto h-full">
               {announcements.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+                <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 text-sm text-white/80">
                   No notifications yet.
                 </div>
               ) : (
@@ -357,7 +357,7 @@ export default function MobileTopChrome() {
                     return (
                       <div
                         key={id || Math.random().toString(36)}
-                        className={`rounded-2xl border p-3 ${isRead ? 'border-white/10 bg-white/5' : 'border-blue-300/40 bg-white/10'}`}
+                        className={`rounded-2xl border backdrop-blur p-3 ${isRead ? 'border-white/10 bg-white/5' : 'border-blue-300/40 bg-white/10'}`}
                       >
                         <button
                           type="button"

@@ -35,6 +35,7 @@ const DASHBOARD_SECTIONS = [
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
   { id: 'announcements', label: 'Announcements', description: 'Communicate updates', roles: ['admin', 'teacher', 'student'] },
   { id: 'sessions', label: 'Sessions', description: 'Schedule classes & materials', roles: ['admin', 'teacher', 'student'] },
+  { id: 'groups', label: 'Groups', description: 'Classmates & groupmates', roles: ['admin', 'teacher', 'student'] },
   { id: 'users', label: 'Learners', description: 'Manage enrolments', roles: ['admin'] },
   { id: 'billing', label: 'Billing', description: 'Subscription plans', roles: ['admin'] }
 ] as const
@@ -760,7 +761,6 @@ export default function Dashboard() {
     }
   }
 
-  const [groupsOverlayOpen, setGroupsOverlayOpen] = useState(false)
   const [myGroups, setMyGroups] = useState<MyGroupRow[]>([])
   const [myGroupsLoading, setMyGroupsLoading] = useState(false)
   const [myGroupsError, setMyGroupsError] = useState<string | null>(null)
@@ -912,18 +912,14 @@ export default function Dashboard() {
     }
   }, [])
 
-  const openGroupsOverlay = useCallback(() => {
-    setGroupsOverlayOpen(true)
-    void loadMyGroups()
-  }, [loadMyGroups])
-
-  const closeGroupsOverlay = useCallback(() => {
-    setGroupsOverlayOpen(false)
+  useEffect(() => {
+    if (dashboardSectionOverlay !== 'groups') return
     setSelectedGroupId(null)
     setSelectedGroupMembers([])
     setProfilePeek(null)
     setProfilePeekError(null)
-  }, [])
+    void loadMyGroups()
+  }, [dashboardSectionOverlay, loadMyGroups])
 
   const createGroup = useCallback(async () => {
     const name = createGroupName.trim()
@@ -5111,6 +5107,206 @@ export default function Dashboard() {
         return <AnnouncementsSection />
       case 'sessions':
         return renderSessionsSection()
+      case 'groups':
+        return (
+          <div className="space-y-3">
+            <section className="space-y-2">
+              <div className="text-sm font-semibold text-white">Create a group</div>
+              <div className="grid gap-2">
+                <input
+                  className="input"
+                  value={createGroupName}
+                  onChange={(e) => setCreateGroupName(e.target.value)}
+                  placeholder="e.g. Grade 12 Maths — Study Group"
+                  maxLength={80}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <select className="input" value={createGroupType} onChange={(e) => setCreateGroupType((e.target.value as any) || 'study_group')}>
+                    <option value="study_group">Study group</option>
+                    <option value="class">Class</option>
+                    <option value="cohort">Cohort</option>
+                  </select>
+                  <select className="input" value={createGroupGrade} onChange={(e) => setCreateGroupGrade(e.target.value)}>
+                    <option value="">Grade (optional)</option>
+                    {GRADE_VALUES.map((g) => (
+                      <option key={g} value={g}>
+                        {gradeToLabel(g)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={createGroupBusy || !createGroupName.trim()}
+                  onClick={createGroup}
+                >
+                  {createGroupBusy ? 'Creating…' : 'Create group'}
+                </button>
+                <div className="text-xs muted">Students can create groups for their grade or below. Instructors/admin can create any.</div>
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <div className="text-sm font-semibold text-white">Join with code</div>
+              <div className="flex items-center gap-2">
+                <input
+                  className="input flex-1"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  placeholder="Enter join code"
+                  maxLength={16}
+                />
+                <button type="button" className="btn btn-secondary" disabled={joinBusy || !joinCode.trim()} onClick={joinGroupByCode}>
+                  {joinBusy ? 'Joining…' : 'Join'}
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-white">Your groups</div>
+                <button type="button" className="btn btn-ghost" onClick={() => void loadMyGroups()}>
+                  Refresh
+                </button>
+              </div>
+
+              {myGroupsLoading ? (
+                <div className="text-sm muted">Loading…</div>
+              ) : myGroupsError ? (
+                <div className="text-sm text-red-200">{myGroupsError}</div>
+              ) : myGroups.length === 0 ? (
+                <div className="text-sm muted">No groups yet.</div>
+              ) : (
+                <div className="grid gap-2">
+                  {myGroups.map((row) => (
+                    <button
+                      key={row.group.id}
+                      type="button"
+                      className={`card p-3 text-left ${selectedGroupId === row.group.id ? 'border-white/25 bg-white/10' : ''}`}
+                      onClick={() => void loadGroupMembers(row.group.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-white break-words">{row.group.name}</div>
+                          <div className="text-xs muted">
+                            {row.group.type.replace('_', ' ')}
+                            {row.group.grade ? ` • ${gradeToLabel(row.group.grade as GradeValue)}` : ''}
+                            {` • ${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`}
+                          </div>
+                        </div>
+                        <div className="text-xs muted">{row.memberRole}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {selectedGroupId && (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-white">Members</div>
+                  {selectedGroupLoading && <div className="text-xs muted">Loading…</div>}
+                </div>
+                {selectedGroupMembers.length === 0 ? (
+                  <div className="text-sm muted">No members found.</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {selectedGroupMembers.map((m) => {
+                      const verified = m.user.role === 'admin' || m.user.role === 'teacher'
+                      const label =
+                        m.user.role === 'admin'
+                          ? 'Admin'
+                          : m.user.role === 'teacher'
+                            ? 'Instructor'
+                            : m.user.grade
+                              ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
+                              : 'Student'
+                      return (
+                        <button
+                          key={m.membershipId}
+                          type="button"
+                          className="card p-3 text-left"
+                          onClick={() => void openProfilePeek(m.user.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                              {m.user.avatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="font-semibold text-white truncate">{m.user.name}</div>
+                                {verified && (
+                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                    </svg>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs muted truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</div>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {(profilePeekError || profilePeek) && (
+              <section className="space-y-2">
+                <div className="text-sm font-semibold text-white">Profile</div>
+                {profilePeekError ? (
+                  <div className="text-sm text-red-200">{profilePeekError}</div>
+                ) : profilePeek ? (
+                  <div className="card p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="h-12 w-12 rounded-2xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                        {profilePeek.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={profilePeek.avatar} alt={profilePeek.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="font-semibold text-white truncate">{profilePeek.name}</div>
+                          {profilePeek.verified && (
+                            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                              </svg>
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs muted">
+                          {profilePeek.role === 'admin'
+                            ? 'Admin'
+                            : profilePeek.role === 'teacher'
+                              ? 'Instructor'
+                              : profilePeek.grade
+                                ? `Student (${gradeToLabel(profilePeek.grade as GradeValue)})`
+                                : 'Student'}
+                          {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
+                        </div>
+                        {profilePeek.statusBio && <div className="mt-1 text-sm text-white/85">{profilePeek.statusBio}</div>}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            )}
+          </div>
+        )
       case 'users':
         return <UsersSection />
       case 'billing':
@@ -5229,190 +5425,182 @@ export default function Dashboard() {
         {isMobile ? (
           isAdmin ? (
             <div className="flex-1 flex flex-col justify-center space-y-5 py-4">
-              <section
-                data-mobile-chrome-ignore
-                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
-                onDragEnter={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(true)
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(true)
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(false)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(false)
-                  const file = e.dataTransfer?.files?.[0]
-                  if (file) applyMobileHeroBackgroundFile(file)
-                }}
-                onClickCapture={(e) => {
-                  const target = e.target as HTMLElement | null
-                  if (!target) return
-                  const tag = target.tagName?.toLowerCase()
-                  if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                  showMobileHeroEdit()
-                }}
-              >
-                <div
-                  className="absolute inset-0"
-                  style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                  aria-hidden="true"
-                />
-                <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
-                <input
-                  ref={heroBgInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) applyMobileHeroBackgroundFile(file)
-                    e.target.value = ''
+              <div className="relative sticky top-2 z-30">
+                <section
+                  data-mobile-chrome-ignore
+                  className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+                  onDragEnter={(e) => {
+                    e.preventDefault()
+                    setMobileHeroBgDragActive(true)
                   }}
-                />
-
-                <button
-                  type="button"
-                  aria-label="Edit background"
-                  className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    heroBgInputRef.current?.click()
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setMobileHeroBgDragActive(true)
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault()
+                    setMobileHeroBgDragActive(false)
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setMobileHeroBgDragActive(false)
+                    const file = e.dataTransfer?.files?.[0]
+                    if (file) applyMobileHeroBackgroundFile(file)
+                  }}
+                  onClickCapture={(e) => {
+                    const target = e.target as HTMLElement | null
+                    if (!target) return
+                    const tag = target.tagName?.toLowerCase()
+                    if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
+                    showMobileHeroEdit()
                   }}
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                  </svg>
-                </button>
-                <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="relative group w-20 h-20" data-avatar-edit-container="1">
-                    <button
-                      type="button"
-                      className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                      onClick={() => setAvatarEditArmed(v => !v)}
-                      disabled={avatarUploading}
-                      aria-label="Edit avatar"
-                    >
-                      {effectiveAvatarUrl ? (
-                        <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{learnerInitials}</span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Update avatar"
-                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setAvatarEditArmed(false)
-                        avatarInputRef.current?.click()
-                      }}
-                      disabled={avatarUploading}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="pb-1">
-                    <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
-                      <span>{roleFlagText}</span>
-                      {isVerifiedAccount && (
-                        <span
-                          className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
-                          aria-label="Verified"
-                          title="Verified"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
+                  <div
+                    className="absolute inset-0"
+                    style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
+                  <input
+                    ref={heroBgInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) applyMobileHeroBackgroundFile(file)
+                      e.target.value = ''
+                    }}
+                  />
 
-                    <div className="mt-1">
-                      {statusBioEditing ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={statusBioDraft}
-                            maxLength={100}
-                            disabled={statusBioSaving}
-                            autoFocus
-                            onChange={(e) => setStatusBioDraft(e.target.value)}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                const ok = await saveStatusBio(statusBioDraft)
-                                if (ok) setStatusBioEditing(false)
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setStatusBioDraft(profileStatusBio || '')
-                                setStatusBioEditing(false)
-                              }
-                            }}
-                            onBlur={async () => {
-                              const ok = await saveStatusBio(statusBioDraft)
-                              if (ok) setStatusBioEditing(false)
-                            }}
-                            className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
-                            placeholder="Set a short status…"
-                            aria-label="Status or short bio"
-                          />
-                          <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-left text-sm text-white/85 hover:text-white"
-                          onClick={() => {
-                            setStatusBioDraft(profileStatusBio || '')
-                            setStatusBioEditing(true)
-                          }}
-                          aria-label="Edit status"
-                        >
-                          {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="mt-1">
+                  <button
+                    type="button"
+                    aria-label="Edit background"
+                    className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      heroBgInputRef.current?.click()
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                    </svg>
+                  </button>
+                  <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
+                    <div className="relative group w-20 h-20" data-avatar-edit-container="1">
                       <button
                         type="button"
-                        className="text-left text-xs text-blue-100/80 hover:text-white"
-                        onClick={openGroupsOverlay}
-                        aria-label="Open groups"
+                        className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
+                        onClick={() => setAvatarEditArmed(v => !v)}
+                        disabled={avatarUploading}
+                        aria-label="Edit avatar"
                       >
-                        Groups
+                        {effectiveAvatarUrl ? (
+                          <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{learnerInitials}</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Update avatar"
+                        className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setAvatarEditArmed(false)
+                          avatarInputRef.current?.click()
+                        }}
+                        disabled={avatarUploading}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                        </svg>
                       </button>
                     </div>
+                    <div className="pb-1">
+                      <p className="text-xl font-semibold leading-tight">{learnerName}</p>
+                      <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
+                        <span>{roleFlagText}</span>
+                        {isVerifiedAccount && (
+                          <span
+                            className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
+                            aria-label="Verified"
+                            title="Verified"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                              <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-1">
+                        {statusBioEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={statusBioDraft}
+                              maxLength={100}
+                              disabled={statusBioSaving}
+                              autoFocus
+                              onChange={(e) => setStatusBioDraft(e.target.value)}
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  const ok = await saveStatusBio(statusBioDraft)
+                                  if (ok) setStatusBioEditing(false)
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  setStatusBioDraft(profileStatusBio || '')
+                                  setStatusBioEditing(false)
+                                }
+                              }}
+                              onBlur={async () => {
+                                const ok = await saveStatusBio(statusBioDraft)
+                                if (ok) setStatusBioEditing(false)
+                              }}
+                              className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
+                              placeholder="Set a short status…"
+                              aria-label="Status or short bio"
+                            />
+                            <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-left text-sm text-white/85 hover:text-white"
+                            onClick={() => {
+                              setStatusBioDraft(profileStatusBio || '')
+                              setStatusBioEditing(true)
+                            }}
+                            aria-label="Edit status"
+                          >
+                            {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
-                  <button
-                    type="button"
-                    className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                    onClick={openHeroLive}
-                  >
-                    Live class
-                  </button>
-                  <button
-                    type="button"
-                    className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                    onClick={openHeroCanvas}
-                    disabled={!canLaunchCanvasOverlay}
-                  >
-                    Canvas
-                  </button>
-                </div>
-              </section>
+                  <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
+                    <button
+                      type="button"
+                      className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
+                      onClick={openHeroLive}
+                    >
+                      Live class
+                    </button>
+                    <button
+                      type="button"
+                      className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+                      onClick={openHeroCanvas}
+                      disabled={!canLaunchCanvasOverlay}
+                    >
+                      Canvas
+                    </button>
+                  </div>
+                </section>
+                <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
+              </div>
 
               <SectionNav />
               <section className="min-w-0 space-y-6">
@@ -5454,6 +5642,7 @@ export default function Dashboard() {
                 </div>
               )}
 
+              <div className="relative sticky top-2 z-30">
               <section
                 data-mobile-chrome-ignore
                 className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
@@ -5607,17 +5796,6 @@ export default function Dashboard() {
                         </button>
                       )}
                     </div>
-
-                    <div className="mt-1">
-                      <button
-                        type="button"
-                        className="text-left text-xs text-blue-100/80 hover:text-white"
-                        onClick={openGroupsOverlay}
-                        aria-label="Open groups"
-                      >
-                        Groups
-                      </button>
-                    </div>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
@@ -5639,6 +5817,9 @@ export default function Dashboard() {
                 </div>
               </section>
 
+              <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
+              </div>
+
               <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-white">Sessions</div>
@@ -5651,6 +5832,20 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <div className="text-sm text-white/70">Open sessions in an overlay.</div>
+              </section>
+
+              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-white">Groups</div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost text-xs"
+                    onClick={() => openDashboardOverlay('groups')}
+                  >
+                    Open
+                  </button>
+                </div>
+                <div className="text-sm text-white/70">Create or join groups and see classmates.</div>
               </section>
 
               {renderOverviewCards({ hideGradeWorkspace: true })}
@@ -5741,227 +5936,6 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {renderAccountSnapshotBody()}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {groupsOverlayOpen && (
-        <div
-          className={`fixed inset-0 z-40 transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeGroupsOverlay} />
-          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeGroupsOverlay}>
-            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="p-3 border-b flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold break-words">Groups</div>
-                  <div className="text-xs muted">Classmates & groupmates</div>
-                </div>
-                <button type="button" className="btn btn-ghost" onClick={closeGroupsOverlay} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                <section className="space-y-2">
-                  <div className="text-sm font-semibold text-white">Create a group</div>
-                  <div className="grid gap-2">
-                    <input
-                      className="input"
-                      value={createGroupName}
-                      onChange={(e) => setCreateGroupName(e.target.value)}
-                      placeholder="e.g. Grade 12 Maths — Study Group"
-                      maxLength={80}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <select className="input" value={createGroupType} onChange={(e) => setCreateGroupType((e.target.value as any) || 'study_group')}>
-                        <option value="study_group">Study group</option>
-                        <option value="class">Class</option>
-                        <option value="cohort">Cohort</option>
-                      </select>
-                      <select className="input" value={createGroupGrade} onChange={(e) => setCreateGroupGrade(e.target.value)}>
-                        <option value="">Grade (optional)</option>
-                        {GRADE_VALUES.map((g) => (
-                          <option key={g} value={g}>
-                            {gradeToLabel(g)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={createGroupBusy || !createGroupName.trim()}
-                      onClick={createGroup}
-                    >
-                      {createGroupBusy ? 'Creating…' : 'Create group'}
-                    </button>
-                    <div className="text-xs muted">Students can create groups for their grade or below. Instructors/admin can create any.</div>
-                  </div>
-                </section>
-
-                <section className="space-y-2">
-                  <div className="text-sm font-semibold text-white">Join with code</div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="input flex-1"
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value)}
-                      placeholder="Enter join code"
-                      maxLength={16}
-                    />
-                    <button type="button" className="btn btn-secondary" disabled={joinBusy || !joinCode.trim()} onClick={joinGroupByCode}>
-                      {joinBusy ? 'Joining…' : 'Join'}
-                    </button>
-                  </div>
-                </section>
-
-                <section className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-white">Your groups</div>
-                    <button type="button" className="btn btn-ghost" onClick={() => void loadMyGroups()}>
-                      Refresh
-                    </button>
-                  </div>
-
-                  {myGroupsLoading ? (
-                    <div className="text-sm muted">Loading…</div>
-                  ) : myGroupsError ? (
-                    <div className="text-sm text-red-200">{myGroupsError}</div>
-                  ) : myGroups.length === 0 ? (
-                    <div className="text-sm muted">No groups yet.</div>
-                  ) : (
-                    <div className="grid gap-2">
-                      {myGroups.map((row) => (
-                        <button
-                          key={row.group.id}
-                          type="button"
-                          className={`card p-3 text-left ${selectedGroupId === row.group.id ? 'border-white/25 bg-white/10' : ''}`}
-                          onClick={() => void loadGroupMembers(row.group.id)}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-semibold text-white break-words">{row.group.name}</div>
-                              <div className="text-xs muted">
-                                {row.group.type.replace('_', ' ')}
-                                {row.group.grade ? ` • ${gradeToLabel(row.group.grade as GradeValue)}` : ''}
-                                {` • ${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`}
-                              </div>
-                            </div>
-                            <div className="text-xs muted">{row.memberRole}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                {selectedGroupId && (
-                  <section className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-white">Members</div>
-                      {selectedGroupLoading && <div className="text-xs muted">Loading…</div>}
-                    </div>
-                    {selectedGroupMembers.length === 0 ? (
-                      <div className="text-sm muted">No members found.</div>
-                    ) : (
-                      <div className="grid gap-2">
-                        {selectedGroupMembers.map((m) => {
-                          const verified = m.user.role === 'admin' || m.user.role === 'teacher'
-                          const label =
-                            m.user.role === 'admin'
-                              ? 'Admin'
-                              : m.user.role === 'teacher'
-                                ? 'Instructor'
-                                : m.user.grade
-                                  ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
-                                  : 'Student'
-                          return (
-                            <button
-                              key={m.membershipId}
-                              type="button"
-                              className="card p-3 text-left"
-                              onClick={() => void openProfilePeek(m.user.id)}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
-                                  {m.user.avatar ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
-                                  )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="font-semibold text-white truncate">{m.user.name}</div>
-                                    {verified && (
-                                      <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                          <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                                        </svg>
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-xs muted truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</div>
-                                </div>
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {(profilePeekError || profilePeek) && (
-                  <section className="space-y-2">
-                    <div className="text-sm font-semibold text-white">Profile</div>
-                    {profilePeekError ? (
-                      <div className="text-sm text-red-200">{profilePeekError}</div>
-                    ) : profilePeek ? (
-                      <div className="card p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="h-12 w-12 rounded-2xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
-                            {profilePeek.avatar ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={profilePeek.avatar} alt={profilePeek.name} className="h-full w-full object-cover" />
-                            ) : (
-                              <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div className="font-semibold text-white truncate">{profilePeek.name}</div>
-                              {profilePeek.verified && (
-                                <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                                  </svg>
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs muted">
-                              {profilePeek.role === 'admin'
-                                ? 'Admin'
-                                : profilePeek.role === 'teacher'
-                                  ? 'Instructor'
-                                  : profilePeek.grade
-                                    ? `Student (${gradeToLabel(profilePeek.grade as GradeValue)})`
-                                    : 'Student'}
-                              {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
-                            </div>
-                            {profilePeek.statusBio && <div className="mt-1 text-sm text-white/85">{profilePeek.statusBio}</div>}
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </section>
-                )}
               </div>
             </div>
           </div>

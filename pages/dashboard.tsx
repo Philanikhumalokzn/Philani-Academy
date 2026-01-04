@@ -3941,31 +3941,6 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {isLearner ? (
-                      <div className="p-3 border-b">
-                        <div className="flex items-center justify-center gap-6 text-sm">
-                          <button
-                            type="button"
-                            className={sessionDetailsTab === 'assignments'
-                              ? 'font-semibold text-white underline underline-offset-4'
-                              : 'font-semibold text-white/70 hover:text-white'}
-                            onClick={() => setSessionDetailsTab('assignments')}
-                          >
-                            Assignments
-                          </button>
-                          <button
-                            type="button"
-                            className={sessionDetailsTab === 'responses'
-                              ? 'font-semibold text-white underline underline-offset-4'
-                              : 'font-semibold text-white/70 hover:text-white'}
-                            onClick={() => setSessionDetailsTab('responses')}
-                          >
-                            Quizzes
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
                     <div className="flex-1 overflow-y-auto p-3">
                       {sessionDetailsTab === 'assignments' ? (
                         <div className="space-y-3">

@@ -11,6 +11,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 
 import BrandLogo from '../components/BrandLogo'
+import UserLink from '../components/UserLink'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
@@ -5456,7 +5457,14 @@ export default function Dashboard() {
                             {pendingForGroup.map((r: any) => (
                               <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                 <div className="text-sm text-white/90">
-                                  {(r.requestedBy?.name || r.requestedBy?.email || 'Learner')} wants to join
+                                  <UserLink
+                                    userId={r.requestedBy?.id}
+                                    className="font-semibold text-white/90 hover:underline"
+                                    title="View profile"
+                                  >
+                                    {r.requestedBy?.name || r.requestedBy?.email || 'Learner'}
+                                  </UserLink>{' '}
+                                  wants to join
                                 </div>
                                 <div className="mt-2 flex gap-2">
                                   <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
@@ -5490,24 +5498,28 @@ export default function Dashboard() {
                               ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
                               : 'Student'
                       return (
-                        <button
+                        <div
                           key={m.membershipId}
-                          type="button"
                           className="card p-3 text-left"
-                          onClick={() => void openProfilePeek(m.user.id)}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                            <UserLink
+                              userId={m.user.id}
+                              className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0"
+                              title="View profile"
+                            >
                               {m.user.avatar ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
                               ) : (
                                 <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
                               )}
-                            </div>
+                            </UserLink>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <div className="font-semibold text-white truncate">{m.user.name}</div>
+                                <UserLink userId={m.user.id} className="font-semibold text-white truncate hover:underline" title="View profile">
+                                  {m.user.name}
+                                </UserLink>
                                 {verified && (
                                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -5519,7 +5531,7 @@ export default function Dashboard() {
                               <div className="text-xs muted truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</div>
                             </div>
                           </div>
-                        </button>
+                        </div>
                       )
                     })}
                   </div>

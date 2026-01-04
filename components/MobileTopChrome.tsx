@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import AccountControlOverlay from './AccountControlOverlay'
+import UserLink from './UserLink'
 
 type AnnouncementLike = {
   id?: string | number | null
@@ -469,13 +470,19 @@ export default function MobileTopChrome() {
                         const isExpanded = expandedInviteId === id
                         const title = inv.group?.name ? `Join ${inv.group.name}` : 'Group invite'
                         const by = inv.invitedBy?.name || inv.invitedBy?.email || 'someone'
+                        const invitedById = inv.invitedBy?.id ?? null
                         return (
                           <div key={id} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
                             <button type="button" className="w-full text-left" onClick={() => toggleInvite(id)}>
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="text-sm font-semibold text-white truncate">{title}</div>
-                                  <div className="text-xs text-white/70 truncate">Invited by {by}</div>
+                                  <div className="text-xs text-white/70 truncate">
+                                    Invited by{' '}
+                                    <UserLink userId={invitedById} className="text-white/80 hover:underline" title="View profile">
+                                      {by}
+                                    </UserLink>
+                                  </div>
                                   {inv.createdAt ? <div className="text-[11px] text-white/60">{new Date(inv.createdAt).toLocaleString()}</div> : null}
                                 </div>
                                 <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>
@@ -506,13 +513,19 @@ export default function MobileTopChrome() {
                         const id = String(r.id)
                         const isExpanded = expandedRequestId === id
                         const who = r.requestedBy?.name || r.requestedBy?.email || 'Learner'
+                        const whoId = r.requestedBy?.id ?? null
                         const groupName = r.group?.name || 'Group'
                         return (
                           <div key={id} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
                             <button type="button" className="w-full text-left" onClick={() => toggleJoinRequest(id)}>
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="text-sm font-semibold text-white truncate">{who} → {groupName}</div>
+                                  <div className="text-sm font-semibold text-white truncate">
+                                    <UserLink userId={whoId} className="text-white hover:underline" title="View profile">
+                                      {who}
+                                    </UserLink>{' '}
+                                    → {groupName}
+                                  </div>
                                   {r.createdAt ? <div className="text-[11px] text-white/60">{new Date(r.createdAt).toLocaleString()}</div> : null}
                                 </div>
                                 <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>

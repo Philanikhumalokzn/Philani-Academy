@@ -13,6 +13,20 @@ type AnnouncementLike = {
   grade?: string | null
 }
 
+type GroupInviteLike = {
+  id: string
+  createdAt?: string | null
+  group?: { id: string; name?: string | null; grade?: string | null; type?: string | null } | null
+  invitedBy?: { id?: string | null; name?: string | null; email?: string | null } | null
+}
+
+type GroupJoinRequestLike = {
+  id: string
+  createdAt?: string | null
+  group?: { id: string; name?: string | null; grade?: string | null; type?: string | null } | null
+  requestedBy?: { id?: string | null; name?: string | null; email?: string | null } | null
+}
+
 const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: boolean) => {
   if (!authenticated) return false
   if (!pathname) return false
@@ -41,6 +55,12 @@ export default function MobileTopChrome() {
   const [announcements, setAnnouncements] = useState<AnnouncementLike[]>([])
   const [readIds, setReadIds] = useState<string[]>([])
   const fetchAbortRef = useRef<AbortController | null>(null)
+
+  const [actionLoading, setActionLoading] = useState(false)
+  const [actionInvites, setActionInvites] = useState<GroupInviteLike[]>([])
+  const [actionJoinRequests, setActionJoinRequests] = useState<GroupJoinRequestLike[]>([])
+  const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null)
+  const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
 
   const userKey = useMemo(() => {
     if (!session) return 'anon'
@@ -76,6 +96,69 @@ export default function MobileTopChrome() {
     }
     return count
   }, [])
+
+  const loadActionNotifications = useCallback(async () => {
+    if (status !== 'authenticated') return
+    setActionLoading(true)
+    try {
+      const res = await fetch('/api/notifications', { credentials: 'same-origin' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setActionInvites([])
+        setActionJoinRequests([])
+        return
+      }
+      setActionInvites(Array.isArray(data?.invites) ? data.invites : [])
+      setActionJoinRequests(Array.isArray(data?.joinRequests) ? data.joinRequests : [])
+    } catch {
+      setActionInvites([])
+      setActionJoinRequests([])
+    } finally {
+      setActionLoading(false)
+    }
+  }, [status])
+
+  const respondInvite = useCallback(async (inviteId: string, action: 'accept' | 'decline') => {
+    if (!inviteId) return
+    try {
+      const res = await fetch(`/api/groups/invites/${encodeURIComponent(inviteId)}/respond`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        alert(data?.message || 'Failed')
+        return
+      }
+      setExpandedInviteId(null)
+      await loadActionNotifications()
+    } catch (err: any) {
+      alert(err?.message || 'Failed')
+    }
+  }, [loadActionNotifications])
+
+  const respondJoinRequest = useCallback(async (requestId: string, action: 'accept' | 'decline') => {
+    if (!requestId) return
+    try {
+      const res = await fetch(`/api/groups/requests/${encodeURIComponent(requestId)}/respond`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        alert(data?.message || 'Failed')
+        return
+      }
+      setExpandedRequestId(null)
+      await loadActionNotifications()
+    } catch (err: any) {
+      alert(err?.message || 'Failed')
+    }
+  }, [loadActionNotifications])
 
   useEffect(() => {
     if (!isVisible) return
@@ -153,8 +236,10 @@ export default function MobileTopChrome() {
 
   useEffect(() => {
     if (!isVisible) return
-    setUnreadCount(computeUnread(announcements, readSet))
-  }, [announcements, computeUnread, isVisible, readSet])
+    const announcementUnread = computeUnread(announcements, readSet)
+    const actionUnread = (actionInvites?.length || 0) + (actionJoinRequests?.length || 0)
+    setUnreadCount(announcementUnread + actionUnread)
+  }, [actionInvites, actionJoinRequests, announcements, computeUnread, isVisible, readSet])
 
   const showChrome = useCallback(() => {
     setOpen(true)
@@ -227,11 +312,14 @@ export default function MobileTopChrome() {
       clearTimeout(hideTimeoutRef.current)
       hideTimeoutRef.current = null
     }
+    void loadActionNotifications()
   }
 
   const closeNotifications = () => {
     setNotificationsOpen(false)
     setExpandedId(null)
+    setExpandedInviteId(null)
+    setExpandedRequestId(null)
   }
 
   const closeAccountControl = () => {
@@ -243,6 +331,18 @@ export default function MobileTopChrome() {
     if (!id) return
     setExpandedId(prev => (prev === id ? null : id))
     markRead(id)
+  }
+
+  const toggleInvite = (idRaw: string | null | undefined) => {
+    const id = idRaw ? String(idRaw) : ''
+    if (!id) return
+    setExpandedInviteId(prev => (prev === id ? null : id))
+  }
+
+  const toggleJoinRequest = (idRaw: string | null | undefined) => {
+    const id = idRaw ? String(idRaw) : ''
+    if (!id) return
+    setExpandedRequestId(prev => (prev === id ? null : id))
   }
 
   return (
@@ -294,7 +394,7 @@ export default function MobileTopChrome() {
               {unreadCount > 0 && (
                 <span
                   className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                  aria-label={`${unreadCount} unread announcements`}
+                  aria-label={`${unreadCount} unread notifications`}
                 >
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
@@ -344,44 +444,143 @@ export default function MobileTopChrome() {
             </div>
 
             <div className="p-3 overflow-auto h-full">
-              {announcements.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 text-sm text-white/80">
-                  No notifications yet.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {announcements.map((a) => {
-                    const id = a?.id == null ? '' : String(a.id)
-                    const isExpanded = id && expandedId === id
-                    const isRead = id ? readSet.has(id) : true
-                    return (
-                      <div
-                        key={id || Math.random().toString(36)}
-                        className={`rounded-2xl border backdrop-blur p-3 ${isRead ? 'border-white/10 bg-white/5' : 'border-blue-300/40 bg-white/10'}`}
-                      >
-                        <button
-                          type="button"
-                          className="w-full text-left"
-                          onClick={() => toggleAnnouncement(a?.id ?? null)}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold text-white truncate">{a?.title || 'Announcement'}</div>
-                              {a?.createdAt && (
-                                <div className="text-xs text-white/70">{new Date(a.createdAt).toLocaleString()}</div>
-                              )}
-                            </div>
-                            <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-white">Group invites</div>
+                    <button
+                      type="button"
+                      className="text-xs text-white/80 underline"
+                      onClick={() => void loadActionNotifications()}
+                      disabled={actionLoading}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {actionLoading ? (
+                    <div className="mt-2 text-sm text-white/70">Loading…</div>
+                  ) : actionInvites.length === 0 ? (
+                    <div className="mt-2 text-sm text-white/70">No invites.</div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {actionInvites.map((inv) => {
+                        const id = String(inv.id)
+                        const isExpanded = expandedInviteId === id
+                        const title = inv.group?.name ? `Join ${inv.group.name}` : 'Group invite'
+                        const by = inv.invitedBy?.name || inv.invitedBy?.email || 'someone'
+                        return (
+                          <div key={id} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                            <button type="button" className="w-full text-left" onClick={() => toggleInvite(id)}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-white truncate">{title}</div>
+                                  <div className="text-xs text-white/70 truncate">Invited by {by}</div>
+                                  {inv.createdAt ? <div className="text-[11px] text-white/60">{new Date(inv.createdAt).toLocaleString()}</div> : null}
+                                </div>
+                                <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-2 flex gap-2">
+                                <button type="button" className="btn btn-secondary" onClick={() => void respondInvite(id, 'accept')}>
+                                  Accept
+                                </button>
+                                <button type="button" className="btn btn-ghost border border-white/20 text-white" onClick={() => void respondInvite(id, 'decline')}>
+                                  Reject
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          {isExpanded && a?.content && (
-                            <div className="mt-2 text-sm text-white/85 whitespace-pre-wrap">{a.content}</div>
-                          )}
-                        </button>
-                      </div>
-                    )
-                  })}
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {actionJoinRequests.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                    <div className="text-sm font-semibold text-white">Join requests (your groups)</div>
+                    <div className="mt-2 space-y-2">
+                      {actionJoinRequests.map((r) => {
+                        const id = String(r.id)
+                        const isExpanded = expandedRequestId === id
+                        const who = r.requestedBy?.name || r.requestedBy?.email || 'Learner'
+                        const groupName = r.group?.name || 'Group'
+                        return (
+                          <div key={id} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                            <button type="button" className="w-full text-left" onClick={() => toggleJoinRequest(id)}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-white truncate">{who} → {groupName}</div>
+                                  {r.createdAt ? <div className="text-[11px] text-white/60">{new Date(r.createdAt).toLocaleString()}</div> : null}
+                                </div>
+                                <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-2 flex gap-2">
+                                <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(id, 'accept')}>
+                                  Accept
+                                </button>
+                                <button type="button" className="btn btn-ghost border border-white/20 text-white" onClick={() => void respondJoinRequest(id, 'decline')}>
+                                  Reject
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                  <div className="text-sm font-semibold text-white">Announcements</div>
+                  {announcements.length === 0 ? (
+                    <div className="mt-2 text-sm text-white/70">No announcements.</div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {announcements.map((a) => {
+                        const id = a?.id == null ? '' : String(a.id)
+                        const isExpanded = id && expandedId === id
+                        const isRead = id ? readSet.has(id) : true
+                        return (
+                          <div
+                            key={id || Math.random().toString(36)}
+                            className={`rounded-2xl border backdrop-blur p-3 ${isRead ? 'border-white/10 bg-white/5' : 'border-blue-300/40 bg-white/10'}`}
+                          >
+                            <button
+                              type="button"
+                              className="w-full text-left"
+                              onClick={() => toggleAnnouncement(a?.id ?? null)}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-white truncate">{a?.title || 'Announcement'}</div>
+                                  {a?.createdAt && (
+                                    <div className="text-xs text-white/70">{new Date(a.createdAt).toLocaleString()}</div>
+                                  )}
+                                </div>
+                                <div className="shrink-0 text-white/70">{isExpanded ? '▲' : '▼'}</div>
+                              </div>
+                              {isExpanded && a?.content && (
+                                <div className="mt-2 text-sm text-white/85 whitespace-pre-wrap">{a.content}</div>
+                              )}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {actionInvites.length === 0 && actionJoinRequests.length === 0 && announcements.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 text-sm text-white/80">
+                    No notifications yet.
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

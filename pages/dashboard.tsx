@@ -724,6 +724,23 @@ export default function Dashboard() {
   const [avatarEditArmed, setAvatarEditArmed] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const effectiveAvatarUrl = (profileAvatarUrl || learnerAvatarUrl || '').trim() || null
+
+  useEffect(() => {
+    if (!avatarEditArmed) return
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-avatar-edit-container="1"]')) return
+      setAvatarEditArmed(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown, true)
+    document.addEventListener('touchstart', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown, true)
+      document.removeEventListener('touchstart', handlePointerDown, true)
+    }
+  }, [avatarEditArmed])
   const learnerInitials = useMemo(() => {
     if (learnerName) {
       const parts = learnerName.trim().split(/\s+/).filter(Boolean)
@@ -5025,7 +5042,7 @@ export default function Dashboard() {
                   </svg>
                 </button>
                 <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="relative group w-20 h-20">
+                  <div className="relative group w-20 h-20" data-avatar-edit-container="1">
                     <button
                       type="button"
                       className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
@@ -5180,7 +5197,7 @@ export default function Dashboard() {
                   </svg>
                 </button>
                 <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="relative group w-20 h-20">
+                  <div className="relative group w-20 h-20" data-avatar-edit-container="1">
                     <button
                       type="button"
                       className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"

@@ -15,6 +15,23 @@ export default function NavBar() {
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const isDashboard = router.pathname === '/dashboard'
 
+  useEffect(() => {
+    if (!avatarEditArmed) return
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-avatar-edit-container="1"]')) return
+      setAvatarEditArmed(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown, true)
+    document.addEventListener('touchstart', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown, true)
+      document.removeEventListener('touchstart', handlePointerDown, true)
+    }
+  }, [avatarEditArmed])
+
   const fallbackAvatar = ((session as any)?.user?.image as string | undefined) || '/favicon.ico'
   const effectiveAvatarUrl = useMemo(() => {
     const url = (profileAvatarUrl || fallbackAvatar || '').trim()
@@ -136,7 +153,7 @@ export default function NavBar() {
                     }}
                   />
                   {isDashboard ? (
-                    <div className="relative group">
+                    <div className="relative group" data-avatar-edit-container="1">
                       <button
                         type="button"
                         className="flex items-center"

@@ -4097,7 +4097,7 @@ export default function Dashboard() {
                                       )
                                     }
                                     return (
-                                      <div className="text-xs font-mono text-slate-900 whitespace-pre-wrap break-words">{r?.latex || ''}</div>
+                                      <div className="text-slate-900 whitespace-pre-wrap break-words">{renderTextWithKatex(String(r?.latex || ''))}</div>
                                     )
                                   })()}
                                 </div>
@@ -4349,7 +4349,7 @@ export default function Dashboard() {
                                         latexHtml ? (
                                           <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
                                         ) : (
-                                          <div className="text-xs font-mono whitespace-pre-wrap break-words">{latex}</div>
+                                          <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
                                         )
                                       ) : null}
                                       {fileUrl.trim() ? (
@@ -4525,6 +4525,10 @@ export default function Dashboard() {
                               {(() => {
                                 const latex = String(assignmentResponsesByQuestionId?.[qid]?.latex || '')
                                 if (!latex.trim()) return <div className="text-sm muted">Not submitted yet.</div>
+                                const html = renderKatexDisplayHtml(latex)
+                                if (html) {
+                                  return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                }
                                 return <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
                               })()}
                             </div>

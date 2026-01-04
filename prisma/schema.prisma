@@ -27,6 +27,7 @@ model User {
   role      String  @default("student")
   grade     Grade?
   avatar    String?
+  statusBio String? @db.VarChar(100)
   dateOfBirth DateTime?
   phoneNumber String @default("")
   emailVerifiedAt DateTime?

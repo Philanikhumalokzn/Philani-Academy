@@ -53,6 +53,7 @@ type ProfileSnapshot = {
   country?: string | null
   schoolName?: string | null
   avatar?: string | null
+  statusBio?: string | null
   consentToPolicies?: boolean
   consentTimestamp?: string | null
 }

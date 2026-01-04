@@ -720,10 +720,14 @@ export default function Dashboard() {
   const learnerName = session?.user?.name || session?.user?.email || 'Guest learner'
   const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
+  const [profileStatusBio, setProfileStatusBio] = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarEditArmed, setAvatarEditArmed] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const effectiveAvatarUrl = (profileAvatarUrl || learnerAvatarUrl || '').trim() || null
+  const [statusBioEditing, setStatusBioEditing] = useState(false)
+  const [statusBioDraft, setStatusBioDraft] = useState('')
+  const [statusBioSaving, setStatusBioSaving] = useState(false)
 
   useEffect(() => {
     if (!avatarEditArmed) return
@@ -757,6 +761,17 @@ export default function Dashboard() {
   const userRole = (session as any)?.user?.role as SectionRole | undefined
   const normalizedRole: SectionRole = userRole ?? 'guest'
   const isAdmin = normalizedRole === 'admin'
+  const isInstructor = normalizedRole === 'teacher'
+  const isVerifiedAccount = isAdmin || isInstructor
+  const roleFlagText = useMemo(() => {
+    if (normalizedRole === 'admin') return 'Admin'
+    if (normalizedRole === 'teacher') return 'Instructor'
+    if (normalizedRole === 'student') {
+      const gradeText = status === 'authenticated' ? activeGradeLabel : ''
+      return gradeText ? `Student (${gradeText})` : 'Student'
+    }
+    return 'Guest'
+  }, [activeGradeLabel, normalizedRole, status])
   const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const isLearner = normalizedRole === 'student'
   const isTestStudent = useMemo(() => isSpecialTestStudentEmail(session?.user?.email || ''), [session?.user?.email])
@@ -780,6 +795,12 @@ export default function Dashboard() {
         const data = await res.json().catch(() => ({}))
         const next = typeof data?.avatar === 'string' ? data.avatar.trim() : ''
         if (!cancelled) setProfileAvatarUrl(next || null)
+
+        const nextStatus = typeof data?.statusBio === 'string' ? data.statusBio.trim() : ''
+        if (!cancelled) {
+          setProfileStatusBio(nextStatus || null)
+          setStatusBioDraft(nextStatus || '')
+        }
       } catch {
         // ignore
       }
@@ -788,6 +809,33 @@ export default function Dashboard() {
       cancelled = true
     }
   }, [status])
+
+  const saveStatusBio = useCallback(async (nextRaw: string) => {
+    const next = (nextRaw || '').trim().slice(0, 100)
+    setStatusBioSaving(true)
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statusBio: next }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || (Array.isArray(data?.errors) ? data.errors.join(' • ') : `Failed to save status (${res.status})`))
+        return false
+      }
+      const saved = typeof data?.statusBio === 'string' ? data.statusBio.trim() : next
+      setProfileStatusBio(saved || null)
+      setStatusBioDraft(saved || '')
+      return true
+    } catch (err: any) {
+      alert(err?.message || 'Failed to save status')
+      return false
+    } finally {
+      setStatusBioSaving(false)
+    }
+  }, [])
 
   const uploadAvatar = useCallback(async (file: File) => {
     if (!file) return
@@ -5074,7 +5122,66 @@ export default function Dashboard() {
                   </div>
                   <div className="pb-1">
                     <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                    <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
+                    <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
+                      <span>{roleFlagText}</span>
+                      {isVerifiedAccount && (
+                        <span
+                          className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
+                          aria-label="Verified"
+                          title="Verified"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-1">
+                      {statusBioEditing ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={statusBioDraft}
+                            maxLength={100}
+                            disabled={statusBioSaving}
+                            autoFocus
+                            onChange={(e) => setStatusBioDraft(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                const ok = await saveStatusBio(statusBioDraft)
+                                if (ok) setStatusBioEditing(false)
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault()
+                                setStatusBioDraft(profileStatusBio || '')
+                                setStatusBioEditing(false)
+                              }
+                            }}
+                            onBlur={async () => {
+                              const ok = await saveStatusBio(statusBioDraft)
+                              if (ok) setStatusBioEditing(false)
+                            }}
+                            className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
+                            placeholder="Set a short status…"
+                            aria-label="Status or short bio"
+                          />
+                          <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-left text-sm text-white/85 hover:text-white"
+                          onClick={() => {
+                            setStatusBioDraft(profileStatusBio || '')
+                            setStatusBioEditing(true)
+                          }}
+                          aria-label="Edit status"
+                        >
+                          {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
@@ -5229,7 +5336,66 @@ export default function Dashboard() {
                   </div>
                   <div className="pb-1">
                     <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                    <p className="text-sm text-blue-100/80">{learnerGradeText}</p>
+                    <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
+                      <span>{roleFlagText}</span>
+                      {isVerifiedAccount && (
+                        <span
+                          className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
+                          aria-label="Verified"
+                          title="Verified"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-1">
+                      {statusBioEditing ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={statusBioDraft}
+                            maxLength={100}
+                            disabled={statusBioSaving}
+                            autoFocus
+                            onChange={(e) => setStatusBioDraft(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                const ok = await saveStatusBio(statusBioDraft)
+                                if (ok) setStatusBioEditing(false)
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault()
+                                setStatusBioDraft(profileStatusBio || '')
+                                setStatusBioEditing(false)
+                              }
+                            }}
+                            onBlur={async () => {
+                              const ok = await saveStatusBio(statusBioDraft)
+                              if (ok) setStatusBioEditing(false)
+                            }}
+                            className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
+                            placeholder="Set a short status…"
+                            aria-label="Status or short bio"
+                          />
+                          <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-left text-sm text-white/85 hover:text-white"
+                          onClick={() => {
+                            setStatusBioDraft(profileStatusBio || '')
+                            setStatusBioEditing(true)
+                          }}
+                          aria-label="Edit status"
+                        >
+                          {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">

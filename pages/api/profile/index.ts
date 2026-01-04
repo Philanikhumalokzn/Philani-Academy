@@ -83,6 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         country: true,
         schoolName: true,
         avatar: true,
+        statusBio: true,
         consentToPolicies: true,
         consentTimestamp: true,
         createdAt: true,
@@ -218,6 +219,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (hasKey(body, 'avatar')) {
       const avatar = asString(body.avatar)
       data.avatar = avatar ? avatar : null
+    }
+
+    if (hasKey(body, 'statusBio')) {
+      const statusBioRaw = asString(body.statusBio)
+      if (statusBioRaw.length > 100) {
+        errors.push('Status/bio must be 100 characters or less')
+      } else {
+        data.statusBio = statusBioRaw ? statusBioRaw : null
+      }
     }
 
     const hasConsentKey = hasKey(body, 'popiConsent') || hasKey(body, 'consentToPolicies') || hasKey(body, 'termsConsent')

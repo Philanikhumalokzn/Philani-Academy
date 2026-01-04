@@ -317,7 +317,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
             <button
               type="button"
               aria-label="Close account control"
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5 backdrop-blur"
               onClick={onRequestClose}
             >
               <span aria-hidden="true" className="text-lg leading-none">×</span>
@@ -327,12 +327,12 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
 
         <div className="p-3 overflow-auto h-full">
           {loading ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">Loading…</div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 text-sm text-white/80">Loading…</div>
           ) : (
             <div className="space-y-2">
-              {error && <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">{error}</div>}
+              {error && <div className="rounded-2xl border border-red-400/20 bg-red-500/10 backdrop-blur p-3 text-sm text-red-100">{error}</div>}
 
-              <div className="rounded-2xl border border-white/10 bg-white/5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('learner')}>
                   <div className="font-semibold text-white">Learner information</div>
                   <div className="text-white/70">{openSection === 'learner' ? '▲' : '▼'}</div>
@@ -369,7 +369,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('contact')}>
                   <div className="font-semibold text-white">Contact details</div>
                   <div className="text-white/70">{openSection === 'contact' ? '▲' : '▼'}</div>
@@ -398,7 +398,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('emergency')}>
                   <div className="font-semibold text-white">Emergency contact</div>
                   <div className="text-white/70">{openSection === 'emergency' ? '▲' : '▼'}</div>
@@ -423,7 +423,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('address')}>
                   <div className="font-semibold text-white">Residential address</div>
                   <div className="text-white/70">{openSection === 'address' ? '▲' : '▼'}</div>
@@ -465,7 +465,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('compliance')}>
                   <div className="font-semibold text-white">Compliance & preferences</div>
                   <div className="text-white/70">{openSection === 'compliance' ? '▲' : '▼'}</div>
@@ -486,7 +486,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5">
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('security')}>
                   <div className="font-semibold text-white">Security</div>
                   <div className="text-white/70">{openSection === 'security' ? '▲' : '▼'}</div>

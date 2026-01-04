@@ -331,12 +331,12 @@ export default function MobileTopChrome() {
             aria-hidden="true"
           />
           <div className="absolute inset-x-2 top-14 bottom-3 rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-2xl overflow-hidden">
-            <div className="p-3 border-b border-white/10 flex items-center justify-between">
+            <div className="p-3 border-b border-white/10 backdrop-blur flex items-center justify-between">
               <div className="font-semibold text-white">Notifications</div>
               <button
                 type="button"
                 aria-label="Close notifications"
-                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
+                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5 backdrop-blur"
                 onClick={closeNotifications}
               >
                 <span aria-hidden="true" className="text-lg leading-none">×</span>

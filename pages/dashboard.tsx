@@ -585,7 +585,7 @@ export default function Dashboard() {
   const [sessionDetailsIds, setSessionDetailsIds] = useState<string[]>([])
   const [sessionDetailsIndex, setSessionDetailsIndex] = useState(0)
   const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
-  const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex' | 'assignments' | 'responses'>('materials')
+  const [sessionDetailsTab, setSessionDetailsTab] = useState<'assignments' | 'responses'>('assignments')
 
   const [assignmentOverlayOpen, setAssignmentOverlayOpen] = useState(false)
   const [assignmentQuestionOverlayOpen, setAssignmentQuestionOverlayOpen] = useState(false)
@@ -2366,13 +2366,13 @@ export default function Dashboard() {
   }
 
   const toggleMaterialsForSession = (sessionId: string) => {
-    // Legacy name: this now opens the session details overlay.
+    // Legacy name: this now opens the session details overlay (Assignments).
     const id = String(sessionId || '')
     if (!id) return
     setSessionDetailsIds([id])
     setSessionDetailsIndex(0)
     setSessionDetailsView('details')
-    setSessionDetailsTab('materials')
+    setSessionDetailsTab('assignments')
     setSessionDetailsOpen(true)
   }
 
@@ -2381,7 +2381,7 @@ export default function Dashboard() {
     setSessionDetailsIds([])
     setSessionDetailsIndex(0)
     setSessionDetailsView('details')
-    setSessionDetailsTab('materials')
+    setSessionDetailsTab('assignments')
     setExpandedSessionId(null)
     setMaterials([])
     setMaterialsError(null)
@@ -2392,7 +2392,7 @@ export default function Dashboard() {
     resetMaterialForm()
   }, [])
 
-  const openSessionDetails = useCallback((ids: string[], initialIndex = 0, initialTab: 'materials' | 'latex' | 'responses' = 'materials') => {
+  const openSessionDetails = useCallback((ids: string[], initialIndex = 0, initialTab: 'assignments' | 'responses' = 'assignments') => {
     const safeIds = (ids || []).map(String).filter(Boolean)
     if (!safeIds.length) return
     const idx = Math.max(0, Math.min(initialIndex, safeIds.length - 1))
@@ -2409,7 +2409,7 @@ export default function Dashboard() {
     setSessionDetailsIds(safeIds)
     setSessionDetailsIndex(0)
     setSessionDetailsView('pastList')
-    setSessionDetailsTab('materials')
+    setSessionDetailsTab('assignments')
     setSessionDetailsOpen(true)
   }, [])
 
@@ -2570,16 +2570,13 @@ export default function Dashboard() {
     setLatexSaves({ shared: [], mine: [] })
     setLatexSavesError(null)
     resetMaterialForm()
-    fetchMaterials(sessionDetailsSessionId)
-    fetchLatexSaves(sessionDetailsSessionId)
-    fetchResolvedLessonScript(sessionDetailsSessionId)
-  }, [sessionDetailsOpen, sessionDetailsView, sessionDetailsSessionId])
-
-  useEffect(() => {
-    if (!sessionDetailsOpen) return
-    // Templates are used in the materials overlay; refresh when opening or switching grade.
-    fetchLessonScriptTemplates()
-  }, [sessionDetailsOpen, fetchLessonScriptTemplates])
+    if (sessionDetailsTab === 'assignments') {
+      fetchAssignments(sessionDetailsSessionId)
+    }
+    if (sessionDetailsTab === 'responses') {
+      fetchMyResponses(sessionDetailsSessionId)
+    }
+  }, [sessionDetailsOpen, sessionDetailsView, sessionDetailsSessionId, sessionDetailsTab])
 
   useEffect(() => {
     if (!lessonScriptSelectedTemplateId) {
@@ -3303,7 +3300,7 @@ export default function Dashboard() {
                   </button>
                   <button
                     type="button"
-                    className="btn"
+                    className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
                     onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
                     disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                   >
@@ -3311,8 +3308,8 @@ export default function Dashboard() {
                   </button>
                   <button
                     type="button"
-                    className="btn"
-                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0)}
+                    className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
                     disabled={isSubscriptionBlocked}
                   >
                     Assignments
@@ -3344,7 +3341,7 @@ export default function Dashboard() {
                       </button>
                       <button
                         type="button"
-                        className="btn"
+                        className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
                         onClick={() => openSessionDetails([String(s.id)], 0, 'responses')}
                         disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
@@ -3352,8 +3349,8 @@ export default function Dashboard() {
                       </button>
                       <button
                         type="button"
-                        className="btn"
-                        onClick={() => openSessionDetails([String(s.id)], 0)}
+                        className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                        onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
                         disabled={isSubscriptionBlocked}
                       >
                         Assignments
@@ -3721,7 +3718,7 @@ export default function Dashboard() {
                   disabled={subscriptionGatingSaving || subscriptionGatingEnabled === null}
                   onChange={(e) => updateSubscriptionGating(e.target.checked)}
                 />
-                <span>Require an active subscription for learners to join sessions and view materials</span>
+                <span>Require an active subscription for learners to join sessions and view assignments</span>
               </label>
               {subscriptionGatingEnabled === null && (
                 <div className="text-xs muted">Loading current setting…</div>
@@ -3734,7 +3731,7 @@ export default function Dashboard() {
           {isSubscriptionBlocked && (
             <div className="p-3 border border-white/10 rounded bg-white/5">
               <div className="font-medium">Subscription required</div>
-              <div className="text-sm muted">Subscribe to join sessions and access lesson materials.</div>
+              <div className="text-sm muted">Subscribe to join sessions and access assignments.</div>
               <div className="mt-2">
                 <a className="btn btn-primary" href="/subscribe">Subscribe</a>
               </div>
@@ -3791,17 +3788,17 @@ export default function Dashboard() {
                           href={s.joinUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className={`btn btn-ghost w-full justify-center${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                          className={`w-full justify-center text-sm font-semibold text-white/70 hover:text-white ${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
                         >
                           Link
                         </a>
                         <button
                           type="button"
-                          className="btn w-full justify-center"
-                          onClick={() => openSessionDetails([String(s.id)], 0)}
+                          className="w-full justify-center text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                          onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
                           disabled={isSubscriptionBlocked}
                         >
-                          Materials
+                          Assignments
                         </button>
                       </div>
                     </div>
@@ -3841,17 +3838,17 @@ export default function Dashboard() {
                           href={s.joinUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className={`btn btn-ghost${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                          className={`text-sm font-semibold text-white/70 hover:text-white ${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
                         >
                           Link
                         </a>
                         <button
                           type="button"
-                          className="btn"
-                          onClick={() => openSessionDetails([String(s.id)], 0)}
+                          className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                          onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
                           disabled={isSubscriptionBlocked}
                         >
-                          Materials
+                          Assignments
                         </button>
                       </div>
                     </div>
@@ -3881,7 +3878,7 @@ export default function Dashboard() {
                     <div className="p-3 border-b flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold break-words">Past sessions — {activeGradeLabel}</div>
-                        <div className="text-sm muted">Tap a session to view materials and {isLearner ? 'saved notes' : 'LaTeX saves'}.</div>
+                        <div className="text-sm muted">Tap a session to view assignments.</div>
                       </div>
                       <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
                         Close
@@ -3899,7 +3896,7 @@ export default function Dashboard() {
                                 onClick={() => {
                                   setSessionDetailsIndex(idx)
                                   setSessionDetailsView('details')
-                                  setSessionDetailsTab('materials')
+                                  setSessionDetailsTab('assignments')
                                 }}
                               >
                                 <div className="font-medium break-words">{s?.title || 'Session'}</div>
@@ -3944,46 +3941,30 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="p-3 border-b">
-                      <div className={`grid gap-2 ${isLearner ? 'grid-cols-4' : 'grid-cols-3'}`}>
-                        <button
-                          type="button"
-                          className={`btn w-full justify-center ${sessionDetailsTab === 'assignments' ? 'btn-primary' : 'btn-ghost'}`}
-                          onClick={() => {
-                            setSessionDetailsTab('assignments')
-                            if (sessionDetailsSessionId) fetchAssignments(sessionDetailsSessionId)
-                          }}
-                        >
-                          Assignments
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn w-full justify-center ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
-                          onClick={() => setSessionDetailsTab('materials')}
-                        >
-                          Materials
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn w-full justify-center ${sessionDetailsTab === 'latex' ? 'btn-primary' : 'btn-ghost'}`}
-                          onClick={() => setSessionDetailsTab('latex')}
-                        >
-                          {learnerNotesLabel}
-                        </button>
-                        {isLearner && (
+                    {isLearner ? (
+                      <div className="p-3 border-b">
+                        <div className="flex items-center justify-center gap-6 text-sm">
                           <button
                             type="button"
-                            className={`btn w-full justify-center ${sessionDetailsTab === 'responses' ? 'btn-primary' : 'btn-ghost'}`}
-                            onClick={() => {
-                              setSessionDetailsTab('responses')
-                              if (sessionDetailsSessionId) fetchMyResponses(sessionDetailsSessionId)
-                            }}
+                            className={sessionDetailsTab === 'assignments'
+                              ? 'font-semibold text-white underline underline-offset-4'
+                              : 'font-semibold text-white/70 hover:text-white'}
+                            onClick={() => setSessionDetailsTab('assignments')}
+                          >
+                            Assignments
+                          </button>
+                          <button
+                            type="button"
+                            className={sessionDetailsTab === 'responses'
+                              ? 'font-semibold text-white underline underline-offset-4'
+                              : 'font-semibold text-white/70 hover:text-white'}
+                            onClick={() => setSessionDetailsTab('responses')}
                           >
                             Quizzes
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
 
                     <div className="flex-1 overflow-y-auto p-3">
                       {sessionDetailsTab === 'assignments' ? (
@@ -3993,7 +3974,7 @@ export default function Dashboard() {
                             {expandedSessionId && (
                               <button
                                 type="button"
-                                className="btn btn-ghost text-xs"
+                                className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
                                 onClick={() => {
                                   fetchAssignments(expandedSessionId)
                                   if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
@@ -4093,481 +4074,6 @@ export default function Dashboard() {
                             </div>
                           )}
                         </div>
-                      ) : sessionDetailsTab === 'materials' ? (
-                        <div className="space-y-2">
-                          <div className="p-3 border border-white/10 rounded bg-white/5 space-y-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="font-semibold text-sm">Lesson Script</div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost text-xs"
-                                  onClick={() => {
-                                    if (sessionDetailsSessionId) fetchResolvedLessonScript(sessionDetailsSessionId)
-                                    fetchLessonScriptTemplates()
-                                  }}
-                                  disabled={lessonScriptLoading || lessonScriptTemplatesLoading}
-                                >
-                                  Refresh
-                                </button>
-                              </div>
-                            </div>
-
-                            {lessonScriptError ? (
-                              <div className="text-sm text-red-600">{lessonScriptError}</div>
-                            ) : lessonScriptLoading ? (
-                              <div className="text-sm muted">Loading lesson script…</div>
-                            ) : (
-                              <div className="text-sm">
-                                <div>
-                                  <span className="font-medium">Source:</span> {lessonScriptSource || 'none'}
-                                </div>
-                                {lessonScriptAssignment?.template ? (
-                                  <div className="text-xs muted">
-                                    Template: {lessonScriptAssignment.template.title}
-                                    {lessonScriptAssignment?.templateVersion?.version
-                                      ? ` • v${lessonScriptAssignment.templateVersion.version}`
-                                      : lessonScriptAssignment?.template?.currentVersionId
-                                      ? ' • current'
-                                      : ''}
-                                    {lessonScriptAssignment?.overrideContent ? ' • override active' : ''}
-                                  </div>
-                                ) : lessonScriptAssignment ? (
-                                  <div className="text-xs muted">Assigned (no template metadata)</div>
-                                ) : (
-                                  <div className="text-xs muted">No script assigned yet.</div>
-                                )}
-                              </div>
-                            )}
-
-                            {canUploadMaterials && !isSubscriptionBlocked && sessionDetailsSessionId && (
-                              <div className="space-y-3">
-                                <div className="grid gap-2 md:grid-cols-2">
-                                  <div className="space-y-1">
-                                    <div className="text-xs uppercase tracking-wide muted">Template</div>
-                                    {lessonScriptTemplatesError ? (
-                                      <div className="text-sm text-red-600">{lessonScriptTemplatesError}</div>
-                                    ) : null}
-                                    <select
-                                      className="input"
-                                      value={lessonScriptSelectedTemplateId}
-                                      onChange={(e) => {
-                                        const next = e.target.value
-                                        setLessonScriptSelectedTemplateId(next)
-                                        setLessonScriptSelectedVersionId('')
-                                      }}
-                                      disabled={lessonScriptTemplatesLoading || lessonScriptSaving}
-                                    >
-                                      <option value="">None</option>
-                                      {lessonScriptTemplates.map(t => (
-                                        <option key={t.id} value={t.id}>
-                                          {t.title}{t.grade ? ` (${t.grade})` : ''}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  <div className="space-y-1">
-                                    <div className="text-xs uppercase tracking-wide muted">Version</div>
-                                    {lessonScriptVersionsError ? (
-                                      <div className="text-sm text-red-600">{lessonScriptVersionsError}</div>
-                                    ) : null}
-                                    <select
-                                      className="input"
-                                      value={lessonScriptSelectedVersionId}
-                                      onChange={(e) => setLessonScriptSelectedVersionId(e.target.value)}
-                                      disabled={!lessonScriptSelectedTemplateId || lessonScriptVersionsLoading || lessonScriptSaving}
-                                    >
-                                      <option value="">Use template current</option>
-                                      {lessonScriptVersions.map(v => (
-                                        <option key={v.id} value={v.id}>v{v.version}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    onClick={() => saveLessonScriptAssignment(sessionDetailsSessionId, {
-                                      templateId: lessonScriptSelectedTemplateId ? lessonScriptSelectedTemplateId : null,
-                                      templateVersionId: lessonScriptSelectedVersionId ? lessonScriptSelectedVersionId : null,
-                                    })}
-                                    disabled={lessonScriptSaving}
-                                  >
-                                    Save assignment
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost"
-                                    onClick={() => {
-                                      setLessonScriptSelectedTemplateId('')
-                                      setLessonScriptSelectedVersionId('')
-                                      setLessonScriptOverrideText('')
-                                      saveLessonScriptAssignment(sessionDetailsSessionId, {
-                                        templateId: null,
-                                        templateVersionId: null,
-                                        overrideContent: null,
-                                      })
-                                    }}
-                                    disabled={lessonScriptSaving}
-                                  >
-                                    Clear all
-                                  </button>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <div className="text-xs uppercase tracking-wide muted">Session override (JSON object)</div>
-                                  <textarea
-                                    className="input min-h-[140px] font-mono text-xs"
-                                    value={lessonScriptOverrideText}
-                                    onChange={(e) => setLessonScriptOverrideText(e.target.value)}
-                                    placeholder="Paste JSON here to override this session"
-                                    disabled={lessonScriptSaving}
-                                  />
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      className="btn"
-                                      onClick={() => {
-                                        try {
-                                          const overrideObj = safeParseJsonObject(lessonScriptOverrideText)
-                                          saveLessonScriptAssignment(sessionDetailsSessionId, {
-                                            templateId: lessonScriptSelectedTemplateId ? lessonScriptSelectedTemplateId : null,
-                                            templateVersionId: lessonScriptSelectedVersionId ? lessonScriptSelectedVersionId : null,
-                                            overrideContent: overrideObj,
-                                          })
-                                        } catch (err: any) {
-                                          alert(err?.message || 'Invalid JSON')
-                                        }
-                                      }}
-                                      disabled={lessonScriptSaving}
-                                    >
-                                      Set override
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost"
-                                      onClick={() => saveLessonScriptAssignment(sessionDetailsSessionId, {
-                                        templateId: lessonScriptSelectedTemplateId ? lessonScriptSelectedTemplateId : null,
-                                        templateVersionId: lessonScriptSelectedVersionId ? lessonScriptSelectedVersionId : null,
-                                        overrideContent: null,
-                                      })}
-                                      disabled={lessonScriptSaving}
-                                    >
-                                      Clear override
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="border-t pt-3 space-y-3">
-                                  <div className="font-medium text-sm">Create template</div>
-                                  {!selectedGrade ? (
-                                    <div className="text-sm muted">Select a grade first, then create a template.</div>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      <div className="grid gap-2 md:grid-cols-2">
-                                        <input
-                                          className="input"
-                                          placeholder="Title"
-                                          value={newLessonScriptTitle}
-                                          onChange={(e) => setNewLessonScriptTitle(e.target.value)}
-                                          disabled={lessonScriptSaving}
-                                        />
-                                        <input
-                                          className="input"
-                                          placeholder="Subject (optional)"
-                                          value={newLessonScriptSubject}
-                                          onChange={(e) => setNewLessonScriptSubject(e.target.value)}
-                                          disabled={lessonScriptSaving}
-                                        />
-                                        <input
-                                          className="input md:col-span-2"
-                                          placeholder="Topic (optional)"
-                                          value={newLessonScriptTopic}
-                                          onChange={(e) => setNewLessonScriptTopic(e.target.value)}
-                                          disabled={lessonScriptSaving}
-                                        />
-                                      </div>
-                                      <textarea
-                                        className="input min-h-[160px] font-mono text-xs"
-                                        value={newLessonScriptContentText}
-                                        onChange={(e) => setNewLessonScriptContentText(e.target.value)}
-                                        disabled={lessonScriptSaving}
-                                      />
-                                      <div>
-                                        <button
-                                          type="button"
-                                          className="btn btn-primary"
-                                          onClick={async () => {
-                                            try {
-                                              const contentObj = safeParseJsonObject(newLessonScriptContentText)
-                                              const title = newLessonScriptTitle.trim()
-                                              if (!title) {
-                                                alert('Title is required')
-                                                return
-                                              }
-                                              setLessonScriptSaving(true)
-                                              const res = await fetch('/api/lesson-scripts/templates', {
-                                                method: 'POST',
-                                                credentials: 'same-origin',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                  title,
-                                                  grade: selectedGrade,
-                                                  subject: newLessonScriptSubject.trim() || undefined,
-                                                  topic: newLessonScriptTopic.trim() || undefined,
-                                                  content: contentObj,
-                                                }),
-                                              })
-                                              const data = await res.json().catch(() => ({}))
-                                              if (!res.ok) {
-                                                alert(data?.message || `Failed to create template (${res.status})`)
-                                                return
-                                              }
-                                              await fetchLessonScriptTemplates()
-                                              const createdTemplateId = data?.template?.id ? String(data.template.id) : ''
-                                              if (createdTemplateId) {
-                                                setLessonScriptSelectedTemplateId(createdTemplateId)
-                                                setLessonScriptSelectedVersionId('')
-                                              }
-                                              setNewLessonScriptTitle('')
-                                              setNewLessonScriptSubject('')
-                                              setNewLessonScriptTopic('')
-                                              alert('Template created')
-                                            } catch (err: any) {
-                                              alert(err?.message || 'Failed to create template')
-                                            } finally {
-                                              setLessonScriptSaving(false)
-                                            }
-                                          }}
-                                          disabled={lessonScriptSaving || !selectedGrade}
-                                        >
-                                          Create template
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="border-t pt-3 space-y-2">
-                                  <div className="font-medium text-sm">Create version</div>
-                                  {!lessonScriptSelectedTemplateId ? (
-                                    <div className="text-sm muted">Select a template above first.</div>
-                                  ) : (
-                                    <>
-                                      <textarea
-                                        className="input min-h-[160px] font-mono text-xs"
-                                        value={newLessonScriptVersionContentText}
-                                        onChange={(e) => setNewLessonScriptVersionContentText(e.target.value)}
-                                        disabled={lessonScriptSaving}
-                                      />
-                                      <div>
-                                        <button
-                                          type="button"
-                                          className="btn"
-                                          onClick={async () => {
-                                            try {
-                                              const contentObj = safeParseJsonObject(newLessonScriptVersionContentText)
-                                              setLessonScriptSaving(true)
-                                              const res = await fetch(`/api/lesson-scripts/templates/${encodeURIComponent(lessonScriptSelectedTemplateId)}/versions`, {
-                                                method: 'POST',
-                                                credentials: 'same-origin',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ content: contentObj, makeCurrent: true }),
-                                              })
-                                              const data = await res.json().catch(() => ({}))
-                                              if (!res.ok) {
-                                                alert(data?.message || `Failed to create version (${res.status})`)
-                                                return
-                                              }
-                                              await fetchLessonScriptVersions(lessonScriptSelectedTemplateId)
-                                              await fetchLessonScriptTemplates()
-                                              alert('Version created (set as current)')
-                                            } catch (err: any) {
-                                              alert(err?.message || 'Failed to create version')
-                                            } finally {
-                                              setLessonScriptSaving(false)
-                                            }
-                                          }}
-                                          disabled={lessonScriptSaving}
-                                        >
-                                          Create version
-                                        </button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">Materials</div>
-                            {expandedSessionId && (
-                              <button type="button" className="btn btn-ghost text-xs" onClick={() => fetchMaterials(expandedSessionId)}>
-                                Refresh
-                              </button>
-                            )}
-                          </div>
-
-                          {canUploadMaterials && (
-                            <form onSubmit={uploadMaterial} className="space-y-2">
-                              <input
-                                className="input"
-                                placeholder="Material title"
-                                value={materialTitle}
-                                onChange={e => setMaterialTitle(e.target.value)}
-                              />
-                              <input
-                                ref={fileInputRef}
-                                className="input"
-                                type="file"
-                                accept=".pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.key,.txt,.xlsx,.xls,.zip,.rar,.jpg,.jpeg,.png,.mp4,.mov"
-                                onChange={e => handleMaterialFileChange(e.target.files?.[0] ?? null)}
-                              />
-                              <div>
-                                <button className="btn btn-primary" type="submit" disabled={materialUploading || !materialFile}>
-                                  {materialUploading ? 'Uploading...' : 'Upload material'}
-                                </button>
-                              </div>
-                            </form>
-                          )}
-
-                          {materialsError ? (
-                            <div className="text-sm text-red-600">{materialsError}</div>
-                          ) : materialsLoading ? (
-                            <div className="text-sm muted">Loading materials...</div>
-                          ) : materials.length === 0 ? (
-                            <div className="text-sm muted">No materials uploaded yet.</div>
-                          ) : (
-                            <ul className="space-y-2">
-                              {materials.map(m => (
-                                <li key={m.id} className="p-2 border rounded flex items-start justify-between gap-4">
-                                  <div className="min-w-0">
-                                    <a href={m.url} target="_blank" rel="noreferrer" className="font-medium hover:underline break-words">{m.title}</a>
-                                    <div className="text-xs muted">
-                                      {new Date(m.createdAt).toLocaleString()}
-                                      {m.createdBy ? ` • ${m.createdBy}` : ''}
-                                      {m.size ? ` • ${formatFileSize(m.size)}` : ''}
-                                    </div>
-                                  </div>
-                                  {canUploadMaterials && (
-                                    <button type="button" className="btn btn-danger" onClick={() => deleteMaterial(m.id)}>
-                                      Delete
-                                    </button>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      ) : sessionDetailsTab === 'latex' ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">{learnerNotesLabel}</div>
-                            {expandedSessionId && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost text-xs"
-                                onClick={() => fetchLatexSaves(expandedSessionId)}
-                                disabled={latexSavesLoading}
-                              >
-                                {latexSavesLoading ? 'Refreshing…' : 'Refresh'}
-                              </button>
-                            )}
-                          </div>
-
-                          {latexSavesError ? (
-                            <div className="text-sm text-red-600">{latexSavesError}</div>
-                          ) : latexSavesLoading ? (
-                            <div className="text-sm muted">Loading {isLearner ? 'saved notes' : 'saved LaTeX'}…</div>
-                          ) : (
-                            <div className="space-y-3">
-                              <div>
-                                <p className="text-xs uppercase tracking-wide muted mb-1">{isLearner ? 'Class notes' : 'Class saves'}</p>
-                                {latexSaves.shared.length === 0 ? (
-                                  <div className="text-sm muted">{isLearner ? 'No class notes yet.' : 'No class saves yet.'}</div>
-                                ) : (
-                                  <ul className="border rounded divide-y overflow-hidden">
-                                    {latexSaves.shared.map(save => (
-                                      <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                        <div className="min-w-0">
-                                          <div className="font-medium text-sm break-words">{save.title}</div>
-                                          <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
-                                          {save.url && (
-                                            <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
-                                              Download
-                                            </a>
-                                          )}
-                                          {normalizedRole === 'admin' && (
-                                            <>
-                                              <button
-                                                type="button"
-                                                className="btn btn-ghost text-xs"
-                                                onClick={() => expandedSessionId && renameLatexSave(expandedSessionId, save.id, save.title)}
-                                              >
-                                                Rename
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="btn btn-danger text-xs"
-                                                onClick={() => expandedSessionId && deleteLatexSave(expandedSessionId, save.id)}
-                                              >
-                                                Delete
-                                              </button>
-                                            </>
-                                          )}
-                                        </div>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-xs uppercase tracking-wide muted mb-1">{isLearner ? 'My notes' : 'My saves'}</p>
-                                {latexSaves.mine.length === 0 ? (
-                                  <div className="text-sm muted">{isLearner ? 'No saved notes yet.' : 'No personal saves yet.'}</div>
-                                ) : (
-                                  <ul className="border rounded divide-y overflow-hidden">
-                                    {latexSaves.mine.map(save => (
-                                      <li key={save.id} className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                        <div className="min-w-0">
-                                          <div className="font-medium text-sm break-words">{save.title}</div>
-                                          <div className="text-xs muted">{new Date(save.createdAt).toLocaleString()}</div>
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
-                                          {save.url && (
-                                            <a href={save.url} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">
-                                              Download
-                                            </a>
-                                          )}
-                                          <button
-                                            type="button"
-                                            className="btn btn-ghost text-xs"
-                                            onClick={() => expandedSessionId && renameLatexSave(expandedSessionId, save.id, save.title)}
-                                          >
-                                            Rename
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="btn btn-danger text-xs"
-                                            onClick={() => expandedSessionId && deleteLatexSave(expandedSessionId, save.id)}
-                                          >
-                                            Delete
-                                          </button>
-                                        </div>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
                       ) : sessionDetailsTab === 'responses' ? (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
@@ -4575,7 +4081,7 @@ export default function Dashboard() {
                             {expandedSessionId && (
                               <button
                                 type="button"
-                                className="btn btn-ghost text-xs"
+                                className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
                                 onClick={() => fetchMyResponses(expandedSessionId)}
                                 disabled={myResponsesLoading}
                               >

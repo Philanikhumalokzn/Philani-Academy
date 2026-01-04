@@ -719,6 +719,10 @@ export default function Dashboard() {
     : 'Resolving grade'
   const learnerName = session?.user?.name || session?.user?.email || 'Guest learner'
   const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const effectiveAvatarUrl = (profileAvatarUrl || learnerAvatarUrl || '').trim() || null
   const learnerInitials = useMemo(() => {
     if (learnerName) {
       const parts = learnerName.trim().split(/\s+/).filter(Boolean)
@@ -747,6 +751,50 @@ export default function Dashboard() {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     return `pa:readAnnouncements:${userKey}`
   }, [session])
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'same-origin' })
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        const next = typeof data?.avatar === 'string' ? data.avatar.trim() : ''
+        if (!cancelled) setProfileAvatarUrl(next || null)
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [status])
+
+  const uploadAvatar = useCallback(async (file: File) => {
+    if (!file) return
+    setAvatarUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to upload avatar (${res.status})`)
+        return
+      }
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (url) setProfileAvatarUrl(url)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload avatar')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -4876,6 +4924,17 @@ export default function Dashboard() {
         onChange={onDiagramFilePicked}
         style={{ display: 'none' }}
       />
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) void uploadAvatar(file)
+          e.target.value = ''
+        }}
+        style={{ display: 'none' }}
+      />
       {isMobile && (
         <>
           <div
@@ -4957,12 +5016,34 @@ export default function Dashboard() {
                   </svg>
                 </button>
                 <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
-                    {learnerAvatarUrl ? (
-                      <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                    ) : (
-                      <span>{learnerInitials}</span>
-                    )}
+                  <div className="relative group w-20 h-20">
+                    <button
+                      type="button"
+                      className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                      aria-label="Edit avatar"
+                    >
+                      {effectiveAvatarUrl ? (
+                        <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{learnerInitials}</span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Update avatar"
+                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        avatarInputRef.current?.click()
+                      }}
+                      disabled={avatarUploading}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                      </svg>
+                    </button>
                   </div>
                   <div className="pb-1">
                     <p className="text-xl font-semibold leading-tight">{learnerName}</p>
@@ -5089,12 +5170,34 @@ export default function Dashboard() {
                   </svg>
                 </button>
                 <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden">
-                    {learnerAvatarUrl ? (
-                      <img src={learnerAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                    ) : (
-                      <span>{learnerInitials}</span>
-                    )}
+                  <div className="relative group w-20 h-20">
+                    <button
+                      type="button"
+                      className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                      aria-label="Edit avatar"
+                    >
+                      {effectiveAvatarUrl ? (
+                        <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{learnerInitials}</span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Update avatar"
+                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        avatarInputRef.current?.click()
+                      }}
+                      disabled={avatarUploading}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                      </svg>
+                    </button>
                   </div>
                   <div className="pb-1">
                     <p className="text-xl font-semibold leading-tight">{learnerName}</p>

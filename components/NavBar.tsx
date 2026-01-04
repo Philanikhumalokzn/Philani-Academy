@@ -1,11 +1,68 @@
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { signOut, useSession } from 'next-auth/react'
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 export default function NavBar() {
+  const router = useRouter()
   const { data: session } = useSession()
   const role = (session as any)?.user?.role
   const [open, setOpen] = useState(false)
+
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const isDashboard = router.pathname === '/dashboard'
+
+  const fallbackAvatar = ((session as any)?.user?.image as string | undefined) || '/favicon.ico'
+  const effectiveAvatarUrl = useMemo(() => {
+    const url = (profileAvatarUrl || fallbackAvatar || '').trim()
+    return url || '/favicon.ico'
+  }, [fallbackAvatar, profileAvatarUrl])
+
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'same-origin' })
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        const next = typeof data?.avatar === 'string' ? data.avatar.trim() : ''
+        if (!cancelled) setProfileAvatarUrl(next || null)
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [session])
+
+  const uploadAvatar = async (file: File) => {
+    if (!file) return
+    setAvatarUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to upload avatar (${res.status})`)
+        return
+      }
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (url) setProfileAvatarUrl(url)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload avatar')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
 
   const handleBack = () => {
     if (typeof window === 'undefined') return
@@ -58,9 +115,49 @@ export default function NavBar() {
               {role && <span className="text-sm text-blue-100/80 capitalize">{role}</span>}
               {session ? (
                 <>
-                  <Link href="/profile" className="flex items-center space-x-2">
-                    <img src={(session as any)?.user?.image || '/favicon.ico'} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
-                  </Link>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void uploadAvatar(file)
+                      e.target.value = ''
+                    }}
+                  />
+                  {isDashboard ? (
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        className="flex items-center"
+                        aria-label="Edit avatar"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={avatarUploading}
+                      >
+                        <img src={effectiveAvatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Update avatar"
+                        className={`absolute -bottom-2 -right-2 inline-flex items-center justify-center h-7 w-7 rounded-lg border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          avatarInputRef.current?.click()
+                        }}
+                        disabled={avatarUploading}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <Link href="/profile" className="flex items-center space-x-2">
+                      <img src={effectiveAvatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
+                    </Link>
+                  )}
                   <button onClick={() => signOut({ callbackUrl: '/' })} className="btn btn-ghost border border-white/30">Sign out</button>
                 </>
               ) : (

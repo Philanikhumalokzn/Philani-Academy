@@ -35,7 +35,7 @@ export default NextAuth({
               throw new Error('Account pending phone verification. Please contact support.')
             }
           }
-          return { id: user.id, name: user.name, email: user.email, role: user.role, grade: user.grade }
+          return { id: user.id, name: user.name, email: user.email, role: user.role, grade: user.grade, image: user.avatar ?? undefined }
         } catch (err: any) {
           if (typeof err?.message === 'string' && err.message.toLowerCase().startsWith('account pending')) {
             throw err
@@ -55,19 +55,29 @@ export default NextAuth({
     error: '/auth/signin'
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      if (trigger === 'update') {
+        const nextImage =
+          (typeof (session as any)?.image === 'string' ? (session as any).image.trim() : '') ||
+          (typeof (session as any)?.user?.image === 'string' ? (session as any).user.image.trim() : '')
+        if (nextImage) token.image = nextImage
+      }
       // Attach role/grade from database user on sign in or when missing on the token
-      if (user || !token.role || typeof token.grade === 'undefined') {
+      if (user || !token.role || typeof token.grade === 'undefined' || typeof (token as any).image === 'undefined') {
         try {
-          const dbUser = await prisma.user.findUnique({ where: { email: token.email as string } })
+          const dbUser = token.sub
+            ? await prisma.user.findUnique({ where: { id: String(token.sub) } })
+            : await prisma.user.findUnique({ where: { email: token.email as string } })
           if (dbUser) {
             token.role = dbUser.role
             token.grade = dbUser.grade
+            if (dbUser.avatar) (token as any).image = dbUser.avatar
           }
           if (user) {
             const userData = user as any
             if (userData.role) token.role = userData.role
             if (typeof userData.grade !== 'undefined') token.grade = userData.grade
+            if (typeof userData.image === 'string' && userData.image.trim()) (token as any).image = userData.image.trim()
           }
         } catch (err: any) {
           if (process.env.DEBUG === '1') console.error('NextAuth jwt callback error:', err)
@@ -78,6 +88,9 @@ export default NextAuth({
     async session({ session, token }) {
       (session as any).user.role = token.role
       ;(session as any).user.grade = token.grade ?? null
+      if (typeof (token as any)?.image === 'string' && (token as any).image.trim()) {
+        ;(session as any).user.image = (token as any).image.trim()
+      }
       return session
     }
   }

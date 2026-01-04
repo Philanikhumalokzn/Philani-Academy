@@ -269,7 +269,7 @@ export default function Dashboard() {
     })
   }, [renderInlineEmphasis])
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { data: session, status, update: updateSession } = useSession()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
@@ -788,13 +788,20 @@ export default function Dashboard() {
         return
       }
       const url = typeof data?.url === 'string' ? data.url.trim() : ''
-      if (url) setProfileAvatarUrl(url)
+      if (url) {
+        setProfileAvatarUrl(url)
+        try {
+          await updateSession?.({ image: url } as any)
+        } catch {
+          // ignore
+        }
+      }
     } catch (err: any) {
       alert(err?.message || 'Failed to upload avatar')
     } finally {
       setAvatarUploading(false)
     }
-  }, [])
+  }, [updateSession])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

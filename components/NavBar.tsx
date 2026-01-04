@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 export default function NavBar() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, update: updateSession } = useSession()
   const role = (session as any)?.user?.role
   const [open, setOpen] = useState(false)
 
@@ -56,7 +56,14 @@ export default function NavBar() {
         return
       }
       const url = typeof data?.url === 'string' ? data.url.trim() : ''
-      if (url) setProfileAvatarUrl(url)
+      if (url) {
+        setProfileAvatarUrl(url)
+        try {
+          await updateSession?.({ image: url } as any)
+        } catch {
+          // ignore
+        }
+      }
     } catch (err: any) {
       alert(err?.message || 'Failed to upload avatar')
     } finally {

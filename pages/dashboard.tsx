@@ -5587,11 +5587,20 @@ export default function Dashboard() {
                     <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
                   </div>
                   </section>
-                  <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
                 </div>
               </div>
 
-              <div className="pt-[248px] space-y-5">
+              <div
+                className="pt-[248px] space-y-5"
+                style={{
+                  WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
+                  maskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskSize: '100% 100%',
+                  maskSize: '100% 100%',
+                }}
+              >
                 <SectionNav />
                 <section className="min-w-0 space-y-6">
                   <OverviewSection />
@@ -5795,12 +5804,20 @@ export default function Dashboard() {
                   <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
                 </div>
               </section>
-
-              <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
               </div>
               </div>
 
-              <div className="pt-[248px] space-y-5">
+              <div
+                className="pt-[248px] space-y-5"
+                style={{
+                  WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
+                  maskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskSize: '100% 100%',
+                  maskSize: '100% 100%',
+                }}
+              >
               <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-white">Sessions</div>

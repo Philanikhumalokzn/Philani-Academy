@@ -780,8 +780,6 @@ export default function Dashboard() {
   const [discoverLoading, setDiscoverLoading] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [discoverResults, setDiscoverResults] = useState<any[]>([])
-  const [discoverSelectedUser, setDiscoverSelectedUser] = useState<any | null>(null)
-  const [discoverUserLoading, setDiscoverUserLoading] = useState(false)
 
   const [actionInvites, setActionInvites] = useState<any[]>([])
   const [actionJoinRequests, setActionJoinRequests] = useState<any[]>([])
@@ -954,14 +952,19 @@ export default function Dashboard() {
 
   const searchDiscover = useCallback(async (query: string) => {
     const q = query.trim()
-    if (q.length < 2) {
+    const role = ((session as any)?.user?.role as string | undefined) || 'student'
+    const isPrivileged = role === 'admin' || role === 'teacher'
+    if (q.length < 2 && !isPrivileged) {
       setDiscoverResults([])
       return
     }
     setDiscoverLoading(true)
     setDiscoverError(null)
     try {
-      const res = await fetch(`/api/discover/users?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' })
+      const url = q.length >= 2
+        ? `/api/discover/users?q=${encodeURIComponent(q)}`
+        : '/api/discover/users'
+      const res = await fetch(url, { credentials: 'same-origin' })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.message || 'Search failed')
       setDiscoverResults(Array.isArray(data) ? data : [])
@@ -970,39 +973,7 @@ export default function Dashboard() {
     } finally {
       setDiscoverLoading(false)
     }
-  }, [])
-
-  const openDiscoverUser = useCallback(async (userId: string) => {
-    setDiscoverSelectedUser(null)
-    setDiscoverUserLoading(true)
-    try {
-      const res = await fetch(`/api/discover/user/${encodeURIComponent(userId)}`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.message || 'Failed to load profile')
-      setDiscoverSelectedUser(data)
-    } catch (err: any) {
-      setDiscoverError(err?.message || 'Failed to load profile')
-    } finally {
-      setDiscoverUserLoading(false)
-    }
-  }, [])
-
-  const requestJoinGroup = useCallback(async (groupId: string) => {
-    try {
-      const res = await fetch(`/api/groups/${encodeURIComponent(groupId)}/request-join`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.message || 'Failed to request to join')
-      await loadNotifications()
-      alert('Request sent')
-    } catch (err: any) {
-      alert(err?.message || 'Failed to request to join')
-    }
-  }, [loadNotifications])
+  }, [session])
 
   const respondInvite = useCallback(async (inviteId: string, action: 'accept' | 'decline') => {
     try {
@@ -1056,9 +1027,13 @@ export default function Dashboard() {
     if (dashboardSectionOverlay !== 'discover') return
     setDiscoverError(null)
     setDiscoverResults([])
-    setDiscoverSelectedUser(null)
-    void loadNotifications()
-  }, [dashboardSectionOverlay, loadNotifications])
+    const role = ((session as any)?.user?.role as string | undefined) || 'student'
+    const isPrivileged = role === 'admin' || role === 'teacher'
+    if (isPrivileged) {
+      setDiscoverQuery('')
+      void searchDiscover('')
+    }
+  }, [dashboardSectionOverlay, searchDiscover, session])
 
   const createGroup = useCallback(async () => {
     const name = createGroupName.trim()
@@ -5602,77 +5577,6 @@ export default function Dashboard() {
         return (
           <div className="space-y-3">
             <section className="card p-3 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-white">Notifications</div>
-                <button type="button" className="btn btn-ghost" onClick={() => void loadNotifications()} disabled={notificationsLoading}>
-                  Refresh
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-white">Invitations</div>
-                {notificationsLoading ? (
-                  <div className="text-sm muted">Loading…</div>
-                ) : actionInvites.length === 0 ? (
-                  <div className="text-sm muted">No invitations.</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {actionInvites.map((inv: any) => (
-                      <div key={inv.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-sm text-white/90">Join {inv.group?.name || 'a group'}</div>
-                        <div className="text-xs muted">Invited by {(inv.invitedBy?.name || inv.invitedBy?.email || 'someone')}</div>
-                        <div className="mt-2 flex gap-2">
-                          <button type="button" className="btn btn-secondary" onClick={() => void respondInvite(inv.id, 'accept')}>Accept</button>
-                          <button type="button" className="btn btn-ghost" onClick={() => void respondInvite(inv.id, 'decline')}>Decline</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-white">Join requests (your groups)</div>
-                {notificationsLoading ? (
-                  <div className="text-sm muted">Loading…</div>
-                ) : actionJoinRequests.length === 0 ? (
-                  <div className="text-sm muted">No pending join requests.</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {actionJoinRequests.map((r: any) => (
-                      <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-sm text-white/90">{(r.requestedBy?.name || r.requestedBy?.email || 'Learner')} → {r.group?.name || 'Group'}</div>
-                        <div className="mt-2 flex gap-2">
-                          <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
-                          <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-white">Activity</div>
-                {notificationsLoading ? (
-                  <div className="text-sm muted">Loading…</div>
-                ) : activityFeed.length === 0 ? (
-                  <div className="text-sm muted">No recent activity.</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {activityFeed.slice(0, 10).map((n: any) => (
-                      <div key={n.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-sm text-white/90">{n.title || n.type}</div>
-                        {n.body && <div className="text-xs text-white/75 mt-1">{n.body}</div>}
-                        <div className="text-[11px] muted mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="card p-3 space-y-3">
               <div className="text-sm font-semibold text-white">Discover</div>
               <div className="flex items-center gap-2">
                 <input
@@ -5687,7 +5591,12 @@ export default function Dashboard() {
                     }
                   }}
                 />
-                <button type="button" className="btn btn-secondary" disabled={discoverLoading || discoverQuery.trim().length < 2} onClick={() => void searchDiscover(discoverQuery)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={discoverLoading || (discoverQuery.trim().length > 0 && discoverQuery.trim().length < 2)}
+                  onClick={() => void searchDiscover(discoverQuery)}
+                >
                   {discoverLoading ? 'Searching…' : 'Search'}
                 </button>
               </div>
@@ -5696,7 +5605,15 @@ export default function Dashboard() {
               {discoverResults.length > 0 && (
                 <div className="grid gap-2">
                   {discoverResults.map((u: any) => (
-                    <button key={u.id} type="button" className="card p-3 text-left" onClick={() => void openDiscoverUser(u.id)}>
+                    <button
+                      key={u.id}
+                      type="button"
+                      className="card p-3 text-left"
+                      onClick={() => {
+                        if (!u?.id) return
+                        void router.push(`/u/${encodeURIComponent(String(u.id))}`)
+                      }}
+                    >
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
                           {u.avatar ? (
@@ -5713,32 +5630,6 @@ export default function Dashboard() {
                       </div>
                     </button>
                   ))}
-                </div>
-              )}
-
-              {discoverUserLoading && <div className="text-sm muted">Loading profile…</div>}
-              {discoverSelectedUser && (
-                <div className="card p-3 space-y-2">
-                  <div className="text-sm font-semibold text-white">{discoverSelectedUser.name}</div>
-                  {discoverSelectedUser.statusBio && <div className="text-sm text-white/85">{discoverSelectedUser.statusBio}</div>}
-                  <div className="text-xs muted">Request to join one of their groups:</div>
-                  {Array.isArray(discoverSelectedUser.groups) && discoverSelectedUser.groups.length > 0 ? (
-                    <div className="grid gap-2">
-                      {discoverSelectedUser.groups.map((g: any) => (
-                        <div key={g.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <div className="font-semibold text-white">{g.name}</div>
-                          <div className="text-xs muted">{String(g.type || '').replace('_', ' ')}{g.grade ? ` • ${gradeToLabel(g.grade as GradeValue)}` : ''}{` • ${g.membersCount || 0} members`}</div>
-                          <div className="mt-2">
-                            <button type="button" className="btn btn-secondary" onClick={() => void requestJoinGroup(g.id)}>
-                              Request to join
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm muted">No joinable groups shown.</div>
-                  )}
                 </div>
               )}
             </section>

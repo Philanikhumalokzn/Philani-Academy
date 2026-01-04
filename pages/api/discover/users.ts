@@ -15,11 +15,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end()
   }
 
-  const q = asString(req.query.q)
-  if (!q || q.length < 2) return res.status(200).json([])
-
   const role = (await getUserRole(req)) || 'student'
   const isPrivileged = role === 'admin' || role === 'teacher'
+
+  const q = asString(req.query.q)
+  const hasQuery = Boolean(q && q.length >= 2)
+  if (!hasQuery && !isPrivileged) return res.status(200).json([])
 
   const users = await prisma.user.findMany({
     where: {
@@ -29,11 +30,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : {
             profileVisibility: 'discoverable'
           }),
-      OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-        { schoolName: { contains: q, mode: 'insensitive' } }
-      ]
+      ...(hasQuery
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+              { schoolName: { contains: q, mode: 'insensitive' } }
+            ]
+          }
+        : {}),
     },
     select: {
       id: true,
@@ -44,8 +49,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       avatar: true,
       statusBio: true,
       schoolName: true,
-      profileVisibility: true
+      profileVisibility: true,
+      createdAt: true
     },
+    orderBy: hasQuery ? undefined : { createdAt: 'desc' },
     take: 20
   })
 

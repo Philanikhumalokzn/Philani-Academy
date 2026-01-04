@@ -84,6 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         schoolName: true,
         avatar: true,
         statusBio: true,
+        profileVisibility: true,
         consentToPolicies: true,
         consentTimestamp: true,
         createdAt: true,
@@ -227,6 +228,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         errors.push('Status/bio must be 100 characters or less')
       } else {
         data.statusBio = statusBioRaw ? statusBioRaw : null
+      }
+    }
+
+    if (hasKey(body, 'profileVisibility')) {
+      const raw = asString(body.profileVisibility).toLowerCase()
+      const allowed = new Set(['shared', 'private'])
+      if (!raw || !allowed.has(raw)) {
+        errors.push('Profile visibility must be shared or private')
+      } else {
+        data.profileVisibility = raw
       }
     }
 

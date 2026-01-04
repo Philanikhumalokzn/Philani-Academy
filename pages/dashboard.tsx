@@ -729,6 +729,65 @@ export default function Dashboard() {
   const [statusBioDraft, setStatusBioDraft] = useState('')
   const [statusBioSaving, setStatusBioSaving] = useState(false)
 
+  type MyGroupRow = {
+    membershipId: string
+    memberRole: string
+    joinedAt: string
+    group: {
+      id: string
+      name: string
+      type: string
+      grade: string | null
+      joinCodeActive: boolean
+      membersCount: number
+      createdAt: string
+      updatedAt: string
+    }
+  }
+
+  type GroupMemberRow = {
+    membershipId: string
+    memberRole: string
+    joinedAt: string
+    user: {
+      id: string
+      name: string
+      role: string
+      grade: string | null
+      avatar: string | null
+      statusBio: string | null
+      profileVisibility?: string | null
+    }
+  }
+
+  const [groupsOverlayOpen, setGroupsOverlayOpen] = useState(false)
+  const [myGroups, setMyGroups] = useState<MyGroupRow[]>([])
+  const [myGroupsLoading, setMyGroupsLoading] = useState(false)
+  const [myGroupsError, setMyGroupsError] = useState<string | null>(null)
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState<GroupMemberRow[]>([])
+  const [selectedGroupLoading, setSelectedGroupLoading] = useState(false)
+
+  const [createGroupName, setCreateGroupName] = useState('')
+  const [createGroupType, setCreateGroupType] = useState<'class' | 'cohort' | 'study_group'>('study_group')
+  const [createGroupGrade, setCreateGroupGrade] = useState<string>('')
+  const [createGroupBusy, setCreateGroupBusy] = useState(false)
+
+  const [joinCode, setJoinCode] = useState('')
+  const [joinBusy, setJoinBusy] = useState(false)
+
+  const [profilePeek, setProfilePeek] = useState<null | {
+    id: string
+    name: string
+    role: string
+    grade: string | null
+    avatar: string | null
+    statusBio: string | null
+    schoolName?: string | null
+    verified: boolean
+  }>(null)
+  const [profilePeekError, setProfilePeekError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!avatarEditArmed) return
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
@@ -809,6 +868,147 @@ export default function Dashboard() {
       cancelled = true
     }
   }, [status])
+
+  const loadMyGroups = useCallback(async () => {
+    if (status !== 'authenticated') return
+    setMyGroupsLoading(true)
+    setMyGroupsError(null)
+    try {
+      const res = await fetch('/api/groups/mine', { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ([]))
+      if (!res.ok) {
+        setMyGroups([])
+        setMyGroupsError(data?.message || `Failed to load groups (${res.status})`)
+        return
+      }
+      setMyGroups(Array.isArray(data) ? data : [])
+    } catch (err: any) {
+      setMyGroups([])
+      setMyGroupsError(err?.message || 'Failed to load groups')
+    } finally {
+      setMyGroupsLoading(false)
+    }
+  }, [status])
+
+  const loadGroupMembers = useCallback(async (groupId: string) => {
+    if (!groupId) return
+    setSelectedGroupLoading(true)
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(groupId)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to load group (${res.status})`)
+        setSelectedGroupMembers([])
+        return
+      }
+      const nextMembers = Array.isArray(data?.members) ? data.members : []
+      setSelectedGroupMembers(nextMembers)
+      setSelectedGroupId(groupId)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to load group')
+      setSelectedGroupMembers([])
+    } finally {
+      setSelectedGroupLoading(false)
+    }
+  }, [])
+
+  const openGroupsOverlay = useCallback(() => {
+    setGroupsOverlayOpen(true)
+    void loadMyGroups()
+  }, [loadMyGroups])
+
+  const closeGroupsOverlay = useCallback(() => {
+    setGroupsOverlayOpen(false)
+    setSelectedGroupId(null)
+    setSelectedGroupMembers([])
+    setProfilePeek(null)
+    setProfilePeekError(null)
+  }, [])
+
+  const createGroup = useCallback(async () => {
+    const name = createGroupName.trim()
+    if (!name) return
+    setCreateGroupBusy(true)
+    try {
+      const payload: any = { name, type: createGroupType }
+      if (createGroupGrade) payload.grade = createGroupGrade
+      const res = await fetch('/api/groups', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to create group (${res.status})`)
+        return
+      }
+      setCreateGroupName('')
+      setCreateGroupGrade('')
+      await loadMyGroups()
+      if (typeof data?.id === 'string') {
+        await loadGroupMembers(data.id)
+        if (typeof data?.joinCode === 'string' && data.joinCode.trim()) {
+          try {
+            await navigator.clipboard?.writeText(data.joinCode.trim())
+          } catch {
+            // ignore
+          }
+          alert(`Group created. Join code copied: ${data.joinCode}`)
+        } else {
+          alert('Group created.')
+        }
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to create group')
+    } finally {
+      setCreateGroupBusy(false)
+    }
+  }, [createGroupGrade, createGroupName, createGroupType, loadGroupMembers, loadMyGroups])
+
+  const joinGroupByCode = useCallback(async () => {
+    const code = joinCode.trim()
+    if (!code) return
+    setJoinBusy(true)
+    try {
+      const res = await fetch('/api/groups/join', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to join (${res.status})`)
+        return
+      }
+      setJoinCode('')
+      await loadMyGroups()
+      if (typeof data?.id === 'string') await loadGroupMembers(data.id)
+      alert('Joined group.')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to join group')
+    } finally {
+      setJoinBusy(false)
+    }
+  }, [joinCode, loadGroupMembers, loadMyGroups])
+
+  const openProfilePeek = useCallback(async (userId: string) => {
+    if (!userId) return
+    setProfilePeek(null)
+    setProfilePeekError(null)
+    try {
+      const res = await fetch(`/api/profile/view/${encodeURIComponent(userId)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setProfilePeekError(data?.message || `Unable to view profile (${res.status})`)
+        return
+      }
+      setProfilePeek(data)
+    } catch (err: any) {
+      setProfilePeekError(err?.message || 'Unable to view profile')
+    }
+  }, [])
 
   const saveStatusBio = useCallback(async (nextRaw: string) => {
     const next = (nextRaw || '').trim().slice(0, 100)
@@ -5182,6 +5382,17 @@ export default function Dashboard() {
                         </button>
                       )}
                     </div>
+
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        className="text-left text-xs text-blue-100/80 hover:text-white"
+                        onClick={openGroupsOverlay}
+                        aria-label="Open groups"
+                      >
+                        Groups
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
@@ -5396,6 +5607,17 @@ export default function Dashboard() {
                         </button>
                       )}
                     </div>
+
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        className="text-left text-xs text-blue-100/80 hover:text-white"
+                        onClick={openGroupsOverlay}
+                        aria-label="Open groups"
+                      >
+                        Groups
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
@@ -5519,6 +5741,227 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {renderAccountSnapshotBody()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {groupsOverlayOpen && (
+        <div
+          className={`fixed inset-0 z-40 transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeGroupsOverlay} />
+          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeGroupsOverlay}>
+            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold break-words">Groups</div>
+                  <div className="text-xs muted">Classmates & groupmates</div>
+                </div>
+                <button type="button" className="btn btn-ghost" onClick={closeGroupsOverlay} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                <section className="space-y-2">
+                  <div className="text-sm font-semibold text-white">Create a group</div>
+                  <div className="grid gap-2">
+                    <input
+                      className="input"
+                      value={createGroupName}
+                      onChange={(e) => setCreateGroupName(e.target.value)}
+                      placeholder="e.g. Grade 12 Maths — Study Group"
+                      maxLength={80}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select className="input" value={createGroupType} onChange={(e) => setCreateGroupType((e.target.value as any) || 'study_group')}>
+                        <option value="study_group">Study group</option>
+                        <option value="class">Class</option>
+                        <option value="cohort">Cohort</option>
+                      </select>
+                      <select className="input" value={createGroupGrade} onChange={(e) => setCreateGroupGrade(e.target.value)}>
+                        <option value="">Grade (optional)</option>
+                        {GRADE_VALUES.map((g) => (
+                          <option key={g} value={g}>
+                            {gradeToLabel(g)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={createGroupBusy || !createGroupName.trim()}
+                      onClick={createGroup}
+                    >
+                      {createGroupBusy ? 'Creating…' : 'Create group'}
+                    </button>
+                    <div className="text-xs muted">Students can create groups for their grade or below. Instructors/admin can create any.</div>
+                  </div>
+                </section>
+
+                <section className="space-y-2">
+                  <div className="text-sm font-semibold text-white">Join with code</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input flex-1"
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value)}
+                      placeholder="Enter join code"
+                      maxLength={16}
+                    />
+                    <button type="button" className="btn btn-secondary" disabled={joinBusy || !joinCode.trim()} onClick={joinGroupByCode}>
+                      {joinBusy ? 'Joining…' : 'Join'}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-white">Your groups</div>
+                    <button type="button" className="btn btn-ghost" onClick={() => void loadMyGroups()}>
+                      Refresh
+                    </button>
+                  </div>
+
+                  {myGroupsLoading ? (
+                    <div className="text-sm muted">Loading…</div>
+                  ) : myGroupsError ? (
+                    <div className="text-sm text-red-200">{myGroupsError}</div>
+                  ) : myGroups.length === 0 ? (
+                    <div className="text-sm muted">No groups yet.</div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {myGroups.map((row) => (
+                        <button
+                          key={row.group.id}
+                          type="button"
+                          className={`card p-3 text-left ${selectedGroupId === row.group.id ? 'border-white/25 bg-white/10' : ''}`}
+                          onClick={() => void loadGroupMembers(row.group.id)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-white break-words">{row.group.name}</div>
+                              <div className="text-xs muted">
+                                {row.group.type.replace('_', ' ')}
+                                {row.group.grade ? ` • ${gradeToLabel(row.group.grade as GradeValue)}` : ''}
+                                {` • ${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`}
+                              </div>
+                            </div>
+                            <div className="text-xs muted">{row.memberRole}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {selectedGroupId && (
+                  <section className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-white">Members</div>
+                      {selectedGroupLoading && <div className="text-xs muted">Loading…</div>}
+                    </div>
+                    {selectedGroupMembers.length === 0 ? (
+                      <div className="text-sm muted">No members found.</div>
+                    ) : (
+                      <div className="grid gap-2">
+                        {selectedGroupMembers.map((m) => {
+                          const verified = m.user.role === 'admin' || m.user.role === 'teacher'
+                          const label =
+                            m.user.role === 'admin'
+                              ? 'Admin'
+                              : m.user.role === 'teacher'
+                                ? 'Instructor'
+                                : m.user.grade
+                                  ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
+                                  : 'Student'
+                          return (
+                            <button
+                              key={m.membershipId}
+                              type="button"
+                              className="card p-3 text-left"
+                              onClick={() => void openProfilePeek(m.user.id)}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                                  {m.user.avatar ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <div className="font-semibold text-white truncate">{m.user.name}</div>
+                                    {verified && (
+                                      <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                          <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                        </svg>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs muted truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</div>
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {(profilePeekError || profilePeek) && (
+                  <section className="space-y-2">
+                    <div className="text-sm font-semibold text-white">Profile</div>
+                    {profilePeekError ? (
+                      <div className="text-sm text-red-200">{profilePeekError}</div>
+                    ) : profilePeek ? (
+                      <div className="card p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="h-12 w-12 rounded-2xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                            {profilePeek.avatar ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={profilePeek.avatar} alt={profilePeek.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="font-semibold text-white truncate">{profilePeek.name}</div>
+                              {profilePeek.verified && (
+                                <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                  </svg>
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs muted">
+                              {profilePeek.role === 'admin'
+                                ? 'Admin'
+                                : profilePeek.role === 'teacher'
+                                  ? 'Instructor'
+                                  : profilePeek.grade
+                                    ? `Student (${gradeToLabel(profilePeek.grade as GradeValue)})`
+                                    : 'Student'}
+                              {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
+                            </div>
+                            {profilePeek.statusBio && <div className="mt-1 text-sm text-white/85">{profilePeek.statusBio}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                )}
               </div>
             </div>
           </div>

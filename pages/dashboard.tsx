@@ -5425,11 +5425,11 @@ export default function Dashboard() {
         {isMobile ? (
           isAdmin ? (
             <div className="flex-1 flex flex-col py-4">
-              <div className="fixed inset-x-2 top-2 z-30">
+              <div className="fixed inset-x-2 top-3 z-30">
                 <div className="relative">
                   <section
                   data-mobile-chrome-ignore
-                  className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+                  className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
                   onDragEnter={(e) => {
                     e.preventDefault()
                     setMobileHeroBgDragActive(true)
@@ -5582,11 +5582,11 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center justify-center px-5">
-                    <BrandLogo height={48} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                    <div className="mt-2 text-center text-[24px] font-extrabold leading-[1.05] text-white/95">
-                      <div className="tracking-[0.25em]">P H I L A N I</div>
-                      <div className="mt-1 tracking-[0.25em]">A C A D E M Y</div>
+                  <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
+                    <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+                    <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
+                      <span className="tracking-[0.10em]">P H I L A N I</span>
+                      <span className="tracking-[0.10em]">A C A D E M Y</span>
                     </div>
                   </div>
                   </section>
@@ -5594,7 +5594,7 @@ export default function Dashboard() {
               </div>
 
               <div
-                className="pt-[248px] space-y-5"
+                className="pt-[244px] space-y-5"
                 style={{
                   WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
                   maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
@@ -5645,11 +5645,11 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="fixed inset-x-2 top-2 z-30">
+              <div className="fixed inset-x-2 top-3 z-30">
               <div className="relative">
               <section
                 data-mobile-chrome-ignore
-                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[225px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
                 onDragEnter={(e) => {
                   e.preventDefault()
                   setMobileHeroBgDragActive(true)
@@ -5802,11 +5802,11 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center justify-center px-5">
-                  <BrandLogo height={48} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                  <div className="mt-2 text-center text-[24px] font-extrabold leading-[1.05] text-white/95">
-                    <div className="tracking-[0.25em]">P H I L A N I</div>
-                    <div className="mt-1 tracking-[0.25em]">A C A D E M Y</div>
+                <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
+                  <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+                  <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
+                    <span className="tracking-[0.10em]">P H I L A N I</span>
+                    <span className="tracking-[0.10em]">A C A D E M Y</span>
                   </div>
                 </div>
               </section>
@@ -5814,7 +5814,7 @@ export default function Dashboard() {
               </div>
 
               <div
-                className="pt-[248px] space-y-5"
+                className="pt-[244px] space-y-5"
                 style={{
                   WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
                   maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',

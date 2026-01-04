@@ -5581,22 +5581,9 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
-                    <button
-                      type="button"
-                      className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                      onClick={openHeroLive}
-                    >
-                      Live class
-                    </button>
-                    <button
-                      type="button"
-                      className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                      onClick={openHeroCanvas}
-                      disabled={!canLaunchCanvasOverlay}
-                    >
-                      Canvas
-                    </button>
+                  <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center justify-center px-5">
+                    <BrandLogo height={36} className="drop-shadow-[0_16px_35px_rgba(3,5,20,0.6)]" />
+                    <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
                   </div>
                 </section>
                 <div className="pointer-events-none absolute inset-x-0 -bottom-10 h-10 bg-gradient-to-b from-white/25 to-transparent" aria-hidden="true" />
@@ -5798,22 +5785,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="absolute inset-x-0 top-4 z-10 flex flex-wrap justify-center gap-3 px-5">
-                  <button
-                    type="button"
-                    className="px-5 py-2 rounded-full bg-white text-[#05133e] font-semibold shadow-lg"
-                    onClick={openHeroLive}
-                  >
-                    Live class
-                  </button>
-                  <button
-                    type="button"
-                    className="px-5 py-2 rounded-full border border-white/30 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
-                    onClick={openHeroCanvas}
-                    disabled={!canLaunchCanvasOverlay}
-                  >
-                    Canvas
-                  </button>
+                <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center justify-center px-5">
+                  <BrandLogo height={36} className="drop-shadow-[0_16px_35px_rgba(3,5,20,0.6)]" />
+                  <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
                 </div>
               </section>
 

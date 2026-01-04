@@ -5583,8 +5583,11 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center justify-center px-5">
-                    <BrandLogo height={36} className="drop-shadow-[0_16px_35px_rgba(3,5,20,0.6)]" />
-                    <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
+                    <BrandLogo height={48} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+                    <div className="mt-2 text-center text-[24px] font-extrabold leading-[1.05] text-white/95">
+                      <div className="tracking-[0.25em]">P H I L A N I</div>
+                      <div className="mt-1 tracking-[0.25em]">A C A D E M Y</div>
+                    </div>
                   </div>
                   </section>
                 </div>
@@ -5593,8 +5596,8 @@ export default function Dashboard() {
               <div
                 className="pt-[248px] space-y-5"
                 style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
-                  maskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
+                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
+                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
                   WebkitMaskRepeat: 'no-repeat',
                   maskRepeat: 'no-repeat',
                   WebkitMaskSize: '100% 100%',
@@ -5800,8 +5803,11 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="absolute inset-x-0 top-4 z-10 flex flex-col items-center justify-center px-5">
-                  <BrandLogo height={36} className="drop-shadow-[0_16px_35px_rgba(3,5,20,0.6)]" />
-                  <div className="mt-2 text-[11px] tracking-[0.35em] text-white/90">P H I L A N I  A C A D E M Y</div>
+                  <BrandLogo height={48} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+                  <div className="mt-2 text-center text-[24px] font-extrabold leading-[1.05] text-white/95">
+                    <div className="tracking-[0.25em]">P H I L A N I</div>
+                    <div className="mt-1 tracking-[0.25em]">A C A D E M Y</div>
+                  </div>
                 </div>
               </section>
               </div>
@@ -5810,8 +5816,8 @@ export default function Dashboard() {
               <div
                 className="pt-[248px] space-y-5"
                 style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
-                  maskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)',
+                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
+                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
                   WebkitMaskRepeat: 'no-repeat',
                   maskRepeat: 'no-repeat',
                   WebkitMaskSize: '100% 100%',

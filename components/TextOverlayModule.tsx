@@ -1352,11 +1352,22 @@ export default function TextOverlayModule(props: {
             onPointerDown={e => {
               e.stopPropagation()
             }}
+            onPointerUp={e => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
           >
             <div className="min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden text-slate-900">
               <button
                 type="button"
                 className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onPointerUp={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void deleteBoxById(boxId)
+                }}
                 onClick={() => {
                   const boxId = contextMenu.boxId
                   setContextMenu(null)
@@ -1369,6 +1380,13 @@ export default function TextOverlayModule(props: {
               <button
                 type="button"
                 className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onPointerUp={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void bringBoxToFrontById(boxId)
+                }}
                 onClick={() => {
                   const boxId = contextMenu.boxId
                   setContextMenu(null)
@@ -1380,6 +1398,13 @@ export default function TextOverlayModule(props: {
               <button
                 type="button"
                 className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onPointerUp={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void sendBoxToBackById(boxId)
+                }}
                 onClick={() => {
                   const boxId = contextMenu.boxId
                   setContextMenu(null)
@@ -1392,6 +1417,13 @@ export default function TextOverlayModule(props: {
               <button
                 type="button"
                 className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onPointerUp={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void toggleBoxVisibilityById(boxId)
+                }}
                 onClick={() => {
                   const boxId = contextMenu.boxId
                   setContextMenu(null)
@@ -1403,6 +1435,13 @@ export default function TextOverlayModule(props: {
               <button
                 type="button"
                 className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                onPointerUp={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const boxId = contextMenu.boxId
+                  setContextMenu(null)
+                  void toggleBoxLockById(boxId)
+                }}
                 onClick={() => {
                   const boxId = contextMenu.boxId
                   setContextMenu(null)

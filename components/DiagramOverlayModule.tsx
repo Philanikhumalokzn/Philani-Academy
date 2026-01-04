@@ -2243,45 +2243,139 @@ export default function DiagramOverlayModule(props: {
                 e.preventDefault()
                 e.stopPropagation()
               }}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              onPointerUp={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
             >
               <div className="min-w-[200px] rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden text-slate-900">
                 {contextMenu.selection && (
                   <>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('copy', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('copy', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('copy', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Copy
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('duplicate', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('duplicate', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('duplicate', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Duplicate
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('delete', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('delete', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('delete', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Delete
                     </button>
                     <div className="h-px bg-slate-200" />
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('bring-front', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('bring-front', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('bring-front', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Bring to front
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('send-back', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('send-back', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('send-back', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Send to back
                     </button>
                     <div className="h-px bg-slate-200" />
                     <button
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction(isSelectionLockedInAnnotations(normalizeAnnotations(diagramsRef.current.find(d => d.id === contextMenu.diagramId)?.annotations ?? null), contextMenu.selection!) ? 'unlock' : 'lock', contextMenu.diagramId, contextMenu.selection!)
+                      }}
                       onClick={() => void applyContextAction(isSelectionLockedInAnnotations(normalizeAnnotations(diagramsRef.current.find(d => d.id === contextMenu.diagramId)?.annotations ?? null), contextMenu.selection!) ? 'unlock' : 'lock', contextMenu.diagramId, contextMenu.selection!)}
                     >
                       Toggle lock
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('snap-smooth', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('snap-smooth', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('snap-smooth', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Snap / smooth
                     </button>
                     <div className="h-px bg-slate-200" />
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('flip-h', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('flip-h', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('flip-h', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Flip horizontal
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('flip-v', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('flip-v', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('flip-v', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Flip vertical
                     </button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50" onClick={() => void applyContextAction('rotate', contextMenu.diagramId, contextMenu.selection!)}>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void applyContextAction('rotate', contextMenu.diagramId, contextMenu.selection!)
+                      }}
+                      onClick={() => void applyContextAction('rotate', contextMenu.diagramId, contextMenu.selection!)}
+                    >
                       Rotate 90°
                     </button>
                     <div className="h-px bg-slate-200" />
@@ -2293,6 +2387,11 @@ export default function DiagramOverlayModule(props: {
                           type="button"
                           className="w-5 h-5 rounded-full border border-slate-200"
                           style={{ backgroundColor: c }}
+                          onPointerUp={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void applyContextAction(`set-color:${c}`, contextMenu.diagramId, contextMenu.selection!)
+                          }}
                           onClick={() => void applyContextAction(`set-color:${c}`, contextMenu.diagramId, contextMenu.selection!)}
                           aria-label={`Set color ${c}`}
                           title={`Set color ${c}`}
@@ -2306,6 +2405,11 @@ export default function DiagramOverlayModule(props: {
                           key={w}
                           type="button"
                           className="px-2 py-1 rounded-md border border-slate-200 text-xs hover:bg-slate-50"
+                          onPointerUp={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void applyContextAction(`set-width:${w}`, contextMenu.diagramId, contextMenu.selection!)
+                          }}
                           onClick={() => void applyContextAction(`set-width:${w}`, contextMenu.diagramId, contextMenu.selection!)}
                         >
                           {w}
@@ -2318,6 +2422,12 @@ export default function DiagramOverlayModule(props: {
                   <button
                     type="button"
                     className="w-full text-left px-3 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                    onPointerUp={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handlePasteAtPoint(contextMenu.diagramId, contextMenu.point as DiagramStrokePoint)
+                      setContextMenu(null)
+                    }}
                     onClick={() => {
                       handlePasteAtPoint(contextMenu.diagramId, contextMenu.point as DiagramStrokePoint)
                       setContextMenu(null)

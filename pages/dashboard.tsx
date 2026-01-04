@@ -5625,14 +5625,11 @@ export default function Dashboard() {
               {discoverResults.length > 0 && (
                 <div className="grid gap-2">
                   {discoverResults.map((u: any) => (
-                    <button
+                    <UserLink
                       key={u.id}
-                      type="button"
-                      className="card p-3 text-left"
-                      onClick={() => {
-                        if (!u?.id) return
-                        void router.push(`/u/${encodeURIComponent(String(u.id))}`)
-                      }}
+                      userId={u?.id}
+                      className="card p-3 text-left block"
+                      title="View profile"
                     >
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
@@ -5648,7 +5645,7 @@ export default function Dashboard() {
                           <div className="text-xs muted truncate">{u.schoolName ? `${u.schoolName} • ` : ''}{u.statusBio || ''}</div>
                         </div>
                       </div>
-                    </button>
+                    </UserLink>
                   ))}
                 </div>
               )}

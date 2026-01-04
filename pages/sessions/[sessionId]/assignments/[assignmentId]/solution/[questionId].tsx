@@ -277,7 +277,7 @@ export default function AssignmentSolutionQuestionPage() {
       {metaVisible ? (
         <div className="absolute top-3 left-3 right-3 z-50">
           <div
-            className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
+            className="rounded backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
             style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
             role="button"
             tabIndex={0}

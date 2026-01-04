@@ -587,6 +587,10 @@ export default function Dashboard() {
   const [sessionDetailsView, setSessionDetailsView] = useState<'pastList' | 'details'>('details')
   const [sessionDetailsTab, setSessionDetailsTab] = useState<'materials' | 'latex' | 'assignments' | 'responses'>('materials')
 
+  const [assignmentOverlayOpen, setAssignmentOverlayOpen] = useState(false)
+  const [assignmentQuestionOverlayOpen, setAssignmentQuestionOverlayOpen] = useState(false)
+  const [selectedAssignmentQuestionId, setSelectedAssignmentQuestionId] = useState<string | null>(null)
+
   const [createLessonOverlayOpen, setCreateLessonOverlayOpen] = useState(false)
   const [liveLessonSelectorOverlayOpen, setLiveLessonSelectorOverlayOpen] = useState(false)
 
@@ -596,6 +600,8 @@ export default function Dashboard() {
     Boolean(createLessonOverlayOpen) ||
     Boolean(liveLessonSelectorOverlayOpen) ||
     Boolean(sessionDetailsOpen)
+
+  const sessionDetailsHiddenByChildOverlay = assignmentOverlayOpen || assignmentQuestionOverlayOpen
 
   const openDashboardOverlay = useCallback((section: OverlaySectionId) => {
     setDashboardSectionOverlay(section)
@@ -3855,7 +3861,11 @@ export default function Dashboard() {
 
         {sessionDetailsOpen && (
           <OverlayPortal>
-            <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+            <div
+              className={`fixed inset-0 z-50 transition-opacity duration-200 ${sessionDetailsHiddenByChildOverlay ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              role="dialog"
+              aria-modal="true"
+            >
               <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeSessionDetails} />
               <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeSessionDetails}>
                 <div
@@ -3934,6 +3944,16 @@ export default function Dashboard() {
                       <div className={`grid gap-2 ${isLearner ? 'grid-cols-4' : 'grid-cols-3'}`}>
                         <button
                           type="button"
+                          className={`btn w-full justify-center ${sessionDetailsTab === 'assignments' ? 'btn-primary' : 'btn-ghost'}`}
+                          onClick={() => {
+                            setSessionDetailsTab('assignments')
+                            if (sessionDetailsSessionId) fetchAssignments(sessionDetailsSessionId)
+                          }}
+                        >
+                          Assignments
+                        </button>
+                        <button
+                          type="button"
                           className={`btn w-full justify-center ${sessionDetailsTab === 'materials' ? 'btn-primary' : 'btn-ghost'}`}
                           onClick={() => setSessionDetailsTab('materials')}
                         >
@@ -3945,16 +3965,6 @@ export default function Dashboard() {
                           onClick={() => setSessionDetailsTab('latex')}
                         >
                           {learnerNotesLabel}
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn w-full justify-center ${sessionDetailsTab === 'assignments' ? 'btn-primary' : 'btn-ghost'}`}
-                          onClick={() => {
-                            setSessionDetailsTab('assignments')
-                            if (sessionDetailsSessionId) fetchAssignments(sessionDetailsSessionId)
-                          }}
-                        >
-                          Assignments
                         </button>
                         {isLearner && (
                           <button
@@ -3972,7 +3982,114 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-3">
-                      {sessionDetailsTab === 'materials' ? (
+                      {sessionDetailsTab === 'assignments' ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-sm">Assignments</div>
+                            {expandedSessionId && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => {
+                                  fetchAssignments(expandedSessionId)
+                                  if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
+                                }}
+                                disabled={assignmentsLoading}
+                              >
+                                {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
+                              </button>
+                            )}
+                          </div>
+
+                          {(() => {
+                            const sorted = [...(assignments || [])].sort((a: any, b: any) => {
+                              const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
+                              const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0
+                              return bT - aT
+                            })
+
+                            if (assignmentsError) return <div className="text-sm text-red-600">{assignmentsError}</div>
+                            if (assignmentsLoading) return <div className="text-sm muted">Loading assignments…</div>
+                            if (sorted.length === 0) return <div className="text-sm muted">No assignments yet.</div>
+
+                            return (
+                              <div className="space-y-2">
+                                <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
+                                  {sorted.map((a: any) => (
+                                    <li key={a.id} className="p-3 flex items-start justify-between gap-3">
+                                      <button
+                                        type="button"
+                                        className="min-w-0 text-left"
+                                        onClick={() => {
+                                          if (!expandedSessionId) return
+                                          setSelectedAssignmentId(String(a.id))
+                                          setSelectedAssignmentQuestionId(null)
+                                          setAssignmentQuestionOverlayOpen(false)
+                                          setAssignmentOverlayOpen(true)
+                                          fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                        }}
+                                      >
+                                        <div className="font-medium break-words">{a.title || 'Assignment'}</div>
+                                        <div className="text-xs muted">
+                                          {a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}
+                                          {typeof a?._count?.questions === 'number' ? ` • ${a._count.questions} questions` : ''}
+                                        </div>
+                                      </button>
+                                      <div className="shrink-0">
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost text-xs"
+                                          onClick={() => {
+                                            if (!expandedSessionId) return
+                                            setSelectedAssignmentId(String(a.id))
+                                            setSelectedAssignmentQuestionId(null)
+                                            setAssignmentQuestionOverlayOpen(false)
+                                            setAssignmentOverlayOpen(true)
+                                            fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                          }}
+                                        >
+                                          View
+                                        </button>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )
+                          })()}
+
+                          {!isLearner && expandedSessionId && (
+                            <div className="p-3 border border-white/10 rounded-xl bg-white/5 space-y-2">
+                              <div className="font-semibold text-sm">Import assignment (PDF/screenshot)</div>
+                              <div className="grid gap-2">
+                                <input
+                                  className="input"
+                                  placeholder="Optional title"
+                                  value={assignmentTitle}
+                                  onChange={e => setAssignmentTitle(e.target.value)}
+                                />
+                                <input
+                                  className="input"
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
+                                />
+                                {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
+                                <div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={assignmentImporting || !assignmentFile}
+                                    onClick={() => importAssignment(expandedSessionId)}
+                                  >
+                                    {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : sessionDetailsTab === 'materials' ? (
                         <div className="space-y-2">
                           <div className="p-3 border border-white/10 rounded bg-white/5 space-y-3">
                             <div className="flex items-center justify-between gap-3">
@@ -4447,879 +4564,7 @@ export default function Dashboard() {
                             </div>
                           )}
                         </div>
-                      ) : sessionDetailsTab === 'assignments' ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">Assignments</div>
-                            {expandedSessionId && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost text-xs"
-                                onClick={() => {
-                                  fetchAssignments(expandedSessionId)
-                                  if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
-                                }}
-                                disabled={assignmentsLoading}
-                              >
-                                {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
-                              </button>
-                            )}
-                          </div>
-
-                          {!isLearner && expandedSessionId && (
-                            <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
-                              <div className="font-semibold text-sm">Import assignment (PDF/screenshot)</div>
-                              <div className="grid gap-2">
-                                <input
-                                  className="input"
-                                  placeholder="Optional title"
-                                  value={assignmentTitle}
-                                  onChange={e => setAssignmentTitle(e.target.value)}
-                                />
-                                <input
-                                  className="input"
-                                  type="file"
-                                  accept="application/pdf,image/*"
-                                  onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
-                                />
-                                {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
-                                <div>
-                                  <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    disabled={assignmentImporting || !assignmentFile}
-                                    onClick={() => importAssignment(expandedSessionId)}
-                                  >
-                                    {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {assignmentsError ? (
-                            <div className="text-sm text-red-600">{assignmentsError}</div>
-                          ) : assignmentsLoading ? (
-                            <div className="text-sm muted">Loading assignments…</div>
-                          ) : assignments.length === 0 ? (
-                            <div className="text-sm muted">No assignments yet.</div>
-                          ) : (
-                            <div className="space-y-2">
-                              <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
-                                {assignments.map((a: any) => (
-                                  <li key={a.id} className="p-3 flex items-start justify-between gap-3">
-                                    <button
-                                      type="button"
-                                      className="min-w-0 text-left"
-                                      onClick={() => {
-                                        if (!expandedSessionId) return
-                                        setSelectedAssignmentId(String(a.id))
-                                        fetchAssignmentDetails(expandedSessionId, String(a.id))
-                                      }}
-                                    >
-                                      <div className="font-medium break-words">{a.title || 'Assignment'}</div>
-                                      <div className="text-xs muted">
-                                        {a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}
-                                        {typeof a?._count?.questions === 'number' ? ` • ${a._count.questions} questions` : ''}
-                                      </div>
-                                    </button>
-                                    <div className="shrink-0">
-                                      <button
-                                        type="button"
-                                        className="btn btn-ghost text-xs"
-                                        onClick={() => {
-                                          if (!expandedSessionId) return
-                                          setSelectedAssignmentId(String(a.id))
-                                          fetchAssignmentDetails(expandedSessionId, String(a.id))
-                                        }}
-                                      >
-                                        View
-                                      </button>
-                                    </div>
-                                  </li>
-                                ))}
-                              </ul>
-
-                              {selectedAssignmentId && (
-                                <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
-                                  {selectedAssignmentError ? (
-                                    <div className="text-sm text-red-600">{selectedAssignmentError}</div>
-                                  ) : selectedAssignmentLoading ? (
-                                    <div className="text-sm muted">Loading assignment…</div>
-                                  ) : selectedAssignment ? (
-                                    <>
-                                      <div className="font-semibold break-words">{selectedAssignment.title || 'Assignment'}</div>
-                                      {isLearner ? (
-                                        assignmentResponsesError ? (
-                                          <div className="text-sm text-red-600">{assignmentResponsesError}</div>
-                                        ) : assignmentResponsesLoading ? (
-                                          <div className="text-sm muted">Loading your responses…</div>
-                                        ) : null
-                                      ) : null}
-                                      {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length > 0 ? (
-                                        <div className="space-y-2">
-                                          {selectedAssignment.questions.map((q: any, idx: number) => (
-                                            <details key={q.id || idx} className="border border-white/10 rounded p-2">
-                                              <summary className="cursor-pointer font-medium text-sm flex items-center justify-between gap-2">
-                                                <span>Question {idx + 1}</span>
-                                                {isLearner && assignmentSubmittedAt && q?.id ? (
-                                                  (() => {
-                                                    const qid = String(q.id)
-                                                    const fallbackMax = (typeof q.points === 'number' && Number.isFinite(q.points) && q.points > 0) ? Math.trunc(q.points) : 1
-                                                    const maxPoints = (typeof assignmentTotalMarksByQuestionId?.[qid] === 'number')
-                                                      ? assignmentTotalMarksByQuestionId[qid]
-                                                      : fallbackMax
-                                                    const explicitEarned = assignmentEarnedMarksByQuestionId?.[qid]
-                                                    const correctness = assignmentGradeByQuestionId?.[qid]
-                                                    const earned = (typeof explicitEarned === 'number')
-                                                      ? explicitEarned
-                                                      : (correctness === 'correct' ? maxPoints : 0)
-                                                    const color = earned > 0 ? 'text-green-500' : 'text-red-500'
-                                                    return <span className={color}>({earned}/{maxPoints})</span>
-                                                  })()
-                                                ) : null}
-                                              </summary>
-                                              <div className="pt-2 text-sm whitespace-pre-wrap break-words">
-                                                {renderTextWithKatex(String(q.latex || ''))}
-                                              </div>
-
-                                              {!isLearner && q?.id ? (
-                                                <div className="pt-2 space-y-2">
-                                                  {assignmentSolutionsError ? (
-                                                    <div className="text-sm text-red-600">{assignmentSolutionsError}</div>
-                                                  ) : assignmentSolutionsLoading ? (
-                                                    <div className="text-sm muted">Loading solutions…</div>
-                                                  ) : null}
-
-                                                  <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                    <div className="text-xs text-white/70 mb-1">Solution</div>
-                                                    {(() => {
-                                                      const sol = assignmentSolutionsByQuestionId?.[String(q.id)]
-                                                      const latex = String(sol?.latex || '')
-                                                      const fileUrl = String(sol?.fileUrl || '')
-                                                      if (!latex.trim() && !fileUrl.trim()) {
-                                                        return <div className="text-sm text-white/60">No solution saved yet.</div>
-                                                      }
-                                                      const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
-                                                      return (
-                                                        <div className="space-y-2">
-                                                          {latex.trim() ? (
-                                                            latexHtml ? (
-                                                              <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                                                            ) : (
-                                                              <div className="text-xs font-mono whitespace-pre-wrap break-words">{latex}</div>
-                                                            )
-                                                          ) : null}
-                                                          {fileUrl.trim() ? (
-                                                            <a href={fileUrl} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">Open uploaded solution</a>
-                                                          ) : null}
-                                                        </div>
-                                                      )
-                                                    })()}
-                                                  </div>
-
-                                                  {expandedSessionId && selectedAssignment?.id ? (
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                      <Link
-                                                        className="btn btn-primary text-xs"
-                                                        href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/solution/${encodeURIComponent(String(q.id))}`}
-                                                      >
-                                                        {(() => {
-                                                          const solLatex = String(assignmentSolutionsByQuestionId?.[String(q.id)]?.latex || '')
-                                                          const solFileUrl = String(assignmentSolutionsByQuestionId?.[String(q.id)]?.fileUrl || '')
-                                                          return (solLatex.trim() || solFileUrl.trim()) ? 'Edit solution on canvas' : 'Solve on canvas'
-                                                        })()}
-                                                      </Link>
-
-                                                      <input
-                                                        key={`solution-upload-${String(q.id)}-${assignmentSolutionUploadNonceByQuestionId?.[String(q.id)] || 0}`}
-                                                        className="input text-xs"
-                                                        type="file"
-                                                        disabled={assignmentSolutionUploadingQuestionId === String(q.id)}
-                                                        onChange={e => {
-                                                          const f = e.target.files?.[0] || null
-                                                          setAssignmentSolutionUploadFilesByQuestionId(prev => ({ ...prev, [String(q.id)]: f }))
-                                                        }}
-                                                      />
-
-                                                      <button
-                                                        type="button"
-                                                        className="btn btn-secondary text-xs"
-                                                        disabled={
-                                                          assignmentSolutionUploadingQuestionId === String(q.id)
-                                                          || !assignmentSolutionUploadFilesByQuestionId?.[String(q.id)]
-                                                        }
-                                                        onClick={() => {
-                                                          const file = assignmentSolutionUploadFilesByQuestionId?.[String(q.id)]
-                                                          if (!file) return
-                                                          void uploadAssignmentSolutionFile(
-                                                            expandedSessionId,
-                                                            String(selectedAssignment.id),
-                                                            String(q.id),
-                                                            file
-                                                          )
-                                                        }}
-                                                      >
-                                                        {assignmentSolutionUploadingQuestionId === String(q.id) ? 'Uploading…' : 'Upload solution'}
-                                                      </button>
-                                                    </div>
-                                                  ) : null}
-
-                                                  {expandedSessionId && selectedAssignment?.id && q?.id ? (
-                                                    <div className="pt-2">
-                                                      <div className="text-xs text-white/70 mb-1">Gemini marking plan (editable source of truth)</div>
-                                                      {(() => {
-                                                        const sol = assignmentSolutionsByQuestionId?.[String(q.id)]
-                                                        const teacher = String(sol?.teacherMarkingPlan || '')
-                                                        const ai = String(sol?.aiMarkingPlan || '')
-                                                        const label = teacher.trim()
-                                                          ? 'Using teacher edited plan'
-                                                          : (ai.trim() ? 'Using Gemini draft (edit + save to override)' : 'No plan generated yet')
-                                                        return <div className="text-xs muted mb-1">{label}</div>
-                                                      })()}
-                                                      <textarea
-                                                        className="input w-full text-xs"
-                                                        rows={4}
-                                                        placeholder="Generate a marking plan with Gemini, then edit it. Saving makes it the rubric Gemini must follow when grading."
-                                                        value={String(assignmentSolutionMarkingPlanDraftByQuestionId?.[String(q.id)] ?? '')}
-                                                        onChange={e => {
-                                                          const value = e.target.value
-                                                          setAssignmentSolutionMarkingPlanDraftByQuestionId(prev => ({
-                                                            ...prev,
-                                                            [String(q.id)]: value,
-                                                          }))
-                                                        }}
-                                                      />
-                                                      <div className="pt-2 flex flex-wrap gap-2">
-                                                        <button
-                                                          type="button"
-                                                          className="btn btn-secondary text-xs"
-                                                          disabled={assignmentSolutionMarkingPlanGeneratingQuestionId === String(q.id)}
-                                                          onClick={() => {
-                                                            void generateAssignmentSolutionMarkingPlan(
-                                                              expandedSessionId,
-                                                              String(selectedAssignment.id),
-                                                              String(q.id)
-                                                            )
-                                                          }}
-                                                        >
-                                                          {assignmentSolutionMarkingPlanGeneratingQuestionId === String(q.id) ? 'Generating…' : 'Generate with Gemini'}
-                                                        </button>
-                                                        <button
-                                                          type="button"
-                                                          className="btn btn-primary text-xs"
-                                                          disabled={assignmentSolutionMarkingPlanSavingQuestionId === String(q.id)}
-                                                          onClick={() => {
-                                                            void saveAssignmentSolutionMarkingPlan(
-                                                              expandedSessionId,
-                                                              String(selectedAssignment.id),
-                                                              String(q.id),
-                                                              String(assignmentSolutionMarkingPlanDraftByQuestionId?.[String(q.id)] || '')
-                                                            )
-                                                          }}
-                                                        >
-                                                          {assignmentSolutionMarkingPlanSavingQuestionId === String(q.id) ? 'Saving…' : 'Save marking plan'}
-                                                        </button>
-                                                      </div>
-                                                    </div>
-                                                  ) : null}
-
-                                                  {expandedSessionId && selectedAssignment?.id && q?.id ? (
-                                                    <div className="pt-2">
-                                                      <div className="text-xs text-white/70 mb-1">Gemini worked solution (editable source of truth)</div>
-                                                      {(() => {
-                                                        const sol = assignmentSolutionsByQuestionId?.[String(q.id)]
-                                                        const teacher = String(sol?.teacherWorkedSolution || '')
-                                                        const ai = String(sol?.aiWorkedSolution || '')
-                                                        const label = teacher.trim()
-                                                          ? 'Using teacher edited worked solution'
-                                                          : (ai.trim() ? 'Using Gemini draft (edit + save to override)' : 'No worked solution generated yet')
-                                                        return <div className="text-xs muted mb-1">{label}</div>
-                                                      })()}
-                                                      <textarea
-                                                        className="input w-full text-xs"
-                                                        rows={6}
-                                                        placeholder="Generate a fully worked solution with Gemini (uses canvas LaTeX + uploaded PDF/image). Edit it, then save to make it the source of truth."
-                                                        value={String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[String(q.id)] ?? '')}
-                                                        onChange={e => {
-                                                          const value = e.target.value
-                                                          setAssignmentSolutionWorkedSolutionDraftByQuestionId(prev => ({
-                                                            ...prev,
-                                                            [String(q.id)]: value,
-                                                          }))
-                                                        }}
-                                                      />
-                                                      <div className="pt-2 flex flex-wrap gap-2">
-                                                        <button
-                                                          type="button"
-                                                          className="btn btn-secondary text-xs"
-                                                          disabled={assignmentSolutionWorkedSolutionGeneratingQuestionId === String(q.id)}
-                                                          onClick={() => {
-                                                            void generateAssignmentSolutionWorkedSolution(
-                                                              expandedSessionId,
-                                                              String(selectedAssignment.id),
-                                                              String(q.id)
-                                                            )
-                                                          }}
-                                                        >
-                                                          {assignmentSolutionWorkedSolutionGeneratingQuestionId === String(q.id) ? 'Generating…' : 'Generate worked solution'}
-                                                        </button>
-                                                        <button
-                                                          type="button"
-                                                          className="btn btn-primary text-xs"
-                                                          disabled={assignmentSolutionWorkedSolutionSavingQuestionId === String(q.id)}
-                                                          onClick={() => {
-                                                            void saveAssignmentSolutionWorkedSolution(
-                                                              expandedSessionId,
-                                                              String(selectedAssignment.id),
-                                                              String(q.id),
-                                                              String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[String(q.id)] || '')
-                                                            )
-                                                          }}
-                                                        >
-                                                          {assignmentSolutionWorkedSolutionSavingQuestionId === String(q.id) ? 'Saving…' : 'Save worked solution'}
-                                                        </button>
-                                                      </div>
-                                                    </div>
-                                                  ) : null}
-
-                                                  {expandedSessionId && selectedAssignment?.id && q?.id ? (
-                                                    <div className="pt-2">
-                                                      <div className="text-xs text-white/70 mb-1">Grading prompt (this question)</div>
-                                                      <textarea
-                                                        className="input w-full text-xs"
-                                                        rows={3}
-                                                        placeholder="Tell the AI how to grade this question (method marks, key steps, tolerances, common mistakes, etc.)"
-                                                        value={String(assignmentGradingPromptByQuestionId?.[String(q.id)] || '')}
-                                                        onChange={e => {
-                                                          const value = e.target.value
-                                                          setAssignmentGradingPromptByQuestionId(prev => ({ ...prev, [String(q.id)]: value }))
-                                                        }}
-                                                      />
-                                                      <div className="pt-2">
-                                                        <button
-                                                          type="button"
-                                                          className="btn btn-secondary text-xs"
-                                                          disabled={assignmentGradingPromptSavingScope === `q:${String(q.id)}`}
-                                                          onClick={() => {
-                                                            void saveQuestionGradingPrompt(
-                                                              expandedSessionId,
-                                                              String(selectedAssignment.id),
-                                                              String(q.id),
-                                                              String(assignmentGradingPromptByQuestionId?.[String(q.id)] || '')
-                                                            )
-                                                          }}
-                                                        >
-                                                          {assignmentGradingPromptSavingScope === `q:${String(q.id)}` ? 'Saving…' : 'Save grading prompt'}
-                                                        </button>
-                                                      </div>
-                                                    </div>
-                                                  ) : null}
-                                                </div>
-                                              ) : null}
-                                              {isLearner && q?.id ? (
-                                                <div className="pt-2">
-                                                  <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                    <div className="text-xs text-white/70 mb-1">Your response</div>
-                                                    {(() => {
-                                                      const qid = String(q.id)
-                                                      const latex = String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '')
-                                                      if (!latex.trim()) {
-                                                        return <div className="text-sm text-white/60">Not submitted yet.</div>
-                                                      }
-
-                                                      const stepFeedback = assignmentStepFeedbackByQuestionId?.[qid]
-                                                      const steps = splitLatexIntoSteps(latex)
-                                                      if (assignmentSubmittedAt && Array.isArray(stepFeedback) && steps.length) {
-                                                        const byStep = new Map<number, any>()
-                                                        for (const s of stepFeedback) {
-                                                          const idx = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
-                                                          if (Number.isFinite(idx) && idx > 0) byStep.set(Math.trunc(idx), s)
-                                                        }
-
-                                                        return (
-                                                          <div className="space-y-2">
-                                                            {steps.map((stepLatex, i) => {
-                                                              const stepNum = i + 1
-                                                              const fb = byStep.get(stepNum)
-                                                              const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
-                                                              const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
-                                                              const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
-                                                              const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
-                                                              const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
-                                                              const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
-
-                                                              const html = renderKatexDisplayHtml(stepLatex)
-                                                              const line = html
-                                                                ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
-                                                                : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
-
-                                                              return (
-                                                                <div key={`${qid}-step-${stepNum}`} className="flex items-start gap-3">
-                                                                  <div className="min-w-0 flex-1">
-                                                                    {line}
-                                                                  </div>
-                                                                  <div className="shrink-0 flex items-start gap-2">
-                                                                    {awardedInt > 0 ? (
-                                                                      <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
-                                                                        {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
-                                                                          <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                            <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
-                                                                          </svg>
-                                                                        ))}
-                                                                        {awardedInt > 12 ? (
-                                                                          <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
-                                                                        ) : null}
-                                                                      </span>
-                                                                    ) : isCorrect ? (
-                                                                      <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
-                                                                        <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                                          <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                                        </svg>
-                                                                      </span>
-                                                                    ) : (
-                                                                      isSignificant ? (
-                                                                        <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
-                                                                          <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                            <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
-                                                                          </svg>
-                                                                        </span>
-                                                                      ) : (
-                                                                        <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
-                                                                          <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                                            <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                                          </svg>
-                                                                        </span>
-                                                                      )
-                                                                    )}
-                                                                    {!isCorrect && awardedInt === 0 ? (
-                                                                      <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                                        {(feedbackText || 'Check this step').slice(0, 160)}
-                                                                      </div>
-                                                                    ) : null}
-                                                                  </div>
-                                                                </div>
-                                                              )
-                                                            })}
-                                                          </div>
-                                                        )
-                                                      }
-
-                                                      const html = renderKatexDisplayHtml(latex)
-                                                      if (html) {
-                                                        return (
-                                                          <div
-                                                            className="leading-relaxed"
-                                                            dangerouslySetInnerHTML={{ __html: html }}
-                                                          />
-                                                        )
-                                                      }
-                                                      return <div className="text-xs font-mono whitespace-pre-wrap break-words">{latex}</div>
-                                                    })()}
-                                                  </div>
-                                                </div>
-                                              ) : null}
-                                              {isLearner && expandedSessionId && selectedAssignment?.id && q?.id ? (
-                                                <div className="pt-2">
-                                                  {assignmentSubmittedAt && !isTestStudent ? (
-                                                    <button type="button" className="btn btn-primary text-xs opacity-60 cursor-not-allowed" disabled>
-                                                      Editing locked
-                                                    </button>
-                                                  ) : (
-                                                    <Link
-                                                      className="btn btn-primary text-xs"
-                                                      href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(q.id))}`}
-                                                    >
-                                                      {String(assignmentResponsesByQuestionId?.[String(q.id)]?.latex || '').trim()
-                                                        ? 'Edit on canvas'
-                                                        : 'Answer on canvas'}
-                                                    </Link>
-                                                  )}
-                                                </div>
-                                              ) : null}
-                                            </details>
-                                          ))}
-
-                                          {!isLearner && expandedSessionId && selectedAssignment?.id ? (
-                                            <div className="pt-3">
-                                              <div className="p-3 rounded border border-white/10 bg-white/5 space-y-2">
-                                                <div className="text-sm font-semibold">Assignment grading prompt</div>
-                                                <div className="text-xs text-white/70">General grading guidelines that apply to the whole assignment.</div>
-                                                <textarea
-                                                  className="input w-full text-xs"
-                                                  rows={4}
-                                                  placeholder="General instructions for the AI grader (rubric, marks allocation, strictness, formatting, etc.)"
-                                                  value={assignmentMasterGradingPrompt}
-                                                  onChange={e => setAssignmentMasterGradingPrompt(e.target.value)}
-                                                />
-                                                <div>
-                                                  <button
-                                                    type="button"
-                                                    className="btn btn-primary text-xs"
-                                                    disabled={assignmentGradingPromptSavingScope === 'assignment'}
-                                                    onClick={() => {
-                                                      void saveAssignmentGradingPrompt(
-                                                        expandedSessionId,
-                                                        String(selectedAssignment.id),
-                                                        assignmentMasterGradingPrompt
-                                                      )
-                                                    }}
-                                                  >
-                                                    {assignmentGradingPromptSavingScope === 'assignment' ? 'Saving…' : 'Save assignment grading prompt'}
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ) : null}
-
-                                          {isAdmin && expandedSessionId && selectedAssignment?.id ? (
-                                            <div className="pt-3">
-                                              <div className="p-3 rounded border border-white/10 bg-white/5 space-y-2">
-                                                <div className="text-sm font-semibold">Student submissions</div>
-
-                                                {adminAssignmentSubmissionsError ? (
-                                                  <div className="text-sm text-red-600">{adminAssignmentSubmissionsError}</div>
-                                                ) : adminAssignmentSubmissionsLoading ? (
-                                                  <div className="text-sm muted">Loading submissions…</div>
-                                                ) : adminAssignmentSubmissions.length === 0 ? (
-                                                  <div className="text-sm text-white/70">No submissions yet.</div>
-                                                ) : (
-                                                  <div className="space-y-2">
-                                                    {adminAssignmentSubmissions.map((s: any) => {
-                                                      const uid = String(s?.userId || '')
-                                                      const email = String(s?.user?.email || '')
-                                                      const name = String(s?.user?.name || '')
-                                                      const label = (name || email || uid || 'Student').trim()
-                                                      const grade = s?.grade
-                                                      const gradeText = grade
-                                                        ? `${Number(grade?.earnedPoints || 0)}/${Number(grade?.totalPoints || 0)} (${Number.isFinite(Number(grade?.percentage)) ? `${Number(grade?.percentage).toFixed(0)}%` : '0%'})`
-                                                        : 'Not graded'
-
-                                                      return (
-                                                        <button
-                                                          key={`sub-${uid}`}
-                                                          type="button"
-                                                          className={
-                                                            `w-full text-left p-2 rounded border border-white/10 ${adminSelectedSubmissionUserId === uid ? 'bg-white/10' : 'bg-white/5'}`
-                                                          }
-                                                          onClick={() => {
-                                                            setAdminSelectedSubmissionUserId(uid)
-                                                            void fetchAdminSubmissionDetail(expandedSessionId, String(selectedAssignment.id), uid)
-                                                          }}
-                                                        >
-                                                          <div className="flex items-center justify-between gap-2">
-                                                            <div className="text-sm font-medium break-words">{label}</div>
-                                                            <div className="text-xs text-white/70">{gradeText}</div>
-                                                          </div>
-                                                          {s?.submittedAt ? (
-                                                            <div className="text-xs muted mt-1">
-                                                              {(() => {
-                                                                try {
-                                                                  return new Date(String(s.submittedAt)).toLocaleString()
-                                                                } catch {
-                                                                  return ''
-                                                                }
-                                                              })()}
-                                                            </div>
-                                                          ) : null}
-                                                        </button>
-                                                      )
-                                                    })}
-                                                  </div>
-                                                )}
-
-                                                {adminSelectedSubmissionUserId ? (
-                                                  <div className="pt-3 border-t border-white/10 space-y-2">
-                                                    {adminSelectedSubmissionError ? (
-                                                      <div className="text-sm text-red-600">{adminSelectedSubmissionError}</div>
-                                                    ) : adminSelectedSubmissionLoading ? (
-                                                      <div className="text-sm muted">Loading submission…</div>
-                                                    ) : adminSelectedSubmissionDetail ? (
-                                                      (() => {
-                                                        const detail = adminSelectedSubmissionDetail
-                                                        const submission = detail?.submission
-                                                        const grade = detail?.grade
-                                                        const gradingJson = detail?.gradingJson
-                                                        const rawGeminiOutput = String(detail?.rawGeminiOutput || '')
-                                                        const responsesByQ = detail?.responses?.byQuestionId || {}
-                                                        const gradeResults: any[] = Array.isArray(grade?.results) ? grade.results : []
-                                                        const gradeByQ = new Map<string, any>()
-                                                        for (const r of gradeResults) {
-                                                          const qid = String(r?.questionId || '')
-                                                          if (qid) gradeByQ.set(qid, r)
-                                                        }
-
-                                                        return (
-                                                          <div className="space-y-3">
-                                                            <div className="text-sm">
-                                                              <div className="font-semibold">Selected submission</div>
-                                                              <div className="text-xs text-white/70">
-                                                                {(submission?.user?.name || submission?.user?.email || submission?.userId || '').toString()}
-                                                              </div>
-                                                              {submission?.submittedAt ? (
-                                                                <div className="text-xs muted">
-                                                                  {(() => {
-                                                                    try {
-                                                                      return new Date(String(submission.submittedAt)).toLocaleString()
-                                                                    } catch {
-                                                                      return ''
-                                                                    }
-                                                                  })()}
-                                                                </div>
-                                                              ) : null}
-                                                              {grade ? (
-                                                                <div className="text-xs text-white/80 mt-1">
-                                                                  Grade: {Number(grade?.earnedPoints || 0)}/{Number(grade?.totalPoints || 0)} ({Number.isFinite(Number(grade?.percentage)) ? `${Number(grade?.percentage).toFixed(0)}%` : '0%'})
-                                                                </div>
-                                                              ) : (
-                                                                <div className="text-xs text-white/70 mt-1">Not graded yet.</div>
-                                                              )}
-
-                                                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                <button
-                                                                  type="button"
-                                                                  className="btn btn-secondary text-xs"
-                                                                  disabled={adminRegradeLoading}
-                                                                  onClick={() => {
-                                                                    if (!expandedSessionId || !selectedAssignment?.id || !adminSelectedSubmissionUserId) return
-                                                                    void adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), String(adminSelectedSubmissionUserId))
-                                                                  }}
-                                                                >
-                                                                  {adminRegradeLoading ? 'Re-grading…' : 'Re-grade this submission'}
-                                                                </button>
-                                                                {adminRegradeError ? (
-                                                                  <div className="text-xs text-red-600">{adminRegradeError}</div>
-                                                                ) : null}
-                                                              </div>
-                                                            </div>
-
-                                                            {Array.isArray(selectedAssignment.questions) && selectedAssignment.questions.length ? (
-                                                              <div className="space-y-2">
-                                                                {selectedAssignment.questions.map((q: any, idx: number) => {
-                                                                  const qid = String(q?.id || '')
-                                                                  const respLatex = String(responsesByQ?.[qid]?.latex || '')
-                                                                  const result = gradeByQ.get(qid)
-                                                                  const earnedMarks = (typeof result?.earnedMarks === 'number' || typeof result?.earnedMarks === 'string') ? Number(result.earnedMarks) : null
-                                                                  const totalMarks = (typeof result?.totalMarks === 'number' || typeof result?.totalMarks === 'string') ? Number(result.totalMarks) : null
-                                                                  const stepFeedback = Array.isArray(result?.steps) ? result.steps : (Array.isArray(result?.stepFeedback) ? result.stepFeedback : [])
-
-                                                                  return (
-                                                                    <details key={`admin-sub-q-${qid || idx}`} className="border border-white/10 rounded p-2" open={idx === 0}>
-                                                                      <summary className="cursor-pointer font-medium text-sm flex items-center justify-between gap-2">
-                                                                        <span>Question {idx + 1}</span>
-                                                                        {grade && Number.isFinite(earnedMarks as any) && Number.isFinite(totalMarks as any) ? (
-                                                                          <span className={Number(earnedMarks) > 0 ? 'text-green-500' : 'text-red-500'}>({Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))})</span>
-                                                                        ) : null}
-                                                                      </summary>
-
-                                                                      <div className="pt-2 text-sm whitespace-pre-wrap break-words">
-                                                                        {renderTextWithKatex(String(q?.latex || ''))}
-                                                                      </div>
-
-                                                                      <div className="pt-2">
-                                                                        <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                                          <div className="text-xs text-white/70 mb-1">Student response</div>
-                                                                          {respLatex.trim() ? (
-                                                                            (() => {
-                                                                              const steps = splitLatexIntoSteps(respLatex)
-                                                                              if (Array.isArray(stepFeedback) && stepFeedback.length && steps.length) {
-                                                                                const byStep = new Map<number, any>()
-                                                                                for (const s of stepFeedback) {
-                                                                                  const idx2 = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
-                                                                                  if (Number.isFinite(idx2) && idx2 > 0) byStep.set(Math.trunc(idx2), s)
-                                                                                }
-
-                                                                                return (
-                                                                                  <div className="space-y-2">
-                                                                                    {steps.map((stepLatex, i) => {
-                                                                                      const stepNum = i + 1
-                                                                                      const fb = byStep.get(stepNum)
-                                                                                      const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
-                                                                                      const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
-                                                                                      const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
-                                                                                      const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
-                                                                                      const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
-                                                                                      const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
-
-                                                                                      const html = renderKatexDisplayHtml(stepLatex)
-                                                                                      const line = html
-                                                                                        ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
-                                                                                        : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
-
-                                                                                      return (
-                                                                                        <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-3">
-                                                                                          <div className="min-w-0 flex-1">
-                                                                                            {line}
-                                                                                          </div>
-                                                                                          <div className="shrink-0 flex items-start gap-2">
-                                                                                            {awardedInt > 0 ? (
-                                                                                              <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
-                                                                                                {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
-                                                                                                  <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                                                    <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
-                                                                                                  </svg>
-                                                                                                ))}
-                                                                                                {awardedInt > 12 ? (
-                                                                                                  <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
-                                                                                                ) : null}
-                                                                                              </span>
-                                                                                            ) : isCorrect ? (
-                                                                                              <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
-                                                                                                <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                                                                  <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                                                                </svg>
-                                                                                              </span>
-                                                                                            ) : (
-                                                                                              isSignificant ? (
-                                                                                                <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
-                                                                                                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                                                    <path d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z" fill="currentColor" />
-                                                                                                  </svg>
-                                                                                                </span>
-                                                                                              ) : (
-                                                                                                <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
-                                                                                                  <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                                                                    <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                                                                  </svg>
-                                                                                                </span>
-                                                                                              )
-                                                                                            )}
-                                                                                            {!isCorrect && awardedInt === 0 ? (
-                                                                                              <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                                                                {(feedbackText || 'Check this step').slice(0, 160)}
-                                                                                              </div>
-                                                                                            ) : null}
-                                                                                          </div>
-                                                                                        </div>
-                                                                                      )
-                                                                                    })}
-                                                                                  </div>
-                                                                                )
-                                                                              }
-
-                                                                              const html = renderKatexDisplayHtml(respLatex)
-                                                                              if (html) return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                                                                              return <div className="text-xs font-mono whitespace-pre-wrap break-words">{respLatex}</div>
-                                                                            })()
-                                                                          ) : (
-                                                                            <div className="text-sm text-white/60">(empty)</div>
-                                                                          )}
-                                                                        </div>
-                                                                      </div>
-                                                                    </details>
-                                                                  )
-                                                                })}
-                                                              </div>
-                                                            ) : null}
-
-                                                            <div className="pt-2">
-                                                              <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                                <div className="text-xs text-white/70 mb-1">Final grading JSON object</div>
-                                                                {gradingJson ? (
-                                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{JSON.stringify(gradingJson, null, 2)}</pre>
-                                                                ) : (
-                                                                  <div className="text-sm text-white/60">No grade JSON yet.</div>
-                                                                )}
-                                                              </div>
-                                                            </div>
-
-                                                            <div className="pt-2">
-                                                              <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                                <div className="text-xs text-white/70 mb-1">Raw Gemini output (parser input)</div>
-                                                                {rawGeminiOutput.trim() ? (
-                                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{rawGeminiOutput}</pre>
-                                                                ) : (
-                                                                  <div className="text-sm text-white/60">Not available for this grade (requires re-grade after migration).</div>
-                                                                )}
-                                                              </div>
-                                                            </div>
-                                                          </div>
-                                                        )
-                                                      })()
-                                                    ) : null}
-                                                  </div>
-                                                ) : null}
-                                              </div>
-                                            </div>
-                                          ) : null}
-
-                                          {isLearner && expandedSessionId && selectedAssignment?.id ? (
-                                            <div className="pt-2 space-y-2">
-                                              {assignmentSubmitError ? (
-                                                <div className="text-sm text-red-600">{assignmentSubmitError}</div>
-                                              ) : null}
-
-                                              {assignmentSubmittedAt ? (
-                                                <div className="p-3 rounded border border-white/10 bg-white/5">
-                                                  <div className="text-sm font-semibold">Submitted</div>
-                                                  <div className="text-xs muted">
-                                                    {(() => {
-                                                      try {
-                                                        return new Date(assignmentSubmittedAt).toLocaleString()
-                                                      } catch {
-                                                        return ''
-                                                      }
-                                                    })()}
-                                                  </div>
-                                                  <div className="text-xs text-white/70 mt-1">
-                                                    {isTestStudent ? 'Test account: editing is unlocked.' : 'Editing is locked.'}
-                                                  </div>
-
-                                                  {assignmentGradeError ? (
-                                                    <div className="text-xs text-red-600 mt-2">{assignmentGradeError}</div>
-                                                  ) : null}
-
-                                                  {assignmentGradeLoading ? (
-                                                    <div className="text-xs muted mt-2">Loading grade…</div>
-                                                  ) : assignmentGradeSummary ? (
-                                                    <div className="mt-2 text-sm">
-                                                      <div className="font-semibold">Grade</div>
-                                                      <div className="text-xs text-white/80">
-                                                        {assignmentGradeSummary.earnedPoints} / {assignmentGradeSummary.totalPoints} points
-                                                        {' '}({Number.isFinite(assignmentGradeSummary.percentage)
-                                                          ? `${assignmentGradeSummary.percentage.toFixed(0)}%`
-                                                          : '0%'})
-                                                      </div>
-                                                    </div>
-                                                  ) : null}
-
-                                                  {isTestStudent ? (
-                                                    <div className="mt-3">
-                                                      <button
-                                                        type="button"
-                                                        className="btn btn-primary w-full"
-                                                        disabled={assignmentSubmitting}
-                                                        onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
-                                                      >
-                                                        {assignmentSubmitting ? 'Submitting…' : 'Resubmit Assignment'}
-                                                      </button>
-                                                    </div>
-                                                  ) : null}
-                                                </div>
-                                              ) : (
-                                                <button
-                                                  type="button"
-                                                  className="btn btn-primary w-full"
-                                                  disabled={assignmentSubmitting}
-                                                  onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
-                                                >
-                                                  {assignmentSubmitting ? 'Submitting…' : 'Submit Assignment'}
-                                                </button>
-                                              )}
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      ) : (
-                                        <div className="text-sm muted">No questions found.</div>
-                                      )}
-                                    </>
-                                  ) : null}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
+                      ) : sessionDetailsTab === 'responses' ? (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="font-semibold text-sm">Quizzes</div>
@@ -5375,10 +4620,365 @@ export default function Dashboard() {
                             </div>
                           )}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </>
                 )}
+                </div>
+              </div>
+            </div>
+          </OverlayPortal>
+        )}
+
+        {assignmentOverlayOpen && (
+          <OverlayPortal>
+            <div
+              className={`fixed inset-0 z-[60] transition-opacity duration-200 ${assignmentQuestionOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div
+                className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+                onClick={() => {
+                  setAssignmentQuestionOverlayOpen(false)
+                  setSelectedAssignmentQuestionId(null)
+                  setAssignmentOverlayOpen(false)
+                }}
+              />
+              <div
+                className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+                onClick={() => {
+                  setAssignmentQuestionOverlayOpen(false)
+                  setSelectedAssignmentQuestionId(null)
+                  setAssignmentOverlayOpen(false)
+                }}
+              >
+                <div
+                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-3 border-b flex items-start justify-between gap-3">
+                    <div className="w-24 shrink-0">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setAssignmentQuestionOverlayOpen(false)
+                          setSelectedAssignmentQuestionId(null)
+                          setAssignmentOverlayOpen(false)
+                        }}
+                      >
+                        Back
+                      </button>
+                    </div>
+                    <div className="min-w-0 flex-1 text-center">
+                      <div className="font-semibold break-words">{selectedAssignment?.title || 'Assignment'}</div>
+                    </div>
+                    <div className="w-24 shrink-0 flex justify-end">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setAssignmentQuestionOverlayOpen(false)
+                          setSelectedAssignmentQuestionId(null)
+                          setAssignmentOverlayOpen(false)
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                    {selectedAssignmentError ? (
+                      <div className="text-sm text-red-600">{selectedAssignmentError}</div>
+                    ) : selectedAssignmentLoading ? (
+                      <div className="text-sm muted">Loading assignment…</div>
+                    ) : !selectedAssignment ? (
+                      <div className="text-sm muted">No assignment selected.</div>
+                    ) : (
+                      <>
+                        {(() => {
+                          const qs = Array.isArray(selectedAssignment?.questions) ? selectedAssignment.questions : []
+                          if (!qs.length) return <div className="text-sm muted">No questions found.</div>
+                          return (
+                            <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
+                              {qs.map((q: any, idx: number) => (
+                                <li key={String(q?.id || idx)} className="p-3">
+                                  <button
+                                    type="button"
+                                    className="w-full text-left"
+                                    onClick={() => {
+                                      const qid = String(q?.id || '')
+                                      if (!qid) return
+                                      setSelectedAssignmentQuestionId(qid)
+                                      setAssignmentQuestionOverlayOpen(true)
+                                    }}
+                                  >
+                                    <div className="font-medium">Question {idx + 1}</div>
+                                    <div className="text-sm whitespace-pre-wrap break-words mt-1">{renderTextWithKatex(String(q?.latex || ''))}</div>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                        })()}
+
+                        {isLearner && expandedSessionId && selectedAssignment?.id ? (
+                          <div className="pt-2 space-y-2">
+                            {assignmentSubmitError ? <div className="text-sm text-red-600">{assignmentSubmitError}</div> : null}
+                            <button
+                              type="button"
+                              className="btn btn-primary w-full"
+                              disabled={assignmentSubmitting}
+                              onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
+                            >
+                              {assignmentSubmitting ? 'Submitting…' : (assignmentSubmittedAt ? 'Resubmit Assignment' : 'Submit Assignment')}
+                            </button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayPortal>
+        )}
+
+        {assignmentQuestionOverlayOpen && selectedAssignmentQuestionId && (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
+              <div
+                className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+                onClick={() => {
+                  setAssignmentQuestionOverlayOpen(false)
+                  setSelectedAssignmentQuestionId(null)
+                }}
+              />
+              <div
+                className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+                onClick={() => {
+                  setAssignmentQuestionOverlayOpen(false)
+                  setSelectedAssignmentQuestionId(null)
+                }}
+              >
+                <div
+                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-3 border-b flex items-start justify-between gap-3">
+                    <div className="w-24 shrink-0">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setAssignmentQuestionOverlayOpen(false)
+                          setSelectedAssignmentQuestionId(null)
+                        }}
+                      >
+                        Back
+                      </button>
+                    </div>
+                    <div className="min-w-0 flex-1 text-center">
+                      <div className="font-semibold break-words">Question</div>
+                    </div>
+                    <div className="w-24 shrink-0 flex justify-end">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setAssignmentQuestionOverlayOpen(false)
+                          setSelectedAssignmentQuestionId(null)
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                    {(() => {
+                      const qid = String(selectedAssignmentQuestionId || '')
+                      const qs = Array.isArray(selectedAssignment?.questions) ? selectedAssignment.questions : []
+                      const q = qs.find((x: any) => String(x?.id || '') === qid)
+                      if (!qid || !q) return <div className="text-sm muted">Question not found.</div>
+
+                      return (
+                        <>
+                          <div className="border border-white/10 rounded bg-white/5 p-3">
+                            <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(String(q?.latex || ''))}</div>
+                          </div>
+
+                          {!isLearner && expandedSessionId && selectedAssignment?.id ? (
+                            <>
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Assignment grading prompt</div>
+                                <textarea
+                                  className="input w-full text-xs min-h-[110px]"
+                                  placeholder="Tell the AI how to grade the whole assignment."
+                                  value={assignmentMasterGradingPrompt}
+                                  onChange={(e) => setAssignmentMasterGradingPrompt(e.target.value)}
+                                />
+                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
+                                  {renderTextWithKatex(String(assignmentMasterGradingPrompt || ''))}
+                                </div>
+                                <div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary text-xs"
+                                    disabled={assignmentGradingPromptSavingScope === 'assignment'}
+                                    onClick={() => saveAssignmentGradingPrompt(expandedSessionId, String(selectedAssignment.id), String(assignmentMasterGradingPrompt || ''))}
+                                  >
+                                    {assignmentGradingPromptSavingScope === 'assignment' ? 'Saving…' : 'Save assignment prompt'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Solution</div>
+                                {(() => {
+                                  const sol = assignmentSolutionsByQuestionId?.[qid]
+                                  const latex = String(sol?.latex || '')
+                                  const fileUrl = String(sol?.fileUrl || '')
+                                  if (!latex.trim() && !fileUrl.trim()) return <div className="text-sm muted">No solution saved yet.</div>
+                                  const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                                  return (
+                                    <div className="space-y-2">
+                                      {latex.trim() ? (
+                                        latexHtml ? (
+                                          <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                                        ) : (
+                                          <div className="text-xs font-mono whitespace-pre-wrap break-words">{latex}</div>
+                                        )
+                                      ) : null}
+                                      {fileUrl.trim() ? (
+                                        <a href={fileUrl} target="_blank" rel="noreferrer" className="btn btn-secondary text-xs">Open uploaded solution</a>
+                                      ) : null}
+                                    </div>
+                                  )
+                                })()}
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Link
+                                    className="btn btn-primary text-xs"
+                                    href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/solution/${encodeURIComponent(String(qid))}`}
+                                  >
+                                    Solve on canvas
+                                  </Link>
+                                </div>
+                              </div>
+
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Gemini marking plan</div>
+                                <textarea
+                                  className="input w-full text-xs min-h-[120px]"
+                                  placeholder="Generate a marking plan with Gemini, then edit it."
+                                  value={String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? '')}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setAssignmentSolutionMarkingPlanDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
+                                  }}
+                                />
+                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
+                                  {renderTextWithKatex(String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? ''))}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary text-xs"
+                                    disabled={assignmentSolutionMarkingPlanGeneratingQuestionId === qid}
+                                    onClick={() => void generateAssignmentSolutionMarkingPlan(expandedSessionId, String(selectedAssignment.id), qid)}
+                                  >
+                                    {assignmentSolutionMarkingPlanGeneratingQuestionId === qid ? 'Generating…' : 'Generate with Gemini'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary text-xs"
+                                    disabled={assignmentSolutionMarkingPlanSavingQuestionId === qid}
+                                    onClick={() => void saveAssignmentSolutionMarkingPlan(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] || ''))}
+                                  >
+                                    {assignmentSolutionMarkingPlanSavingQuestionId === qid ? 'Saving…' : 'Save marking plan'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Gemini worked solution</div>
+                                <textarea
+                                  className="input w-full text-xs min-h-[140px]"
+                                  placeholder="Generate a fully worked solution with Gemini, then edit it."
+                                  value={String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? '')}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setAssignmentSolutionWorkedSolutionDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
+                                  }}
+                                />
+                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
+                                  {renderTextWithKatex(String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? ''))}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary text-xs"
+                                    disabled={assignmentSolutionWorkedSolutionGeneratingQuestionId === qid}
+                                    onClick={() => void generateAssignmentSolutionWorkedSolution(expandedSessionId, String(selectedAssignment.id), qid)}
+                                  >
+                                    {assignmentSolutionWorkedSolutionGeneratingQuestionId === qid ? 'Generating…' : 'Generate worked solution'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary text-xs"
+                                    disabled={assignmentSolutionWorkedSolutionSavingQuestionId === qid}
+                                    onClick={() => void saveAssignmentSolutionWorkedSolution(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] || ''))}
+                                  >
+                                    {assignmentSolutionWorkedSolutionSavingQuestionId === qid ? 'Saving…' : 'Save worked solution'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Grading prompt (this question)</div>
+                                <textarea
+                                  className="input w-full text-xs min-h-[110px]"
+                                  placeholder="Tell the AI how to grade this question."
+                                  value={String(assignmentGradingPromptByQuestionId?.[qid] || '')}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setAssignmentGradingPromptByQuestionId(prev => ({ ...prev, [qid]: value }))
+                                  }}
+                                />
+                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
+                                  {renderTextWithKatex(String(assignmentGradingPromptByQuestionId?.[qid] || ''))}
+                                </div>
+                                <div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary text-xs"
+                                    disabled={assignmentGradingPromptSavingScope === `q:${qid}`}
+                                    onClick={() => void saveQuestionGradingPrompt(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentGradingPromptByQuestionId?.[qid] || ''))}
+                                  >
+                                    {assignmentGradingPromptSavingScope === `q:${qid}` ? 'Saving…' : 'Save grading prompt'}
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          ) : null}
+
+                          {isLearner ? (
+                            <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                              <div className="font-semibold text-sm">Your response</div>
+                              {(() => {
+                                const latex = String(assignmentResponsesByQuestionId?.[qid]?.latex || '')
+                                if (!latex.trim()) return <div className="text-sm muted">Not submitted yet.</div>
+                                return <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
+                              })()}
+                            </div>
+                          ) : null}
+                        </>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>

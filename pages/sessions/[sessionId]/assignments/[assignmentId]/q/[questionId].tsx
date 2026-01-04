@@ -245,7 +245,7 @@ export default function AssignmentQuestionPage() {
 
       {submittedAt && !isTestStudent ? (
         <div className="absolute inset-0 flex items-center justify-center p-6">
-          <div className="max-w-lg w-full rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+          <div className="max-w-lg w-full rounded border border-white/10 bg-white/5 p-4 space-y-3">
             <div className="text-lg font-semibold">Assignment submitted</div>
             <div className="text-sm text-white/80">
               This assignment was submitted on {new Date(submittedAt).toLocaleString()}. Editing is locked.
@@ -282,7 +282,7 @@ export default function AssignmentQuestionPage() {
       {metaVisible ? (
         <div className="absolute top-3 left-3 right-3 z-50">
           <div
-            className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
+            className="rounded backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
             style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
             role="button"
             tabIndex={0}

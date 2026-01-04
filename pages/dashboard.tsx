@@ -3286,10 +3286,10 @@ export default function Dashboard() {
                     </div>
                   ) : null}
                   {liveOverrideSessionId ? (
-                    <div className="text-xs muted">Override selected (persists until unselected).</div>
+                    null
                   ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-4">
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -3330,7 +3330,7 @@ export default function Dashboard() {
                         {new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-4">
                       <button
                         type="button"
                         className="btn btn-primary"

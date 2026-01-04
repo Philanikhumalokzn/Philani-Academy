@@ -656,15 +656,19 @@ export default function Dashboard() {
   const [assignmentSolutionUploadingQuestionId, setAssignmentSolutionUploadingQuestionId] = useState<string | null>(null)
 
   const [assignmentSolutionMarkingPlanDraftByQuestionId, setAssignmentSolutionMarkingPlanDraftByQuestionId] = useState<Record<string, string>>({})
+  const [assignmentSolutionMarkingPlanEditingByQuestionId, setAssignmentSolutionMarkingPlanEditingByQuestionId] = useState<Record<string, boolean>>({})
   const [assignmentSolutionMarkingPlanSavingQuestionId, setAssignmentSolutionMarkingPlanSavingQuestionId] = useState<string | null>(null)
   const [assignmentSolutionMarkingPlanGeneratingQuestionId, setAssignmentSolutionMarkingPlanGeneratingQuestionId] = useState<string | null>(null)
 
   const [assignmentSolutionWorkedSolutionDraftByQuestionId, setAssignmentSolutionWorkedSolutionDraftByQuestionId] = useState<Record<string, string>>({})
+  const [assignmentSolutionWorkedSolutionEditingByQuestionId, setAssignmentSolutionWorkedSolutionEditingByQuestionId] = useState<Record<string, boolean>>({})
   const [assignmentSolutionWorkedSolutionSavingQuestionId, setAssignmentSolutionWorkedSolutionSavingQuestionId] = useState<string | null>(null)
   const [assignmentSolutionWorkedSolutionGeneratingQuestionId, setAssignmentSolutionWorkedSolutionGeneratingQuestionId] = useState<string | null>(null)
 
   const [assignmentMasterGradingPrompt, setAssignmentMasterGradingPrompt] = useState('')
+  const [assignmentMasterGradingPromptEditing, setAssignmentMasterGradingPromptEditing] = useState(false)
   const [assignmentGradingPromptByQuestionId, setAssignmentGradingPromptByQuestionId] = useState<Record<string, string>>({})
+  const [assignmentGradingPromptEditingByQuestionId, setAssignmentGradingPromptEditingByQuestionId] = useState<Record<string, boolean>>({})
   const [assignmentGradingPromptSavingScope, setAssignmentGradingPromptSavingScope] = useState<string | null>(null)
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
@@ -4814,15 +4818,30 @@ export default function Dashboard() {
                             <>
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Assignment grading prompt</div>
-                                <textarea
-                                  className="input w-full text-xs min-h-[110px]"
-                                  placeholder="Tell the AI how to grade the whole assignment."
-                                  value={assignmentMasterGradingPrompt}
-                                  onChange={(e) => setAssignmentMasterGradingPrompt(e.target.value)}
-                                />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentMasterGradingPrompt || ''))}
-                                </div>
+                                {assignmentMasterGradingPromptEditing ? (
+                                  <textarea
+                                    className="input w-full text-xs min-h-[110px]"
+                                    placeholder="Tell the AI how to grade the whole assignment."
+                                    value={assignmentMasterGradingPrompt}
+                                    onChange={(e) => setAssignmentMasterGradingPrompt(e.target.value)}
+                                    onBlur={() => setAssignmentMasterGradingPromptEditing(false)}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setAssignmentMasterGradingPromptEditing(true)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') setAssignmentMasterGradingPromptEditing(true)
+                                    }}
+                                  >
+                                    {assignmentMasterGradingPrompt?.trim()
+                                      ? renderTextWithKatex(String(assignmentMasterGradingPrompt || ''))
+                                      : <span className="text-xs muted">Click to edit…</span>}
+                                  </div>
+                                )}
                                 <div>
                                   <button
                                     type="button"
@@ -4871,18 +4890,33 @@ export default function Dashboard() {
 
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Gemini marking plan</div>
-                                <textarea
-                                  className="input w-full text-xs min-h-[120px]"
-                                  placeholder="Generate a marking plan with Gemini, then edit it."
-                                  value={String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? '')}
-                                  onChange={(e) => {
-                                    const value = e.target.value
-                                    setAssignmentSolutionMarkingPlanDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
-                                  }}
-                                />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? ''))}
-                                </div>
+                                {assignmentSolutionMarkingPlanEditingByQuestionId?.[qid] ? (
+                                  <textarea
+                                    className="input w-full text-xs min-h-[120px]"
+                                    placeholder="Generate a marking plan with Gemini, then edit it."
+                                    value={String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? '')}
+                                    onChange={(e) => {
+                                      const value = e.target.value
+                                      setAssignmentSolutionMarkingPlanDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
+                                    }}
+                                    onBlur={() => setAssignmentSolutionMarkingPlanEditingByQuestionId(prev => ({ ...prev, [qid]: false }))}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setAssignmentSolutionMarkingPlanEditingByQuestionId(prev => ({ ...prev, [qid]: true }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') setAssignmentSolutionMarkingPlanEditingByQuestionId(prev => ({ ...prev, [qid]: true }))
+                                    }}
+                                  >
+                                    {String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? '').trim()
+                                      ? renderTextWithKatex(String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? ''))
+                                      : <span className="text-xs muted">Click to edit…</span>}
+                                  </div>
+                                )}
                                 <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
@@ -4896,7 +4930,10 @@ export default function Dashboard() {
                                     type="button"
                                     className="btn btn-primary text-xs"
                                     disabled={assignmentSolutionMarkingPlanSavingQuestionId === qid}
-                                    onClick={() => void saveAssignmentSolutionMarkingPlan(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] || ''))}
+                                    onClick={() => {
+                                      setAssignmentSolutionMarkingPlanEditingByQuestionId(prev => ({ ...prev, [qid]: false }))
+                                      void saveAssignmentSolutionMarkingPlan(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] || ''))
+                                    }}
                                   >
                                     {assignmentSolutionMarkingPlanSavingQuestionId === qid ? 'Saving…' : 'Save marking plan'}
                                   </button>
@@ -4905,18 +4942,33 @@ export default function Dashboard() {
 
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Gemini worked solution</div>
-                                <textarea
-                                  className="input w-full text-xs min-h-[140px]"
-                                  placeholder="Generate a fully worked solution with Gemini, then edit it."
-                                  value={String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? '')}
-                                  onChange={(e) => {
-                                    const value = e.target.value
-                                    setAssignmentSolutionWorkedSolutionDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
-                                  }}
-                                />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? ''))}
-                                </div>
+                                {assignmentSolutionWorkedSolutionEditingByQuestionId?.[qid] ? (
+                                  <textarea
+                                    className="input w-full text-xs min-h-[140px]"
+                                    placeholder="Generate a fully worked solution with Gemini, then edit it."
+                                    value={String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? '')}
+                                    onChange={(e) => {
+                                      const value = e.target.value
+                                      setAssignmentSolutionWorkedSolutionDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
+                                    }}
+                                    onBlur={() => setAssignmentSolutionWorkedSolutionEditingByQuestionId(prev => ({ ...prev, [qid]: false }))}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setAssignmentSolutionWorkedSolutionEditingByQuestionId(prev => ({ ...prev, [qid]: true }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') setAssignmentSolutionWorkedSolutionEditingByQuestionId(prev => ({ ...prev, [qid]: true }))
+                                    }}
+                                  >
+                                    {String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? '').trim()
+                                      ? renderTextWithKatex(String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? ''))
+                                      : <span className="text-xs muted">Click to edit…</span>}
+                                  </div>
+                                )}
                                 <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
@@ -4930,7 +4982,10 @@ export default function Dashboard() {
                                     type="button"
                                     className="btn btn-primary text-xs"
                                     disabled={assignmentSolutionWorkedSolutionSavingQuestionId === qid}
-                                    onClick={() => void saveAssignmentSolutionWorkedSolution(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] || ''))}
+                                    onClick={() => {
+                                      setAssignmentSolutionWorkedSolutionEditingByQuestionId(prev => ({ ...prev, [qid]: false }))
+                                      void saveAssignmentSolutionWorkedSolution(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] || ''))
+                                    }}
                                   >
                                     {assignmentSolutionWorkedSolutionSavingQuestionId === qid ? 'Saving…' : 'Save worked solution'}
                                   </button>
@@ -4939,24 +4994,42 @@ export default function Dashboard() {
 
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Grading prompt (this question)</div>
-                                <textarea
-                                  className="input w-full text-xs min-h-[110px]"
-                                  placeholder="Tell the AI how to grade this question."
-                                  value={String(assignmentGradingPromptByQuestionId?.[qid] || '')}
-                                  onChange={(e) => {
-                                    const value = e.target.value
-                                    setAssignmentGradingPromptByQuestionId(prev => ({ ...prev, [qid]: value }))
-                                  }}
-                                />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentGradingPromptByQuestionId?.[qid] || ''))}
-                                </div>
+                                {assignmentGradingPromptEditingByQuestionId?.[qid] ? (
+                                  <textarea
+                                    className="input w-full text-xs min-h-[110px]"
+                                    placeholder="Tell the AI how to grade this question."
+                                    value={String(assignmentGradingPromptByQuestionId?.[qid] || '')}
+                                    onChange={(e) => {
+                                      const value = e.target.value
+                                      setAssignmentGradingPromptByQuestionId(prev => ({ ...prev, [qid]: value }))
+                                    }}
+                                    onBlur={() => setAssignmentGradingPromptEditingByQuestionId(prev => ({ ...prev, [qid]: false }))}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setAssignmentGradingPromptEditingByQuestionId(prev => ({ ...prev, [qid]: true }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') setAssignmentGradingPromptEditingByQuestionId(prev => ({ ...prev, [qid]: true }))
+                                    }}
+                                  >
+                                    {String(assignmentGradingPromptByQuestionId?.[qid] || '').trim()
+                                      ? renderTextWithKatex(String(assignmentGradingPromptByQuestionId?.[qid] || ''))
+                                      : <span className="text-xs muted">Click to edit…</span>}
+                                  </div>
+                                )}
                                 <div>
                                   <button
                                     type="button"
                                     className="btn btn-secondary text-xs"
                                     disabled={assignmentGradingPromptSavingScope === `q:${qid}`}
-                                    onClick={() => void saveQuestionGradingPrompt(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentGradingPromptByQuestionId?.[qid] || ''))}
+                                    onClick={() => {
+                                      setAssignmentGradingPromptEditingByQuestionId(prev => ({ ...prev, [qid]: false }))
+                                      void saveQuestionGradingPrompt(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentGradingPromptByQuestionId?.[qid] || ''))
+                                    }}
                                   >
                                     {assignmentGradingPromptSavingScope === `q:${qid}` ? 'Saving…' : 'Save grading prompt'}
                                   </button>

@@ -150,7 +150,7 @@ body{
 .input{
   width:100%;
   padding:0.65rem 0.85rem;
-  border-radius:999px;
+  border-radius:10px;
   border:1px solid rgba(255,255,255,0.25);
   background:rgba(255,255,255,0.08);
   color:#f8fafc;
@@ -333,10 +333,8 @@ body{
   box-shadow:0 12px 24px rgba(76,110,245,0.35);
 }
 
-.mobile-dashboard-theme .btn,
-.mobile-dashboard-theme .input{
-  border-radius:999px;
-}
+.mobile-dashboard-theme .btn{border-radius:999px;}
+.mobile-dashboard-theme .input{border-radius:10px;}
 
 .mobile-dashboard-theme .input{
   background:rgba(255,255,255,0.12);

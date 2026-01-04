@@ -5736,7 +5736,7 @@ export default function Dashboard() {
       {isMobile && (
         <>
           <div
-            className="fixed inset-0 opacity-20 blur-lg scale-110"
+            className="fixed inset-0 opacity-30 scale-110"
             style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
             aria-hidden="true"
           />

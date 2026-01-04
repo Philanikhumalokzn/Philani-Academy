@@ -5408,11 +5408,12 @@ export default function Dashboard() {
       {isMobile && (
         <>
           <div
-            className="absolute inset-0 opacity-25"
+            className="fixed inset-0 opacity-35 blur-2xl scale-110"
             style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
             aria-hidden="true"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#020b35]/35 via-[#041448]/25 to-[#031641]/35" aria-hidden="true" />
+          <div className="fixed inset-0 bg-gradient-to-b from-[#020b35]/40 via-[#041448]/30 to-[#031641]/45" aria-hidden="true" />
+          <div className="fixed inset-x-0 top-0 z-20 h-[280px] bg-gradient-to-b from-[#020b35]/70 via-[#041448]/35 to-transparent pointer-events-none" aria-hidden="true" />
         </>
       )}
       <div
@@ -5425,7 +5426,7 @@ export default function Dashboard() {
         {isMobile ? (
           isAdmin ? (
             <div className="flex-1 flex flex-col py-4">
-              <div className="fixed inset-x-2 top-3 z-30">
+              <div className="fixed inset-x-2 top-[0.9rem] z-30">
                 <div className="relative">
                   <section
                   data-mobile-chrome-ignore
@@ -5645,7 +5646,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="fixed inset-x-2 top-3 z-30">
+              <div className="fixed inset-x-2 top-[0.9rem] z-30">
               <div className="relative">
               <section
                 data-mobile-chrome-ignore

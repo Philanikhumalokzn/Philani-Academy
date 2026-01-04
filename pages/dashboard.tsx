@@ -4815,14 +4815,11 @@ export default function Dashboard() {
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Assignment grading prompt</div>
                                 <textarea
-                                  className="input w-full text-xs min-h-[110px]"
+                                  className="input rounded w-full text-xs min-h-[110px]"
                                   placeholder="Tell the AI how to grade the whole assignment."
                                   value={assignmentMasterGradingPrompt}
                                   onChange={(e) => setAssignmentMasterGradingPrompt(e.target.value)}
                                 />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentMasterGradingPrompt || ''))}
-                                </div>
                                 <div>
                                   <button
                                     type="button"
@@ -4872,7 +4869,7 @@ export default function Dashboard() {
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Gemini marking plan</div>
                                 <textarea
-                                  className="input w-full text-xs min-h-[120px]"
+                                  className="input rounded w-full text-xs min-h-[120px]"
                                   placeholder="Generate a marking plan with Gemini, then edit it."
                                   value={String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? '')}
                                   onChange={(e) => {
@@ -4880,9 +4877,6 @@ export default function Dashboard() {
                                     setAssignmentSolutionMarkingPlanDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
                                   }}
                                 />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? ''))}
-                                </div>
                                 <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
@@ -4906,7 +4900,7 @@ export default function Dashboard() {
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Gemini worked solution</div>
                                 <textarea
-                                  className="input w-full text-xs min-h-[140px]"
+                                  className="input rounded w-full text-xs min-h-[140px]"
                                   placeholder="Generate a fully worked solution with Gemini, then edit it."
                                   value={String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? '')}
                                   onChange={(e) => {
@@ -4914,9 +4908,6 @@ export default function Dashboard() {
                                     setAssignmentSolutionWorkedSolutionDraftByQuestionId(prev => ({ ...prev, [qid]: value }))
                                   }}
                                 />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? ''))}
-                                </div>
                                 <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
@@ -4940,7 +4931,7 @@ export default function Dashboard() {
                               <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Grading prompt (this question)</div>
                                 <textarea
-                                  className="input w-full text-xs min-h-[110px]"
+                                  className="input rounded w-full text-xs min-h-[110px]"
                                   placeholder="Tell the AI how to grade this question."
                                   value={String(assignmentGradingPromptByQuestionId?.[qid] || '')}
                                   onChange={(e) => {
@@ -4948,9 +4939,6 @@ export default function Dashboard() {
                                     setAssignmentGradingPromptByQuestionId(prev => ({ ...prev, [qid]: value }))
                                   }}
                                 />
-                                <div className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words">
-                                  {renderTextWithKatex(String(assignmentGradingPromptByQuestionId?.[qid] || ''))}
-                                </div>
                                 <div>
                                   <button
                                     type="button"

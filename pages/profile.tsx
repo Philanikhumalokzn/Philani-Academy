@@ -474,7 +474,7 @@ export default function ProfilePage() {
                 <h2 className="text-xl font-semibold">Compliance & preferences</h2>
                 <div className="space-y-3">
                   <label className="flex items-start space-x-2 text-sm">
-                    <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} disabled />
+                    <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} />
                     <span>
                       I consent to the processing of my personal information in line with the{' '}
                       <Link className="text-blue-200 underline" href="/privacy">POPIA-compliant Privacy Policy</Link>.

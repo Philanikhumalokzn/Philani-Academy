@@ -1,6 +1,9 @@
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+
+import AccountControlOverlay from './AccountControlOverlay'
 
 type AnnouncementLike = {
   id?: string | number | null
@@ -30,6 +33,7 @@ export default function MobileTopChrome() {
 
   const [open, setOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [accountControlOpen, setAccountControlOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -230,6 +234,10 @@ export default function MobileTopChrome() {
     setExpandedId(null)
   }
 
+  const closeAccountControl = () => {
+    setAccountControlOpen(false)
+  }
+
   const toggleAnnouncement = (idRaw: string | number | null | undefined) => {
     const id = idRaw == null ? '' : String(idRaw)
     if (!id) return
@@ -297,7 +305,15 @@ export default function MobileTopChrome() {
               type="button"
               aria-label="Settings"
               className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-              onClick={() => router.push('/profile')}
+              onClick={() => {
+                closeNotifications()
+                setAccountControlOpen(true)
+                setOpen(true)
+                if (hideTimeoutRef.current) {
+                  clearTimeout(hideTimeoutRef.current)
+                  hideTimeoutRef.current = null
+                }
+              }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 12.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM11 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" fill="currentColor" />
@@ -369,6 +385,13 @@ export default function MobileTopChrome() {
             </div>
           </div>
         </div>
+      )}
+
+      {accountControlOpen && typeof window !== 'undefined' && (
+        createPortal(
+          <AccountControlOverlay onRequestClose={closeAccountControl} />,
+          document.body
+        )
       )}
     </>
   )

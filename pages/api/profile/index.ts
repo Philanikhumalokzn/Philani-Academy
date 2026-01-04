@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq } from '../../../lib/auth'
+import { issueEmailVerification, isVerificationBypassed } from '../../../lib/verification'
 
 const PROVINCES = [
   'Eastern Cape',
@@ -18,6 +19,10 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function asString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function hasKey(obj: any, key: string) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key)
 }
 
 function toBoolean(value: unknown) {
@@ -98,106 +103,172 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const existing = await prisma.user.findUnique({ where: { id: userId } })
     if (!existing) return res.status(404).json({ message: 'User not found' })
 
-    const firstName = asString(body.firstName)
-    const lastName = asString(body.lastName)
-    const middleNames = asString(body.middleNames)
-    const dateOfBirthInput = asString(body.dateOfBirth)
-    const idNumber = asString(body.idNumber).replace(/\D/g, '')
-    const recoveryEmail = asString(body.recoveryEmail).toLowerCase()
-    const schoolName = asString(body.schoolName)
-    const addressLine1 = asString(body.addressLine1)
-    const addressLine2 = asString(body.addressLine2)
-    const city = asString(body.city)
-    const province = asString(body.province)
-    const postalCode = asString(body.postalCode)
-    const country = asString(body.country)
-    const emergencyContactName = asString(body.emergencyContactName)
-    const emergencyContactRelationship = asString(body.emergencyContactRelationship)
-    const popiConsent = toBoolean(body.popiConsent ?? body.consentToPolicies ?? body.termsConsent)
-    const avatar = asString(body.avatar)
-
-    const email = asString(body.email).toLowerCase() || existing.email
-
-    const primaryPhoneFormatted = normalisePhone(asString(body.phoneNumber) || asString(body.phone))
-    const alternatePhoneFormatted = asString(body.alternatePhone) ? normalisePhone(asString(body.alternatePhone)) : ''
-    const emergencyPhoneFormatted = normalisePhone(asString(body.emergencyContactPhone) || asString(body.emergencyPhone))
-
     const errors: string[] = []
-    if (!firstName) errors.push('First name is required')
-    if (!lastName) errors.push('Last name is required')
-    if (!email || !emailRegex.test(email)) errors.push('Valid email is required')
-    if (!dateOfBirthInput) {
-      errors.push('Date of birth is required')
-    }
-    if (!primaryPhoneFormatted) errors.push('Primary contact number must be a valid South African mobile number')
-    if (asString(body.alternatePhone) && !alternatePhoneFormatted) errors.push('Alternate contact number must be valid')
-    if (!emergencyContactName) errors.push('Emergency contact name is required')
-    if (!emergencyContactRelationship) errors.push('Emergency contact relationship is required')
-    if (!emergencyPhoneFormatted) errors.push('Emergency contact number must be a valid South African mobile number')
-    if (!recoveryEmail || !emailRegex.test(recoveryEmail)) errors.push('Recovery email must be valid')
-    if (!addressLine1) errors.push('Address line 1 is required')
-    if (!city) errors.push('City or town is required')
-    if (!province || !PROVINCES.includes(province as any)) errors.push('Province selection is required')
-    if (!postalCode || !/^\d{4}$/.test(postalCode)) errors.push('Postal code must be 4 digits')
-    if (!country) errors.push('Country is required')
-    if (!schoolName) errors.push('School or institution is required')
-    if (idNumber && !/^\d{13}$/.test(idNumber)) errors.push('South African ID numbers must be 13 digits')
-    if (!popiConsent) errors.push('POPIA consent must remain in place to keep an active account')
+    const data: any = {}
+    let emailChanged = false
+    let nextEmail = existing.email
 
-    let dateOfBirth: Date | null = null
-    if (dateOfBirthInput) {
-      const parsed = new Date(dateOfBirthInput)
-      if (Number.isNaN(parsed.getTime())) {
-        errors.push('Date of birth is invalid')
+    const nextFirstName = hasKey(body, 'firstName') ? asString(body.firstName) : existing.firstName
+    const nextLastName = hasKey(body, 'lastName') ? asString(body.lastName) : existing.lastName
+    const nextMiddleNames = hasKey(body, 'middleNames') ? asString(body.middleNames) : (existing.middleNames || '')
+    const nextDisplayName = `${nextFirstName} ${nextMiddleNames ? `${nextMiddleNames} ` : ''}${nextLastName}`.trim()
+
+    if (hasKey(body, 'firstName')) data.firstName = nextFirstName
+    if (hasKey(body, 'lastName')) data.lastName = nextLastName
+    if (hasKey(body, 'middleNames')) data.middleNames = nextMiddleNames || null
+    if (hasKey(body, 'firstName') || hasKey(body, 'lastName') || hasKey(body, 'middleNames')) {
+      data.name = nextDisplayName
+    }
+
+    if (hasKey(body, 'dateOfBirth')) {
+      const dateOfBirthInput = asString(body.dateOfBirth)
+      if (!dateOfBirthInput) {
+        data.dateOfBirth = null
       } else {
-        dateOfBirth = parsed
+        const parsed = new Date(dateOfBirthInput)
+        if (Number.isNaN(parsed.getTime())) {
+          errors.push('Date of birth is invalid')
+        } else {
+          data.dateOfBirth = parsed
+        }
       }
+    }
+
+    if (hasKey(body, 'idNumber')) {
+      const idNumber = asString(body.idNumber).replace(/\D/g, '')
+      if (idNumber && !/^\d{13}$/.test(idNumber)) errors.push('South African ID numbers must be 13 digits')
+      data.idNumber = idNumber || null
+    }
+
+    if (hasKey(body, 'email')) {
+      const email = asString(body.email).toLowerCase()
+      if (!email || !emailRegex.test(email)) {
+        errors.push('Valid email is required')
+      } else if (email !== existing.email) {
+        nextEmail = email
+        emailChanged = true
+        data.email = email
+        data.emailVerifiedAt = null
+      }
+    }
+
+    if (hasKey(body, 'recoveryEmail')) {
+      const recoveryEmail = asString(body.recoveryEmail).toLowerCase()
+      if (recoveryEmail && !emailRegex.test(recoveryEmail)) errors.push('Recovery email must be valid')
+      data.recoveryEmail = recoveryEmail || null
+    }
+
+    if (hasKey(body, 'phoneNumber') || hasKey(body, 'phone')) {
+      const localPhone = asString(body.phoneNumber) || asString(body.phone)
+      if (!localPhone) {
+        data.phoneNumber = ''
+      } else {
+        const formatted = normalisePhone(localPhone)
+        if (!formatted) errors.push('Primary contact number must be a valid South African mobile number')
+        else data.phoneNumber = formatted
+      }
+    }
+
+    if (hasKey(body, 'alternatePhone')) {
+      const localAlt = asString(body.alternatePhone)
+      if (!localAlt) {
+        data.alternatePhone = null
+      } else {
+        const formattedAlt = normalisePhone(localAlt)
+        if (!formattedAlt) errors.push('Alternate contact number must be valid')
+        else data.alternatePhone = formattedAlt
+      }
+    }
+
+    if (hasKey(body, 'emergencyContactName')) data.emergencyContactName = asString(body.emergencyContactName)
+    if (hasKey(body, 'emergencyContactRelationship')) {
+      const rel = asString(body.emergencyContactRelationship)
+      data.emergencyContactRelationship = rel || null
+    }
+
+    if (hasKey(body, 'emergencyContactPhone') || hasKey(body, 'emergencyPhone')) {
+      const localEmergency = asString(body.emergencyContactPhone) || asString(body.emergencyPhone)
+      if (!localEmergency) {
+        data.emergencyContactPhone = ''
+      } else {
+        const formattedEmergency = normalisePhone(localEmergency)
+        if (!formattedEmergency) errors.push('Emergency contact number must be a valid South African mobile number')
+        else data.emergencyContactPhone = formattedEmergency
+      }
+    }
+
+    if (hasKey(body, 'addressLine1')) data.addressLine1 = asString(body.addressLine1)
+    if (hasKey(body, 'addressLine2')) {
+      const addr2 = asString(body.addressLine2)
+      data.addressLine2 = addr2 || null
+    }
+    if (hasKey(body, 'city')) data.city = asString(body.city)
+    if (hasKey(body, 'province')) {
+      const province = asString(body.province)
+      if (province && !PROVINCES.includes(province as any)) errors.push('Province selection is invalid')
+      data.province = province
+    }
+    if (hasKey(body, 'postalCode')) {
+      const postalCode = asString(body.postalCode)
+      if (postalCode && !/^\d{4}$/.test(postalCode)) errors.push('Postal code must be 4 digits')
+      data.postalCode = postalCode
+    }
+    if (hasKey(body, 'country')) data.country = asString(body.country)
+    if (hasKey(body, 'schoolName')) data.schoolName = asString(body.schoolName)
+    if (hasKey(body, 'avatar')) {
+      const avatar = asString(body.avatar)
+      data.avatar = avatar ? avatar : null
+    }
+
+    const hasConsentKey = hasKey(body, 'popiConsent') || hasKey(body, 'consentToPolicies') || hasKey(body, 'termsConsent')
+    if (hasConsentKey) {
+      const popiConsent = toBoolean(body.popiConsent ?? body.consentToPolicies ?? body.termsConsent)
+      if (popiConsent && !existing.consentToPolicies) {
+        const now = new Date()
+        data.consentToPolicies = true
+        data.consentTimestamp = now
+      }
+      // If popiConsent is false, ignore (do not block saving other sections).
     }
 
     if (errors.length > 0) {
       return res.status(400).json({ message: 'Validation failed', errors })
     }
 
-    const now = new Date()
-    const nextConsentTimestamp = !existing.consentToPolicies && popiConsent
-      ? now
-      : existing.consentTimestamp || now
+    // No-op updates should still return the current profile.
+    if (Object.keys(data).length === 0) {
+      return res.status(200).json({
+        ...existing,
+        phoneNumber: toLocalPhone(existing.phoneNumber),
+        alternatePhone: toLocalPhone(existing.alternatePhone),
+        emergencyContactPhone: toLocalPhone(existing.emergencyContactPhone),
+        password: undefined
+      })
+    }
 
     try {
       const updated = await prisma.user.update({
         where: { id: userId },
-        data: {
-          email,
-          name: `${firstName} ${middleNames ? `${middleNames} ` : ''}${lastName}`.trim(),
-          firstName,
-          lastName,
-          middleNames: middleNames || null,
-          dateOfBirth,
-          idNumber: idNumber || null,
-          phoneNumber: primaryPhoneFormatted,
-          alternatePhone: alternatePhoneFormatted || null,
-          recoveryEmail,
-          emergencyContactName,
-          emergencyContactRelationship,
-          emergencyContactPhone: emergencyPhoneFormatted,
-          addressLine1,
-          addressLine2: addressLine2 || null,
-          city,
-          province,
-          postalCode,
-          country,
-          schoolName,
-          avatar: avatar || null,
-          consentToPolicies: true,
-          consentTimestamp: nextConsentTimestamp
-        }
+        data
       })
+
+      let emailVerificationRequired = false
+      if (emailChanged && nextEmail && !isVerificationBypassed(nextEmail)) {
+        emailVerificationRequired = true
+        try {
+          await issueEmailVerification(userId, nextEmail)
+        } catch (verificationErr) {
+          console.error('Failed to issue email verification after email change', verificationErr)
+          // Do not fail the save; user can still use resend-verification.
+        }
+      }
 
       const safeUser = {
         ...updated,
         phoneNumber: toLocalPhone(updated.phoneNumber || ''),
         alternatePhone: toLocalPhone(updated.alternatePhone || undefined),
         emergencyContactPhone: toLocalPhone(updated.emergencyContactPhone || ''),
+        emailVerificationRequired,
         password: undefined
       }
       delete (safeUser as any).password

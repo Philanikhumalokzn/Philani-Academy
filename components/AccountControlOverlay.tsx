@@ -306,6 +306,19 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     }
   }
 
+  function saveHeroToLocalStorage(file: File) {
+    try {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64 = reader.result as string
+        localStorage.setItem('pa:mobileHeroBg', base64)
+      }
+      reader.readAsDataURL(file)
+    } catch (localErr) {
+      console.error('Failed to save to localStorage', localErr)
+    }
+  }
+
   async function handleHeroUpload(file: File) {
     const MAX_HERO_SIZE = 8 * 1024 * 1024 // 8 MB
     
@@ -345,30 +358,12 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
         const errorData = await res.json().catch(() => ({}))
         setError(errorData?.message || 'Failed to upload background image')
         // Fallback to localStorage for mobile/unauthenticated
-        try {
-          const reader = new FileReader()
-          reader.onloadend = () => {
-            const base64 = reader.result as string
-            localStorage.setItem(`pa:mobileHeroBg:${file.name}`, base64)
-          }
-          reader.readAsDataURL(file)
-        } catch (localErr) {
-          console.error('Failed to save to localStorage', localErr)
-        }
+        saveHeroToLocalStorage(file)
       }
     } catch (err: any) {
       setError(err?.message || 'Network error while uploading background image')
       // Fallback to localStorage
-      try {
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          const base64 = reader.result as string
-          localStorage.setItem(`pa:mobileHeroBg:${file.name}`, base64)
-        }
-        reader.readAsDataURL(file)
-      } catch (localErr) {
-        console.error('Failed to save to localStorage', localErr)
-      }
+      saveHeroToLocalStorage(file)
     } finally {
       setUploadingHero(false)
     }

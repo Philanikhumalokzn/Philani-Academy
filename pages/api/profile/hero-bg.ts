@@ -79,7 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const fileSize = typeof upload.size === 'number' ? upload.size : 0
-    if (!fileSize || fileSize > MAX_HERO_SIZE) {
+    if (fileSize <= 0 || fileSize > MAX_HERO_SIZE) {
       return res.status(400).json({ message: 'Background image must be under 8 MB' })
     }
 

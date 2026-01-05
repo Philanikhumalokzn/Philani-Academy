@@ -39,7 +39,7 @@ function readGitCommit(): CommitInfo {
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const envCommit = readEnvCommit()
-  const gitCommit = envCommit.sha || envCommit.message || envCommit.date ? envCommit : readGitCommit()
+  const gitCommit = readGitCommit()
   const commit: CommitInfo = {
     sha: envCommit.sha || gitCommit.sha,
     message: envCommit.message || gitCommit.message,

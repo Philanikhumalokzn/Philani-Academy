@@ -1,0 +1,125 @@
+Dashboard Section Navigation Layout
+====================================
+
+DESKTOP VIEW (lg: ≥1024px)
+--------------------------
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Dashboard Header                             │
+│                   Philani Academy for Mathematics                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Section Navigation                              │
+│                                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
+│  │ OVERVIEW │  │LIVE CLASS│  │ANNOUNCE- │  │ SESSIONS │            │
+│  │  Grade & │  │Join      │  │MENTS     │  │ Schedule │            │
+│  │  quick   │  │lessons   │  │Communi-  │  │ classes  │            │
+│  │  actions │  │& board   │  │cate      │  │& mater-  │            │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘            │
+│                                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
+│  │  GROUPS  │  │ DISCOVER │  │ LEARNERS │  │ BILLING  │            │
+│  │Classmates│  │Find      │  │  Manage  │  │Subscrip- │  ← DISCOVER│
+│  │& group-  │  │people &  │  │enrolments│  │tion      │    BUTTON  │
+│  │ mates    │  │join grps │  │          │  │ plans    │            │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘            │
+│                   ▲                                                  │
+│                   │                                                  │
+│              DISCOVER BUTTON                                         │
+└─────────────────────────────────────────────────────────────────────┘
+
+MOBILE VIEW (< 1024px)
+----------------------
+┌───────────────────────────┐
+│     Dashboard Header      │
+│   Philani Academy         │
+└───────────────────────────┘
+
+┌───────────────────────────┐
+│   Section Navigation      │
+│                          │
+│  ┌──────────┬──────────┐ │
+│  │ Overview │Live Class│ │
+│  └──────────┴──────────┘ │
+│                          │
+│  ┌──────────┬──────────┐ │
+│  │Announce- │ Sessions │ │
+│  │  ments   │          │ │
+│  └──────────┴──────────┘ │
+│                          │
+│  ┌──────────┬──────────┐ │
+│  │  Groups  │ Discover │ │ ← DISCOVER
+│  │          │          │ │   BUTTON
+│  └──────────┴──────────┘ │
+│                          │
+│  ┌──────────┬──────────┐ │
+│  │ Learners │ Billing  │ │
+│  │  (Admin) │ (Admin)  │ │
+│  └──────────┴──────────┘ │
+└───────────────────────────┘
+
+BUTTON STATES
+-------------
+
+Normal State:
+┌─────────────────────┐
+│     DISCOVER        │
+│  Find people &      │
+│   join groups       │
+└─────────────────────┘
+- Border: white/10
+- Background: white/5
+- Text: white/80
+
+Active/Selected State:
+┌═════════════════════┐
+║     DISCOVER        ║
+║  Find people &      ║
+║   join groups       ║
+└═════════════════════┘
+- Border: blue-500
+- Background: white
+- Text: slate-900
+- Shadow: large
+
+Hover State:
+┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐
+╎     DISCOVER        ╎
+╎  Find people &      ╎
+╎   join groups       ╎
+└╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘
+- Border: white/30
+- Background: white/5
+- Text: white/80
+
+DISCOVER OVERLAY (When Button is Clicked)
+------------------------------------------
+┌─────────────────────────────────────────────────┐
+│  Discover                                     ✕ │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  ┌──────────────────────────────────┬────────┐ │
+│  │ Search by name, email, or school │ Search │ │
+│  └──────────────────────────────────┴────────┘ │
+│                                                 │
+│  Search Results:                                │
+│  ┌───────────────────────────────────────────┐ │
+│  │ 👤  John Smith                            │ │
+│  │     Grade 12 • "Love maths!"              │ │
+│  └───────────────────────────────────────────┘ │
+│  ┌───────────────────────────────────────────┐ │
+│  │ 👤  Jane Doe                              │ │
+│  │     Grade 11 • "Studying for finals"      │ │
+│  └───────────────────────────────────────────┘ │
+│                                                 │
+└─────────────────────────────────────────────────┘
+
+KEY FEATURES
+------------
+✓ Visible to: Admin, Teacher, Student roles
+✗ Hidden from: Guest role
+✓ Desktop: Shows label + description
+✓ Mobile: Shows label only (compact)
+✓ Functional: Opens search overlay
+✓ API Connected: /api/discover/users

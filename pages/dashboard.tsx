@@ -3597,17 +3597,6 @@ export default function Dashboard() {
         <div className="card space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleShowLiveOverlay}
-                disabled={!canJoinLiveClass}
-                title={canJoinLiveClass ? 'Bring the live video back on top.' : 'Sign in and pick a grade to join.'}
-              >
-                {canJoinLiveClass ? 'Open live view' : 'Join class'}
-              </button>
-            </div>
           </div>
           <div className="text-sm muted">{liveStatusMessage()}</div>
         </div>

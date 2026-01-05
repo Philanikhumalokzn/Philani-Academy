@@ -53,6 +53,7 @@ type ProfileSnapshot = {
   country?: string | null
   schoolName?: string | null
   avatar?: string | null
+  heroBg?: string | null
   statusBio?: string | null
   profileVisibility?: string | null
   consentToPolicies?: boolean
@@ -98,6 +99,9 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
+
+  const [uploadingHero, setUploadingHero] = useState(false)
+  const [heroFileInputRef, setHeroFileInputRef] = useState<HTMLInputElement | null>(null)
 
   const [openSection, setOpenSection] = useState<string | null>(null)
 
@@ -302,6 +306,74 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     }
   }
 
+  async function handleHeroUpload(file: File) {
+    const MAX_HERO_SIZE = 8 * 1024 * 1024 // 8 MB
+    
+    if (!file) return
+
+    if (file.size > MAX_HERO_SIZE) {
+      setError('Background image must be under 8 MB')
+      return
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Only JPEG, PNG, or WEBP images are allowed')
+      return
+    }
+
+    setUploadingHero(true)
+    setError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/profile/hero-bg', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        // Update original state with new hero background
+        if (original) {
+          setOriginal({ ...original, heroBg: data.url })
+        }
+        await fetchProfile()
+      } else {
+        const errorData = await res.json().catch(() => ({}))
+        setError(errorData?.message || 'Failed to upload background image')
+        // Fallback to localStorage for mobile/unauthenticated
+        try {
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            const base64 = reader.result as string
+            localStorage.setItem(`pa:mobileHeroBg:${file.name}`, base64)
+          }
+          reader.readAsDataURL(file)
+        } catch (localErr) {
+          console.error('Failed to save to localStorage', localErr)
+        }
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Network error while uploading background image')
+      // Fallback to localStorage
+      try {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const base64 = reader.result as string
+          localStorage.setItem(`pa:mobileHeroBg:${file.name}`, base64)
+        }
+        reader.readAsDataURL(file)
+      } catch (localErr) {
+        console.error('Failed to save to localStorage', localErr)
+      }
+    } finally {
+      setUploadingHero(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" data-mobile-chrome-ignore>
       <div
@@ -341,6 +413,52 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
           ) : (
             <div className="space-y-2">
               {error && <div className="rounded-2xl border border-red-400/20 bg-red-500/10 backdrop-blur p-3 text-sm text-red-100">{error}</div>}
+
+              {/* Hero/Background Image Section */}
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                <div className="text-sm font-medium text-white/90 mb-2">Profile Background</div>
+                {original?.heroBg ? (
+                  <div className="space-y-2">
+                    <div
+                      className="w-full h-32 rounded-xl bg-cover bg-center border border-white/10"
+                      style={{ backgroundImage: `url(${original.heroBg})` }}
+                      role="img"
+                      aria-label="Current profile background"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary text-xs w-full"
+                      onClick={() => heroFileInputRef?.click()}
+                      disabled={uploadingHero}
+                    >
+                      {uploadingHero ? 'Uploading…' : 'Change background'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary text-xs w-full"
+                    onClick={() => heroFileInputRef?.click()}
+                    disabled={uploadingHero}
+                  >
+                    {uploadingHero ? 'Uploading…' : 'Upload background image'}
+                  </button>
+                )}
+                <input
+                  ref={ref => setHeroFileInputRef(ref)}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      void handleHeroUpload(file)
+                    }
+                    e.target.value = ''
+                  }}
+                />
+                <p className="mt-2 text-xs text-white/60">Max 8 MB • JPEG, PNG, or WEBP</p>
+              </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
                 <button type="button" className="w-full p-3 flex items-center justify-between" onClick={() => toggleSection('learner')}>

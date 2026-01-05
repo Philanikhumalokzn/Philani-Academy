@@ -27,6 +27,7 @@ model User {
   role      String  @default("student")
   grade     Grade?
   avatar    String?
+  heroBg    String?
   statusBio String? @db.VarChar(100)
   // shared: visible only to shared groups (default)
   // discoverable: shows up in Discover search + minimal profile is viewable

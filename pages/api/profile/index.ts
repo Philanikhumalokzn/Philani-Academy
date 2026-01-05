@@ -83,6 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         country: true,
         schoolName: true,
         avatar: true,
+        heroBg: true,
         statusBio: true,
         profileVisibility: true,
         consentToPolicies: true,
@@ -220,6 +221,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (hasKey(body, 'avatar')) {
       const avatar = asString(body.avatar)
       data.avatar = avatar ? avatar : null
+    }
+
+    if (hasKey(body, 'heroBg')) {
+      const heroBg = asString(body.heroBg)
+      data.heroBg = heroBg ? heroBg : null
     }
 
     if (hasKey(body, 'statusBio')) {

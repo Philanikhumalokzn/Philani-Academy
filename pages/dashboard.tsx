@@ -4998,13 +4998,11 @@ export default function Dashboard() {
                                   <div className="space-y-2">
                                     <div className="text-xs font-medium">Grading JSON:</div>
                                     <pre className="border border-white/10 rounded bg-black/20 p-2 text-xs overflow-auto max-h-[200px]">
-                                      {JSON.stringify(
-                                        adminSelectedSubmissionDetail.gradingJson || 
-                                        adminSelectedSubmissionDetail.grade?.results || 
-                                        null, 
-                                        null, 
-                                        2
-                                      )}
+                                      {(() => {
+                                        const data = adminSelectedSubmissionDetail.gradingJson || 
+                                                    adminSelectedSubmissionDetail.grade?.results
+                                        return data ? JSON.stringify(data, null, 2) : 'No grading data available'
+                                      })()}
                                     </pre>
                                   </div>
 
@@ -5021,7 +5019,7 @@ export default function Dashboard() {
                                       className="btn btn-secondary text-xs"
                                       disabled={adminRegradeLoading}
                                       onClick={() => {
-                                        if (expandedSessionId && selectedAssignment?.id && adminSelectedSubmissionUserId) {
+                                        if (expandedSessionId && selectedAssignment?.id && adminSelectedSubmissionUserId && adminSelectedSubmissionDetail) {
                                           void adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)
                                         }
                                       }}

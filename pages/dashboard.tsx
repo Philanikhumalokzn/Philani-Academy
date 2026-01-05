@@ -12,6 +12,7 @@ import { isSpecialTestStudentEmail } from '../lib/testUsers'
 
 import BrandLogo from '../components/BrandLogo'
 import UserLink from '../components/UserLink'
+import AccountControlOverlay from '../components/AccountControlOverlay'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
@@ -495,6 +496,7 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
+  const [accountControlOverlayOpen, setAccountControlOverlayOpen] = useState(false)
     useEffect(() => {
       if (!router.isReady) return
       const section = router.query.section
@@ -3524,7 +3526,17 @@ export default function Dashboard() {
         </div>
       </dl>
       <div className="flex flex-col sm:flex-row gap-2">
-        <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
+        <button 
+          type="button" 
+          className="btn btn-ghost w-full sm:w-auto"
+          onClick={() => {
+            setAccountControlOverlayOpen(true)
+            setAccountSnapshotOverlayOpen(false)
+            setDashboardSectionOverlay(null)
+          }}
+        >
+          Update profile
+        </button>
         <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
       </div>
     </>
@@ -6493,6 +6505,13 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {accountControlOverlayOpen && typeof window !== 'undefined' && (
+        createPortal(
+          <AccountControlOverlay onRequestClose={() => setAccountControlOverlayOpen(false)} />,
+          document.body
+        )
       )}
     </>
   )

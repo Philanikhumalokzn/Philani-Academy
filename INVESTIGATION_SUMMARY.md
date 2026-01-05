@@ -1,7 +1,7 @@
 # INVESTIGATION SUMMARY: Discover Button on Dashboard
 
 ## Question Asked
-"does our site have a diacover button on dashboard?"
+"does our site have a discover button on dashboard?"
 
 ## Answer
 **YES! ✅** The Philani Academy dashboard **DOES have a Discover button**.

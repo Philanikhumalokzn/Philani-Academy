@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 type CommitInfo = {
   sha: string | null
@@ -17,27 +17,35 @@ function readEnvCommit(): CommitInfo {
       process.env.VERCEL_GIT_COMMIT_MESSAGE ||
       process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_MESSAGE ||
       null,
-    date: process.env.VERCEL_GIT_COMMIT_DATE || null
+    date:
+      process.env.VERCEL_GIT_COMMIT_DATE ||
+      process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_DATE ||
+      null
   }
 }
 
 function readGitCommit(): CommitInfo {
-  const run = (cmd: string) => {
+  const run = (args: string[]) => {
     try {
-      return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+      return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
     } catch {
       return null
     }
   }
 
   return {
-    sha: run('git rev-parse HEAD'),
-    message: run('git log -1 --pretty=%B'),
-    date: run('git log -1 --date=iso-strict --pretty=%cd')
+    sha: run(['rev-parse', 'HEAD']),
+    message: run(['log', '-1', '--pretty=%B']),
+    date: run(['log', '-1', '--date=iso-strict', '--pretty=%cd'])
   }
 }
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET')
+    return res.status(405).end()
+  }
+
   const envCommit = readEnvCommit()
   const gitCommit = readGitCommit()
   const commit: CommitInfo = {

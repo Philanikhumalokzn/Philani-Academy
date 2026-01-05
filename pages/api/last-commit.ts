@@ -29,10 +29,8 @@ function readGitCommit(): CommitInfo {
     const output = execFileSync(
       'git',
       ['log', '-1', '--date=iso-strict', '--pretty=format:%H%x1f%B%x1f%cd'],
-      { stdio: ['ignore', 'pipe', 'ignore'] }
-    )
-      .toString()
-      .split('\u001f')
+      { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' }
+    ).split('\u001f')
 
     const [sha, message, date] = output
     return {

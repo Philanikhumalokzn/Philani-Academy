@@ -33,7 +33,6 @@ function OverlayPortal(props: { children: React.ReactNode }) {
 
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
-  { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
   { id: 'announcements', label: 'Announcements', description: 'Communicate updates', roles: ['admin', 'teacher', 'student'] },
   { id: 'sessions', label: 'Sessions', description: 'Schedule classes & materials', roles: ['admin', 'teacher', 'student'] },
   { id: 'groups', label: 'Groups', description: 'Classmates & groupmates', roles: ['admin', 'teacher', 'student'] },
@@ -1548,7 +1547,7 @@ export default function Dashboard() {
     // Preserve the existing lightweight panels for learners.
     if (panel && isAdmin) {
       const normalized = panel.toLowerCase()
-      const allowed: SectionId[] = ['overview', 'live', 'announcements', 'sessions', 'users', 'billing']
+      const allowed: SectionId[] = ['overview', 'announcements', 'sessions', 'users', 'billing']
       const next = allowed.find(x => x === normalized)
       if (next) {
         if (next === 'overview') {
@@ -5260,8 +5259,6 @@ export default function Dashboard() {
 
   const renderSection = (id: SectionId) => {
     switch (id) {
-      case 'live':
-        return <LiveSection />
       case 'announcements':
         return <AnnouncementsSection />
       case 'sessions':

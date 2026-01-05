@@ -4990,6 +4990,47 @@ export default function Dashboard() {
                                   </button>
                                 </div>
                               </div>
+
+                              {isAdmin && adminSelectedSubmissionDetail && (
+                                <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                  <div className="font-semibold text-sm">Admin Debug Panel</div>
+                                  
+                                  <div className="space-y-2">
+                                    <div className="text-xs font-medium">Grading JSON:</div>
+                                    <pre className="border border-white/10 rounded bg-black/20 p-2 text-xs overflow-auto max-h-[200px]">
+                                      {JSON.stringify(
+                                        adminSelectedSubmissionDetail.gradingJson || 
+                                        adminSelectedSubmissionDetail.grade?.results || 
+                                        null, 
+                                        null, 
+                                        2
+                                      )}
+                                    </pre>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <div className="text-xs font-medium">Raw Gemini Output:</div>
+                                    <pre className="border border-white/10 rounded bg-black/20 p-2 text-xs overflow-auto max-h-[200px] whitespace-pre-wrap break-words">
+                                      {adminSelectedSubmissionDetail.rawGeminiOutput || 'No raw output available'}
+                                    </pre>
+                                  </div>
+
+                                  <div>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary text-xs"
+                                      disabled={adminRegradeLoading}
+                                      onClick={() => {
+                                        if (expandedSessionId && selectedAssignment?.id && adminSelectedSubmissionUserId) {
+                                          void adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)
+                                        }
+                                      }}
+                                    >
+                                      {adminRegradeLoading ? 'Re-grading…' : 'Force Re-grade'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </>
                           ) : null}
 

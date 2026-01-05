@@ -25,18 +25,23 @@ function readEnvCommit(): CommitInfo {
 }
 
 function readGitCommit(): CommitInfo {
-  const run = (args: string[]) => {
-    try {
-      return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
-    } catch {
-      return null
-    }
-  }
+  try {
+    const output = execFileSync(
+      'git',
+      ['log', '-1', '--date=iso-strict', '--pretty=format:%H%x1f%B%x1f%cd'],
+      { stdio: ['ignore', 'pipe', 'ignore'] }
+    )
+      .toString()
+      .split('\u001f')
 
-  return {
-    sha: run(['rev-parse', 'HEAD']),
-    message: run(['log', '-1', '--pretty=%B']),
-    date: run(['log', '-1', '--date=iso-strict', '--pretty=%cd'])
+    const [sha, message, date] = output
+    return {
+      sha: sha?.trim() || null,
+      message: message?.trim() || null,
+      date: date?.trim() || null
+    }
+  } catch {
+    return { sha: null, message: null, date: null }
   }
 }
 
@@ -54,7 +59,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     date: envCommit.date || gitCommit.date
   }
 
-  if (!commit.sha && !commit.message && !commit.date) {
+  if (!commit.sha) {
     return res.status(500).json({ error: 'Unable to determine last commit' })
   }
 

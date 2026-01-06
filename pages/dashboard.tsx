@@ -1625,27 +1625,34 @@ export default function Dashboard() {
     if (!router.isReady) return
     const rawPanel = Array.isArray(router.query.panel) ? router.query.panel[0] : router.query.panel
     const panel = typeof rawPanel === 'string' ? rawPanel : null
-    // On mobile, admins use the full section navigation (including Users/Billing).
-    // Preserve the existing lightweight panels for learners.
-    if (panel && isAdmin) {
-      const normalized = panel.toLowerCase()
-      const allowed: SectionId[] = ['overview', 'live', 'announcements', 'sessions', 'users', 'billing']
-      const next = allowed.find(x => x === normalized)
-      if (next) {
-        if (next === 'overview') {
-          setActiveSection('overview')
-          setDashboardSectionOverlay(null)
-        } else {
-          openDashboardOverlay(next as OverlaySectionId)
-        }
-      }
+    if (!panel) return
+    const normalized = panel.toLowerCase()
+    if (normalized === 'announcements') {
+      openMobileAnnouncements()
       return
     }
-    if (panel === 'announcements') {
-      openMobileAnnouncements()
-    }
-    if (panel === 'sessions') {
+    if (normalized === 'sessions') {
       setMobilePanels(prev => ({ ...prev, sessions: true }))
+      return
+    }
+
+    // Support deep-links like /dashboard?panel=discover on mobile for all roles.
+    // Admins also use the full section navigation (including Users/Billing).
+    if (normalized === 'overview') {
+      setActiveSection('overview')
+      setDashboardSectionOverlay(null)
+      return
+    }
+
+    if (normalized === 'discover' || normalized === 'groups') {
+      openDashboardOverlay(normalized as OverlaySectionId)
+      return
+    }
+
+    if (isAdmin) {
+      const allowed: SectionId[] = ['live', 'announcements', 'sessions', 'groups', 'discover', 'users', 'billing']
+      const next = allowed.find(x => x === normalized)
+      if (next) openDashboardOverlay(next as OverlaySectionId)
     }
   }, [isMobile, isAdmin, activeSection, openDashboardOverlay, openMobileAnnouncements, router.isReady, router.query.panel])
 
@@ -6500,6 +6507,20 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <div className="text-sm text-white/70">Create or join groups and see classmates.</div>
+              </section>
+
+              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-white">Discover</div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost text-xs"
+                    onClick={() => openDashboardOverlay('discover')}
+                  >
+                    Open
+                  </button>
+                </div>
+                <div className="text-sm text-white/70">Find people and request to join groups.</div>
               </section>
 
               {renderOverviewCards({ hideGradeWorkspace: true })}

@@ -214,6 +214,7 @@ export default function ChallengeAttemptPage() {
                 userId={effectiveViewerId || 'anon'}
                 userDisplayName={userDisplayName}
                 isAdmin={canAdmin}
+                forceEditable
                 quizMode
                 initialQuiz={initialQuiz}
                 isVisible

@@ -212,6 +212,7 @@ type MyScriptMathCanvasProps = {
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
+  forceEditable?: boolean
   boardId?: string
   realtimeScopeId?: string
   autoOpenDiagramTray?: boolean
@@ -338,7 +339,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -1004,7 +1005,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const remoteProcessingRef = useRef(false)
   const controlStateRef = useRef<ControlState>(null)
   const isAssignmentSolutionAuthoring = assignmentSubmission?.kind === 'solution'
-  const forceEditableForAssignment = Boolean((!isAdmin || isAssignmentSolutionAuthoring) && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
+  const forceEditableForAssignment = Boolean(forceEditable) || Boolean((!isAdmin || isAssignmentSolutionAuthoring) && assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const isAssignmentViewRef = useRef(isAssignmentView)
   useEffect(() => {

@@ -67,6 +67,7 @@ model User {
   sentGroupInvites GroupInvite[] @relation("GroupInvitedBy")
   groupJoinRequests GroupJoinRequest[] @relation("GroupJoinRequestedBy")
   notifications Notification[]
+  challenges UserChallenge[]
 }
 
 model LearningGroup {
@@ -479,6 +480,27 @@ model LearnerResponse {
   @@index([sessionKey, userId, updatedAt])
   @@index([sessionKey, userId, quizId, createdAt])
   @@index([sessionKey, quizPhaseKey, quizPointIndex, updatedAt])
+}
+
+model UserChallenge {
+  id          String   @id @default(cuid())
+  createdById String
+  title       String   @default("")
+  prompt      String   @db.Text
+  imageUrl    String?
+  grade       Grade?
+  // public: anyone who can view the profile
+  // grade: only same-grade learners + privileged roles
+  // private: only the author + privileged roles
+  audience    String   @default("public")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById, createdAt])
+  @@index([grade, createdAt])
+  @@index([audience, createdAt])
 }
 
 model Diagram {

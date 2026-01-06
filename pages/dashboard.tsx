@@ -329,6 +329,16 @@ export default function Dashboard() {
   }>(null)
   const [lessonAuthoringDiagramCloseSignal, setLessonAuthoringDiagramCloseSignal] = useState(0)
 
+  const [createOverlayOpen, setCreateOverlayOpen] = useState(false)
+  const [createKind, setCreateKind] = useState<'quiz'>('quiz')
+  const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
+  const [challengePromptDraft, setChallengePromptDraft] = useState('')
+  const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
+  const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
+  const [challengeUploading, setChallengeUploading] = useState(false)
+  const [challengePosting, setChallengePosting] = useState(false)
+  const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
+
   const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
     const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
     setDiagramUploadTarget({ phaseKey, pointId, boardId })
@@ -431,6 +441,77 @@ export default function Dashboard() {
       // ignore
     }
   }, [])
+
+  const onChallengeFilePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setChallengeUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/challenges/upload', {
+        method: 'POST',
+        body: form,
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Upload failed (${res.status})`)
+      }
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!url) throw new Error('Upload succeeded but returned no URL')
+      setChallengeImageUrl(url)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload image')
+    } finally {
+      setChallengeUploading(false)
+    }
+  }, [])
+
+  const postChallenge = useCallback(async () => {
+    if (status !== 'authenticated') return
+    if (createKind !== 'quiz') return
+
+    const title = challengeTitleDraft.trim()
+    const prompt = challengePromptDraft.trim()
+    const audience = challengeAudienceDraft
+
+    if (!prompt && !challengeImageUrl) {
+      return alert('Please type a prompt or upload a screenshot.')
+    }
+
+    const grade = selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null
+    setChallengePosting(true)
+    try {
+      const res = await fetch('/api/challenges', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          prompt,
+          imageUrl: challengeImageUrl,
+          audience,
+          grade,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return alert(data?.message || `Failed to post (${res.status})`)
+      }
+      setCreateOverlayOpen(false)
+      setChallengeTitleDraft('')
+      setChallengePromptDraft('')
+      setChallengeAudienceDraft('public')
+      setChallengeImageUrl(null)
+      alert('Posted')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to post')
+    } finally {
+      setChallengePosting(false)
+    }
+  }, [challengeAudienceDraft, challengeImageUrl, challengePromptDraft, challengeTitleDraft, createKind, selectedGrade, session, status])
 
   useEffect(() => {
     loadLessonScriptDraftFromStorage()
@@ -3556,6 +3637,123 @@ export default function Dashboard() {
               <span className="text-sm muted">Open</span>
             </button>
           </div>
+
+          {status === 'authenticated' && (
+            <div className="card dashboard-card">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between gap-3 text-left"
+                onClick={() => setCreateOverlayOpen(true)}
+              >
+                <span className="text-lg font-semibold">Create</span>
+                <span className="text-sm muted">Open</span>
+              </button>
+            </div>
+          )}
+
+          {createOverlayOpen && (
+            <OverlayPortal>
+              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+                <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateOverlayOpen(false)} />
+                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateOverlayOpen(false)}>
+                  <div
+                    className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="p-3 border-b flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold break-words">Create</div>
+                        <div className="text-sm muted">Post a quiz to your profile timeline.</div>
+                      </div>
+                      <button type="button" className="btn btn-ghost" onClick={() => setCreateOverlayOpen(false)} aria-label="Close">✕</button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                      <input
+                        className="input"
+                        placeholder="Title (optional)"
+                        value={challengeTitleDraft}
+                        onChange={(e) => setChallengeTitleDraft(e.target.value)}
+                      />
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <div className="text-xs muted">Type</div>
+                          <select className="input" value={createKind} onChange={(e) => setCreateKind(e.target.value as any)}>
+                            <option value="quiz">Quiz</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-xs muted">Audience</div>
+                          <select
+                            className="input"
+                            value={challengeAudienceDraft}
+                            onChange={(e) => setChallengeAudienceDraft(e.target.value as any)}
+                          >
+                            <option value="public">Public</option>
+                            <option value="grade">My grade</option>
+                            <option value="private">Private</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <textarea
+                        className="input min-h-[140px]"
+                        placeholder="Write the question (LaTeX supported), or upload a screenshot below"
+                        value={challengePromptDraft}
+                        onChange={(e) => setChallengePromptDraft(e.target.value)}
+                      />
+
+                      <div className="space-y-2">
+                        <input
+                          ref={challengeUploadInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={(e) => void onChallengeFilePicked(e)}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => challengeUploadInputRef.current?.click()}
+                            disabled={challengeUploading}
+                          >
+                            {challengeUploading ? 'Uploading…' : 'Upload screenshot'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => setChallengeImageUrl(null)}
+                            disabled={!challengeImageUrl || challengeUploading}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        {challengeImageUrl ? (
+                          <div className="border rounded p-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] rounded object-contain" />
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={challengePosting || challengeUploading}
+                          onClick={() => void postChallenge()}
+                        >
+                          {challengePosting ? 'Posting…' : 'Post'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </OverlayPortal>
+          )}
         </div>
       )
     }
@@ -3578,6 +3776,123 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+
+        {status === 'authenticated' && (
+          <div className="card dashboard-card">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-3 text-left"
+              onClick={() => setCreateOverlayOpen(true)}
+            >
+              <span className="text-lg font-semibold">Create</span>
+              <span className="text-sm muted">Open</span>
+            </button>
+          </div>
+        )}
+
+        {createOverlayOpen && (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+              <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateOverlayOpen(false)} />
+              <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateOverlayOpen(false)}>
+                <div
+                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-3 border-b flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold break-words">Create</div>
+                      <div className="text-sm muted">Post a quiz to your profile timeline.</div>
+                    </div>
+                    <button type="button" className="btn btn-ghost" onClick={() => setCreateOverlayOpen(false)} aria-label="Close">✕</button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                    <input
+                      className="input"
+                      placeholder="Title (optional)"
+                      value={challengeTitleDraft}
+                      onChange={(e) => setChallengeTitleDraft(e.target.value)}
+                    />
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <div className="text-xs muted">Type</div>
+                        <select className="input" value={createKind} onChange={(e) => setCreateKind(e.target.value as any)}>
+                          <option value="quiz">Quiz</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs muted">Audience</div>
+                        <select
+                          className="input"
+                          value={challengeAudienceDraft}
+                          onChange={(e) => setChallengeAudienceDraft(e.target.value as any)}
+                        >
+                          <option value="public">Public</option>
+                          <option value="grade">My grade</option>
+                          <option value="private">Private</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <textarea
+                      className="input min-h-[140px]"
+                      placeholder="Write the question (LaTeX supported), or upload a screenshot below"
+                      value={challengePromptDraft}
+                      onChange={(e) => setChallengePromptDraft(e.target.value)}
+                    />
+
+                    <div className="space-y-2">
+                      <input
+                        ref={challengeUploadInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={(e) => void onChallengeFilePicked(e)}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => challengeUploadInputRef.current?.click()}
+                          disabled={challengeUploading}
+                        >
+                          {challengeUploading ? 'Uploading…' : 'Upload screenshot'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setChallengeImageUrl(null)}
+                          disabled={!challengeImageUrl || challengeUploading}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      {challengeImageUrl ? (
+                        <div className="border rounded p-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] rounded object-contain" />
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={challengePosting || challengeUploading}
+                        onClick={() => void postChallenge()}
+                      >
+                        {challengePosting ? 'Posting…' : 'Post'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayPortal>
+        )}
       </div>
     )
   }

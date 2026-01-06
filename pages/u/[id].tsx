@@ -1,5 +1,6 @@
 import { getSession, useSession } from 'next-auth/react'
 import type { GetServerSideProps } from 'next'
+import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -25,6 +26,16 @@ type MyGroup = {
   }
 }
 
+type ProfileChallenge = {
+  id: string
+  title?: string | null
+  prompt?: string | null
+  imageUrl?: string | null
+  grade?: string | null
+  audience?: string | null
+  createdAt?: string
+}
+
 export default function PublicUserProfilePage() {
   const router = useRouter()
   const { status, data: session } = useSession()
@@ -40,6 +51,10 @@ export default function PublicUserProfilePage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
   const [inviteBusy, setInviteBusy] = useState(false)
 
+  const [challenges, setChallenges] = useState<ProfileChallenge[]>([])
+  const [challengesLoading, setChallengesLoading] = useState(false)
+  const [challengesError, setChallengesError] = useState<string | null>(null)
+
   const role = ((session as any)?.user?.role as string | undefined) || 'student'
   const isPrivileged = role === 'admin' || role === 'teacher'
 
@@ -53,9 +68,20 @@ export default function PublicUserProfilePage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/discover/user/${encodeURIComponent(userId)}`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.message || 'Failed to load profile')
+      const tryFetch = async (url: string) => {
+        const res = await fetch(url, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => null)
+        return { res, data }
+      }
+
+      // Prefer shared-group profile view rules, then fall back to discoverable profiles.
+      let out = await tryFetch(`/api/profile/view/${encodeURIComponent(userId)}`)
+      if (!out.res.ok) {
+        out = await tryFetch(`/api/discover/user/${encodeURIComponent(userId)}`)
+      }
+
+      if (!out.res.ok) throw new Error(out.data?.message || 'Failed to load profile')
+      const data = out.data
       setProfile({
         id: String(data?.id || userId),
         name: String(data?.name || 'User'),
@@ -71,6 +97,28 @@ export default function PublicUserProfilePage() {
       setError(err?.message || 'Failed to load profile')
     } finally {
       setLoading(false)
+    }
+  }, [userId])
+
+  const loadChallenges = useCallback(async () => {
+    if (!userId) return
+    setChallengesLoading(true)
+    setChallengesError(null)
+    try {
+      const res = await fetch(`/api/profile/view/${encodeURIComponent(userId)}/challenges`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setChallenges([])
+        setChallengesError(data?.message || `Failed to load timeline (${res.status})`)
+        return
+      }
+      const next = Array.isArray(data?.challenges) ? data.challenges : []
+      setChallenges(next)
+    } catch (err: any) {
+      setChallenges([])
+      setChallengesError(err?.message || 'Failed to load timeline')
+    } finally {
+      setChallengesLoading(false)
     }
   }, [userId])
 
@@ -96,7 +144,8 @@ export default function PublicUserProfilePage() {
     if (status !== 'authenticated') return
     void loadProfile()
     void loadMyGroups()
-  }, [loadMyGroups, loadProfile, status])
+    void loadChallenges()
+  }, [loadChallenges, loadMyGroups, loadProfile, status])
 
   useEffect(() => {
     if (!selectedGroupId) {
@@ -202,6 +251,53 @@ export default function PublicUserProfilePage() {
                 {inviteBusy ? 'Sending…' : 'Send invite'}
               </button>
             </div>
+          )}
+        </section>
+
+        <section className="card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold">Timeline</div>
+            {profile?.id ? (
+              <Link href={`/dashboard`} className="text-xs muted hover:underline">Create a quiz</Link>
+            ) : null}
+          </div>
+
+          {challengesLoading ? (
+            <div className="text-sm muted">Loading…</div>
+          ) : challengesError ? (
+            <div className="text-sm text-red-600">{challengesError}</div>
+          ) : challenges.length === 0 ? (
+            <div className="text-sm muted">No challenges yet.</div>
+          ) : (
+            <ul className="space-y-3">
+              {challenges.map((c) => {
+                const title = (c.title || '').trim() || 'Challenge'
+                const createdAt = c.createdAt ? new Date(c.createdAt).toLocaleString() : ''
+                return (
+                  <li key={c.id} className="border rounded p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium break-words">{title}</div>
+                        <div className="text-xs muted">
+                          {createdAt}{c.grade ? ` • ${String(c.grade).replace('GRADE_', 'Grade ')}` : ''}
+                        </div>
+                      </div>
+                      <Link href={`/challenges/${encodeURIComponent(String(c.id))}`} className="btn btn-primary shrink-0">
+                        Attempt
+                      </Link>
+                    </div>
+
+                    {c.prompt ? <div className="text-sm whitespace-pre-wrap break-words">{String(c.prompt)}</div> : null}
+                    {c.imageUrl ? (
+                      <div className="pt-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={String(c.imageUrl)} alt={title} className="max-h-[320px] rounded border border-white/10 object-contain" />
+                      </div>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
           )}
         </section>
       </div>

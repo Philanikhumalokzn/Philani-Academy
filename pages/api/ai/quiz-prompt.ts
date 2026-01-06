@@ -341,8 +341,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!debugBypass && !token) return res.status(401).json({ message: 'Unauthorized' })
 
   const role = debugBypass ? 'teacher' : ((token as any)?.role as string | undefined)
-  const isLearner = role === 'student'
-  if (isLearner) return res.status(403).json({ message: 'Forbidden' })
+  if (role !== 'admin' && !debugBypass) return res.status(403).json({ message: 'Forbidden' })
 
   const body = (req.body || {}) as Body
   const gradeLabel = (typeof body.gradeLabel === 'string' ? body.gradeLabel : null)

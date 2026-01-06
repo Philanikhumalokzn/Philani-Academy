@@ -28,6 +28,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
+  // Learner-created challenges: allow viewing/editing, but enforce owner-controlled submission state.
+  // Session key format is "challenge:<challengeId>".
+  const isChallengeSession = sessionKey.startsWith('challenge:')
+  const challengeId = isChallengeSession ? sessionKey.slice('challenge:'.length).trim() : ''
+  if (req.method === 'POST' && isChallengeSession) {
+    if (!challengeId) return res.status(400).json({ message: 'Invalid challenge session id' })
+
+    const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
+    const challenge = await userChallenge.findUnique({
+      where: { id: challengeId },
+      select: { id: true, attemptsOpen: true },
+    })
+
+    if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
+    if (!challenge.attemptsOpen) {
+      return res.status(403).json({ message: 'Attempts are closed for this challenge' })
+    }
+  }
+
   // Subscription gating: learners must be subscribed to access session content.
   if (!isAdmin && role === 'student') {
     const gatingEnabled = await isSubscriptionGatingEnabled()

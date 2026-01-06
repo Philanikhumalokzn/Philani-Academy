@@ -493,6 +493,15 @@ model UserChallenge {
   // grade: only same-grade learners + privileged roles
   // private: only the author + privileged roles
   audience    String   @default("public")
+
+  // Owner-controlled attempt visibility:
+  // - attemptsOpen: whether new submissions are accepted
+  // - solutionsVisible: whether the owner has chosen to reveal attempt contents
+  attemptsOpen    Boolean  @default(true)
+  solutionsVisible Boolean @default(false)
+  closedAt        DateTime?
+  revealedAt      DateTime?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

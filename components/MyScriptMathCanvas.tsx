@@ -5899,29 +5899,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       // Student-only: show instant AI feedback in a local popup textbox.
       try {
-        const fbRes = await fetch('/api/ai/quiz-feedback', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gradeLabel: gradeLabel || undefined,
-            prompt: quizPromptRef.current || undefined,
-            studentLatex: combined,
-            studentText: studentTextSnapshot || undefined,
-          }),
-        })
-        if (fbRes.ok) {
-          const data = await fbRes.json().catch(() => null)
-          const feedback = typeof data?.feedback === 'string' ? data.feedback.trim() : ''
-          if (feedback && typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('philani-text:local-apply', {
-              detail: { id: 'quiz-feedback', text: feedback, visible: true },
-            }))
-            playSnapSound()
+        const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
+        // Cost control: AI tools are admin-only, and never used for learner-created challenges.
+        if (isAdmin && !isChallengeBoard) {
+          const fbRes = await fetch('/api/ai/quiz-feedback', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gradeLabel: gradeLabel || undefined,
+              prompt: quizPromptRef.current || undefined,
+              studentLatex: combined,
+              studentText: studentTextSnapshot || undefined,
+            }),
+          })
+          if (fbRes.ok) {
+            const data = await fbRes.json().catch(() => null)
+            const feedback = typeof data?.feedback === 'string' ? data.feedback.trim() : ''
+            if (feedback && typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('philani-text:local-apply', {
+                detail: { id: 'quiz-feedback', text: feedback, visible: true },
+              }))
+              playSnapSound()
+            }
+          } else {
+            const bodyText = await fbRes.text().catch(() => '')
+            console.warn('quiz-feedback API failed', fbRes.status, bodyText)
           }
-        } else {
-          const bodyText = await fbRes.text().catch(() => '')
-          console.warn('quiz-feedback API failed', fbRes.status, bodyText)
         }
       } catch (err) {
         console.warn('quiz-feedback API error', err)

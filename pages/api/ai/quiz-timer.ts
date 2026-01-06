@@ -109,9 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
   const role = ((token as any)?.role as string | undefined) || ''
-  if (role !== 'teacher' && role !== 'admin') {
-    return res.status(403).json({ message: 'Forbidden' })
-  }
+  if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
 
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
   if (!geminiApiKey) {

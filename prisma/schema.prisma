@@ -500,8 +500,10 @@ model UserChallenge {
   // Owner-controlled attempt visibility:
   // - attemptsOpen: whether new submissions are accepted
   // - solutionsVisible: whether the owner has chosen to reveal attempt contents
+  // - maxAttempts: max number of times a learner can submit (null = unlimited)
   attemptsOpen    Boolean  @default(true)
   solutionsVisible Boolean @default(false)
+  maxAttempts     Int?
   closedAt        DateTime?
   revealedAt      DateTime?
 

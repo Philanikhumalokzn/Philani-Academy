@@ -38,6 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       audience: true,
       attemptsOpen: true,
       solutionsVisible: true,
+      maxAttempts: true,
       closedAt: true,
       revealedAt: true,
       createdAt: true,
@@ -132,10 +133,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Owner/privileged: compute takers + (optionally) revealed attempts.
   let takers: any[] | undefined
   let attempts: any[] | undefined
-  if (isOwner || isPrivileged) {
-    const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
-    const sessionKey = `challenge:${id}`
+  let myAttemptCount = 0
+  
+  const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+  const sessionKey = `challenge:${id}`
 
+  // Count current user's attempts
+  myAttemptCount = await learnerResponse.count({
+    where: {
+      sessionKey,
+      userId: requesterId,
+    },
+  })
+
+  if (isOwner || isPrivileged) {
     const records = await learnerResponse.findMany({
       where: {
         sessionKey,
@@ -210,6 +221,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     audience: challenge.audience,
     attemptsOpen: challenge.attemptsOpen,
     solutionsVisible: challenge.solutionsVisible,
+    maxAttempts: challenge.maxAttempts,
     closedAt: challenge.closedAt,
     revealedAt: challenge.revealedAt,
     createdAt: challenge.createdAt,
@@ -221,6 +233,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     },
     isOwner,
     isPrivileged,
+    myAttemptCount,
     takers,
     attempts,
   })

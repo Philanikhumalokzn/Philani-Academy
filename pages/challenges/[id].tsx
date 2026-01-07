@@ -19,6 +19,8 @@ type Challenge = {
   isPrivileged?: boolean
   attemptsOpen?: boolean
   solutionsVisible?: boolean
+  maxAttempts?: number | null
+  myAttemptCount?: number
   closedAt?: string | null
   revealedAt?: string | null
   takers?: Array<{ userId: string; name: string; avatar: string | null; lastSubmittedAt: string; submissions: number }>
@@ -39,6 +41,8 @@ export default function ChallengeAttemptPage() {
   const [error, setError] = useState<string | null>(null)
   const [challenge, setChallenge] = useState<Challenge | null>(null)
   const [savingState, setSavingState] = useState(false)
+  const [myResponses, setMyResponses] = useState<any[]>([])
+  const [viewMode, setViewMode] = useState<'attempt' | 'view'>('attempt')
 
   const renderTextWithKatex = useCallback((text: unknown) => {
     const input = typeof text === 'string' ? text : ''
@@ -167,6 +171,22 @@ export default function ChallengeAttemptPage() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data?.message || `Failed to load challenge (${res.status})`)
     setChallenge(data)
+    
+    // Fetch user's responses
+    const sessionKey = `challenge:${id}`
+    const respRes = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, { credentials: 'same-origin' })
+    if (respRes.ok) {
+      const respData = await respRes.json().catch(() => ({}))
+      setMyResponses(Array.isArray(respData?.responses) ? respData.responses : [])
+    }
+    
+    // Determine view mode
+    const myAttemptCount = typeof data?.myAttemptCount === 'number' ? data.myAttemptCount : 0
+    const maxAttempts = typeof data?.maxAttempts === 'number' ? data.maxAttempts : null
+    const attemptsOpen = data?.attemptsOpen !== false
+    const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+    
+    setViewMode(myAttemptCount > 0 && !canAttempt ? 'view' : 'attempt')
   }, [id])
 
   const closeAttempts = useCallback(async () => {
@@ -250,13 +270,69 @@ export default function ChallengeAttemptPage() {
   }
 
   const effectiveViewerId = viewerId || session?.user?.email || ''
+  
+  const canAttempt = useMemo(() => {
+    if (!challenge) return true
+    const myAttemptCount = typeof challenge?.myAttemptCount === 'number' ? challenge.myAttemptCount : 0
+    const maxAttempts = typeof challenge?.maxAttempts === 'number' ? challenge.maxAttempts : null
+    const attemptsOpen = challenge?.attemptsOpen !== false
+    return attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+  }, [challenge])
 
   return (
     <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
       {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
       {loading ? <div className="absolute top-2 left-2 right-2 z-50 text-white/70 text-sm">Loading…</div> : null}
 
-      {initialQuiz ? (
+      {viewMode === 'view' && myResponses.length > 0 ? (
+        <div className="absolute inset-0 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto space-y-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">{(challenge?.title || '').trim() || 'Challenge'} - Your Responses</h1>
+              {canAttempt ? (
+                <button onClick={() => setViewMode('attempt')} className="btn btn-primary">
+                  Attempt Again
+                </button>
+              ) : null}
+            </div>
+            
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-white/80">
+                <strong>Prompt:</strong> {challenge?.prompt || 'N/A'}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold">Your Submissions ({myResponses.length})</h2>
+              {myResponses.map((resp: any, idx: number) => (
+                <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                  <div className="text-xs text-white/60">
+                    Submitted: {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+                  </div>
+                  <div className="text-sm">
+                    <strong>Response:</strong>
+                    <pre className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
+                      {resp.latex || '(empty)'}
+                    </pre>
+                  </div>
+                  {resp.studentText ? (
+                    <div className="text-sm">
+                      <strong>Typed text:</strong>
+                      <div className="mt-1 text-white/80">{resp.studentText}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-6">
+              <Link href="/dashboard" className="btn btn-ghost">
+                Back to Dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : initialQuiz ? (
         <div className="absolute inset-0">
           {(() => {
             const realtimeScopeId = `challenge:${id}:u:${effectiveViewerId || 'anon'}`

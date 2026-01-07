@@ -2187,6 +2187,14 @@ export default function Dashboard() {
             {preview.map((c: any) => {
               const title = (c?.title || '').trim() || 'Quiz'
               const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
+              const myAttemptCount = typeof c?.myAttemptCount === 'number' ? c.myAttemptCount : 0
+              const maxAttempts = typeof c?.maxAttempts === 'number' ? c.maxAttempts : null
+              const attemptsOpen = c?.attemptsOpen !== false
+              
+              const hasAttempted = myAttemptCount > 0
+              const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+              const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
+              
               return (
                 <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -2196,7 +2204,7 @@ export default function Dashboard() {
                     </div>
                     {c?.id ? (
                       <Link href={`/challenges/${encodeURIComponent(String(c.id))}`} className="btn btn-primary shrink-0">
-                        Attempt
+                        {buttonText}
                       </Link>
                     ) : null}
                   </div>
@@ -2430,6 +2438,14 @@ export default function Dashboard() {
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
                 const prompt = (p?.prompt || '').trim()
+                const myAttemptCount = typeof p?.myAttemptCount === 'number' ? p.myAttemptCount : 0
+                const maxAttempts = typeof p?.maxAttempts === 'number' ? p.maxAttempts : null
+                const attemptsOpen = p?.attemptsOpen !== false
+                
+                const hasAttempted = myAttemptCount > 0
+                const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+                const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
+                
                 return (
                   <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -2445,7 +2461,7 @@ export default function Dashboard() {
                           href={`/challenges/${encodeURIComponent(String(p.id))}`}
                           className="btn btn-primary shrink-0"
                         >
-                          Attempt
+                          {buttonText}
                         </Link>
                       ) : null}
                     </div>

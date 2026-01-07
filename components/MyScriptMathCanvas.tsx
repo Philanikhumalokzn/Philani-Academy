@@ -1,5 +1,7 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
+import { toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
@@ -5904,6 +5906,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       try {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('philani-quiz:submitted'))
+          toast.success('Quiz response submitted!', { position: 'top-center', autoClose: 2500 })
         }
       } catch {}
 
@@ -9308,9 +9311,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
       </div>
+
+
+
     </div>
   )
 }
 
 export default MyScriptMathCanvas
 export { MyScriptMathCanvas }
+
+

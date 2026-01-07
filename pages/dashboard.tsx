@@ -760,6 +760,10 @@ export default function Dashboard() {
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
 
+  const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
+  const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
+  const studentMobileScrollRafRef = useRef<number | null>(null)
+
   const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
   const [sessionThumbnailUploading, setSessionThumbnailUploading] = useState(false)
   const sessionThumbnailInputRef = useRef<HTMLInputElement | null>(null)
@@ -1986,6 +1990,47 @@ export default function Dashboard() {
   const sessionRole = (((session as any)?.user?.role as string | undefined) || 'student')
   const canManageSessionThumbnails = sessionRole === 'admin' || sessionRole === 'teacher'
 
+  const studentMobileTabIndex = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    if (tab === 'timeline') return 0
+    if (tab === 'sessions') return 1
+    if (tab === 'groups') return 2
+    return 3
+  }
+
+  const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    const el = studentMobilePanelsRef.current
+    if (!el) return
+    const width = el.clientWidth || 0
+    if (!width) return
+    const idx = studentMobileTabIndex(tab)
+    el.scrollTo({ left: idx * width, behavior: 'smooth' })
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    // Keep scroll position aligned to the active tab.
+    scrollStudentPanelsToTab(studentMobileTab)
+  }, [studentMobileTab, scrollStudentPanelsToTab])
+
+  const onStudentPanelsScroll = useCallback(() => {
+    const el = studentMobilePanelsRef.current
+    if (!el) return
+    if (studentMobileScrollRafRef.current) return
+
+    studentMobileScrollRafRef.current = window.requestAnimationFrame(() => {
+      studentMobileScrollRafRef.current = null
+      const width = el.clientWidth || 0
+      if (!width) return
+      const idx = Math.round(el.scrollLeft / width)
+      const nextTab = (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
+        | 'timeline'
+        | 'sessions'
+        | 'groups'
+        | 'discover'
+      setStudentMobileTab(prev => (prev === nextTab ? prev : nextTab))
+    })
+  }, [])
+
   useEffect(() => {
     if (status !== 'authenticated') return
     if (sessionRole !== 'student') return
@@ -2165,31 +2210,33 @@ export default function Dashboard() {
   }
 
   const renderStudentQuickActionsRow = () => {
-    const canLinkTimeline = Boolean(status === 'authenticated' && currentUserId)
-    const timelineHref = canLinkTimeline ? `/u/${encodeURIComponent(String(currentUserId))}` : '/profile'
-
     const baseBtn =
       'inline-flex items-center justify-center h-12 w-12 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
 
+    const activeBtn = 'bg-white/10 border-white/20 text-white'
+
+    const btnClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
+      `${baseBtn} ${studentMobileTab === tab ? activeBtn : ''}`
+
     return (
       <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
-        <Link
-          href={timelineHref}
-          className={baseBtn}
-          aria-disabled={!canLinkTimeline}
+        <button
+          type="button"
+          className={btnClass('timeline')}
           aria-label="Timeline"
           title="Timeline"
+          onClick={() => setStudentMobileTab('timeline')}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M12 8v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" strokeWidth="2" />
           </svg>
-        </Link>
+        </button>
 
         <button
           type="button"
-          className={baseBtn}
-          onClick={() => setMobilePanels(prev => ({ ...prev, sessions: true }))}
+          className={btnClass('sessions')}
+          onClick={() => setStudentMobileTab('sessions')}
           aria-label="Sessions"
           title="Sessions"
         >
@@ -2201,8 +2248,8 @@ export default function Dashboard() {
 
         <button
           type="button"
-          className={baseBtn}
-          onClick={() => openDashboardOverlay('groups')}
+          className={btnClass('groups')}
+          onClick={() => setStudentMobileTab('groups')}
           aria-label="Groups"
           title="Groups"
         >
@@ -2216,8 +2263,8 @@ export default function Dashboard() {
 
         <button
           type="button"
-          className={baseBtn}
-          onClick={() => openDashboardOverlay('discover')}
+          className={btnClass('discover')}
+          onClick={() => setStudentMobileTab('discover')}
           aria-label="Discover"
           title="Discover"
         >
@@ -7489,9 +7536,29 @@ export default function Dashboard() {
               >
               {renderStudentQuickActionsRow()}
 
-              {renderStudentHomeFeed()}
+              <div
+                ref={studentMobilePanelsRef}
+                onScroll={onStudentPanelsScroll}
+                className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                <div className="w-full flex-none snap-start p-3">
+                  {renderStudentHomeFeed()}
+                </div>
 
-              {renderOverviewCards({ hideGradeWorkspace: true })}
+                <div className="w-full flex-none snap-start p-3">
+                  {renderSection('sessions')}
+                </div>
+
+                <div className="w-full flex-none snap-start p-3">
+                  {renderSection('groups')}
+                </div>
+
+                <div className="w-full flex-none snap-start p-3">
+                  {renderSection('discover')}
+                </div>
+              </div>
+
               {status === 'authenticated' && (
                 <div className="pt-2 flex justify-center">
                   <button

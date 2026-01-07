@@ -756,8 +756,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sumAwarded += awardedMarks
 
         const isCorrect = (typeof item?.isCorrect === 'boolean') ? Boolean(item.isCorrect) : (awardedMarks > 0)
+        const isSignificant = (typeof item?.isSignificant === 'boolean') ? Boolean(item.isSignificant) : (!isCorrect)
         const feedback = clampText(item?.feedback ?? item?.note ?? item?.why ?? item?.correctStep ?? '', 200)
-        steps.push({ step: i, awardedMarks, isCorrect, feedback: feedback || undefined })
+        steps.push({ step: i, awardedMarks, isCorrect, isSignificant, feedback: feedback || undefined })
       }
 
       // Prefer step marks as the source of truth for earnedMarks ONLY when the model actually

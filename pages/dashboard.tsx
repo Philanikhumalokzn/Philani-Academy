@@ -4738,6 +4738,34 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-3">
+                      <div className="mb-3 flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          className={sessionDetailsTab === 'assignments' ? 'btn btn-secondary' : 'btn btn-ghost'}
+                          onClick={() => {
+                            setSessionDetailsTab('assignments')
+                            if (expandedSessionId) {
+                              fetchAssignments(expandedSessionId)
+                              if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
+                            }
+                          }}
+                          disabled={isSubscriptionBlocked}
+                        >
+                          Assignments
+                        </button>
+                        <button
+                          type="button"
+                          className={sessionDetailsTab === 'responses' ? 'btn btn-secondary' : 'btn btn-ghost'}
+                          onClick={() => {
+                            setSessionDetailsTab('responses')
+                            if (expandedSessionId) fetchMyResponses(expandedSessionId)
+                          }}
+                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                        >
+                          Quizzes
+                        </button>
+                      </div>
+
                       {sessionDetailsTab === 'assignments' ? (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
@@ -4996,7 +5024,26 @@ export default function Dashboard() {
                                       setAssignmentQuestionOverlayOpen(true)
                                     }}
                                   >
-                                    <div className="font-medium">Question {idx + 1}</div>
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="font-medium">Question {idx + 1}</div>
+                                      {isLearner ? (
+                                        <div className="text-xs muted shrink-0">
+                                          {(() => {
+                                            const qid = String(q?.id || '')
+                                            const answered = Boolean(String(assignmentResponsesByQuestionId?.[qid]?.latex || '').trim())
+                                            const correctness = assignmentGradeByQuestionId?.[qid]
+                                            const earned = assignmentEarnedMarksByQuestionId?.[qid]
+                                            const total = assignmentTotalMarksByQuestionId?.[qid]
+
+                                            const parts: string[] = []
+                                            parts.push(answered ? 'Answered' : 'Not answered')
+                                            if (correctness) parts.push(correctness === 'correct' ? 'Correct' : 'Incorrect')
+                                            if (typeof earned === 'number' && typeof total === 'number') parts.push(`${earned}/${total}`)
+                                            return parts.join(' • ')
+                                          })()}
+                                        </div>
+                                      ) : null}
+                                    </div>
                                     <div className="text-sm whitespace-pre-wrap break-words mt-1">{renderTextWithKatex(String(q?.latex || ''))}</div>
                                   </button>
                                 </li>
@@ -5004,6 +5051,195 @@ export default function Dashboard() {
                             </ul>
                           )
                         })()}
+
+                        {isLearner && expandedSessionId && selectedAssignment?.id ? (
+                          <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-semibold text-sm">Your submission</div>
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                disabled={assignmentResponsesLoading}
+                                onClick={() => fetchAssignmentResponses(expandedSessionId, String(selectedAssignment.id))}
+                              >
+                                {assignmentResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                              </button>
+                            </div>
+
+                            {assignmentResponsesError ? <div className="text-sm text-red-600">{assignmentResponsesError}</div> : null}
+
+                            <div className="text-sm">
+                              {assignmentSubmittedAt
+                                ? <>Submitted: <span className="font-medium">{new Date(assignmentSubmittedAt).toLocaleString()}</span></>
+                                : <span className="muted">Not submitted yet.</span>}
+                            </div>
+
+                            {assignmentGradeError ? <div className="text-sm text-red-600">{assignmentGradeError}</div> : null}
+                            {assignmentSubmittedAt ? (
+                              assignmentGradeLoading ? (
+                                <div className="text-sm muted">Loading grade…</div>
+                              ) : assignmentGradeSummary ? (
+                                <div className="text-sm">
+                                  Grade: <span className="font-medium">{assignmentGradeSummary.earnedPoints}/{assignmentGradeSummary.totalPoints}</span>{' '}
+                                  ({Math.round(assignmentGradeSummary.percentage)}%)
+                                </div>
+                              ) : (
+                                <div className="text-sm muted">Grade not available yet.</div>
+                              )
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {isAdmin && expandedSessionId && selectedAssignment?.id ? (
+                          <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-semibold text-sm">Learner submissions</div>
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                disabled={adminAssignmentSubmissionsLoading}
+                                onClick={() => fetchAdminAssignmentSubmissions(expandedSessionId, String(selectedAssignment.id))}
+                              >
+                                {adminAssignmentSubmissionsLoading ? 'Refreshing…' : 'Refresh'}
+                              </button>
+                            </div>
+
+                            {adminAssignmentSubmissionsError ? <div className="text-sm text-red-600">{adminAssignmentSubmissionsError}</div> : null}
+
+                            {adminAssignmentSubmissions.length === 0 ? (
+                              <div className="text-sm muted">No submissions yet.</div>
+                            ) : (
+                              <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
+                                {adminAssignmentSubmissions.map((row: any) => (
+                                  <li key={String(row?.userId)} className="p-3 flex items-start justify-between gap-3">
+                                    <button
+                                      type="button"
+                                      className="min-w-0 text-left"
+                                      onClick={() => {
+                                        const userId = String(row?.userId || '')
+                                        if (!userId) return
+                                        setAdminSelectedSubmissionUserId(userId)
+                                        void fetchAdminSubmissionDetail(expandedSessionId, String(selectedAssignment.id), userId)
+                                      }}
+                                    >
+                                      <div className="font-medium break-words">{row?.user?.name || row?.user?.email || 'Learner'}</div>
+                                      <div className="text-xs muted">
+                                        {row?.submittedAt ? new Date(row.submittedAt).toLocaleString() : ''}
+                                        {row?.grade
+                                          ? ` • ${row.grade.earnedPoints}/${row.grade.totalPoints} (${Math.round(row.grade.percentage)}%)`
+                                          : ''}
+                                      </div>
+                                    </button>
+                                    <div className="shrink-0">
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost text-xs"
+                                        onClick={() => {
+                                          const userId = String(row?.userId || '')
+                                          if (!userId) return
+                                          setAdminSelectedSubmissionUserId(userId)
+                                          void fetchAdminSubmissionDetail(expandedSessionId, String(selectedAssignment.id), userId)
+                                        }}
+                                      >
+                                        View
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {adminSelectedSubmissionUserId ? (
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="font-semibold text-sm">Selected submission</div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary text-xs"
+                                      disabled={adminRegradeLoading}
+                                      onClick={() => adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)}
+                                    >
+                                      {adminRegradeLoading ? 'Re-grading…' : 'Re-grade'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost text-xs"
+                                      onClick={() => {
+                                        setAdminSelectedSubmissionUserId(null)
+                                        setAdminSelectedSubmissionDetail(null)
+                                        setAdminSelectedSubmissionError(null)
+                                      }}
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {adminRegradeError ? <div className="text-sm text-red-600">{adminRegradeError}</div> : null}
+                                {adminSelectedSubmissionError ? <div className="text-sm text-red-600">{adminSelectedSubmissionError}</div> : null}
+                                {adminSelectedSubmissionLoading ? (
+                                  <div className="text-sm muted">Loading submission…</div>
+                                ) : adminSelectedSubmissionDetail ? (
+                                  (() => {
+                                    const detail: any = adminSelectedSubmissionDetail
+                                    const submission = detail?.submission
+                                    const user = submission?.user
+                                    const results: any[] = Array.isArray(detail?.gradingJson?.results)
+                                      ? detail.gradingJson.results
+                                      : (Array.isArray(detail?.grade?.results) ? detail.grade.results : [])
+                                    const byQuestionId = detail?.responses?.byQuestionId || {}
+                                    const questions = Array.isArray(detail?.assignment?.questions) ? detail.assignment.questions : []
+
+                                    return (
+                                      <div className="space-y-2">
+                                        <div className="text-sm">
+                                          <span className="font-medium">{user?.name || user?.email || 'Learner'}</span>
+                                          {submission?.submittedAt ? ` • ${new Date(submission.submittedAt).toLocaleString()}` : ''}
+                                        </div>
+
+                                        {typeof detail?.grade?.percentage === 'number' ? (
+                                          <div className="text-sm">
+                                            Grade: <span className="font-medium">{detail.grade.earnedPoints}/{detail.grade.totalPoints}</span>{' '}
+                                            ({Math.round(detail.grade.percentage)}%)
+                                          </div>
+                                        ) : null}
+
+                                        {questions.length ? (
+                                          <div className="space-y-2">
+                                            {questions.map((q: any, idx: number) => {
+                                              const qid = String(q?.id || '')
+                                              const respLatex = String(byQuestionId?.[qid]?.latex || '')
+                                              const r = results.find(x => String(x?.questionId || '') === qid)
+                                              const correctness = String(r?.correctness || '')
+                                              const earned = r?.earnedMarks
+                                              const total = r?.totalMarks
+                                              const headerParts: string[] = [`Question ${idx + 1}`]
+                                              if (correctness) headerParts.push(correctness)
+                                              if (typeof earned !== 'undefined' && typeof total !== 'undefined') headerParts.push(`${earned}/${total}`)
+
+                                              return (
+                                                <div key={qid || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                                  <div className="font-semibold text-sm">{headerParts.join(' • ')}</div>
+                                                  <div className="text-xs muted">Prompt</div>
+                                                  <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(String(q?.latex || ''))}</div>
+                                                  <div className="text-xs muted">Response</div>
+                                                  {respLatex.trim()
+                                                    ? <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(respLatex)}</div>
+                                                    : <div className="text-sm muted">No response.</div>}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    )
+                                  })()
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
 
                         {isLearner && expandedSessionId && selectedAssignment?.id ? (
                           <div className="pt-2 space-y-2">
@@ -5316,8 +5552,64 @@ export default function Dashboard() {
                           ) : null}
 
                           {isLearner ? (
-                            <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                              <div className="font-semibold text-sm">Your response</div>
+                            <div className="space-y-3">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Work on canvas</div>
+                                {expandedSessionId && selectedAssignment?.id ? (
+                                  assignmentSubmittedAt && !isTestStudent ? (
+                                    <div className="text-sm muted">Locked after submission.</div>
+                                  ) : (
+                                    <Link
+                                      className="btn btn-primary text-xs"
+                                      href={`/sessions/${encodeURIComponent(expandedSessionId)}/assignments/${encodeURIComponent(String(selectedAssignment.id))}/q/${encodeURIComponent(String(qid))}`}
+                                    >
+                                      Solve on canvas
+                                    </Link>
+                                  )
+                                ) : (
+                                  <div className="text-sm muted">Open this assignment from a session to work on canvas.</div>
+                                )}
+                              </div>
+
+                              {assignmentSubmittedAt ? (
+                                <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                  <div className="font-semibold text-sm">Grade</div>
+                                  {assignmentGradeLoading ? (
+                                    <div className="text-sm muted">Loading grade…</div>
+                                  ) : (
+                                    <>
+                                      {(() => {
+                                        const correctness = assignmentGradeByQuestionId?.[qid]
+                                        const earned = assignmentEarnedMarksByQuestionId?.[qid]
+                                        const total = assignmentTotalMarksByQuestionId?.[qid]
+                                        if (!correctness && typeof earned !== 'number' && typeof total !== 'number') {
+                                          return <div className="text-sm muted">Grade not available yet.</div>
+                                        }
+                                        return (
+                                          <div className="text-sm">
+                                            {correctness ? `Result: ${correctness}` : null}
+                                            {correctness && (typeof earned === 'number' || typeof total === 'number') ? ' • ' : null}
+                                            {typeof earned === 'number' && typeof total === 'number' ? `Marks: ${earned}/${total}` : null}
+                                          </div>
+                                        )
+                                      })()}
+                                      {Array.isArray(assignmentStepFeedbackByQuestionId?.[qid]) && assignmentStepFeedbackByQuestionId[qid].length ? (
+                                        <div className="space-y-1">
+                                          <div className="text-xs muted">Step feedback</div>
+                                          {assignmentStepFeedbackByQuestionId[qid].slice(0, 20).map((s: any, idx: number) => (
+                                            <div key={idx} className="text-xs whitespace-pre-wrap break-words">
+                                              {String((s && typeof s === 'object' ? (s.feedback ?? s.comment ?? s.text ?? JSON.stringify(s)) : s) || '').trim()}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </>
+                                  )}
+                                </div>
+                              ) : null}
+
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div className="font-semibold text-sm">Your response</div>
                               {(() => {
                                 const latex = String(assignmentResponsesByQuestionId?.[qid]?.latex || '')
                                 if (!latex.trim()) return <div className="text-sm muted">Not submitted yet.</div>
@@ -5327,6 +5619,7 @@ export default function Dashboard() {
                                 }
                                 return <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
                               })()}
+                            </div>
                             </div>
                           ) : null}
                         </>

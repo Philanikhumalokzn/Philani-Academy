@@ -2179,6 +2179,13 @@ export default function Dashboard() {
         <div className="flex items-center justify-between gap-3">
           <div className="font-semibold text-white">Timeline</div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-primary text-xs"
+              onClick={() => setCreateOverlayOpen(true)}
+            >
+              Create
+            </button>
             <Link href={timelineHref} className="btn btn-ghost text-xs" aria-disabled={!canLink}>
               View
             </Link>
@@ -2442,7 +2449,16 @@ export default function Dashboard() {
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
-          <div className="font-semibold text-white">Posts</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-semibold text-white">Posts</div>
+            <button
+              type="button"
+              className="btn btn-primary text-xs"
+              onClick={() => setCreateOverlayOpen(true)}
+            >
+              Create Quiz
+            </button>
+          </div>
           {studentFeedLoading ? (
             <div className="text-sm text-white/70">Loading…</div>
           ) : studentFeedError ? (
@@ -4373,7 +4389,7 @@ export default function Dashboard() {
                       onChange={(e) => setChallengeTitleDraft(e.target.value)}
                     />
 
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid gap-2 sm:grid-cols-3">
                       <div className="space-y-1">
                         <div className="text-xs muted">Type</div>
                         <select className="input" value={createKind} onChange={(e) => setCreateKind(e.target.value as any)}>
@@ -4390,6 +4406,21 @@ export default function Dashboard() {
                           <option value="public">Public</option>
                           <option value="grade">My grade</option>
                           <option value="private">Private</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs muted">Max Attempts</div>
+                        <select
+                          className="input"
+                          value={challengeMaxAttempts}
+                          onChange={(e) => setChallengeMaxAttempts(e.target.value)}
+                        >
+                          <option value="unlimited">Unlimited</option>
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="5">5</option>
+                          <option value="10">10</option>
                         </select>
                       </div>
                     </div>

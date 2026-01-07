@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../../../../lib/prisma'
+import { normalizeGradeInput } from '../../../../../../../lib/grades'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionIdParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
@@ -13,7 +14,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
   const role = ((token as any)?.role as string | undefined) || ''
-  if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
+  const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  const sessionRecord = await prisma.sessionRecord.findUnique({
+    where: { id: String(sessionIdParam) },
+    select: { id: true, grade: true },
+  })
+  if (!sessionRecord) return res.status(404).json({ message: 'Session not found' })
+
+  if (role === 'teacher') {
+    if (!tokenGrade) return res.status(403).json({ message: 'Grade not configured for this account' })
+    if (tokenGrade !== sessionRecord.grade) return res.status(403).json({ message: 'Access to this session is restricted to its grade' })
+  } else if (role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden' })
+  }
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])

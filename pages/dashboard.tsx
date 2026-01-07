@@ -2376,7 +2376,7 @@ export default function Dashboard() {
   }
 
   async function fetchAdminAssignmentSubmissions(sessionId: string, assignmentId: string) {
-    if (!isAdmin) return
+    if (!isTeacherOrAdminUser) return
     if (adminAssignmentSubmissionsLoading) return
     setAdminAssignmentSubmissionsError(null)
     setAdminAssignmentSubmissionsLoading(true)
@@ -2401,7 +2401,7 @@ export default function Dashboard() {
   }
 
   async function fetchAdminSubmissionDetail(sessionId: string, assignmentId: string, userId: string) {
-    if (!isAdmin) return
+    if (!isTeacherOrAdminUser) return
     if (!userId) return
     if (adminSelectedSubmissionLoading) return
 
@@ -5090,7 +5090,7 @@ export default function Dashboard() {
                           </div>
                         ) : null}
 
-                        {isAdmin && expandedSessionId && selectedAssignment?.id ? (
+                        {isTeacherOrAdminUser && expandedSessionId && selectedAssignment?.id ? (
                           <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold text-sm">Learner submissions</div>
@@ -5154,14 +5154,16 @@ export default function Dashboard() {
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="font-semibold text-sm">Selected submission</div>
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary text-xs"
-                                      disabled={adminRegradeLoading}
-                                      onClick={() => adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)}
-                                    >
-                                      {adminRegradeLoading ? 'Re-grading…' : 'Re-grade'}
-                                    </button>
+                                    {isAdmin ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary text-xs"
+                                        disabled={adminRegradeLoading}
+                                        onClick={() => adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)}
+                                      >
+                                        {adminRegradeLoading ? 'Re-grading…' : 'Re-grade'}
+                                      </button>
+                                    ) : null}
                                     <button
                                       type="button"
                                       className="btn btn-ghost text-xs"
@@ -5191,6 +5193,15 @@ export default function Dashboard() {
                                     const byQuestionId = detail?.responses?.byQuestionId || {}
                                     const questions = Array.isArray(detail?.assignment?.questions) ? detail.assignment.questions : []
 
+                                    const grade = detail?.grade || null
+                                    const gradeByQ = new Map<string, any>()
+                                    for (const r of results) {
+                                      const qid = String(r?.questionId || '')
+                                      if (qid) gradeByQ.set(qid, r)
+                                    }
+
+                                    const responsesByQ = byQuestionId || {}
+
                                     return (
                                       <div className="space-y-2">
                                         <div className="text-sm">
@@ -5209,25 +5220,128 @@ export default function Dashboard() {
                                           <div className="space-y-2">
                                             {questions.map((q: any, idx: number) => {
                                               const qid = String(q?.id || '')
-                                              const respLatex = String(byQuestionId?.[qid]?.latex || '')
-                                              const r = results.find(x => String(x?.questionId || '') === qid)
-                                              const correctness = String(r?.correctness || '')
-                                              const earned = r?.earnedMarks
-                                              const total = r?.totalMarks
-                                              const headerParts: string[] = [`Question ${idx + 1}`]
-                                              if (correctness) headerParts.push(correctness)
-                                              if (typeof earned !== 'undefined' && typeof total !== 'undefined') headerParts.push(`${earned}/${total}`)
+                                              const respLatex = String(responsesByQ?.[qid]?.latex || '')
+                                              const result = gradeByQ.get(qid)
+                                              const earnedMarks = (typeof result?.earnedMarks === 'number' || typeof result?.earnedMarks === 'string') ? Number(result.earnedMarks) : null
+                                              const totalMarks = (typeof result?.totalMarks === 'number' || typeof result?.totalMarks === 'string') ? Number(result.totalMarks) : null
+                                              const stepFeedback = Array.isArray(result?.steps) ? result.steps : (Array.isArray(result?.stepFeedback) ? result.stepFeedback : [])
 
                                               return (
-                                                <div key={qid || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                                                  <div className="font-semibold text-sm">{headerParts.join(' • ')}</div>
-                                                  <div className="text-xs muted">Prompt</div>
-                                                  <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(String(q?.latex || ''))}</div>
-                                                  <div className="text-xs muted">Response</div>
-                                                  {respLatex.trim()
-                                                    ? <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(respLatex)}</div>
-                                                    : <div className="text-sm muted">No response.</div>}
-                                                </div>
+                                                <details key={`admin-sub-q-${qid || idx}`} className="border border-white/10 rounded p-2" open={idx === 0}>
+                                                  <summary className="cursor-pointer font-medium text-sm flex items-center justify-between gap-2">
+                                                    <span>Question {idx + 1}</span>
+                                                    {grade && Number.isFinite(earnedMarks as any) && Number.isFinite(totalMarks as any) ? (
+                                                      <span className={Number(earnedMarks) > 0 ? 'text-green-500' : 'text-red-500'}>(
+                                                        {Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))}
+                                                      )</span>
+                                                    ) : null}
+                                                  </summary>
+
+                                                  <div className="pt-2 text-sm whitespace-pre-wrap break-words">
+                                                    {renderTextWithKatex(String(q?.latex || ''))}
+                                                  </div>
+
+                                                  <div className="pt-2">
+                                                    <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                      <div className="text-xs text-white/70 mb-1">Student response</div>
+                                                      {respLatex.trim() ? (
+                                                        (() => {
+                                                          const steps = splitLatexIntoSteps(respLatex)
+                                                          if (Array.isArray(stepFeedback) && stepFeedback.length && steps.length) {
+                                                            const byStep = new Map<number, any>()
+                                                            for (const s of stepFeedback) {
+                                                              const idx2 = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
+                                                              if (Number.isFinite(idx2) && idx2 > 0) byStep.set(Math.trunc(idx2), s)
+                                                            }
+
+                                                            return (
+                                                              <div className="space-y-2">
+                                                                {steps.map((stepLatex: string, i: number) => {
+                                                                  const stepNum = i + 1
+                                                                  const fb = byStep.get(stepNum)
+                                                                  const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
+                                                                  const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
+
+                                                                  const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
+                                                                  const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
+                                                                  const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
+                                                                  const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
+
+                                                                  const html = renderKatexDisplayHtml(stepLatex)
+                                                                  const line = html
+                                                                    ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
+                                                                    : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
+
+                                                                  return (
+                                                                    <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-3">
+                                                                      <div className="min-w-0 flex-1">{line}</div>
+                                                                      <div className="shrink-0 flex items-start gap-2">
+                                                                        {awardedInt > 0 ? (
+                                                                          <span
+                                                                            className="text-green-500 flex items-center"
+                                                                            aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`}
+                                                                            title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}
+                                                                          >
+                                                                            {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                                              <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                                <path
+                                                                                  d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                                                                  fill="currentColor"
+                                                                                />
+                                                                              </svg>
+                                                                            ))}
+                                                                            {awardedInt > 12 ? (
+                                                                              <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                                            ) : null}
+                                                                          </span>
+                                                                        ) : isCorrect ? (
+                                                                          <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                                            <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                              <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                            </svg>
+                                                                          </span>
+                                                                        ) : (
+                                                                          isSignificant ? (
+                                                                            <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                                              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                                <path
+                                                                                  d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
+                                                                                  fill="currentColor"
+                                                                                />
+                                                                              </svg>
+                                                                            </span>
+                                                                          ) : (
+                                                                            <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                                              <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                                <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                              </svg>
+                                                                            </span>
+                                                                          )
+                                                                        )}
+
+                                                                        {!isCorrect && awardedInt === 0 ? (
+                                                                          <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                                                                            {(feedbackText || 'Check this step').slice(0, 160)}
+                                                                          </div>
+                                                                        ) : null}
+                                                                      </div>
+                                                                    </div>
+                                                                  )
+                                                                })}
+                                                              </div>
+                                                            )
+                                                          }
+
+                                                          const html = renderKatexDisplayHtml(respLatex)
+                                                          if (html) return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                                          return <div className="text-xs font-mono whitespace-pre-wrap break-words">{respLatex}</div>
+                                                        })()
+                                                      ) : (
+                                                        <div className="text-sm text-white/60">(empty)</div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                </details>
                                               )
                                             })}
                                           </div>

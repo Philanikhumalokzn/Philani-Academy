@@ -180,14 +180,20 @@ export default function ChallengeAttemptPage() {
       setMyResponses(Array.isArray(respData?.responses) ? respData.responses : [])
     }
     
-    // Determine view mode
+    // Determine view mode based on URL query parameter or attempt status
+    const urlViewMode = typeof router.query.view === 'string' ? router.query.view : null
+    if (urlViewMode === 'responses') {
+      setViewMode('view')
+      return
+    }
+    
     const myAttemptCount = typeof data?.myAttemptCount === 'number' ? data.myAttemptCount : 0
     const maxAttempts = typeof data?.maxAttempts === 'number' ? data.maxAttempts : null
     const attemptsOpen = data?.attemptsOpen !== false
     const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
     
     setViewMode(myAttemptCount > 0 && !canAttempt ? 'view' : 'attempt')
-  }, [id])
+  }, [id, router.query.view])
 
   const closeAttempts = useCallback(async () => {
     if (!id) return
@@ -284,52 +290,100 @@ export default function ChallengeAttemptPage() {
       {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
       {loading ? <div className="absolute top-2 left-2 right-2 z-50 text-white/70 text-sm">Loading…</div> : null}
 
-      {viewMode === 'view' && myResponses.length > 0 ? (
+      {viewMode === 'view' ? (
         <div className="absolute inset-0 overflow-auto p-6">
           <div className="max-w-4xl mx-auto space-y-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">{(challenge?.title || '').trim() || 'Challenge'} - Your Responses</h1>
-              {canAttempt ? (
-                <button onClick={() => setViewMode('attempt')} className="btn btn-primary">
-                  Attempt Again
+              <h1 className="text-2xl font-bold">
+                {(challenge?.title || '').trim() || 'Challenge'} - {challenge?.isOwner ? 'Student Responses' : 'Your Responses'}
+              </h1>
+              <div className="flex items-center gap-2">
+                {canAttempt && !challenge?.isOwner ? (
+                  <button onClick={() => setViewMode('attempt')} className="btn btn-primary">
+                    Attempt Again
+                  </button>
+                ) : null}
+                <button onClick={() => router.push('/dashboard')} className="btn btn-ghost">
+                  Back to Dashboard
                 </button>
-              ) : null}
+              </div>
             </div>
             
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm text-white/80">
                 <strong>Prompt:</strong> {challenge?.prompt || 'N/A'}
               </div>
+              {challenge?.imageUrl ? (
+                <div className="mt-3">
+                  <img src={challenge.imageUrl} alt="Challenge" className="max-h-[240px] rounded border border-white/10 object-contain" />
+                </div>
+              ) : null}
             </div>
 
-            <div className="space-y-3">
-              <h2 className="text-lg font-semibold">Your Submissions ({myResponses.length})</h2>
-              {myResponses.map((resp: any, idx: number) => (
-                <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
-                  <div className="text-xs text-white/60">
-                    Submitted: {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+            {challenge?.isOwner ? (
+              // Owner view: show all student responses
+              <div className="space-y-3">
+                <h2 className="text-lg font-semibold">
+                  All Student Responses ({Array.isArray(challenge?.attempts) ? challenge.attempts.length : 0})
+                </h2>
+                {!challenge?.solutionsVisible ? (
+                  <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+                    ⚠️ Responses are only visible after you reveal solutions. Close attempts first, then reveal solutions.
                   </div>
-                  <div className="text-sm">
-                    <strong>Response:</strong>
-                    <pre className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
-                      {resp.latex || '(empty)'}
-                    </pre>
-                  </div>
-                  {resp.studentText ? (
-                    <div className="text-sm">
-                      <strong>Typed text:</strong>
-                      <div className="mt-1 text-white/80">{resp.studentText}</div>
+                ) : Array.isArray(challenge?.attempts) && challenge.attempts.length > 0 ? (
+                  challenge.attempts.map((resp: any, idx: number) => (
+                    <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-white">{resp.name}</div>
+                        <div className="text-xs text-white/60">
+                          {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+                        </div>
+                      </div>
+                      <div className="text-sm">
+                        <strong>Response:</strong>
+                        <pre className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
+                          {resp.latex || '(empty)'}
+                        </pre>
+                      </div>
+                      {resp.studentText ? (
+                        <div className="text-sm">
+                          <strong>Typed text:</strong>
+                          <div className="mt-1 text-white/80">{resp.studentText}</div>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            
-            <div className="mt-6">
-              <Link href="/dashboard" className="btn btn-ghost">
-                Back to Dashboard
-              </Link>
-            </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-white/70">No responses yet.</div>
+                )}
+              </div>
+            ) : myResponses.length > 0 ? (
+              // Student view: show their own responses
+              <div className="space-y-3">
+                <h2 className="text-lg font-semibold">Your Submissions ({myResponses.length})</h2>
+                {myResponses.map((resp: any, idx: number) => (
+                  <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                    <div className="text-xs text-white/60">
+                      Submitted: {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+                    </div>
+                    <div className="text-sm">
+                      <strong>Response:</strong>
+                      <pre className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
+                        {resp.latex || '(empty)'}
+                      </pre>
+                    </div>
+                    {resp.studentText ? (
+                      <div className="text-sm">
+                        <strong>Typed text:</strong>
+                        <div className="mt-1 text-white/80">{resp.studentText}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-white/70">No responses found.</div>
+            )}
           </div>
         </div>
       ) : initialQuiz ? (
@@ -397,7 +451,18 @@ export default function ChallengeAttemptPage() {
                     </div>
 
                     <div className="mt-3">
-                      <div className="text-xs text-white/70">Takers</div>
+                      <div className="text-xs text-white/70 flex items-center justify-between gap-3">
+                        <span>Takers ({Array.isArray(challenge.takers) ? challenge.takers.length : 0})</span>
+                        {Array.isArray(challenge.takers) && challenge.takers.length > 0 ? (
+                          <button
+                            type="button"
+                            className="text-xs text-blue-400 hover:text-blue-300"
+                            onClick={() => setViewMode('view')}
+                          >
+                            View Responses
+                          </button>
+                        ) : null}
+                      </div>
                       {Array.isArray(challenge.takers) && challenge.takers.length > 0 ? (
                         <div className="mt-1 space-y-1">
                           {challenge.takers.map(t => (
@@ -436,9 +501,13 @@ export default function ChallengeAttemptPage() {
                   </div>
                 ) : null}
               </div>
-              <Link href={`/u/${encodeURIComponent(String(challenge.createdBy?.id || ''))}`} className="btn btn-ghost shrink-0">
+              <button
+                type="button"
+                className="btn btn-ghost shrink-0"
+                onClick={() => router.push('/dashboard')}
+              >
                 Back
-              </Link>
+              </button>
             </div>
           </div>
         </div>

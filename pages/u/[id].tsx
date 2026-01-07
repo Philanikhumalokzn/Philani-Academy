@@ -257,9 +257,6 @@ export default function PublicUserProfilePage() {
         <section className="card p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold">Timeline</div>
-            {profile?.id ? (
-              <Link href={`/dashboard`} className="text-xs muted hover:underline">Create a quiz</Link>
-            ) : null}
           </div>
 
           {challengesLoading ? (

@@ -2219,6 +2219,7 @@ export default function Dashboard() {
               const hasAttempted = myAttemptCount > 0
               const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
               const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
+              const href = c?.id ? (hasAttempted && !canAttempt ? `/challenges/${encodeURIComponent(String(c.id))}?view=responses` : `/challenges/${encodeURIComponent(String(c.id))}`) : '#'
               
               return (
                 <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
@@ -2228,7 +2229,7 @@ export default function Dashboard() {
                       {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
                     </div>
                     {c?.id ? (
-                      <Link href={`/challenges/${encodeURIComponent(String(c.id))}`} className="btn btn-primary shrink-0">
+                      <Link href={href} className="btn btn-primary shrink-0">
                         {buttonText}
                       </Link>
                     ) : null}
@@ -2479,6 +2480,7 @@ export default function Dashboard() {
                 const hasAttempted = myAttemptCount > 0
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
                 const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
+                const href = p?.id ? (hasAttempted && !canAttempt ? `/challenges/${encodeURIComponent(String(p.id))}?view=responses` : `/challenges/${encodeURIComponent(String(p.id))}`) : '#'
                 
                 return (
                   <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
@@ -2492,7 +2494,7 @@ export default function Dashboard() {
                       </div>
                       {p?.id ? (
                         <Link
-                          href={`/challenges/${encodeURIComponent(String(p.id))}`}
+                          href={href}
                           className="btn btn-primary shrink-0"
                         >
                           {buttonText}

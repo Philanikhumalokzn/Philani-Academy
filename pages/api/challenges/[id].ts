@@ -137,7 +137,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sessionKey = `challenge:${id}`
 
     const records = await learnerResponse.findMany({
-      where: { sessionKey },
+      where: {
+        sessionKey,
+        OR: [
+          { ownerId: String(challenge.createdById) },
+          { ownerId: null },
+        ],
+      },
       select: {
         id: true,
         userId: true,

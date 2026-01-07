@@ -5334,139 +5334,146 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const pointIndex = lessonScriptPointIndex
       const pointId = lessonScriptV2ActivePoint?.id || ''
       const pointTitle = lessonScriptV2ActivePoint?.title || ''
+      const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
 
       if (enabled) {
         // Attempt to suggest a prompt from the teacher's current context.
         // This keeps UX unchanged: we still show a simple prompt dialog, but prefill it.
-        try {
-          const teacherLatexContext = (useAdminStepComposer
-            ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
-            : latexDisplayStateRef.current?.enabled
-              ? (latexDisplayStateRef.current?.latex || '')
-              : (latexOutput || '')
-          ).trim()
+        if (!isChallengeBoard) {
+          try {
+            const teacherLatexContext = (useAdminStepComposer
+              ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
+              : latexDisplayStateRef.current?.enabled
+                ? (latexDisplayStateRef.current?.latex || '')
+                : (latexOutput || '')
+            ).trim()
 
-            // Capture broader lesson context (text + diagrams) as best-effort.
-            const [textCtx, diagramCtx] = await Promise.all([
-              requestWindowContext<any>({ requestEvent: 'philani-text:request-context', responseEvent: 'philani-text:context', timeoutMs: 220 }),
-              requestWindowContext<any>({ requestEvent: 'philani-diagrams:request-context', responseEvent: 'philani-diagrams:context', timeoutMs: 220 }),
-            ])
+              // Capture broader lesson context (text + diagrams) as best-effort.
+              const [textCtx, diagramCtx] = await Promise.all([
+                requestWindowContext<any>({ requestEvent: 'philani-text:request-context', responseEvent: 'philani-text:context', timeoutMs: 220 }),
+                requestWindowContext<any>({ requestEvent: 'philani-diagrams:request-context', responseEvent: 'philani-diagrams:context', timeoutMs: 220 }),
+              ])
 
-            const textBoxes: Array<{ id: string; text: string }> = Array.isArray(textCtx?.boxes)
-              ? textCtx.boxes
-                  .map((b: any) => ({ id: typeof b?.id === 'string' ? b.id : '', text: typeof b?.text === 'string' ? b.text : '' }))
-                  .filter((b: any) => b.id && b.text)
-              : []
+              const textBoxes: Array<{ id: string; text: string }> = Array.isArray(textCtx?.boxes)
+                ? textCtx.boxes
+                    .map((b: any) => ({ id: typeof b?.id === 'string' ? b.id : '', text: typeof b?.text === 'string' ? b.text : '' }))
+                    .filter((b: any) => b.id && b.text)
+                : []
 
-            const textTimeline = Array.isArray(textCtx?.timeline)
-              ? textCtx.timeline
-                  .map((e: any) => ({
-                    ts: typeof e?.ts === 'number' ? e.ts : NaN,
-                    kind: typeof e?.kind === 'string' ? e.kind : '',
-                    action: typeof e?.action === 'string' ? e.action : '',
-                    boxId: typeof e?.boxId === 'string' ? e.boxId : undefined,
-                    visible: typeof e?.visible === 'boolean' ? e.visible : undefined,
-                    textSnippet: typeof e?.textSnippet === 'string' ? e.textSnippet : undefined,
-                  }))
-                  .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
-              : []
+              const textTimeline = Array.isArray(textCtx?.timeline)
+                ? textCtx.timeline
+                    .map((e: any) => ({
+                      ts: typeof e?.ts === 'number' ? e.ts : NaN,
+                      kind: typeof e?.kind === 'string' ? e.kind : '',
+                      action: typeof e?.action === 'string' ? e.action : '',
+                      boxId: typeof e?.boxId === 'string' ? e.boxId : undefined,
+                      visible: typeof e?.visible === 'boolean' ? e.visible : undefined,
+                      textSnippet: typeof e?.textSnippet === 'string' ? e.textSnippet : undefined,
+                    }))
+                    .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
+                : []
 
-            const activeDiagram = diagramCtx?.activeDiagram
-            const diagramSummary = (() => {
-              if (!activeDiagram || typeof activeDiagram !== 'object') return ''
-              const title = typeof activeDiagram.title === 'string' ? activeDiagram.title.trim() : ''
-              const url = typeof activeDiagram.imageUrl === 'string' ? activeDiagram.imageUrl.trim() : ''
-              const ann = activeDiagram.annotations
-              const strokes = Array.isArray(ann?.strokes) ? ann.strokes.length : 0
-              const arrows = Array.isArray(ann?.arrows) ? ann.arrows.length : 0
-              const bits = []
-              bits.push(`- Active diagram: ${title || '(untitled)'}`)
-              if (url) bits.push(`  imageUrl: ${url}`)
-              if (strokes || arrows) bits.push(`  annotations: strokes=${strokes}, arrows=${arrows}`)
-              return bits.join('\n')
-            })()
+              const activeDiagram = diagramCtx?.activeDiagram
+              const diagramSummary = (() => {
+                if (!activeDiagram || typeof activeDiagram !== 'object') return ''
+                const title = typeof activeDiagram.title === 'string' ? activeDiagram.title.trim() : ''
+                const url = typeof activeDiagram.imageUrl === 'string' ? activeDiagram.imageUrl.trim() : ''
+                const ann = activeDiagram.annotations
+                const strokes = Array.isArray(ann?.strokes) ? ann.strokes.length : 0
+                const arrows = Array.isArray(ann?.arrows) ? ann.arrows.length : 0
+                const bits = []
+                bits.push(`- Active diagram: ${title || '(untitled)'}`)
+                if (url) bits.push(`  imageUrl: ${url}`)
+                if (strokes || arrows) bits.push(`  annotations: strokes=${strokes}, arrows=${arrows}`)
+                return bits.join('\n')
+              })()
 
-            const diagramTimeline = Array.isArray(diagramCtx?.timeline)
-              ? diagramCtx.timeline
-                  .map((e: any) => ({
-                    ts: typeof e?.ts === 'number' ? e.ts : NaN,
-                    kind: typeof e?.kind === 'string' ? e.kind : '',
-                    action: typeof e?.action === 'string' ? e.action : '',
-                    diagramId: typeof e?.diagramId === 'string' ? e.diagramId : undefined,
-                    title: typeof e?.title === 'string' ? e.title : undefined,
-                    imageUrl: typeof e?.imageUrl === 'string' ? e.imageUrl : undefined,
-                    strokes: typeof e?.strokes === 'number' ? e.strokes : undefined,
-                    arrows: typeof e?.arrows === 'number' ? e.arrows : undefined,
-                  }))
-                  .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
-              : []
+              const diagramTimeline = Array.isArray(diagramCtx?.timeline)
+                ? diagramCtx.timeline
+                    .map((e: any) => ({
+                      ts: typeof e?.ts === 'number' ? e.ts : NaN,
+                      kind: typeof e?.kind === 'string' ? e.kind : '',
+                      action: typeof e?.action === 'string' ? e.action : '',
+                      diagramId: typeof e?.diagramId === 'string' ? e.diagramId : undefined,
+                      title: typeof e?.title === 'string' ? e.title : undefined,
+                      imageUrl: typeof e?.imageUrl === 'string' ? e.imageUrl : undefined,
+                      strokes: typeof e?.strokes === 'number' ? e.strokes : undefined,
+                      arrows: typeof e?.arrows === 'number' ? e.arrows : undefined,
+                    }))
+                    .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
+                : []
 
-            const lessonContextText = buildLessonContextText({
-              gradeLabel: gradeLabel || null,
-              phaseKey: phaseKey || '',
-              pointTitle: pointTitle || '',
-              pointIndex: Number.isFinite(pointIndex) ? (pointIndex as any) : null,
-              teacherLatexContext,
-              adminStepsLatex: adminSteps.map(s => (s?.latex || '')).filter(Boolean),
-              adminDraftLatex,
-              textBoxes,
-              textTimeline,
-              diagramSummary,
-              diagramTimeline,
+              const lessonContextText = buildLessonContextText({
+                gradeLabel: gradeLabel || null,
+                phaseKey: phaseKey || '',
+                pointTitle: pointTitle || '',
+                pointIndex: Number.isFinite(pointIndex) ? (pointIndex as any) : null,
+                teacherLatexContext,
+                adminStepsLatex: adminSteps.map(s => (s?.latex || '')).filter(Boolean),
+                adminDraftLatex,
+                textBoxes,
+                textTimeline,
+                diagramSummary,
+                diagramTimeline,
+              })
+
+            const aiRes = await fetch('/api/ai/quiz-prompt', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'x-debug-echo': '1' },
+              body: JSON.stringify({
+                gradeLabel: gradeLabel || undefined,
+                teacherLatex: teacherLatexContext || undefined,
+                  lessonContextText: lessonContextText || undefined,
+                previousPrompt: promptText || undefined,
+                sessionId: boardId || undefined,
+                phaseKey: phaseKey || undefined,
+                pointId: pointId || undefined,
+                pointIndex: Number.isFinite(pointIndex) ? pointIndex : undefined,
+                pointTitle: pointTitle || undefined,
+              }),
             })
+            if (aiRes.ok) {
+              const data = await aiRes.json().catch(() => null)
+              const echoed = typeof data?.debug?.lessonContextText === 'string' ? data.debug.lessonContextText : ''
+              if (echoed) {
+                console.log('[quiz-prompt debug echo] lessonContextText (what Gemini received):\n' + echoed)
+              }
+              const suggested = typeof data?.prompt === 'string' ? data.prompt.trim() : ''
+              if (suggested) {
+                promptText = suggested
+              }
+              const suggestedLabel = typeof data?.label === 'string' ? data.label.trim() : ''
+              if (suggestedLabel) {
+                quizLabel = suggestedLabel
+              }
+            } else {
+              const rawBody = await aiRes.text().catch(() => '')
+              console.warn('quiz-prompt API failed', aiRes.status, rawBody)
+              let detail = ''
+              try {
+                const parsed = JSON.parse(rawBody || '{}')
+                const msg = typeof parsed?.message === 'string' ? parsed.message.trim() : ''
+                const err = typeof parsed?.error === 'string' ? parsed.error.trim() : ''
+                detail = (msg || err) ? [msg, err].filter(Boolean).join(' — ') : ''
+              } catch {
+                detail = rawBody.trim()
+              }
 
-          const aiRes = await fetch('/api/ai/quiz-prompt', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'x-debug-echo': '1' },
-            body: JSON.stringify({
-              gradeLabel: gradeLabel || undefined,
-              teacherLatex: teacherLatexContext || undefined,
-                lessonContextText: lessonContextText || undefined,
-              previousPrompt: promptText || undefined,
-              sessionId: boardId || undefined,
-              phaseKey: phaseKey || undefined,
-              pointId: pointId || undefined,
-              pointIndex: Number.isFinite(pointIndex) ? pointIndex : undefined,
-              pointTitle: pointTitle || undefined,
-            }),
-          })
-          if (aiRes.ok) {
-            const data = await aiRes.json().catch(() => null)
-            const echoed = typeof data?.debug?.lessonContextText === 'string' ? data.debug.lessonContextText : ''
-            if (echoed) {
-              console.log('[quiz-prompt debug echo] lessonContextText (what Gemini received):\n' + echoed)
+              if (!promptText) {
+                const hint = detail ? ` (${detail})` : ''
+                promptText = `Gemini prompt suggestion failed${hint}. Enter quiz instructions manually.`
+              }
             }
-            const suggested = typeof data?.prompt === 'string' ? data.prompt.trim() : ''
-            if (suggested) {
-              promptText = suggested
-            }
-            const suggestedLabel = typeof data?.label === 'string' ? data.label.trim() : ''
-            if (suggestedLabel) {
-              quizLabel = suggestedLabel
-            }
-          } else {
-            const rawBody = await aiRes.text().catch(() => '')
-            console.warn('quiz-prompt API failed', aiRes.status, rawBody)
-            let detail = ''
-            try {
-              const parsed = JSON.parse(rawBody || '{}')
-              const msg = typeof parsed?.message === 'string' ? parsed.message.trim() : ''
-              const err = typeof parsed?.error === 'string' ? parsed.error.trim() : ''
-              detail = (msg || err) ? [msg, err].filter(Boolean).join(' — ') : ''
-            } catch {
-              detail = rawBody.trim()
-            }
-
+          } catch (err) {
+            console.warn('quiz-prompt API error', err)
             if (!promptText) {
-              const hint = detail ? ` (${detail})` : ''
-              promptText = `Gemini prompt suggestion failed${hint}. Enter quiz instructions manually.`
+              promptText = 'Gemini prompt suggestion failed. Enter quiz instructions manually.'
             }
           }
-        } catch (err) {
-          console.warn('quiz-prompt API error', err)
+        } else {
           if (!promptText) {
-            promptText = 'Gemini prompt suggestion failed. Enter quiz instructions manually.'
+            promptText = 'Enter quiz instructions manually.'
           }
         }
 
@@ -5483,30 +5490,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           promptText = trimmed
         }
 
-        // Ask Gemini for a sensible quiz timer based on the final prompt.
-        try {
-          const timerRes = await fetch('/api/ai/quiz-timer', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              gradeLabel: gradeLabel || undefined,
-              prompt: promptText,
-            }),
-          })
-          if (timerRes.ok) {
-            const data = await timerRes.json().catch(() => null)
-            const maybe = typeof data?.durationSec === 'number' ? Math.trunc(data.durationSec) : 0
-            if (Number.isFinite(maybe) && maybe > 0) {
-              durationSec = maybe
-              endsAt = Date.now() + maybe * 1000
+        // Ask Gemini for a sensible quiz timer based on the final prompt (admin-only).
+        // Never call AI tools for learner-created challenges.
+        if (!isChallengeBoard) {
+          try {
+            const timerRes = await fetch('/api/ai/quiz-timer', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                gradeLabel: gradeLabel || undefined,
+                prompt: promptText,
+              }),
+            })
+            if (timerRes.ok) {
+              const data = await timerRes.json().catch(() => null)
+              const maybe = typeof data?.durationSec === 'number' ? Math.trunc(data.durationSec) : 0
+              if (Number.isFinite(maybe) && maybe > 0) {
+                durationSec = maybe
+                endsAt = Date.now() + maybe * 1000
+              }
+            } else {
+              const rawBody = await timerRes.text().catch(() => '')
+              console.warn('quiz-timer API failed', timerRes.status, rawBody)
             }
-          } else {
-            const rawBody = await timerRes.text().catch(() => '')
-            console.warn('quiz-timer API failed', timerRes.status, rawBody)
+          } catch (err) {
+            console.warn('quiz-timer API error', err)
           }
-        } catch (err) {
-          console.warn('quiz-timer API error', err)
         }
 
         // Safety fallback: keep UX functional even if AI timer fails.

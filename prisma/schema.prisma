@@ -461,6 +461,7 @@ model LearnerResponse {
   id         String   @id @default(cuid())
   sessionKey String
   userId     String
+  ownerId    String?
   userEmail  String?
   quizId     String   @default("default")
   quizLabel  String?
@@ -478,6 +479,7 @@ model LearnerResponse {
   @@index([sessionKey])
   @@index([sessionKey, updatedAt])
   @@index([sessionKey, userId, updatedAt])
+  @@index([sessionKey, ownerId, updatedAt])
   @@index([sessionKey, userId, quizId, createdAt])
   @@index([sessionKey, quizPhaseKey, quizPointIndex, updatedAt])
 }

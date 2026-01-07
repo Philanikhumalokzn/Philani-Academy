@@ -32,19 +32,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Session key format is "challenge:<challengeId>".
   const isChallengeSession = sessionKey.startsWith('challenge:')
   const challengeId = isChallengeSession ? sessionKey.slice('challenge:'.length).trim() : ''
+  let challengeOwnerId: string | null = null
   if (req.method === 'POST' && isChallengeSession) {
     if (!challengeId) return res.status(400).json({ message: 'Invalid challenge session id' })
 
     const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
     const challenge = await userChallenge.findUnique({
       where: { id: challengeId },
-      select: { id: true, attemptsOpen: true },
+      select: { id: true, attemptsOpen: true, createdById: true },
     })
 
     if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
     if (!challenge.attemptsOpen) {
       return res.status(403).json({ message: 'Attempts are closed for this challenge' })
     }
+
+    challengeOwnerId = (challenge?.createdById ? String(challenge.createdById) : null)
   }
 
   // Subscription gating: learners must be subscribed to access session content.
@@ -114,6 +117,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           sessionKey,
           userId,
+          ownerId: challengeOwnerId,
           userEmail,
           quizId: quizIdToUse,
           prompt: safePrompt,
@@ -169,6 +173,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 quizPhaseKey: safeQuizPhaseKey,
                 quizPointId: safeQuizPointId,
                 quizPointIndex: safeQuizPointIndex,
+                ownerId: challengeOwnerId,
               },
             })
             return res.status(200).json(updated)

@@ -5190,6 +5190,8 @@ export default function Dashboard() {
                                     const results: any[] = Array.isArray(detail?.gradingJson?.results)
                                       ? detail.gradingJson.results
                                       : (Array.isArray(detail?.grade?.results) ? detail.grade.results : [])
+                                    const gradingJson = detail?.gradingJson
+                                    const rawGeminiOutput = String(detail?.rawGeminiOutput || '')
                                     const byQuestionId = detail?.responses?.byQuestionId || {}
                                     const questions = Array.isArray(detail?.assignment?.questions) ? detail.assignment.questions : []
 
@@ -5345,6 +5347,32 @@ export default function Dashboard() {
                                               )
                                             })}
                                           </div>
+                                        ) : null}
+
+                                        {isAdmin ? (
+                                          <>
+                                            <div className="pt-2">
+                                              <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                <div className="text-xs text-white/70 mb-1">Final grading JSON object</div>
+                                                {gradingJson ? (
+                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{JSON.stringify(gradingJson, null, 2)}</pre>
+                                                ) : (
+                                                  <div className="text-sm text-white/60">No grade JSON yet.</div>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="pt-2">
+                                              <div className="p-2 rounded border border-white/10 bg-white/5">
+                                                <div className="text-xs text-white/70 mb-1">Raw Gemini output (parser input)</div>
+                                                {rawGeminiOutput.trim() ? (
+                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{rawGeminiOutput}</pre>
+                                                ) : (
+                                                  <div className="text-sm text-white/60">Not available for this grade (requires re-grade after migration).</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </>
                                         ) : null}
                                       </div>
                                     )
@@ -5707,84 +5735,6 @@ export default function Dashboard() {
                                           </div>
                                         )
                                       })()}
-                                      {Array.isArray(assignmentStepFeedbackByQuestionId?.[qid]) && assignmentStepFeedbackByQuestionId[qid].length ? (
-                                        <div className="space-y-1">
-                                          <div className="text-xs muted">Step feedback</div>
-                                          {assignmentStepFeedbackByQuestionId[qid].slice(0, 30).map((s: any, idx: number) => {
-                                            const stepNum = (typeof s?.step === 'number' && Number.isFinite(s.step)) ? Math.max(1, Math.trunc(s.step)) : (idx + 1)
-                                            const awardedRaw = (s && typeof s === 'object') ? (s.awardedMarks ?? s.awarded ?? s.marks ?? s.score) : null
-                                            const awardedParsed = Number(awardedRaw)
-                                            const awardedInt = Number.isFinite(awardedParsed) ? Math.max(0, Math.trunc(awardedParsed)) : 0
-
-                                            const explicitIsCorrect = (s && typeof s === 'object' && typeof s.isCorrect === 'boolean') ? Boolean(s.isCorrect) : null
-                                            const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
-                                            const isSignificant = (s && typeof s === 'object' && typeof s.isSignificant === 'boolean') ? Boolean(s.isSignificant) : (!isCorrect)
-
-                                            const feedbackText = String((s && typeof s === 'object'
-                                              ? (s.feedback ?? s.comment ?? s.text ?? '')
-                                              : s) || '').trim()
-
-                                            const showFeedback = Boolean(feedbackText) || (!isCorrect && awardedInt === 0)
-
-                                            return (
-                                              <div key={`${qid}-${stepNum}-${idx}`} className="flex items-start gap-2">
-                                                <div className="shrink-0 pt-0.5">
-                                                  {awardedInt > 0 ? (
-                                                    <span
-                                                      className="text-green-500 flex items-center"
-                                                      aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`}
-                                                      title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}
-                                                    >
-                                                      {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
-                                                        <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                          <path
-                                                            d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
-                                                            fill="currentColor"
-                                                          />
-                                                        </svg>
-                                                      ))}
-                                                      {awardedInt > 12 ? (
-                                                        <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
-                                                      ) : null}
-                                                    </span>
-                                                  ) : isCorrect ? (
-                                                    <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
-                                                      <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                        <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                      </svg>
-                                                    </span>
-                                                  ) : (
-                                                    isSignificant ? (
-                                                      <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
-                                                        <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                          <path
-                                                            d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
-                                                            fill="currentColor"
-                                                          />
-                                                        </svg>
-                                                      </span>
-                                                    ) : (
-                                                      <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
-                                                        <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                          <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                        </svg>
-                                                      </span>
-                                                    )
-                                                  )}
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                  <div className="text-xs text-white/80">Step {stepNum}</div>
-                                                  {showFeedback ? (
-                                                    <div className="text-xs whitespace-pre-wrap break-words text-white/70">
-                                                      {(feedbackText || 'Check this step').slice(0, 200)}
-                                                    </div>
-                                                  ) : null}
-                                                </div>
-                                              </div>
-                                            )
-                                          })}
-                                        </div>
-                                      ) : null}
                                     </>
                                   )}
                                 </div>
@@ -5795,10 +5745,99 @@ export default function Dashboard() {
                               {(() => {
                                 const latex = String(assignmentResponsesByQuestionId?.[qid]?.latex || '')
                                 if (!latex.trim()) return <div className="text-sm muted">Not submitted yet.</div>
-                                const html = renderKatexDisplayHtml(latex)
-                                if (html) {
-                                  return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+
+                                const stepFeedback = Array.isArray(assignmentStepFeedbackByQuestionId?.[qid])
+                                  ? assignmentStepFeedbackByQuestionId[qid]
+                                  : []
+
+                                const steps = splitLatexIntoSteps(latex)
+                                if (Array.isArray(stepFeedback) && stepFeedback.length && Array.isArray(steps) && steps.length) {
+                                  const byStep = new Map<number, any>()
+                                  for (const s of stepFeedback) {
+                                    const idx2 = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
+                                    if (Number.isFinite(idx2) && idx2 > 0) byStep.set(Math.trunc(idx2), s)
+                                  }
+
+                                  return (
+                                    <div className="space-y-2">
+                                      {steps.map((stepLatex: string, i: number) => {
+                                        const stepNum = i + 1
+                                        const fb = byStep.get(stepNum)
+                                        const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
+                                        const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
+
+                                        const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
+                                        const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
+                                        const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
+                                        const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
+
+                                        const html = renderKatexDisplayHtml(stepLatex)
+                                        const line = html
+                                          ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
+                                          : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
+
+                                        return (
+                                          <div key={`${qid}-learner-step-${stepNum}`} className="flex items-start gap-3">
+                                            <div className="min-w-0 flex-1">{line}</div>
+                                            <div className="shrink-0 flex items-start gap-2">
+                                              {awardedInt > 0 ? (
+                                                <span
+                                                  className="text-green-500 flex items-center"
+                                                  aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`}
+                                                  title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}
+                                                >
+                                                  {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                    <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                      <path
+                                                        d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                                        fill="currentColor"
+                                                      />
+                                                    </svg>
+                                                  ))}
+                                                  {awardedInt > 12 ? (
+                                                    <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                  ) : null}
+                                                </span>
+                                              ) : isCorrect ? (
+                                                <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                  <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                    <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                  </svg>
+                                                </span>
+                                              ) : (
+                                                isSignificant ? (
+                                                  <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                    <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                      <path
+                                                        d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
+                                                        fill="currentColor"
+                                                      />
+                                                    </svg>
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                    <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                      <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                    </svg>
+                                                  </span>
+                                                )
+                                              )}
+
+                                              {!isCorrect && awardedInt === 0 ? (
+                                                <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                                                  {(feedbackText || 'Check this step').slice(0, 160)}
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
                                 }
+
+                                const html = renderKatexDisplayHtml(latex)
+                                if (html) return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
                                 return <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
                               })()}
                             </div>

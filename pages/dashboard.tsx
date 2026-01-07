@@ -5596,11 +5596,79 @@ export default function Dashboard() {
                                       {Array.isArray(assignmentStepFeedbackByQuestionId?.[qid]) && assignmentStepFeedbackByQuestionId[qid].length ? (
                                         <div className="space-y-1">
                                           <div className="text-xs muted">Step feedback</div>
-                                          {assignmentStepFeedbackByQuestionId[qid].slice(0, 20).map((s: any, idx: number) => (
-                                            <div key={idx} className="text-xs whitespace-pre-wrap break-words">
-                                              {String((s && typeof s === 'object' ? (s.feedback ?? s.comment ?? s.text ?? JSON.stringify(s)) : s) || '').trim()}
-                                            </div>
-                                          ))}
+                                          {assignmentStepFeedbackByQuestionId[qid].slice(0, 30).map((s: any, idx: number) => {
+                                            const stepNum = (typeof s?.step === 'number' && Number.isFinite(s.step)) ? Math.max(1, Math.trunc(s.step)) : (idx + 1)
+                                            const awardedRaw = (s && typeof s === 'object') ? (s.awardedMarks ?? s.awarded ?? s.marks ?? s.score) : null
+                                            const awardedParsed = Number(awardedRaw)
+                                            const awardedInt = Number.isFinite(awardedParsed) ? Math.max(0, Math.trunc(awardedParsed)) : 0
+
+                                            const explicitIsCorrect = (s && typeof s === 'object' && typeof s.isCorrect === 'boolean') ? Boolean(s.isCorrect) : null
+                                            const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
+                                            const isSignificant = (s && typeof s === 'object' && typeof s.isSignificant === 'boolean') ? Boolean(s.isSignificant) : (!isCorrect)
+
+                                            const feedbackText = String((s && typeof s === 'object'
+                                              ? (s.feedback ?? s.comment ?? s.text ?? '')
+                                              : s) || '').trim()
+
+                                            const showFeedback = Boolean(feedbackText) || (!isCorrect && awardedInt === 0)
+
+                                            return (
+                                              <div key={`${qid}-${stepNum}-${idx}`} className="flex items-start gap-2">
+                                                <div className="shrink-0 pt-0.5">
+                                                  {awardedInt > 0 ? (
+                                                    <span
+                                                      className="text-green-500 flex items-center"
+                                                      aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`}
+                                                      title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}
+                                                    >
+                                                      {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                        <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                          <path
+                                                            d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                                            fill="currentColor"
+                                                          />
+                                                        </svg>
+                                                      ))}
+                                                      {awardedInt > 12 ? (
+                                                        <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                      ) : null}
+                                                    </span>
+                                                  ) : isCorrect ? (
+                                                    <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                      <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                        <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                      </svg>
+                                                    </span>
+                                                  ) : (
+                                                    isSignificant ? (
+                                                      <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                        <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                          <path
+                                                            d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
+                                                            fill="currentColor"
+                                                          />
+                                                        </svg>
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                        <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                          <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                        </svg>
+                                                      </span>
+                                                    )
+                                                  )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="text-xs text-white/80">Step {stepNum}</div>
+                                                  {showFeedback ? (
+                                                    <div className="text-xs whitespace-pre-wrap break-words text-white/70">
+                                                      {(feedbackText || 'Check this step').slice(0, 200)}
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            )
+                                          })}
                                         </div>
                                       ) : null}
                                     </>

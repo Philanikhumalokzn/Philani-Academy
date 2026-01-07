@@ -2211,12 +2211,15 @@ export default function Dashboard() {
 
   const renderStudentQuickActionsRow = () => {
     const baseBtn =
-      'inline-flex items-center justify-center h-12 w-12 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
+      'inline-flex flex-col items-center justify-center gap-1 h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
 
     const activeBtn = 'bg-white/10 border-white/20 text-white'
 
     const btnClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
       `${baseBtn} ${studentMobileTab === tab ? activeBtn : ''}`
+
+    const labelClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
+      `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
       <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
@@ -2234,6 +2237,7 @@ export default function Dashboard() {
             <path d="M12 8v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" strokeWidth="2" />
           </svg>
+          <span className={labelClass('timeline')}>Timeline</span>
         </button>
 
         <button
@@ -2250,6 +2254,7 @@ export default function Dashboard() {
             <path d="M15 10.5 19 8v8l-4-2.5V10.5Z" fill="currentColor" />
             <path d="M5 7h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="2" />
           </svg>
+          <span className={labelClass('sessions')}>Sessions</span>
         </button>
 
         <button
@@ -2268,6 +2273,7 @@ export default function Dashboard() {
             <path d="M16 13c2.761 0 5 1.567 5 3.5V19H11v-2.5C11 14.567 13.239 13 16 13Z" stroke="currentColor" strokeWidth="2" />
             <path d="M8 13c2.761 0 5 1.567 5 3.5V19H3v-2.5C3 14.567 5.239 13 8 13Z" stroke="currentColor" strokeWidth="2" />
           </svg>
+          <span className={labelClass('groups')}>Groups</span>
         </button>
 
         <button
@@ -2284,6 +2290,7 @@ export default function Dashboard() {
             <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="2" />
             <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
+          <span className={labelClass('discover')}>Discover</span>
         </button>
       </section>
     )

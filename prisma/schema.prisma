@@ -180,6 +180,7 @@ model SessionRecord {
   id        String   @id @default(cuid())
   title     String
   description String?
+  thumbnailUrl String?
   joinUrl   String
   startsAt  DateTime
   endsAt    DateTime

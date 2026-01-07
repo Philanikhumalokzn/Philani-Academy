@@ -535,6 +535,7 @@ export default function Dashboard() {
   const [minEndsAt, setMinEndsAt] = useState('')
   const [sessions, setSessions] = useState<any[]>([])
   const [sessionsError, setSessionsError] = useState<string | null>(null)
+  const [sessionsLoading, setSessionsLoading] = useState(false)
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
@@ -754,6 +755,18 @@ export default function Dashboard() {
   const [timelineChallengesLoading, setTimelineChallengesLoading] = useState(false)
   const [timelineChallengesError, setTimelineChallengesError] = useState<string | null>(null)
   const timelineFetchedOnceRef = useRef(false)
+
+  const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
+  const [studentFeedLoading, setStudentFeedLoading] = useState(false)
+  const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
+
+  const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
+  const [sessionThumbnailUploading, setSessionThumbnailUploading] = useState(false)
+  const sessionThumbnailInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [updatingSessionThumbnailId, setUpdatingSessionThumbnailId] = useState<string | null>(null)
+  const [updatingSessionThumbnailBusy, setUpdatingSessionThumbnailBusy] = useState(false)
+  const updateSessionThumbnailInputRef = useRef<HTMLInputElement | null>(null)
 
   const [assignmentMasterGradingPrompt, setAssignmentMasterGradingPrompt] = useState('')
   const [assignmentMasterGradingPromptEditing, setAssignmentMasterGradingPromptEditing] = useState(false)
@@ -1970,6 +1983,97 @@ export default function Dashboard() {
     [normalizedRole]
   )
 
+  const sessionRole = (((session as any)?.user?.role as string | undefined) || 'student')
+  const canManageSessionThumbnails = sessionRole === 'admin' || sessionRole === 'teacher'
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    if (sessionRole !== 'student') return
+
+    let cancelled = false
+    setStudentFeedLoading(true)
+    setStudentFeedError(null)
+    void (async () => {
+      try {
+        const res = await fetch('/api/challenges/feed', { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          if (!cancelled) {
+            setStudentFeedError(data?.message || `Unable to load posts (${res.status})`)
+            setStudentFeedPosts([])
+          }
+          return
+        }
+        const posts = Array.isArray(data?.posts) ? data.posts : []
+        if (!cancelled) setStudentFeedPosts(posts)
+      } catch (err: any) {
+        if (!cancelled) {
+          setStudentFeedError(err?.message || 'Unable to load posts')
+          setStudentFeedPosts([])
+        }
+      } finally {
+        if (!cancelled) setStudentFeedLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status, sessionRole])
+
+  const uploadSessionThumbnail = useCallback(async (file: File) => {
+    if (!file) return null
+    setSessionThumbnailUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/sessions/upload-thumbnail', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to upload thumbnail (${res.status})`)
+        return null
+      }
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      return url || null
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload thumbnail')
+      return null
+    } finally {
+      setSessionThumbnailUploading(false)
+    }
+  }, [])
+
+  const updateSessionThumbnail = useCallback(async (sessionId: string, nextUrl: string | null) => {
+    if (!sessionId) return
+    setUpdatingSessionThumbnailBusy(true)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/thumbnail`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thumbnailUrl: nextUrl || '' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to update thumbnail (${res.status})`)
+        return
+      }
+
+      // Update local session cache so UI updates without refetch.
+      setSessions(prev =>
+        (prev || []).map((s: any) => (String(s?.id) === String(sessionId) ? { ...s, thumbnailUrl: data?.thumbnailUrl ?? null } : s))
+      )
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update thumbnail')
+    } finally {
+      setUpdatingSessionThumbnailBusy(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!timelineOpen) return
     if (!currentUserId) {
@@ -2126,6 +2230,126 @@ export default function Dashboard() {
     )
   }
 
+  const renderStudentHomeFeed = () => {
+    if (status !== 'authenticated' || sessionRole !== 'student') return null
+
+    const nowMs = Date.now()
+    const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
+    const getEndMs = (s: any) => {
+      if (s?.endsAt) return new Date(s.endsAt).getTime()
+      const startMs = getStartMs(s)
+      return startMs ? startMs + 60 * 60 * 1000 : 0
+    }
+    const isCurrentWindow = (s: any) => {
+      const startMs = getStartMs(s)
+      const endMs = getEndMs(s)
+      return Boolean(startMs && endMs && startMs <= nowMs && nowMs <= endMs)
+    }
+
+    const sortedSessions = [...(sessions || [])].sort((a, b) => getStartMs(a) - getStartMs(b))
+    const currentSessions = sortedSessions.filter(s => isCurrentWindow(s))
+    const defaultCurrentSessionId = currentSessions.length
+      ? String([...currentSessions].sort((a, b) => getStartMs(b) - getStartMs(a))[0].id)
+      : null
+
+    const resolvedCurrentLessonId =
+      (resolvedLiveSessionId && sessionById.has(String(resolvedLiveSessionId)) ? String(resolvedLiveSessionId) : null) ??
+      (defaultCurrentSessionId && sessionById.has(String(defaultCurrentSessionId)) ? String(defaultCurrentSessionId) : null)
+
+    const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
+    const lessonThumb = typeof (resolvedCurrentLesson as any)?.thumbnailUrl === 'string' ? (resolvedCurrentLesson as any).thumbnailUrl : ''
+
+    return (
+      <section className="space-y-3">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-semibold text-white">Current lesson</div>
+            <button
+              type="button"
+              className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
+              onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
+              disabled={sessionsLoading || !selectedGrade}
+            >
+              {sessionsLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {!resolvedCurrentLesson ? (
+            <div className="text-sm text-white/70">No current lesson right now.</div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+              {lessonThumb ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
+              ) : null}
+
+              <div className="p-3 space-y-2">
+                <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
+                {resolvedCurrentLesson.startsAt ? (
+                  <div className="text-xs text-white/60">
+                    {new Date(resolvedCurrentLesson.startsAt).toLocaleString()} →{' '}
+                    {new Date((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt).toLocaleString()}
+                  </div>
+                ) : null}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
+                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                  >
+                    Enter class
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+          <div className="font-semibold text-white">Posts</div>
+          {studentFeedLoading ? (
+            <div className="text-sm text-white/70">Loading…</div>
+          ) : studentFeedError ? (
+            <div className="text-sm text-red-400">{studentFeedError}</div>
+          ) : studentFeedPosts.length === 0 ? (
+            <div className="text-sm text-white/70">No posts yet.</div>
+          ) : (
+            <ul className="space-y-2">
+              {studentFeedPosts.slice(0, 15).map((p: any) => {
+                const title = (p?.title || '').trim() || 'Quiz'
+                const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
+                const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
+                const prompt = (p?.prompt || '').trim()
+                return (
+                  <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium text-white break-words">{title}</div>
+                        <div className="text-xs text-white/60">
+                          {authorName}{createdAt ? ` • ${createdAt}` : ''}
+                        </div>
+                        {prompt ? <div className="mt-1 text-sm text-white/70 break-words">{prompt.slice(0, 160)}{prompt.length > 160 ? '…' : ''}</div> : null}
+                      </div>
+                      {p?.id ? (
+                        <Link
+                          href={`/challenges/${encodeURIComponent(String(p.id))}`}
+                          className="btn btn-primary shrink-0"
+                        >
+                          Attempt
+                        </Link>
+                      ) : null}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
+    )
+  }
+
   useEffect(() => {
     if (availableSections.length === 0) return
     if (!availableSections.some(section => section.id === activeSection)) {
@@ -2241,6 +2465,7 @@ export default function Dashboard() {
           endsAt: endsAtIso,
           grade: selectedGrade,
           lessonScriptOverrideContent: buildLessonScriptOverride(),
+          thumbnailUrl: sessionThumbnailUrlDraft,
         })
       })
 
@@ -2251,6 +2476,7 @@ export default function Dashboard() {
         setStartsAt('')
         setEndsAt('')
         setLessonScriptDraft({ engage: [], explore: [], explain: [], elaborate: [], evaluate: [] })
+        setSessionThumbnailUrlDraft(null)
         fetchSessionsForGrade(selectedGrade)
         return
       }
@@ -2276,8 +2502,10 @@ export default function Dashboard() {
     if (!gradeToFetch) {
       setSessions([])
       setSessionsError('Select a grade to view sessions.')
+      setSessionsLoading(false)
       return
     }
+    setSessionsLoading(true)
     setSessionsError(null)
     setSessions([])
     try {
@@ -2298,6 +2526,8 @@ export default function Dashboard() {
       // Network or unexpected error
       console.error('fetchSessions error', err)
       setSessionsError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSessionsLoading(false)
     }
   }
 
@@ -4371,6 +4601,57 @@ export default function Dashboard() {
                             <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
                             <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
 
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold">Lesson thumbnail — optional</p>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    ref={sessionThumbnailInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.currentTarget.files?.[0]
+                                      if (!file) return
+                                      const url = await uploadSessionThumbnail(file)
+                                      if (url) setSessionThumbnailUrlDraft(url)
+                                      e.currentTarget.value = ''
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost text-xs"
+                                    onClick={() => sessionThumbnailInputRef.current?.click()}
+                                    disabled={sessionThumbnailUploading}
+                                  >
+                                    {sessionThumbnailUploading ? 'Uploading…' : 'Upload'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost text-xs"
+                                    onClick={() => setSessionThumbnailUrlDraft(null)}
+                                    disabled={!sessionThumbnailUrlDraft}
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                              </div>
+
+                              {sessionThumbnailUrlDraft ? (
+                                <div className="space-y-2">
+                                  <div className="text-xs muted break-all">{sessionThumbnailUrlDraft}</div>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={sessionThumbnailUrlDraft}
+                                    alt="Thumbnail preview"
+                                    className="w-full max-h-48 object-cover rounded-xl border border-white/10"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="text-xs muted">No thumbnail uploaded.</div>
+                              )}
+                            </div>
+
                             <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
                               <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
                               <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
@@ -4901,6 +5182,53 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-3">
+                      {canManageSessionThumbnails && sessionDetailsSessionId && sessionDetailsSession ? (
+                        <div className="mb-3 rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold">Lesson thumbnail</div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                ref={updateSessionThumbnailInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.currentTarget.files?.[0]
+                                  if (!file) return
+                                  const currentId = updatingSessionThumbnailId || sessionDetailsSessionId
+                                  if (!currentId) return
+                                  const url = await uploadSessionThumbnail(file)
+                                  if (url) await updateSessionThumbnail(currentId, url)
+                                  setUpdatingSessionThumbnailId(null)
+                                  e.currentTarget.value = ''
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => {
+                                  setUpdatingSessionThumbnailId(sessionDetailsSessionId)
+                                  updateSessionThumbnailInputRef.current?.click()
+                                }}
+                                disabled={updatingSessionThumbnailBusy}
+                              >
+                                {updatingSessionThumbnailBusy ? 'Updating…' : 'Upload / Update'}
+                              </button>
+                            </div>
+                          </div>
+                          {typeof (sessionDetailsSession as any)?.thumbnailUrl === 'string' && (sessionDetailsSession as any).thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={(sessionDetailsSession as any).thumbnailUrl}
+                              alt="Lesson thumbnail"
+                              className="w-full max-h-48 object-cover rounded-xl border border-white/10"
+                            />
+                          ) : (
+                            <div className="text-xs muted">No thumbnail.</div>
+                          )}
+                        </div>
+                      ) : null}
+
                       <div className="mb-3 flex items-center justify-center gap-2">
                         <button
                           type="button"
@@ -7160,6 +7488,8 @@ export default function Dashboard() {
                 }}
               >
               {renderStudentQuickActionsRow()}
+
+              {renderStudentHomeFeed()}
 
               {renderOverviewCards({ hideGradeWorkspace: true })}
               {status === 'authenticated' && (

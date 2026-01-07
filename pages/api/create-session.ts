@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const role = token.role as string | undefined
   if (!role || (role !== 'admin' && role !== 'teacher')) return res.status(403).json({ message: 'Forbidden' })
 
-  const { title, joinUrl, startsAt, endsAt, grade, lessonScriptOverrideContent } = req.body
+  const { title, joinUrl, startsAt, endsAt, grade, lessonScriptOverrideContent, thumbnailUrl } = req.body
   if (!title || !joinUrl || !startsAt || !endsAt) return res.status(400).json({ message: 'Missing fields' })
 
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
@@ -41,6 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rec = await prisma.sessionRecord.create({ data: {
     title,
     description: '',
+    thumbnailUrl: typeof thumbnailUrl === 'string' && thumbnailUrl.trim() ? thumbnailUrl.trim().slice(0, 2000) : null,
     joinUrl,
     startsAt: startDate,
     endsAt: endDate,

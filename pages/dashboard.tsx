@@ -2314,6 +2314,10 @@ export default function Dashboard() {
 
     const sortedSessions = [...(sessions || [])].sort((a, b) => getStartMs(a) - getStartMs(b))
     const currentSessions = sortedSessions.filter(s => isCurrentWindow(s))
+    const pastSessions = sortedSessions
+      .filter(s => getEndMs(s) < nowMs)
+      .sort((a, b) => getStartMs(b) - getStartMs(a))
+    const pastSessionIds = pastSessions.map(s => String(s?.id || '')).filter(Boolean)
     const defaultCurrentSessionId = currentSessions.length
       ? String([...currentSessions].sort((a, b) => getStartMs(b) - getStartMs(a))[0].id)
       : null
@@ -2388,6 +2392,27 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold text-white">Past lessons</div>
+              <button
+                type="button"
+                className="btn btn-ghost text-xs"
+                onClick={() => openPastSessionsList(pastSessionIds)}
+                disabled={pastSessionIds.length === 0}
+              >
+                Open
+              </button>
+            </div>
+            {pastSessionIds.length === 0 ? (
+              <div className="text-sm text-white/70">No past lessons yet.</div>
+            ) : (
+              <div className="text-sm text-white/70">
+                {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">

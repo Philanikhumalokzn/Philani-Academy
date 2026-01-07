@@ -749,6 +749,12 @@ export default function Dashboard() {
   const [assignmentSolutionWorkedSolutionSavingQuestionId, setAssignmentSolutionWorkedSolutionSavingQuestionId] = useState<string | null>(null)
   const [assignmentSolutionWorkedSolutionGeneratingQuestionId, setAssignmentSolutionWorkedSolutionGeneratingQuestionId] = useState<string | null>(null)
 
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  const [timelineChallenges, setTimelineChallenges] = useState<any[]>([])
+  const [timelineChallengesLoading, setTimelineChallengesLoading] = useState(false)
+  const [timelineChallengesError, setTimelineChallengesError] = useState<string | null>(null)
+  const timelineFetchedOnceRef = useRef(false)
+
   const [assignmentMasterGradingPrompt, setAssignmentMasterGradingPrompt] = useState('')
   const [assignmentMasterGradingPromptEditing, setAssignmentMasterGradingPromptEditing] = useState(false)
   const [assignmentGradingPromptByQuestionId, setAssignmentGradingPromptByQuestionId] = useState<Record<string, string>>({})
@@ -1948,6 +1954,7 @@ export default function Dashboard() {
     return 'guest'
   }, [session])
   const realtimeDisplayName = session?.user?.name || session?.user?.email || 'Participant'
+  const currentUserId = (session as any)?.user?.id as string | undefined
   const userGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
   const accountGradeLabel = status === 'authenticated'
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
@@ -1962,6 +1969,96 @@ export default function Dashboard() {
     () => DASHBOARD_SECTIONS.filter(section => (section.roles as ReadonlyArray<SectionRole>).includes(normalizedRole)),
     [normalizedRole]
   )
+
+  useEffect(() => {
+    if (!timelineOpen) return
+    if (!currentUserId) {
+      setTimelineChallenges([])
+      setTimelineChallengesError('Timeline unavailable: missing user id')
+      return
+    }
+    if (timelineFetchedOnceRef.current) return
+
+    timelineFetchedOnceRef.current = true
+    setTimelineChallengesLoading(true)
+    setTimelineChallengesError(null)
+    void (async () => {
+      try {
+        const res = await fetch(`/api/profile/view/${encodeURIComponent(currentUserId)}/challenges`, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setTimelineChallengesError(data?.message || `Unable to load timeline (${res.status})`)
+          setTimelineChallenges([])
+          return
+        }
+        const items = Array.isArray(data?.challenges) ? data.challenges : []
+        setTimelineChallenges(items)
+      } catch (err: any) {
+        setTimelineChallengesError(err?.message || 'Unable to load timeline')
+        setTimelineChallenges([])
+      } finally {
+        setTimelineChallengesLoading(false)
+      }
+    })()
+  }, [timelineOpen, currentUserId])
+
+  const renderTimelineCard = () => {
+    const canLink = Boolean(status === 'authenticated' && currentUserId)
+    const timelineHref = canLink ? `/u/${encodeURIComponent(String(currentUserId))}` : '/profile'
+    const preview = timelineChallenges.slice(0, 3)
+
+    return (
+      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-semibold text-white">Timeline</div>
+          <div className="flex items-center gap-2">
+            <Link href={timelineHref} className="btn btn-ghost text-xs" aria-disabled={!canLink}>
+              View
+            </Link>
+            <button
+              type="button"
+              className="btn btn-ghost text-xs"
+              onClick={() => setTimelineOpen(v => !v)}
+            >
+              {timelineOpen ? 'Hide' : 'Open'}
+            </button>
+          </div>
+        </div>
+
+        {!timelineOpen ? (
+          <div className="text-sm text-white/70">Your posted quizzes live on your timeline.</div>
+        ) : timelineChallengesLoading ? (
+          <div className="text-sm text-white/70">Loading…</div>
+        ) : timelineChallengesError ? (
+          <div className="text-sm text-red-400">{timelineChallengesError}</div>
+        ) : preview.length === 0 ? (
+          <div className="text-sm text-white/70">No quizzes yet.</div>
+        ) : (
+          <ul className="space-y-2">
+            {preview.map((c: any) => {
+              const title = (c?.title || '').trim() || 'Quiz'
+              const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
+              return (
+                <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-white break-words">{title}</div>
+                      {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+                    </div>
+                    {c?.id ? (
+                      <Link href={`/challenges/${encodeURIComponent(String(c.id))}`} className="btn btn-primary shrink-0">
+                        Attempt
+                      </Link>
+                    ) : null}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    )
+  }
 
   useEffect(() => {
     if (availableSections.length === 0) return
@@ -6776,6 +6873,7 @@ export default function Dashboard() {
                 }}
               >
                 <SectionNav />
+                {renderTimelineCard()}
                 <section className="min-w-0 space-y-6">
                   <OverviewSection />
                 </section>
@@ -6995,6 +7093,7 @@ export default function Dashboard() {
                   maskSize: '100% 100%',
                 }}
               >
+              {renderTimelineCard()}
               <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-white">Sessions</div>
@@ -7070,6 +7169,8 @@ export default function Dashboard() {
                 )}
               </div>
             </header>
+
+            {renderTimelineCard()}
 
             <SectionNav />
 

@@ -2060,6 +2060,72 @@ export default function Dashboard() {
     )
   }
 
+  const renderStudentQuickActionsRow = () => {
+    const canLinkTimeline = Boolean(status === 'authenticated' && currentUserId)
+    const timelineHref = canLinkTimeline ? `/u/${encodeURIComponent(String(currentUserId))}` : '/profile'
+
+    const baseBtn =
+      'inline-flex items-center justify-center h-12 w-12 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
+
+    return (
+      <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
+        <Link
+          href={timelineHref}
+          className={baseBtn}
+          aria-disabled={!canLinkTimeline}
+          aria-label="Timeline"
+          title="Timeline"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 8v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </Link>
+
+        <button
+          type="button"
+          className={baseBtn}
+          onClick={() => setMobilePanels(prev => ({ ...prev, sessions: true }))}
+          aria-label="Sessions"
+          title="Sessions"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M15 10.5 19 8v8l-4-2.5V10.5Z" fill="currentColor" />
+            <path d="M5 7h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          className={baseBtn}
+          onClick={() => openDashboardOverlay('groups')}
+          aria-label="Groups"
+          title="Groups"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M16 11a3 3 0 1 0-2.999-3A3 3 0 0 0 16 11Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M16 13c2.761 0 5 1.567 5 3.5V19H11v-2.5C11 14.567 13.239 13 16 13Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M8 13c2.761 0 5 1.567 5 3.5V19H3v-2.5C3 14.567 5.239 13 8 13Z" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          className={baseBtn}
+          onClick={() => openDashboardOverlay('discover')}
+          aria-label="Discover"
+          title="Discover"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      </section>
+    )
+  }
+
   useEffect(() => {
     if (availableSections.length === 0) return
     if (!availableSections.some(section => section.id === activeSection)) {
@@ -7093,48 +7159,7 @@ export default function Dashboard() {
                   maskSize: '100% 100%',
                 }}
               >
-              {renderTimelineCard()}
-              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-white">Sessions</div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost text-xs"
-                    onClick={() => setMobilePanels(prev => ({ ...prev, sessions: true }))}
-                  >
-                    Open
-                  </button>
-                </div>
-                <div className="text-sm text-white/70">Open sessions in an overlay.</div>
-              </section>
-
-              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-white">Groups</div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost text-xs"
-                    onClick={() => openDashboardOverlay('groups')}
-                  >
-                    Open
-                  </button>
-                </div>
-                <div className="text-sm text-white/70">Create or join groups and see classmates.</div>
-              </section>
-
-              <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-white">Discover</div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost text-xs"
-                    onClick={() => openDashboardOverlay('discover')}
-                  >
-                    Open
-                  </button>
-                </div>
-                <div className="text-sm text-white/70">Find people and request to join groups.</div>
-              </section>
+              {renderStudentQuickActionsRow()}
 
               {renderOverviewCards({ hideGradeWorkspace: true })}
               {status === 'authenticated' && (

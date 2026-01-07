@@ -334,6 +334,7 @@ export default function Dashboard() {
   const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
   const [challengePromptDraft, setChallengePromptDraft] = useState('')
   const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
+  const [challengeMaxAttempts, setChallengeMaxAttempts] = useState<string>('unlimited')
   const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
   const [challengeUploading, setChallengeUploading] = useState(false)
   const [challengePosting, setChallengePosting] = useState(false)
@@ -482,6 +483,7 @@ export default function Dashboard() {
     }
 
     const grade = selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null
+    const maxAttempts = challengeMaxAttempts === 'unlimited' ? null : parseInt(challengeMaxAttempts, 10)
     setChallengePosting(true)
     try {
       const res = await fetch('/api/challenges', {
@@ -494,6 +496,7 @@ export default function Dashboard() {
           imageUrl: challengeImageUrl,
           audience,
           grade,
+          maxAttempts,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -504,6 +507,7 @@ export default function Dashboard() {
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
       setChallengeAudienceDraft('public')
+      setChallengeMaxAttempts('unlimited')
       setChallengeImageUrl(null)
       alert('Posted')
     } catch (err: any) {
@@ -754,6 +758,7 @@ export default function Dashboard() {
   const [timelineChallenges, setTimelineChallenges] = useState<any[]>([])
   const [timelineChallengesLoading, setTimelineChallengesLoading] = useState(false)
   const [timelineChallengesError, setTimelineChallengesError] = useState<string | null>(null)
+  const [timelineUserId, setTimelineUserId] = useState<string | null>(null)
   const timelineFetchedOnceRef = useRef(false)
 
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
@@ -2121,11 +2126,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!timelineOpen) return
-    if (!currentUserId) {
-      setTimelineChallenges([])
-      setTimelineChallengesError('Timeline unavailable: missing user id')
-      return
-    }
     if (timelineFetchedOnceRef.current) return
 
     timelineFetchedOnceRef.current = true
@@ -2133,7 +2133,25 @@ export default function Dashboard() {
     setTimelineChallengesError(null)
     void (async () => {
       try {
-        const res = await fetch(`/api/profile/view/${encodeURIComponent(currentUserId)}/challenges`, { credentials: 'same-origin' })
+        // First, get the user ID from the profile API
+        const profileRes = await fetch('/api/profile', { credentials: 'same-origin' })
+        if (!profileRes.ok) {
+          setTimelineChallengesError('Failed to load profile')
+          setTimelineChallengesLoading(false)
+          return
+        }
+        const profileData = await profileRes.json().catch(() => ({}))
+        const userId = profileData?.id as string | undefined
+        
+        if (!userId) {
+          setTimelineChallengesError('Timeline unavailable: missing user id')
+          setTimelineChallengesLoading(false)
+          return
+        }
+
+        setTimelineUserId(userId)
+
+        const res = await fetch(`/api/profile/view/${encodeURIComponent(userId)}/challenges`, { credentials: 'same-origin' })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           setTimelineChallengesError(data?.message || `Unable to load timeline (${res.status})`)
@@ -2149,11 +2167,11 @@ export default function Dashboard() {
         setTimelineChallengesLoading(false)
       }
     })()
-  }, [timelineOpen, currentUserId])
+  }, [timelineOpen])
 
   const renderTimelineCard = () => {
-    const canLink = Boolean(status === 'authenticated' && currentUserId)
-    const timelineHref = canLink ? `/u/${encodeURIComponent(String(currentUserId))}` : '/profile'
+    const canLink = Boolean(status === 'authenticated' && timelineUserId)
+    const timelineHref = canLink ? `/u/${encodeURIComponent(String(timelineUserId))}` : '/profile'
     const preview = timelineChallenges.slice(0, 3)
 
     return (
@@ -4201,7 +4219,7 @@ export default function Dashboard() {
                         onChange={(e) => setChallengeTitleDraft(e.target.value)}
                       />
 
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="grid gap-2 sm:grid-cols-3">
                         <div className="space-y-1">
                           <div className="text-xs muted">Type</div>
                           <select className="input" value={createKind} onChange={(e) => setCreateKind(e.target.value as any)}>
@@ -4218,6 +4236,21 @@ export default function Dashboard() {
                             <option value="public">Public</option>
                             <option value="grade">My grade</option>
                             <option value="private">Private</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-xs muted">Max Attempts</div>
+                          <select
+                            className="input"
+                            value={challengeMaxAttempts}
+                            onChange={(e) => setChallengeMaxAttempts(e.target.value)}
+                          >
+                            <option value="unlimited">Unlimited</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="5">5</option>
+                            <option value="10">10</option>
                           </select>
                         </div>
                       </div>

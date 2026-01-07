@@ -32,6 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const bodyGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
     const grade = bodyGrade || tokenGrade || null
 
+    const maxAttempts = (typeof body.maxAttempts === 'number' && body.maxAttempts > 0) 
+      ? Math.min(100, Math.max(1, Math.floor(body.maxAttempts)))
+      : null
+
     const hasMeaningfulPrompt = Boolean(prompt)
     const hasImage = Boolean(imageUrl)
     if (!hasMeaningfulPrompt && !hasImage) {
@@ -50,6 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           imageUrl,
           grade,
           audience,
+          maxAttempts,
         },
       })
       return res.status(200).json(created)

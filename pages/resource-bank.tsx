@@ -17,6 +17,23 @@ type ResourceBankItem = {
   createdById?: string | null
   createdAt: string
   createdBy?: { id: string; name?: string | null; email?: string | null; avatar?: string | null } | null
+  parsedAt?: string | null
+  parseError?: string | null
+}
+
+type ParsedPdfResult = {
+  kind: 'pdf'
+  version: 1
+  resourceId: string
+  extractedAt: string
+  pages: Array<{
+    pageNumber: number
+    width: number
+    height: number
+    lines: Array<{ text: string; bbox: { x: number; y: number; w: number; h: number } }>
+    diagrams: Array<{ url: string; bbox: { x: number; y: number; w: number; h: number } }>
+  }>
+  questions: Array<{ index: number; label: string; pageNumber: number; startLine: number; endLine: number; text: string }>
 }
 
 export default function ResourceBankPage() {
@@ -36,6 +53,11 @@ export default function ResourceBankPage() {
   const [uploading, setUploading] = useState(false)
   const [parseAfterUpload, setParseAfterUpload] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+
+  const [parsedOpenId, setParsedOpenId] = useState<string | null>(null)
+  const [parsedLoadingId, setParsedLoadingId] = useState<string | null>(null)
+  const [parsedError, setParsedError] = useState<string | null>(null)
+  const [parsedById, setParsedById] = useState<Record<string, { parsedAt: string | null; parseError: string | null; parsedJson: ParsedPdfResult | null }>>({})
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -109,6 +131,48 @@ export default function ResourceBankPage() {
     if (!file) return false
     const name = (file.name || '').toLowerCase()
     return file.type === 'application/pdf' || name.endsWith('.pdf')
+  }
+
+  const looksLikePdfItem = (item: ResourceBankItem) => {
+    const ct = String(item.contentType || '').toLowerCase()
+    const fn = String(item.filename || '').toLowerCase()
+    const url = String(item.url || '').toLowerCase()
+    return ct.includes('pdf') || fn.endsWith('.pdf') || url.includes('.pdf')
+  }
+
+  const openParsedPanel = async (id: string) => {
+    const safeId = String(id || '')
+    if (!safeId) return
+
+    if (parsedOpenId === safeId) {
+      setParsedOpenId(null)
+      return
+    }
+
+    setParsedOpenId(safeId)
+    setParsedError(null)
+    if (parsedById[safeId]) return
+
+    setParsedLoadingId(safeId)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(safeId)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load parsed resource (${res.status})`)
+
+      const parsedJson = (data?.parsedJson && typeof data.parsedJson === 'object') ? (data.parsedJson as ParsedPdfResult) : null
+      setParsedById(prev => ({
+        ...prev,
+        [safeId]: {
+          parsedAt: data?.parsedAt ? String(data.parsedAt) : null,
+          parseError: data?.parseError ? String(data.parseError) : null,
+          parsedJson,
+        }
+      }))
+    } catch (err: any) {
+      setParsedError(err?.message || 'Failed to load parsed resource')
+    } finally {
+      setParsedLoadingId(null)
+    }
   }
 
   const handleUpload = async () => {
@@ -295,33 +359,126 @@ export default function ResourceBankPage() {
                 {items.length > 0 ? (
                   <ul className="space-y-2">
                     {items.map((item) => (
-                      <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="min-w-0">
-                          <div className="font-medium text-white truncate">{item.title}</div>
-                          <div className="text-xs muted">
-                            {item.tag ? `${item.tag} • ` : ''}
-                            {gradeToLabel(item.grade)}
+                      <li key={item.id} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-medium text-white truncate">{item.title}</div>
+                            <div className="text-xs muted">
+                              {item.tag ? `${item.tag} • ` : ''}
+                              {gradeToLabel(item.grade)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {looksLikePdfItem(item) ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => void openParsedPanel(item.id)}
+                              >
+                                {parsedOpenId === item.id ? 'Hide parsed' : 'View parsed'}
+                              </button>
+                            ) : null}
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="btn btn-ghost"
+                            >
+                              Open
+                            </a>
+                            {canDelete(item) ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => void handleDelete(item.id)}
+                              >
+                                Delete
+                              </button>
+                            ) : null}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-ghost"
-                          >
-                            Open
-                          </a>
-                          {canDelete(item) ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              onClick={() => void handleDelete(item.id)}
-                            >
-                              Delete
-                            </button>
-                          ) : null}
-                        </div>
+
+                        {parsedOpenId === item.id ? (
+                          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+                            {parsedError ? <div className="text-sm text-red-200">{parsedError}</div> : null}
+                            {parsedLoadingId === item.id ? (
+                              <div className="text-sm muted">Loading parsed view…</div>
+                            ) : (
+                              (() => {
+                                const payload = parsedById[item.id]
+                                if (!payload) return <div className="text-sm muted">No parsed data loaded.</div>
+                                if (payload.parseError) return <div className="text-sm text-red-200">{payload.parseError}</div>
+                                if (!payload.parsedJson) return <div className="text-sm muted">Not parsed yet (or parser output missing).</div>
+
+                                const parsed = payload.parsedJson
+
+                                return (
+                                  <div className="space-y-4">
+                                    <div className="text-xs muted">
+                                      Parsed: {payload.parsedAt ? new Date(payload.parsedAt).toLocaleString() : '—'} • {parsed.pages.length} pages • {parsed.questions.length} questions
+                                    </div>
+
+                                    {parsed.questions.length ? (
+                                      <div className="space-y-2">
+                                        <div className="text-sm font-semibold text-white">Questions</div>
+                                        <ul className="space-y-2">
+                                          {parsed.questions.slice(0, 25).map((q) => (
+                                            <li key={q.index} className="rounded-lg border border-white/10 bg-white/5 p-2">
+                                              <div className="text-xs muted">{q.label} • Page {q.pageNumber}</div>
+                                              <div className="text-sm text-white whitespace-pre-line">{q.text}</div>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                        {parsed.questions.length > 25 ? (
+                                          <div className="text-xs muted">Showing first 25 questions.</div>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+
+                                    <div className="space-y-4">
+                                      <div className="text-sm font-semibold text-white">Pages</div>
+                                      {parsed.pages.map((p) => (
+                                        <div key={p.pageNumber} className="space-y-2">
+                                          <div className="text-xs muted">Page {p.pageNumber}</div>
+
+                                          {/* Diagram-only positioning preview */}
+                                          <div
+                                            className="w-full rounded-lg border border-white/10 bg-white/5 overflow-hidden"
+                                            style={{ position: 'relative', paddingTop: `${(p.height / Math.max(1, p.width)) * 100}%` }}
+                                          >
+                                            {p.diagrams.map((d, idx) => (
+                                              // eslint-disable-next-line @next/next/no-img-element
+                                              <img
+                                                key={idx}
+                                                src={d.url}
+                                                alt={`Diagram ${idx + 1}`}
+                                                style={{
+                                                  position: 'absolute',
+                                                  left: `${d.bbox.x * 100}%`,
+                                                  top: `${d.bbox.y * 100}%`,
+                                                  width: `${d.bbox.w * 100}%`,
+                                                  height: `${d.bbox.h * 100}%`,
+                                                  objectFit: 'contain',
+                                                }}
+                                              />
+                                            ))}
+                                          </div>
+
+                                          <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                                            <div className="text-xs muted mb-1">Extracted text</div>
+                                            <div className="text-sm text-white whitespace-pre-line">
+                                              {p.lines.map(l => l.text).join('\n')}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              })()
+                            )}
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

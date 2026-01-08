@@ -711,6 +711,11 @@ export default function Dashboard() {
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null)
   const [assignmentTitle, setAssignmentTitle] = useState('')
   const [assignmentParseAfterUpload, setAssignmentParseAfterUpload] = useState(false)
+  const [assignmentImportedResourceId, setAssignmentImportedResourceId] = useState<string | null>(null)
+  const [assignmentParsedOpen, setAssignmentParsedOpen] = useState(false)
+  const [assignmentParsedLoading, setAssignmentParsedLoading] = useState(false)
+  const [assignmentParsedError, setAssignmentParsedError] = useState<string | null>(null)
+  const [assignmentParsedPayload, setAssignmentParsedPayload] = useState<any | null>(null)
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
   const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
   const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
@@ -3678,6 +3683,10 @@ export default function Dashboard() {
       }
 
       const rbId = typeof data?.resourceBankItemId === 'string' ? data.resourceBankItemId.trim() : ''
+      setAssignmentImportedResourceId(rbId || null)
+      setAssignmentParsedOpen(false)
+      setAssignmentParsedError(null)
+      setAssignmentParsedPayload(null)
       if (shouldParse && rbId) {
         void fetch(`/api/resources/${encodeURIComponent(rbId)}/parse`, {
           method: 'POST',
@@ -3702,6 +3711,26 @@ export default function Dashboard() {
       setAssignmentImportError(err?.message || 'Import failed')
     } finally {
       setAssignmentImporting(false)
+    }
+  }
+
+  async function openImportedAssignmentParsedView() {
+    const id = String(assignmentImportedResourceId || '')
+    if (!id) return
+    setAssignmentParsedOpen(v => !v)
+    if (assignmentParsedPayload) return
+
+    setAssignmentParsedLoading(true)
+    setAssignmentParsedError(null)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load parsed resource (${res.status})`)
+      setAssignmentParsedPayload(data)
+    } catch (err: any) {
+      setAssignmentParsedError(err?.message || 'Failed to load parsed resource')
+    } finally {
+      setAssignmentParsedLoading(false)
     }
   }
 
@@ -5854,6 +5883,101 @@ export default function Dashboard() {
                                     {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
                                   </button>
                                 </div>
+
+                                {assignmentImportedResourceId ? (
+                                  <div className="pt-1">
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost text-xs"
+                                      onClick={() => void openImportedAssignmentParsedView()}
+                                      disabled={assignmentParsedLoading}
+                                    >
+                                      {assignmentParsedLoading ? 'Loading parsed…' : (assignmentParsedOpen ? 'Hide parsed' : 'View parsed')}
+                                    </button>
+                                  </div>
+                                ) : null}
+
+                                {assignmentParsedOpen ? (
+                                  <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+                                    {assignmentParsedError ? <div className="text-sm text-red-200">{assignmentParsedError}</div> : null}
+                                    {(() => {
+                                      const data = assignmentParsedPayload
+                                      const parseError = data?.parseError ? String(data.parseError) : ''
+                                      const parsedJson = data?.parsedJson && typeof data.parsedJson === 'object' ? data.parsedJson : null
+                                      if (parseError) return <div className="text-sm text-red-200">{parseError}</div>
+                                      if (!parsedJson) return <div className="text-sm muted">Not parsed yet (or parser output missing).</div>
+
+                                      const pages = Array.isArray(parsedJson?.pages) ? parsedJson.pages : []
+                                      const questions = Array.isArray(parsedJson?.questions) ? parsedJson.questions : []
+
+                                      return (
+                                        <div className="space-y-4">
+                                          <div className="text-xs muted">
+                                            Parsed: {data?.parsedAt ? new Date(String(data.parsedAt)).toLocaleString() : '—'} • {pages.length} pages • {questions.length} questions
+                                          </div>
+
+                                          {questions.length ? (
+                                            <div className="space-y-2">
+                                              <div className="text-sm font-semibold text-white">Questions</div>
+                                              <ul className="space-y-2">
+                                                {questions.slice(0, 10).map((q: any, idx: number) => (
+                                                  <li key={String(q?.index ?? idx)} className="rounded-lg border border-white/10 bg-white/5 p-2">
+                                                    <div className="text-xs muted">{String(q?.label || 'Q')} • Page {String(q?.pageNumber || '')}</div>
+                                                    <div className="text-sm text-white whitespace-pre-line">{String(q?.text || '')}</div>
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                              {questions.length > 10 ? <div className="text-xs muted">Showing first 10 questions.</div> : null}
+                                            </div>
+                                          ) : null}
+
+                                          <div className="space-y-4">
+                                            <div className="text-sm font-semibold text-white">Pages</div>
+                                            {pages.slice(0, 6).map((p: any, idx: number) => {
+                                              const diagrams = Array.isArray(p?.diagrams) ? p.diagrams : []
+                                              const lines = Array.isArray(p?.lines) ? p.lines : []
+                                              const pageW = Number(p?.width) || 1
+                                              const pageH = Number(p?.height) || 1
+                                              return (
+                                                <div key={String(p?.pageNumber ?? idx)} className="space-y-2">
+                                                  <div className="text-xs muted">Page {String(p?.pageNumber ?? '')}</div>
+                                                  <div
+                                                    className="w-full rounded-lg border border-white/10 bg-white/5 overflow-hidden"
+                                                    style={{ position: 'relative', paddingTop: `${(pageH / Math.max(1, pageW)) * 100}%` }}
+                                                  >
+                                                    {diagrams.map((d: any, dIdx: number) => (
+                                                      // eslint-disable-next-line @next/next/no-img-element
+                                                      <img
+                                                        key={dIdx}
+                                                        src={String(d?.url || '')}
+                                                        alt={`Diagram ${dIdx + 1}`}
+                                                        style={{
+                                                          position: 'absolute',
+                                                          left: `${(Number(d?.bbox?.x) || 0) * 100}%`,
+                                                          top: `${(Number(d?.bbox?.y) || 0) * 100}%`,
+                                                          width: `${(Number(d?.bbox?.w) || 0) * 100}%`,
+                                                          height: `${(Number(d?.bbox?.h) || 0) * 100}%`,
+                                                          objectFit: 'contain',
+                                                        }}
+                                                      />
+                                                    ))}
+                                                  </div>
+                                                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                                                    <div className="text-xs muted mb-1">Extracted text</div>
+                                                    <div className="text-sm text-white whitespace-pre-line">
+                                                      {lines.map((l: any) => String(l?.text || '')).join('\n')}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )
+                                            })}
+                                            {pages.length > 6 ? <div className="text-xs muted">Showing first 6 pages.</div> : null}
+                                          </div>
+                                        </div>
+                                      )
+                                    })()}
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           )}

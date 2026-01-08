@@ -710,6 +710,7 @@ export default function Dashboard() {
   const [assignmentImportError, setAssignmentImportError] = useState<string | null>(null)
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null)
   const [assignmentTitle, setAssignmentTitle] = useState('')
+  const [assignmentParseAfterUpload, setAssignmentParseAfterUpload] = useState(false)
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
   const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
   const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
@@ -3651,6 +3652,15 @@ export default function Dashboard() {
       setAssignmentImportError('Choose a PDF or image first.')
       return
     }
+
+    const isPdfFile = (file: File | null) => {
+      if (!file) return false
+      const name = (file.name || '').toLowerCase()
+      return file.type === 'application/pdf' || name.endsWith('.pdf')
+    }
+
+    const shouldParse = assignmentParseAfterUpload && isPdfFile(assignmentFile)
+
     setAssignmentImportError(null)
     setAssignmentImporting(true)
     try {
@@ -3666,6 +3676,21 @@ export default function Dashboard() {
       if (!res.ok) {
         throw new Error(data?.message || `Import failed (${res.status})`)
       }
+
+      const rbId = typeof data?.resourceBankItemId === 'string' ? data.resourceBankItemId.trim() : ''
+      if (shouldParse && rbId) {
+        void fetch(`/api/resources/${encodeURIComponent(rbId)}/parse`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        }).then(async (parseRes) => {
+          if (parseRes.ok) return
+          const parseData = await parseRes.json().catch(() => ({}))
+          alert(parseData?.message || `Parse failed (${parseRes.status})`)
+        }).catch((err: any) => {
+          alert(err?.message || 'Parse failed')
+        })
+      }
+
       setAssignmentFile(null)
       setAssignmentTitle('')
       await fetchAssignments(sessionId)
@@ -5809,6 +5834,15 @@ export default function Dashboard() {
                                   accept="application/pdf,image/*"
                                   onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
                                 />
+                                <label className="flex items-center gap-2 text-xs muted">
+                                  <input
+                                    type="checkbox"
+                                    checked={assignmentParseAfterUpload}
+                                    onChange={(e) => setAssignmentParseAfterUpload(e.target.checked)}
+                                    disabled={assignmentImporting || !assignmentFile || !((assignmentFile.type === 'application/pdf') || assignmentFile.name.toLowerCase().endsWith('.pdf'))}
+                                  />
+                                  Parse after upload (PDF only)
+                                </label>
                                 {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
                                 <div>
                                   <button

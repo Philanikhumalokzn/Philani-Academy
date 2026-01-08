@@ -34,6 +34,8 @@ export default function ResourceBankPage() {
   const [title, setTitle] = useState('')
   const [tag, setTag] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [parseAfterUpload, setParseAfterUpload] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -103,6 +105,12 @@ export default function ResourceBankPage() {
     return Boolean(myId && item.createdById && String(item.createdById) === myId)
   }
 
+  const isPdfFile = (file: File | null) => {
+    if (!file) return false
+    const name = (file.name || '').toLowerCase()
+    return file.type === 'application/pdf' || name.endsWith('.pdf')
+  }
+
   const handleUpload = async () => {
     if (status !== 'authenticated') return
     if (!effectiveGrade) {
@@ -110,11 +118,13 @@ export default function ResourceBankPage() {
       return
     }
 
-    const file = fileInputRef.current?.files?.[0]
+    const file = selectedFile || fileInputRef.current?.files?.[0] || null
     if (!file) {
       setError('Choose a file first')
       return
     }
+
+    const shouldParse = parseAfterUpload && isPdfFile(file)
 
     setUploading(true)
     setError(null)
@@ -134,9 +144,25 @@ export default function ResourceBankPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
 
+      if (shouldParse && data?.id) {
+        try {
+          const parseRes = await fetch(`/api/resources/${encodeURIComponent(String(data.id))}/parse`, {
+            method: 'POST',
+            credentials: 'same-origin',
+          })
+          if (!parseRes.ok) {
+            const parseData = await parseRes.json().catch(() => ({}))
+            throw new Error(parseData?.message || `Parse failed (${parseRes.status})`)
+          }
+        } catch (parseErr: any) {
+          setError(parseErr?.message || 'Failed to parse resource')
+        }
+      }
+
       setTitle('')
       setTag('')
       if (fileInputRef.current) fileInputRef.current.value = ''
+      setSelectedFile(null)
 
       await fetchItems(effectiveGrade)
     } catch (err: any) {
@@ -229,7 +255,21 @@ export default function ResourceBankPage() {
 
                 <div className="space-y-2">
                   <div className="text-xs muted">File</div>
-                  <input ref={fileInputRef} type="file" className="input" />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="input"
+                    onChange={(e) => setSelectedFile(e.currentTarget.files?.[0] ?? null)}
+                  />
+                  <label className="flex items-center gap-2 text-xs muted">
+                    <input
+                      type="checkbox"
+                      checked={parseAfterUpload}
+                      onChange={(e) => setParseAfterUpload(e.target.checked)}
+                      disabled={uploading || !isPdfFile(selectedFile)}
+                    />
+                    Parse after upload (PDF only)
+                  </label>
                   <button
                     type="button"
                     className="btn btn-primary w-fit"

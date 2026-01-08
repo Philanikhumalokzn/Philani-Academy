@@ -84,6 +84,10 @@ model ResourceBankItem {
   checksum    String?
   source      String   @default("user")
 
+  parsedJson  Json?
+  parsedAt    DateTime?
+  parseError  String?  @db.Text
+
   createdById String?
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 

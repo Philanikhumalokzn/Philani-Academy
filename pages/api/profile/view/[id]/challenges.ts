@@ -75,9 +75,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       imageUrl: true,
       grade: true,
       audience: true,
+      attemptsOpen: true,
+      maxAttempts: true,
       createdAt: true,
+      createdById: true,
     },
   })
 
-  return res.status(200).json({ challenges: items })
+  // Attach requester attempt counts (for non-owner viewers and response button logic)
+  const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+  const challengeIds = items.map(i => `challenge:${i.id}`)
+
+  const userResponses = await learnerResponse.groupBy({
+    by: ['sessionKey'],
+    where: {
+      sessionKey: { in: challengeIds },
+      userId: requesterId,
+    },
+    _count: {
+      id: true,
+    },
+  })
+
+  const attemptCounts = new Map<string, number>()
+  for (const r of userResponses) {
+    attemptCounts.set(String(r.sessionKey), r._count.id)
+  }
+
+  const out = items.map(item => ({
+    ...item,
+    myAttemptCount: attemptCounts.get(`challenge:${item.id}`) || 0,
+  }))
+
+  return res.status(200).json({ challenges: out })
 }

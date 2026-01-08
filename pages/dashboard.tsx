@@ -2221,6 +2221,19 @@ export default function Dashboard() {
   }, [challengeGradingOverlayOpen, selectedChallengeId, fetchChallengeSubmissions])
 
   useEffect(() => {
+    const manageChallenge = typeof router.query.manageChallenge === 'string' ? router.query.manageChallenge : ''
+    if (!manageChallenge) return
+    if (selectedChallengeId === manageChallenge && challengeGradingOverlayOpen) return
+
+    setSelectedChallengeId(manageChallenge)
+    setChallengeGradingOverlayOpen(true)
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.manageChallenge
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen])
+
+  useEffect(() => {
     if (!timelineOpen) return
     if (timelineFetchedOnceRef.current) return
 

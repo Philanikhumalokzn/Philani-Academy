@@ -33,6 +33,10 @@ type ProfileChallenge = {
   imageUrl?: string | null
   grade?: string | null
   audience?: string | null
+  attemptsOpen?: boolean
+  maxAttempts?: number | null
+  myAttemptCount?: number
+  createdById?: string
   createdAt?: string
 }
 
@@ -54,6 +58,8 @@ export default function PublicUserProfilePage() {
   const [challenges, setChallenges] = useState<ProfileChallenge[]>([])
   const [challengesLoading, setChallengesLoading] = useState(false)
   const [challengesError, setChallengesError] = useState<string | null>(null)
+
+  const [viewerId, setViewerId] = useState<string>('')
 
   const role = ((session as any)?.user?.role as string | undefined) || 'student'
   const isPrivileged = role === 'admin' || role === 'teacher'
@@ -142,9 +148,26 @@ export default function PublicUserProfilePage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'same-origin' })
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        const nextId = typeof data?.id === 'string' ? data.id : ''
+        if (!cancelled) setViewerId(nextId)
+      } catch {
+        // ignore
+      }
+    })()
+
     void loadProfile()
     void loadMyGroups()
     void loadChallenges()
+
+    return () => {
+      cancelled = true
+    }
   }, [loadChallenges, loadMyGroups, loadProfile, status])
 
   useEffect(() => {
@@ -270,6 +293,18 @@ export default function PublicUserProfilePage() {
               {challenges.map((c) => {
                 const title = (c.title || '').trim() || 'Challenge'
                 const createdAt = c.createdAt ? new Date(c.createdAt).toLocaleString() : ''
+
+                const isSelf = Boolean(viewerId && userId && String(viewerId) === String(userId))
+                const myAttemptCount = typeof c?.myAttemptCount === 'number' ? c.myAttemptCount : 0
+                const maxAttempts = typeof c?.maxAttempts === 'number' ? c.maxAttempts : null
+                const attemptsOpen = c?.attemptsOpen !== false
+                const hasAttempted = myAttemptCount > 0
+                const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+                const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
+                const href = hasAttempted && !canAttempt
+                  ? `/challenges/${encodeURIComponent(String(c.id))}?view=responses`
+                  : `/challenges/${encodeURIComponent(String(c.id))}`
+
                 return (
                   <li key={c.id} className="border rounded p-3 space-y-2">
                     <div className="flex items-start justify-between gap-3">
@@ -279,9 +314,19 @@ export default function PublicUserProfilePage() {
                           {createdAt}{c.grade ? ` • ${String(c.grade).replace('GRADE_', 'Grade ')}` : ''}
                         </div>
                       </div>
-                      <Link href={`/challenges/${encodeURIComponent(String(c.id))}`} className="btn btn-primary shrink-0">
-                        Attempt
-                      </Link>
+
+                      {isSelf ? (
+                        <Link
+                          href={`/dashboard?manageChallenge=${encodeURIComponent(String(c.id))}`}
+                          className="btn btn-primary shrink-0"
+                        >
+                          Manage
+                        </Link>
+                      ) : (
+                        <Link href={href} className="btn btn-primary shrink-0">
+                          {buttonText}
+                        </Link>
+                      )}
                     </div>
 
                     {c.prompt ? <div className="text-sm whitespace-pre-wrap break-words">{String(c.prompt)}</div> : null}

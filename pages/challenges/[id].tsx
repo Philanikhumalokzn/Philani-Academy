@@ -256,6 +256,17 @@ export default function ChallengeAttemptPage() {
     }
   }, [status])
 
+  useEffect(() => {
+    if (!id) return
+    if (!viewerId) return
+    if (!challenge) return
+    const createdById = (challenge as any)?.createdById || (challenge as any)?.createdBy?.id || ''
+    const isOwner = createdById && String(createdById) === String(viewerId)
+    if (!isOwner) return
+
+    void router.replace(`/dashboard?manageChallenge=${encodeURIComponent(String(id))}`)
+  }, [challenge, id, router, viewerId])
+
   const initialQuiz = useMemo(() => {
     if (!challenge?.id) return null
     const quizId = `challenge:${String(challenge.id)}`

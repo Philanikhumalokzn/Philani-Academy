@@ -68,6 +68,30 @@ model User {
   groupJoinRequests GroupJoinRequest[] @relation("GroupJoinRequestedBy")
   notifications Notification[]
   challenges UserChallenge[]
+
+  resourceBankItems ResourceBankItem[]
+}
+
+model ResourceBankItem {
+  id          String   @id @default(cuid())
+  grade       Grade
+  title       String
+  tag         String?
+  url         String
+  filename    String?
+  contentType String?
+  size        Int?
+  checksum    String?
+  source      String   @default("user")
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+
+  @@index([grade, createdAt])
+  @@index([createdById, createdAt])
+  @@unique([grade, checksum])
 }
 
 model LearningGroup {

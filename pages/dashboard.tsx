@@ -4463,6 +4463,15 @@ export default function Dashboard() {
             </div>
           )}
 
+          {status === 'authenticated' && (
+            <div className="card dashboard-card">
+              <Link href="/resource-bank" className="w-full flex items-center justify-between gap-3 text-left">
+                <span className="text-lg font-semibold">Resource Bank</span>
+                <span className="text-sm muted">Open</span>
+              </Link>
+            </div>
+          )}
+
           {createOverlayOpen && (
             <OverlayPortal>
               <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
@@ -4614,6 +4623,15 @@ export default function Dashboard() {
               <span className="text-lg font-semibold">Create</span>
               <span className="text-sm muted">Open</span>
             </button>
+          </div>
+        )}
+
+        {status === 'authenticated' && (
+          <div className="card dashboard-card">
+            <Link href="/resource-bank" className="w-full flex items-center justify-between gap-3 text-left">
+              <span className="text-lg font-semibold">Resource Bank</span>
+              <span className="text-sm muted">Open</span>
+            </Link>
           </div>
         )}
 

@@ -16,24 +16,9 @@ type ResourceBankItem = {
   source?: string | null
   createdById?: string | null
   createdAt: string
-  createdBy?: { id: string; name?: string | null; email?: string | null; avatar?: string | null } | null
   parsedAt?: string | null
   parseError?: string | null
-}
-
-type ParsedPdfResult = {
-  kind: 'pdf'
-  version: 1
-  resourceId: string
-  extractedAt: string
-  pages: Array<{
-    pageNumber: number
-    width: number
-    height: number
-    lines: Array<{ text: string; bbox: { x: number; y: number; w: number; h: number } }>
-    diagrams: Array<{ url: string; bbox: { x: number; y: number; w: number; h: number } }>
-  }>
-  questions: Array<{ index: number; label: string; pageNumber: number; startLine: number; endLine: number; text: string }>
+  createdBy?: { id: string; name?: string | null; email?: string | null; avatar?: string | null } | null
 }
 
 export default function ResourceBankPage() {
@@ -51,13 +36,12 @@ export default function ResourceBankPage() {
   const [title, setTitle] = useState('')
   const [tag, setTag] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [parseAfterUpload, setParseAfterUpload] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [parseOnUpload, setParseOnUpload] = useState(false)
 
-  const [parsedOpenId, setParsedOpenId] = useState<string | null>(null)
-  const [parsedLoadingId, setParsedLoadingId] = useState<string | null>(null)
-  const [parsedError, setParsedError] = useState<string | null>(null)
-  const [parsedById, setParsedById] = useState<Record<string, { parsedAt: string | null; parseError: string | null; parsedJson: ParsedPdfResult | null }>>({})
+  const [parsedViewerOpen, setParsedViewerOpen] = useState(false)
+  const [parsedViewerLoading, setParsedViewerLoading] = useState(false)
+  const [parsedViewerTitle, setParsedViewerTitle] = useState('')
+  const [parsedViewerText, setParsedViewerText] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -127,54 +111,6 @@ export default function ResourceBankPage() {
     return Boolean(myId && item.createdById && String(item.createdById) === myId)
   }
 
-  const isPdfFile = (file: File | null) => {
-    if (!file) return false
-    const name = (file.name || '').toLowerCase()
-    return file.type === 'application/pdf' || name.endsWith('.pdf')
-  }
-
-  const looksLikePdfItem = (item: ResourceBankItem) => {
-    const ct = String(item.contentType || '').toLowerCase()
-    const fn = String(item.filename || '').toLowerCase()
-    const url = String(item.url || '').toLowerCase()
-    return ct.includes('pdf') || fn.endsWith('.pdf') || url.includes('.pdf')
-  }
-
-  const openParsedPanel = async (id: string) => {
-    const safeId = String(id || '')
-    if (!safeId) return
-
-    if (parsedOpenId === safeId) {
-      setParsedOpenId(null)
-      return
-    }
-
-    setParsedOpenId(safeId)
-    setParsedError(null)
-    if (parsedById[safeId]) return
-
-    setParsedLoadingId(safeId)
-    try {
-      const res = await fetch(`/api/resources/${encodeURIComponent(safeId)}`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Failed to load parsed resource (${res.status})`)
-
-      const parsedJson = (data?.parsedJson && typeof data.parsedJson === 'object') ? (data.parsedJson as ParsedPdfResult) : null
-      setParsedById(prev => ({
-        ...prev,
-        [safeId]: {
-          parsedAt: data?.parsedAt ? String(data.parsedAt) : null,
-          parseError: data?.parseError ? String(data.parseError) : null,
-          parsedJson,
-        }
-      }))
-    } catch (err: any) {
-      setParsedError(err?.message || 'Failed to load parsed resource')
-    } finally {
-      setParsedLoadingId(null)
-    }
-  }
-
   const handleUpload = async () => {
     if (status !== 'authenticated') return
     if (!effectiveGrade) {
@@ -182,13 +118,11 @@ export default function ResourceBankPage() {
       return
     }
 
-    const file = selectedFile || fileInputRef.current?.files?.[0] || null
+    const file = fileInputRef.current?.files?.[0]
     if (!file) {
       setError('Choose a file first')
       return
     }
-
-    const shouldParse = parseAfterUpload && isPdfFile(file)
 
     setUploading(true)
     setError(null)
@@ -199,6 +133,7 @@ export default function ResourceBankPage() {
       if (title.trim()) form.append('title', title.trim())
       if (tag.trim()) form.append('tag', tag.trim())
       if (role === 'admin') form.append('grade', effectiveGrade)
+      if (parseOnUpload) form.append('parse', '1')
 
       const res = await fetch('/api/resources', {
         method: 'POST',
@@ -208,31 +143,38 @@ export default function ResourceBankPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
 
-      if (shouldParse && data?.id) {
-        try {
-          const parseRes = await fetch(`/api/resources/${encodeURIComponent(String(data.id))}/parse`, {
-            method: 'POST',
-            credentials: 'same-origin',
-          })
-          if (!parseRes.ok) {
-            const parseData = await parseRes.json().catch(() => ({}))
-            throw new Error(parseData?.message || `Parse failed (${parseRes.status})`)
-          }
-        } catch (parseErr: any) {
-          setError(parseErr?.message || 'Failed to parse resource')
-        }
-      }
-
       setTitle('')
       setTag('')
       if (fileInputRef.current) fileInputRef.current.value = ''
-      setSelectedFile(null)
 
       await fetchItems(effectiveGrade)
     } catch (err: any) {
       setError(err?.message || 'Failed to upload resource')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const openParsedViewer = async (item: ResourceBankItem) => {
+    const id = String(item?.id || '')
+    if (!id) return
+    setParsedViewerOpen(true)
+    setParsedViewerLoading(true)
+    setParsedViewerTitle(item?.title || 'Parsed')
+    setParsedViewerText('')
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load parsed data (${res.status})`)
+
+      const json = data?.parsedJson
+      const err = typeof data?.parseError === 'string' ? data.parseError : ''
+      const rendered = json ? JSON.stringify(json, null, 2) : (err || 'No parsed output available.')
+      setParsedViewerText(rendered)
+    } catch (err: any) {
+      setParsedViewerText(err?.message || 'Failed to load parsed output')
+    } finally {
+      setParsedViewerLoading(false)
     }
   }
 
@@ -272,6 +214,30 @@ export default function ResourceBankPage() {
           </div>
         ) : (
           <>
+            {parsedViewerOpen ? (
+              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+                <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setParsedViewerOpen(false)} />
+                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setParsedViewerOpen(false)}>
+                  <div
+                    className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="p-3 border-b flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold break-words">Parsed</div>
+                        <div className="text-sm muted break-words">{parsedViewerTitle}</div>
+                      </div>
+                      <button type="button" className="btn btn-ghost" onClick={() => setParsedViewerOpen(false)} aria-label="Close">✕</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3">
+                      {parsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
+                      <pre className="whitespace-pre-wrap text-xs text-white/90">{parsedViewerText}</pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="card dashboard-card space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -319,29 +285,25 @@ export default function ResourceBankPage() {
 
                 <div className="space-y-2">
                   <div className="text-xs muted">File</div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="input"
-                    onChange={(e) => setSelectedFile(e.currentTarget.files?.[0] ?? null)}
-                  />
-                  <label className="flex items-center gap-2 text-xs muted">
-                    <input
-                      type="checkbox"
-                      checked={parseAfterUpload}
-                      onChange={(e) => setParseAfterUpload(e.target.checked)}
-                      disabled={uploading || !isPdfFile(selectedFile)}
-                    />
-                    Parse after upload (PDF only)
-                  </label>
-                  <button
-                    type="button"
-                    className="btn btn-primary w-fit"
-                    onClick={() => void handleUpload()}
-                    disabled={uploading || profileLoading || !effectiveGrade}
-                  >
-                    {uploading ? 'Uploading…' : 'Upload'}
-                  </button>
+                  <input ref={fileInputRef} type="file" className="input" />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm text-white/90 select-none">
+                      <input
+                        type="checkbox"
+                        checked={parseOnUpload}
+                        onChange={(e) => setParseOnUpload(e.target.checked)}
+                      />
+                      Parse
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-primary w-fit"
+                      onClick={() => void handleUpload()}
+                      disabled={uploading || profileLoading || !effectiveGrade}
+                    >
+                      {uploading ? 'Uploading…' : 'Upload'}
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-xs muted">Uploads are restricted to your registered grade (admin can choose).</p>
@@ -359,126 +321,39 @@ export default function ResourceBankPage() {
                 {items.length > 0 ? (
                   <ul className="space-y-2">
                     {items.map((item) => (
-                      <li key={item.id} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-medium text-white truncate">{item.title}</div>
-                            <div className="text-xs muted">
-                              {item.tag ? `${item.tag} • ` : ''}
-                              {gradeToLabel(item.grade)}
-                            </div>
+                      <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="min-w-0">
+                          <div className="font-medium text-white truncate">{item.title}</div>
+                          <div className="text-xs muted">
+                            {item.tag ? `${item.tag} • ` : ''}
+                            {gradeToLabel(item.grade)}
                           </div>
-                          <div className="flex items-center gap-2">
-                            {looksLikePdfItem(item) ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => void openParsedPanel(item.id)}
-                              >
-                                {parsedOpenId === item.id ? 'Hide parsed' : 'View parsed'}
-                              </button>
-                            ) : null}
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="btn btn-ghost"
-                            >
-                              Open
-                            </a>
-                            {canDelete(item) ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => void handleDelete(item.id)}
-                              >
-                                Delete
-                              </button>
-                            ) : null}
-                          </div>
+                          {item.parseError ? <div className="text-xs text-red-200">Parse failed</div> : null}
                         </div>
-
-                        {parsedOpenId === item.id ? (
-                          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
-                            {parsedError ? <div className="text-sm text-red-200">{parsedError}</div> : null}
-                            {parsedLoadingId === item.id ? (
-                              <div className="text-sm muted">Loading parsed view…</div>
-                            ) : (
-                              (() => {
-                                const payload = parsedById[item.id]
-                                if (!payload) return <div className="text-sm muted">No parsed data loaded.</div>
-                                if (payload.parseError) return <div className="text-sm text-red-200">{payload.parseError}</div>
-                                if (!payload.parsedJson) return <div className="text-sm muted">Not parsed yet (or parser output missing).</div>
-
-                                const parsed = payload.parsedJson
-
-                                return (
-                                  <div className="space-y-4">
-                                    <div className="text-xs muted">
-                                      Parsed: {payload.parsedAt ? new Date(payload.parsedAt).toLocaleString() : '—'} • {parsed.pages.length} pages • {parsed.questions.length} questions
-                                    </div>
-
-                                    {parsed.questions.length ? (
-                                      <div className="space-y-2">
-                                        <div className="text-sm font-semibold text-white">Questions</div>
-                                        <ul className="space-y-2">
-                                          {parsed.questions.slice(0, 25).map((q) => (
-                                            <li key={q.index} className="rounded-lg border border-white/10 bg-white/5 p-2">
-                                              <div className="text-xs muted">{q.label} • Page {q.pageNumber}</div>
-                                              <div className="text-sm text-white whitespace-pre-line">{q.text}</div>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                        {parsed.questions.length > 25 ? (
-                                          <div className="text-xs muted">Showing first 25 questions.</div>
-                                        ) : null}
-                                      </div>
-                                    ) : null}
-
-                                    <div className="space-y-4">
-                                      <div className="text-sm font-semibold text-white">Pages</div>
-                                      {parsed.pages.map((p) => (
-                                        <div key={p.pageNumber} className="space-y-2">
-                                          <div className="text-xs muted">Page {p.pageNumber}</div>
-
-                                          {/* Diagram-only positioning preview */}
-                                          <div
-                                            className="w-full rounded-lg border border-white/10 bg-white/5 overflow-hidden"
-                                            style={{ position: 'relative', paddingTop: `${(p.height / Math.max(1, p.width)) * 100}%` }}
-                                          >
-                                            {p.diagrams.map((d, idx) => (
-                                              // eslint-disable-next-line @next/next/no-img-element
-                                              <img
-                                                key={idx}
-                                                src={d.url}
-                                                alt={`Diagram ${idx + 1}`}
-                                                style={{
-                                                  position: 'absolute',
-                                                  left: `${d.bbox.x * 100}%`,
-                                                  top: `${d.bbox.y * 100}%`,
-                                                  width: `${d.bbox.w * 100}%`,
-                                                  height: `${d.bbox.h * 100}%`,
-                                                  objectFit: 'contain',
-                                                }}
-                                              />
-                                            ))}
-                                          </div>
-
-                                          <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                                            <div className="text-xs muted mb-1">Extracted text</div>
-                                            <div className="text-sm text-white whitespace-pre-line">
-                                              {p.lines.map(l => l.text).join('\n')}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )
-                              })()
-                            )}
-                          </div>
-                        ) : null}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-ghost"
+                          >
+                            Open
+                          </a>
+                          {item.parsedAt || item.parseError ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => void openParsedViewer(item)}>
+                              View parsed
+                            </button>
+                          ) : null}
+                          {canDelete(item) ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => void handleDelete(item.id)}
+                            >
+                              Delete
+                            </button>
+                          ) : null}
+                        </div>
                       </li>
                     ))}
                   </ul>

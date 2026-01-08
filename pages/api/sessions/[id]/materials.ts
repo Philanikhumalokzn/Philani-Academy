@@ -154,9 +154,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       })
 
-      let resourceBankItemId: string | null = null
       try {
-        const rbItem = await upsertResourceBankItem({
+        await upsertResourceBankItem({
           grade: sessionGrade,
           title: finalTitle,
           tag: 'Lesson material',
@@ -168,13 +167,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           source: 'session-material',
           createdById: authUserId || null,
         })
-        resourceBankItemId = rbItem?.id ? String(rbItem.id) : null
       } catch (rbErr) {
         // Do not block lesson material uploads if resource bank insertion fails.
         console.error('Resource bank upsert failed (lesson material)', rbErr)
       }
 
-      return res.status(201).json({ ...material, resourceBankItemId })
+      return res.status(201).json(material)
     } catch (err: any) {
       console.error('Upload material error', err)
       return res.status(500).json({ message: err?.message || 'Failed to upload material' })

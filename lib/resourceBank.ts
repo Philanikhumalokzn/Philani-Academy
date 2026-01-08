@@ -23,6 +23,10 @@ export async function upsertResourceBankItem(input: {
   tag?: string | null
   source?: string | null
   createdById?: string | null
+
+  parsedJson?: any | null
+  parsedAt?: Date | null
+  parseError?: string | null
 }) {
   const title = (input.title || '').trim() || 'Resource'
   const url = (input.url || '').trim()
@@ -33,7 +37,22 @@ export async function upsertResourceBankItem(input: {
     const existing = await prisma.resourceBankItem.findFirst({
       where: { grade: input.grade, checksum },
     })
-    if (existing) return existing
+    if (existing) {
+      const shouldAttachParsed =
+        (input.parsedJson != null || input.parsedAt != null || input.parseError != null) &&
+        ((existing as any).parsedJson == null && (existing as any).parsedAt == null && (existing as any).parseError == null)
+
+      if (!shouldAttachParsed) return existing
+
+      return await prisma.resourceBankItem.update({
+        where: { id: existing.id },
+        data: {
+          parsedJson: input.parsedJson ?? undefined,
+          parsedAt: input.parsedAt ?? undefined,
+          parseError: typeof input.parseError === 'string' ? input.parseError : input.parseError === null ? null : undefined,
+        },
+      })
+    }
   }
 
   return await prisma.resourceBankItem.create({
@@ -48,6 +67,10 @@ export async function upsertResourceBankItem(input: {
       checksum,
       source: (input.source || '').trim() || 'user',
       createdById: (input.createdById || '').trim() || null,
+
+      parsedJson: input.parsedJson ?? undefined,
+      parsedAt: input.parsedAt ?? undefined,
+      parseError: typeof input.parseError === 'string' ? input.parseError : input.parseError === null ? null : undefined,
     },
   })
 }

@@ -336,6 +336,9 @@ export default function Dashboard() {
   const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
   const [challengeMaxAttempts, setChallengeMaxAttempts] = useState<string>('unlimited')
   const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
+  const [challengeParseOnUpload, setChallengeParseOnUpload] = useState(false)
+  const [challengeParsedJsonText, setChallengeParsedJsonText] = useState<string | null>(null)
+  const [challengeParsedOpen, setChallengeParsedOpen] = useState(false)
   const [challengeUploading, setChallengeUploading] = useState(false)
   const [challengePosting, setChallengePosting] = useState(false)
   const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -451,6 +454,7 @@ export default function Dashboard() {
     try {
       const form = new FormData()
       form.append('file', file)
+      if (challengeParseOnUpload) form.append('parse', '1')
       const res = await fetch('/api/challenges/upload', {
         method: 'POST',
         body: form,
@@ -463,12 +467,32 @@ export default function Dashboard() {
       const url = typeof data?.url === 'string' ? data.url.trim() : ''
       if (!url) throw new Error('Upload succeeded but returned no URL')
       setChallengeImageUrl(url)
+
+      if (challengeParseOnUpload) {
+        const parsed = data?.parsed
+        const parseErr = typeof data?.parseError === 'string' ? data.parseError.trim() : ''
+        if (parsed) {
+          setChallengeParsedJsonText(JSON.stringify(parsed, null, 2))
+          setChallengeParsedOpen(true)
+        } else if (parseErr) {
+          setChallengeParsedJsonText(parseErr)
+          setChallengeParsedOpen(true)
+        } else {
+          setChallengeParsedJsonText(null)
+          setChallengeParsedOpen(false)
+        }
+
+        const parsedPrompt = typeof data?.parsedPrompt === 'string' ? data.parsedPrompt.trim() : ''
+        if (parsedPrompt) {
+          setChallengePromptDraft((prev) => (prev.trim() ? prev : parsedPrompt))
+        }
+      }
     } catch (err: any) {
       alert(err?.message || 'Failed to upload image')
     } finally {
       setChallengeUploading(false)
     }
-  }, [])
+  }, [challengeParseOnUpload])
 
   const postChallenge = useCallback(async () => {
     if (status !== 'authenticated') return
@@ -509,6 +533,8 @@ export default function Dashboard() {
       setChallengeAudienceDraft('public')
       setChallengeMaxAttempts('unlimited')
       setChallengeImageUrl(null)
+      setChallengeParsedJsonText(null)
+      setChallengeParsedOpen(false)
       alert('Posted')
     } catch (err: any) {
       alert(err?.message || 'Failed to post')
@@ -710,12 +736,6 @@ export default function Dashboard() {
   const [assignmentImportError, setAssignmentImportError] = useState<string | null>(null)
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null)
   const [assignmentTitle, setAssignmentTitle] = useState('')
-  const [assignmentParseAfterUpload, setAssignmentParseAfterUpload] = useState(false)
-  const [assignmentImportedResourceId, setAssignmentImportedResourceId] = useState<string | null>(null)
-  const [assignmentParsedOpen, setAssignmentParsedOpen] = useState(false)
-  const [assignmentParsedLoading, setAssignmentParsedLoading] = useState(false)
-  const [assignmentParsedError, setAssignmentParsedError] = useState<string | null>(null)
-  const [assignmentParsedPayload, setAssignmentParsedPayload] = useState<any | null>(null)
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
   const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
   const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
@@ -3657,15 +3677,6 @@ export default function Dashboard() {
       setAssignmentImportError('Choose a PDF or image first.')
       return
     }
-
-    const isPdfFile = (file: File | null) => {
-      if (!file) return false
-      const name = (file.name || '').toLowerCase()
-      return file.type === 'application/pdf' || name.endsWith('.pdf')
-    }
-
-    const shouldParse = assignmentParseAfterUpload && isPdfFile(assignmentFile)
-
     setAssignmentImportError(null)
     setAssignmentImporting(true)
     try {
@@ -3681,25 +3692,6 @@ export default function Dashboard() {
       if (!res.ok) {
         throw new Error(data?.message || `Import failed (${res.status})`)
       }
-
-      const rbId = typeof data?.resourceBankItemId === 'string' ? data.resourceBankItemId.trim() : ''
-      setAssignmentImportedResourceId(rbId || null)
-      setAssignmentParsedOpen(false)
-      setAssignmentParsedError(null)
-      setAssignmentParsedPayload(null)
-      if (shouldParse && rbId) {
-        void fetch(`/api/resources/${encodeURIComponent(rbId)}/parse`, {
-          method: 'POST',
-          credentials: 'same-origin',
-        }).then(async (parseRes) => {
-          if (parseRes.ok) return
-          const parseData = await parseRes.json().catch(() => ({}))
-          alert(parseData?.message || `Parse failed (${parseRes.status})`)
-        }).catch((err: any) => {
-          alert(err?.message || 'Parse failed')
-        })
-      }
-
       setAssignmentFile(null)
       setAssignmentTitle('')
       await fetchAssignments(sessionId)
@@ -3711,26 +3703,6 @@ export default function Dashboard() {
       setAssignmentImportError(err?.message || 'Import failed')
     } finally {
       setAssignmentImporting(false)
-    }
-  }
-
-  async function openImportedAssignmentParsedView() {
-    const id = String(assignmentImportedResourceId || '')
-    if (!id) return
-    setAssignmentParsedOpen(v => !v)
-    if (assignmentParsedPayload) return
-
-    setAssignmentParsedLoading(true)
-    setAssignmentParsedError(null)
-    try {
-      const res = await fetch(`/api/resources/${encodeURIComponent(id)}`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Failed to load parsed resource (${res.status})`)
-      setAssignmentParsedPayload(data)
-    } catch (err: any) {
-      setAssignmentParsedError(err?.message || 'Failed to load parsed resource')
-    } finally {
-      setAssignmentParsedLoading(false)
     }
   }
 
@@ -4603,6 +4575,14 @@ export default function Dashboard() {
                           onChange={(e) => void onChallengeFilePicked(e)}
                         />
                         <div className="flex flex-wrap gap-2">
+                          <label className="flex items-center gap-2 text-sm text-white/90 select-none">
+                            <input
+                              type="checkbox"
+                              checked={challengeParseOnUpload}
+                              onChange={(e) => setChallengeParseOnUpload(e.target.checked)}
+                            />
+                            Parse
+                          </label>
                           <button
                             type="button"
                             className="btn"
@@ -4614,7 +4594,19 @@ export default function Dashboard() {
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            onClick={() => setChallengeImageUrl(null)}
+                            onClick={() => setChallengeParsedOpen((v) => !v)}
+                            disabled={!challengeParsedJsonText}
+                          >
+                            {challengeParsedOpen ? 'Hide parsed' : 'View parsed'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              setChallengeImageUrl(null)
+                              setChallengeParsedJsonText(null)
+                              setChallengeParsedOpen(false)
+                            }}
                             disabled={!challengeImageUrl || challengeUploading}
                           >
                             Clear
@@ -4624,6 +4616,12 @@ export default function Dashboard() {
                           <div className="border rounded p-2">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] rounded object-contain" />
+                          </div>
+                        ) : null}
+
+                        {challengeParsedOpen && challengeParsedJsonText ? (
+                          <div className="border rounded p-2">
+                            <pre className="whitespace-pre-wrap text-xs text-white/90">{challengeParsedJsonText}</pre>
                           </div>
                         ) : null}
                       </div>
@@ -4766,6 +4764,14 @@ export default function Dashboard() {
                         onChange={(e) => void onChallengeFilePicked(e)}
                       />
                       <div className="flex flex-wrap gap-2">
+                        <label className="flex items-center gap-2 text-sm text-white/90 select-none">
+                          <input
+                            type="checkbox"
+                            checked={challengeParseOnUpload}
+                            onChange={(e) => setChallengeParseOnUpload(e.target.checked)}
+                          />
+                          Parse
+                        </label>
                         <button
                           type="button"
                           className="btn"
@@ -4777,7 +4783,19 @@ export default function Dashboard() {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => setChallengeImageUrl(null)}
+                          onClick={() => setChallengeParsedOpen((v) => !v)}
+                          disabled={!challengeParsedJsonText}
+                        >
+                          {challengeParsedOpen ? 'Hide parsed' : 'View parsed'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            setChallengeImageUrl(null)
+                            setChallengeParsedJsonText(null)
+                            setChallengeParsedOpen(false)
+                          }}
                           disabled={!challengeImageUrl || challengeUploading}
                         >
                           Clear
@@ -4787,6 +4805,12 @@ export default function Dashboard() {
                         <div className="border rounded p-2">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] rounded object-contain" />
+                        </div>
+                      ) : null}
+
+                      {challengeParsedOpen && challengeParsedJsonText ? (
+                        <div className="border rounded p-2">
+                          <pre className="whitespace-pre-wrap text-xs text-white/90">{challengeParsedJsonText}</pre>
                         </div>
                       ) : null}
                     </div>
@@ -5863,15 +5887,6 @@ export default function Dashboard() {
                                   accept="application/pdf,image/*"
                                   onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
                                 />
-                                <label className="flex items-center gap-2 text-xs muted">
-                                  <input
-                                    type="checkbox"
-                                    checked={assignmentParseAfterUpload}
-                                    onChange={(e) => setAssignmentParseAfterUpload(e.target.checked)}
-                                    disabled={assignmentImporting || !assignmentFile || !((assignmentFile.type === 'application/pdf') || assignmentFile.name.toLowerCase().endsWith('.pdf'))}
-                                  />
-                                  Parse after upload (PDF only)
-                                </label>
                                 {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
                                 <div>
                                   <button
@@ -5883,101 +5898,6 @@ export default function Dashboard() {
                                     {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
                                   </button>
                                 </div>
-
-                                {assignmentImportedResourceId ? (
-                                  <div className="pt-1">
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost text-xs"
-                                      onClick={() => void openImportedAssignmentParsedView()}
-                                      disabled={assignmentParsedLoading}
-                                    >
-                                      {assignmentParsedLoading ? 'Loading parsed…' : (assignmentParsedOpen ? 'Hide parsed' : 'View parsed')}
-                                    </button>
-                                  </div>
-                                ) : null}
-
-                                {assignmentParsedOpen ? (
-                                  <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
-                                    {assignmentParsedError ? <div className="text-sm text-red-200">{assignmentParsedError}</div> : null}
-                                    {(() => {
-                                      const data = assignmentParsedPayload
-                                      const parseError = data?.parseError ? String(data.parseError) : ''
-                                      const parsedJson = data?.parsedJson && typeof data.parsedJson === 'object' ? data.parsedJson : null
-                                      if (parseError) return <div className="text-sm text-red-200">{parseError}</div>
-                                      if (!parsedJson) return <div className="text-sm muted">Not parsed yet (or parser output missing).</div>
-
-                                      const pages = Array.isArray(parsedJson?.pages) ? parsedJson.pages : []
-                                      const questions = Array.isArray(parsedJson?.questions) ? parsedJson.questions : []
-
-                                      return (
-                                        <div className="space-y-4">
-                                          <div className="text-xs muted">
-                                            Parsed: {data?.parsedAt ? new Date(String(data.parsedAt)).toLocaleString() : '—'} • {pages.length} pages • {questions.length} questions
-                                          </div>
-
-                                          {questions.length ? (
-                                            <div className="space-y-2">
-                                              <div className="text-sm font-semibold text-white">Questions</div>
-                                              <ul className="space-y-2">
-                                                {questions.slice(0, 10).map((q: any, idx: number) => (
-                                                  <li key={String(q?.index ?? idx)} className="rounded-lg border border-white/10 bg-white/5 p-2">
-                                                    <div className="text-xs muted">{String(q?.label || 'Q')} • Page {String(q?.pageNumber || '')}</div>
-                                                    <div className="text-sm text-white whitespace-pre-line">{String(q?.text || '')}</div>
-                                                  </li>
-                                                ))}
-                                              </ul>
-                                              {questions.length > 10 ? <div className="text-xs muted">Showing first 10 questions.</div> : null}
-                                            </div>
-                                          ) : null}
-
-                                          <div className="space-y-4">
-                                            <div className="text-sm font-semibold text-white">Pages</div>
-                                            {pages.slice(0, 6).map((p: any, idx: number) => {
-                                              const diagrams = Array.isArray(p?.diagrams) ? p.diagrams : []
-                                              const lines = Array.isArray(p?.lines) ? p.lines : []
-                                              const pageW = Number(p?.width) || 1
-                                              const pageH = Number(p?.height) || 1
-                                              return (
-                                                <div key={String(p?.pageNumber ?? idx)} className="space-y-2">
-                                                  <div className="text-xs muted">Page {String(p?.pageNumber ?? '')}</div>
-                                                  <div
-                                                    className="w-full rounded-lg border border-white/10 bg-white/5 overflow-hidden"
-                                                    style={{ position: 'relative', paddingTop: `${(pageH / Math.max(1, pageW)) * 100}%` }}
-                                                  >
-                                                    {diagrams.map((d: any, dIdx: number) => (
-                                                      // eslint-disable-next-line @next/next/no-img-element
-                                                      <img
-                                                        key={dIdx}
-                                                        src={String(d?.url || '')}
-                                                        alt={`Diagram ${dIdx + 1}`}
-                                                        style={{
-                                                          position: 'absolute',
-                                                          left: `${(Number(d?.bbox?.x) || 0) * 100}%`,
-                                                          top: `${(Number(d?.bbox?.y) || 0) * 100}%`,
-                                                          width: `${(Number(d?.bbox?.w) || 0) * 100}%`,
-                                                          height: `${(Number(d?.bbox?.h) || 0) * 100}%`,
-                                                          objectFit: 'contain',
-                                                        }}
-                                                      />
-                                                    ))}
-                                                  </div>
-                                                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                                                    <div className="text-xs muted mb-1">Extracted text</div>
-                                                    <div className="text-sm text-white whitespace-pre-line">
-                                                      {lines.map((l: any) => String(l?.text || '')).join('\n')}
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              )
-                                            })}
-                                            {pages.length > 6 ? <div className="text-xs muted">Showing first 6 pages.</div> : null}
-                                          </div>
-                                        </div>
-                                      )
-                                    })()}
-                                  </div>
-                                ) : null}
                               </div>
                             </div>
                           )}

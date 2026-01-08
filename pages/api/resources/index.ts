@@ -8,6 +8,7 @@ import { put } from '@vercel/blob'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
+import { extractQuestionsWithGemini, tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 
 export const config = {
   api: {
@@ -68,7 +69,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where: { grade },
       orderBy: { createdAt: 'desc' },
       take: 200,
-      include: {
+      select: {
+        id: true,
+        grade: true,
+        title: true,
+        tag: true,
+        url: true,
+        filename: true,
+        contentType: true,
+        size: true,
+        checksum: true,
+        source: true,
+        createdById: true,
+        createdAt: true,
+        parsedAt: true,
+        parseError: true,
         createdBy: { select: { id: true, name: true, email: true, avatar: true } },
       },
     })
@@ -89,6 +104,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { fields, files } = await parseForm(req)
       const uploadedFile = pickFirstFile(files.file as File | File[] | undefined)
       if (!uploadedFile) return res.status(400).json({ message: 'File upload required' })
+
+      const parseField = fields.parse
+      const parseRequestedRaw = Array.isArray(parseField) ? parseField[0] : parseField
+      const parseRequested = ['1', 'true', 'yes', 'on'].includes(String(parseRequestedRaw || '').trim().toLowerCase())
 
       const titleField = fields.title
       const providedTitle = Array.isArray(titleField) ? titleField[0] : titleField
@@ -138,6 +157,68 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await fs.copyFile(uploadedFile.filepath, destinationPath)
       }
 
+      let parsedJson: any | null = null
+      let parsedAt: Date | null = null
+      let parseError: string | null = null
+
+      if (parseRequested) {
+        try {
+          const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
+          if (!geminiApiKey) {
+            throw new Error('Gemini is not configured (missing GEMINI_API_KEY)')
+          }
+
+          const mimeType = (uploadedFile.mimetype || '').toString()
+          const isPdf = mimeType === 'application/pdf' || (uploadedFile.originalFilename || '').toLowerCase().endsWith('.pdf')
+          const isImage = mimeType.startsWith('image/')
+          if (!isPdf && !isImage) {
+            throw new Error('Only PDF or image files can be parsed')
+          }
+
+          const fileSize = typeof uploadedFile.size === 'number' ? uploadedFile.size : 0
+          // Keep parsing requests reasonable; still allow upload even if too large.
+          if (fileSize > 25 * 1024 * 1024) {
+            throw new Error('File is too large to parse (max 25 MB)')
+          }
+
+          const rawBytes = await fs.readFile(uploadedFile.filepath)
+          const base64Data = rawBytes.toString('base64')
+          const gradeLabel = `Grade ${String(grade).replace('GRADE_', '')}`
+          const model = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash'
+
+          const geminiText = await extractQuestionsWithGemini({
+            apiKey: geminiApiKey,
+            model,
+            gradeLabel,
+            mimeType: isPdf ? 'application/pdf' : (mimeType || 'image/png'),
+            base64Data,
+            filename: uploadedFile.originalFilename || safeFilename,
+            titleHint: title || uploadedFile.originalFilename || 'Resource',
+          })
+
+          const parsed = tryParseJsonLoose(geminiText)
+          const questionsRaw = Array.isArray(parsed?.questions) ? parsed.questions : []
+          const questions = questionsRaw
+            .map((q: any) => ({ latex: typeof q?.latex === 'string' ? q.latex.trim() : '' }))
+            .filter((q: any) => q.latex)
+            .slice(0, 50)
+
+          if (!questions.length) {
+            throw new Error('Gemini returned no questions/text')
+          }
+
+          parsedJson = {
+            title: typeof parsed?.title === 'string' ? parsed.title.trim() : '',
+            displayTitle: typeof (parsed as any)?.displayTitle === 'string' ? String((parsed as any).displayTitle).trim() : '',
+            sectionLabel: typeof (parsed as any)?.sectionLabel === 'string' ? String((parsed as any).sectionLabel).trim() : '',
+            questions,
+          }
+          parsedAt = new Date()
+        } catch (err: any) {
+          parseError = err?.message || 'Parse failed'
+        }
+      }
+
       const item = await upsertResourceBankItem({
         grade,
         title,
@@ -149,6 +230,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         checksum,
         source: role === 'admin' ? 'admin' : role,
         createdById: authUserId || null,
+
+        parsedJson,
+        parsedAt,
+        parseError,
       })
 
       return res.status(201).json(item)

@@ -320,10 +320,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       include: { questions: true },
     })
 
-    let resourceBankItemId: string | null = null
     try {
       const storedSize = typeof uploadedFile.size === 'number' ? uploadedFile.size : null
-      const rbItem = await upsertResourceBankItem({
+      await upsertResourceBankItem({
         grade: sessionRecord.grade,
         title: assignmentTitle,
         tag: sectionLabel || 'Assignment',
@@ -335,13 +334,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         source: 'assignment-import',
         createdById: authUserId || null,
       })
-      resourceBankItemId = rbItem?.id ? String(rbItem.id) : null
     } catch (rbErr) {
       // Do not block assignment import if resource bank insertion fails.
       console.error('Resource bank upsert failed (assignment import)', rbErr)
     }
 
-    return res.status(201).json({ ...created, resourceBankItemId })
+    return res.status(201).json(created)
   } catch (err: any) {
     console.error('Assignment import error', err)
     return res.status(500).json({ message: err?.message || 'Failed to import assignment' })

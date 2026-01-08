@@ -9,6 +9,7 @@ import { getUserIdFromReq } from '../../../lib/auth'
 import { getUserGrade, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
+import { extractQuestionsWithGemini, tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 
 export const config = {
   api: {
@@ -77,11 +78,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { files } = await parseForm(req)
+    const { fields, files } = await parseForm(req)
     const upload = pickFile(files.file as File | File[] | undefined)
     if (!upload) {
       return res.status(400).json({ message: 'Image file is required' })
     }
+
+    const parseField = (fields as any)?.parse
+    const parseRequestedRaw = Array.isArray(parseField) ? parseField[0] : parseField
+    const parseRequested = ['1', 'true', 'yes', 'on'].includes(String(parseRequestedRaw || '').trim().toLowerCase())
 
     if (!upload.mimetype || !ALLOWED_TYPES.includes(upload.mimetype)) {
       return res.status(400).json({ message: 'Only JPEG, PNG, or WEBP images are allowed' })
@@ -138,7 +143,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    return res.status(200).json({ url: publicUrl, pathname: storedPath })
+    let parsed: any | null = null
+    let parsedPrompt: string | null = null
+    let parseError: string | null = null
+
+    if (parseRequested) {
+      try {
+        const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
+        if (!geminiApiKey) throw new Error('Gemini is not configured (missing GEMINI_API_KEY)')
+
+        const rawBytes = await fs.readFile(upload.filepath)
+        const base64Data = rawBytes.toString('base64')
+        const gradeLabel = grade ? `Grade ${String(grade).replace('GRADE_', '')}` : 'your grade'
+        const model = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash'
+
+        const geminiText = await extractQuestionsWithGemini({
+          apiKey: geminiApiKey,
+          model,
+          gradeLabel,
+          mimeType: upload.mimetype || 'image/png',
+          base64Data,
+          filename: upload.originalFilename || filename,
+          titleHint: upload.originalFilename || 'Quiz screenshot',
+        })
+
+        const obj = tryParseJsonLoose(geminiText)
+        const questionsRaw = Array.isArray(obj?.questions) ? obj.questions : []
+        const questions = questionsRaw
+          .map((q: any) => ({ latex: typeof q?.latex === 'string' ? q.latex.trim() : '' }))
+          .filter((q: any) => q.latex)
+          .slice(0, 50)
+
+        if (!questions.length) {
+          throw new Error('Gemini returned no questions/text')
+        }
+
+        parsed = {
+          title: typeof obj?.title === 'string' ? obj.title.trim() : '',
+          displayTitle: typeof (obj as any)?.displayTitle === 'string' ? String((obj as any).displayTitle).trim() : '',
+          sectionLabel: typeof (obj as any)?.sectionLabel === 'string' ? String((obj as any).sectionLabel).trim() : '',
+          questions,
+        }
+        parsedPrompt = questions[0]?.latex || null
+      } catch (err: any) {
+        parseError = err?.message || 'Parse failed'
+      }
+    }
+
+    return res.status(200).json({ url: publicUrl, pathname: storedPath, parsed, parsedPrompt, parseError })
   } catch (error: any) {
     console.error('Challenge upload error', error)
     const message = error?.message?.includes('maxFileSize')

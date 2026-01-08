@@ -9,12 +9,66 @@ async function ensurePdfJsDomPolyfills() {
   if (typeof g.DOMMatrix !== 'undefined') return
   try {
     const mod: any = await import('dommatrix')
-    const DOMMatrix = mod?.DOMMatrix || mod?.default?.DOMMatrix || mod?.default || null
+    // dommatrix exports a CSSMatrix constructor as the default export.
+    const DOMMatrix = mod?.DOMMatrix || mod?.default?.DOMMatrix || mod?.default || mod || null
     const DOMPoint = mod?.DOMPoint || mod?.default?.DOMPoint || null
     if (DOMMatrix) g.DOMMatrix = DOMMatrix
     if (DOMPoint && typeof g.DOMPoint === 'undefined') g.DOMPoint = DOMPoint
   } catch {
-    // If polyfill load fails, pdfjs will likely throw; keep error surface explicit.
+    // Ignore and fall back to minimal stubs below.
+  }
+
+  // pdf.js can run without a real DOMMatrix for our non-rendering use-cases, but it *must*
+  // exist to prevent module initialization from throwing.
+  if (typeof g.DOMMatrix === 'undefined') {
+    g.DOMMatrix = class DOMMatrix {
+      a = 1
+      b = 0
+      c = 0
+      d = 1
+      e = 0
+      f = 0
+      constructor(_init?: any) {}
+      multiplySelf() { return this }
+      invertSelf() { return this }
+      translateSelf() { return this }
+      scaleSelf() { return this }
+      rotateSelf() { return this }
+    }
+  }
+
+  if (typeof g.DOMPoint === 'undefined') {
+    g.DOMPoint = class DOMPoint {
+      x: number
+      y: number
+      z: number
+      w: number
+      constructor(x = 0, y = 0, z = 0, w = 1) {
+        this.x = x
+        this.y = y
+        this.z = z
+        this.w = w
+      }
+    }
+  }
+
+  if (typeof g.ImageData === 'undefined') {
+    g.ImageData = class ImageData {
+      data: Uint8ClampedArray
+      width: number
+      height: number
+      constructor(data: Uint8ClampedArray, width: number, height?: number) {
+        this.data = data
+        this.width = width
+        this.height = typeof height === 'number' ? height : 1
+      }
+    }
+  }
+
+  if (typeof g.Path2D === 'undefined') {
+    g.Path2D = class Path2D {
+      constructor(_path?: any) {}
+    }
   }
 }
 

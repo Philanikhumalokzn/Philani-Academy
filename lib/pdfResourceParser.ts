@@ -4,6 +4,20 @@ import { put } from '@vercel/blob'
 
 type NormalizedBBox = { x: number; y: number; w: number; h: number }
 
+async function ensurePdfJsDomPolyfills() {
+  const g: any = globalThis as any
+  if (typeof g.DOMMatrix !== 'undefined') return
+  try {
+    const mod: any = await import('dommatrix')
+    const DOMMatrix = mod?.DOMMatrix || mod?.default?.DOMMatrix || mod?.default || null
+    const DOMPoint = mod?.DOMPoint || mod?.default?.DOMPoint || null
+    if (DOMMatrix) g.DOMMatrix = DOMMatrix
+    if (DOMPoint && typeof g.DOMPoint === 'undefined') g.DOMPoint = DOMPoint
+  } catch {
+    // If polyfill load fails, pdfjs will likely throw; keep error surface explicit.
+  }
+}
+
 export type ParsedPdfLine = {
   text: string
   bbox: NormalizedBBox
@@ -183,6 +197,7 @@ export async function parsePdfResource(opts: {
   const maxPages = typeof opts.maxPages === 'number' ? opts.maxPages : 35
   const maxDiagramsPerPage = typeof opts.maxDiagramsPerPage === 'number' ? opts.maxDiagramsPerPage : 25
 
+  await ensurePdfJsDomPolyfills()
   const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const { PNG }: any = await import('pngjs')
 

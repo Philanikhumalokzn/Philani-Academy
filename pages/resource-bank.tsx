@@ -143,6 +143,10 @@ export default function ResourceBankPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
 
+      if (parseOnUpload && typeof data?.parseError === 'string' && data.parseError.trim()) {
+        setError(`Parse failed: ${data.parseError}`)
+      }
+
       setTitle('')
       setTag('')
       if (fileInputRef.current) fileInputRef.current.value = ''

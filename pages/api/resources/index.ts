@@ -216,6 +216,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           parsedAt = new Date()
         } catch (err: any) {
           parseError = err?.message || 'Parse failed'
+          // Ensure parse failures are visible in server logs (Vercel Functions logs).
+          try {
+            console.error('Resource parse failed', {
+              grade,
+              role,
+              filename: uploadedFile?.originalFilename || null,
+              mimeType: uploadedFile?.mimetype || null,
+              size: typeof uploadedFile?.size === 'number' ? uploadedFile.size : null,
+              error: err?.message || String(err),
+            })
+            if (err?.stack) console.error(err.stack)
+          } catch {
+            // ignore
+          }
         }
       }
 

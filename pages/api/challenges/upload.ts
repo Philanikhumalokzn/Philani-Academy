@@ -187,6 +187,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         parsedPrompt = questions[0]?.latex || null
       } catch (err: any) {
         parseError = err?.message || 'Parse failed'
+        // Ensure parse failures are visible in server logs (Vercel Functions logs).
+        try {
+          console.error('Challenge screenshot parse failed', {
+            grade: grade || null,
+            filename: upload?.originalFilename || null,
+            mimeType: upload?.mimetype || null,
+            size: typeof upload?.size === 'number' ? upload.size : null,
+            error: err?.message || String(err),
+          })
+          if (err?.stack) console.error(err.stack)
+        } catch {
+          // ignore
+        }
       }
     }
 

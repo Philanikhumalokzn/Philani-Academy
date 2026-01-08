@@ -302,7 +302,7 @@ export default function PublicUserProfilePage() {
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
                 const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
                 const href = hasAttempted && !canAttempt
-                  ? `/challenges/${encodeURIComponent(String(c.id))}?view=responses`
+                  ? `/dashboard?viewChallengeResponse=${encodeURIComponent(String(c.id))}`
                   : `/challenges/${encodeURIComponent(String(c.id))}`
 
                 return (

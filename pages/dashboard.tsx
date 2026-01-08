@@ -775,9 +775,35 @@ export default function Dashboard() {
   const [selectedSubmissionLoading, setSelectedSubmissionLoading] = useState(false)
   const [selectedSubmissionError, setSelectedSubmissionError] = useState<string | null>(null)
 
+  const [challengeResponseOverlayOpen, setChallengeResponseOverlayOpen] = useState(false)
+  const [selectedChallengeResponseId, setSelectedChallengeResponseId] = useState<string | null>(null)
+  const [challengeResponseLoading, setChallengeResponseLoading] = useState(false)
+  const [challengeResponseError, setChallengeResponseError] = useState<string | null>(null)
+  const [challengeResponseChallenge, setChallengeResponseChallenge] = useState<any | null>(null)
+  const [challengeMyResponses, setChallengeMyResponses] = useState<any[]>([])
+
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'same-origin' })
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        const userId = typeof data?.id === 'string' ? data.id : ''
+        if (!cancelled && userId) setViewerId(userId)
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [status])
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
@@ -2215,6 +2241,52 @@ export default function Dashboard() {
     }
   }, [])
 
+  const fetchMyChallengeResponse = useCallback(async (challengeId: string) => {
+    if (!challengeId) return
+    setChallengeResponseLoading(true)
+    setChallengeResponseError(null)
+    try {
+      const [challengeRes, responsesRes] = await Promise.all([
+        fetch(`/api/challenges/${encodeURIComponent(challengeId)}`, { credentials: 'same-origin' }),
+        fetch(`/api/sessions/${encodeURIComponent(`challenge:${challengeId}`)}/responses`, { credentials: 'same-origin' }),
+      ])
+
+      const challengeData = await challengeRes.json().catch(() => ({}))
+      if (!challengeRes.ok) {
+        setChallengeResponseError(challengeData?.message || `Failed to load quiz (${challengeRes.status})`)
+        setChallengeResponseChallenge(null)
+        setChallengeMyResponses([])
+        return
+      }
+
+      const responsesData = await responsesRes.json().catch(() => ({}))
+      if (!responsesRes.ok) {
+        setChallengeResponseError(responsesData?.message || `Failed to load responses (${responsesRes.status})`)
+        setChallengeResponseChallenge(challengeData)
+        setChallengeMyResponses([])
+        return
+      }
+
+      const all = Array.isArray(responsesData?.responses) ? responsesData.responses : []
+      const me = String(viewerId || currentUserId || '')
+      const mine = me ? all.filter((r: any) => String(r?.userId || '') === me) : []
+      mine.sort((a: any, b: any) => {
+        const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bT - aT
+      })
+
+      setChallengeResponseChallenge(challengeData)
+      setChallengeMyResponses(mine)
+    } catch (err: any) {
+      setChallengeResponseError(err?.message || 'Failed to load responses')
+      setChallengeResponseChallenge(null)
+      setChallengeMyResponses([])
+    } finally {
+      setChallengeResponseLoading(false)
+    }
+  }, [viewerId, currentUserId])
+
   useEffect(() => {
     if (!challengeGradingOverlayOpen || !selectedChallengeId) return
     void fetchChallengeSubmissions(selectedChallengeId)
@@ -2232,6 +2304,24 @@ export default function Dashboard() {
     delete nextQuery.manageChallenge
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen])
+
+  useEffect(() => {
+    const viewChallengeResponse = typeof router.query.viewChallengeResponse === 'string' ? router.query.viewChallengeResponse : ''
+    if (!viewChallengeResponse) return
+    if (selectedChallengeResponseId === viewChallengeResponse && challengeResponseOverlayOpen) return
+
+    setSelectedChallengeResponseId(viewChallengeResponse)
+    setChallengeResponseOverlayOpen(true)
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.viewChallengeResponse
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [router, router.query, selectedChallengeResponseId, challengeResponseOverlayOpen])
+
+  useEffect(() => {
+    if (!challengeResponseOverlayOpen || !selectedChallengeResponseId) return
+    void fetchMyChallengeResponse(selectedChallengeResponseId)
+  }, [challengeResponseOverlayOpen, selectedChallengeResponseId, fetchMyChallengeResponse])
 
   useEffect(() => {
     if (!timelineOpen) return
@@ -2330,7 +2420,7 @@ export default function Dashboard() {
               const hasAttempted = myAttemptCount > 0
               const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
               const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
-              const href = c?.id ? (hasAttempted && !canAttempt ? `/challenges/${encodeURIComponent(String(c.id))}?view=responses` : `/challenges/${encodeURIComponent(String(c.id))}`) : '#'
+              const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
               
               return (
                 <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
@@ -2352,9 +2442,22 @@ export default function Dashboard() {
                           Manage
                         </button>
                       ) : (
-                        <Link href={href} className="btn btn-primary shrink-0">
-                          {buttonText}
-                        </Link>
+                        buttonText === 'View Response' ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary shrink-0"
+                            onClick={() => {
+                              setSelectedChallengeResponseId(String(c.id))
+                              setChallengeResponseOverlayOpen(true)
+                            }}
+                          >
+                            View Response
+                          </button>
+                        ) : (
+                          <Link href={href} className="btn btn-primary shrink-0">
+                            Attempt
+                          </Link>
+                        )
                       )
                     ) : null}
                   </div>
@@ -2605,7 +2708,7 @@ export default function Dashboard() {
                 const hasAttempted = myAttemptCount > 0
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
                 const buttonText = hasAttempted && !canAttempt ? 'View Response' : 'Attempt'
-                const href = p?.id ? (hasAttempted && !canAttempt ? `/challenges/${encodeURIComponent(String(p.id))}?view=responses` : `/challenges/${encodeURIComponent(String(p.id))}`) : '#'
+                const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
                 
                 return (
                   <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
@@ -2630,12 +2733,22 @@ export default function Dashboard() {
                             Manage
                           </button>
                         ) : (
-                          <Link
-                            href={href}
-                            className="btn btn-primary shrink-0"
-                          >
-                            {buttonText}
-                          </Link>
+                          buttonText === 'View Response' ? (
+                            <button
+                              type="button"
+                              className="btn btn-primary shrink-0"
+                              onClick={() => {
+                                setSelectedChallengeResponseId(String(p.id))
+                                setChallengeResponseOverlayOpen(true)
+                              }}
+                            >
+                              View Response
+                            </button>
+                          ) : (
+                            <Link href={href} className="btn btn-primary shrink-0">
+                              Attempt
+                            </Link>
+                          )
                         )
                       ) : null}
                     </div>
@@ -8293,6 +8406,150 @@ export default function Dashboard() {
                   <div className="text-xs muted">
                     Note: Quiz grading currently shows raw responses. AI-powered grading similar to assignments will be added in a future update.
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {challengeResponseOverlayOpen && selectedChallengeResponseId && (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true">
+            <div
+              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+              onClick={() => {
+                setChallengeResponseOverlayOpen(false)
+                setSelectedChallengeResponseId(null)
+                setChallengeResponseChallenge(null)
+                setChallengeMyResponses([])
+                setChallengeResponseError(null)
+              }}
+            />
+            <div
+              className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+              onClick={() => {
+                setChallengeResponseOverlayOpen(false)
+                setSelectedChallengeResponseId(null)
+                setChallengeResponseChallenge(null)
+                setChallengeMyResponses([])
+                setChallengeResponseError(null)
+              }}
+            >
+              <div
+                className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 border-b flex items-start justify-between gap-3">
+                  <div className="w-24 shrink-0">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setChallengeResponseOverlayOpen(false)
+                        setSelectedChallengeResponseId(null)
+                        setChallengeResponseChallenge(null)
+                        setChallengeMyResponses([])
+                        setChallengeResponseError(null)
+                      }}
+                    >
+                      Back
+                    </button>
+                  </div>
+                  <div className="min-w-0 flex-1 text-center">
+                    <div className="font-semibold break-words">
+                      {(challengeResponseChallenge?.title || 'Quiz') as any}
+                    </div>
+                  </div>
+                  <div className="w-24 shrink-0 flex justify-end">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setChallengeResponseOverlayOpen(false)
+                        setSelectedChallengeResponseId(null)
+                        setChallengeResponseChallenge(null)
+                        setChallengeMyResponses([])
+                        setChallengeResponseError(null)
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
+                  {challengeResponseLoading ? (
+                    <div className="text-sm muted">Loading your feedback…</div>
+                  ) : (
+                    <>
+                      {challengeResponseChallenge?.prompt ? (
+                        <div className="border border-white/10 rounded bg-white/5 p-3">
+                          <div className="text-sm whitespace-pre-wrap break-words">
+                            {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {challengeMyResponses.length === 0 ? (
+                        <div className="border border-white/10 rounded bg-white/5 p-3">
+                          <div className="text-sm muted">No submission found yet.</div>
+                        </div>
+                      ) : (
+                        <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold text-sm">Your submission</div>
+                            <button
+                              type="button"
+                              className="btn btn-ghost text-xs"
+                              disabled={challengeResponseLoading}
+                              onClick={() => fetchMyChallengeResponse(String(selectedChallengeResponseId))}
+                            >
+                              Refresh
+                            </button>
+                          </div>
+
+                          <div className="text-sm">
+                            Submitted: <span className="font-medium">{new Date(String(challengeMyResponses[0]?.createdAt)).toLocaleString()}</span>
+                            {challengeMyResponses.length > 1 ? ` • ${challengeMyResponses.length} attempts` : ''}
+                          </div>
+
+                          <div className="space-y-2">
+                            {challengeMyResponses.map((resp: any, idx: number) => {
+                              const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
+                              const latex = String(resp?.latex || '')
+                              const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                              return (
+                                <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                  {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
+                                  <div className="p-2 rounded border border-white/10 bg-white/5">
+                                    <div className="text-xs muted mb-1">Your answer</div>
+                                    {latex.trim() ? (
+                                      html ? (
+                                        <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                      ) : (
+                                        <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
+                                      )
+                                    ) : (
+                                      <div className="text-sm muted">(empty)</div>
+                                    )}
+                                  </div>
+
+                                  {String(resp?.studentText || '').trim() ? (
+                                    <div className="p-2 rounded border border-white/10 bg-white/5">
+                                      <div className="text-xs muted mb-1">Typed text</div>
+                                      <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </div>

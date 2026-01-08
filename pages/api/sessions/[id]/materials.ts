@@ -7,6 +7,7 @@ import { promises as fs } from 'fs'
 import { put } from '@vercel/blob'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
+import { computeFileSha256Hex, upsertResourceBankItem } from '../../../../lib/resourceBank'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 export const config = {
@@ -109,6 +110,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const providedTitle = Array.isArray(titleField) ? titleField[0] : titleField
       const finalTitle = (providedTitle || uploadedFile.originalFilename || 'Lesson material').toString().trim()
 
+      const checksum = await computeFileSha256Hex(uploadedFile.filepath)
+
       const safeFilename = sanitizeFilename(uploadedFile.originalFilename)
       const relativePath = path.posix.join('sessions', sessionRecord.id, 'materials', safeFilename).replace(/\\/g, '/')
       const blobToken = process.env.BLOB_READ_WRITE_TOKEN
@@ -150,6 +153,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           createdBy: (token as any)?.email ? String((token as any).email) : null
         }
       })
+
+      try {
+        await upsertResourceBankItem({
+          grade: sessionGrade,
+          title: finalTitle,
+          tag: 'Lesson material',
+          url: publicUrl,
+          filename: storedFilename,
+          contentType: uploadedFile.mimetype || null,
+          size: storedSize,
+          checksum,
+          source: 'session-material',
+          createdById: authUserId || null,
+        })
+      } catch (rbErr) {
+        // Do not block lesson material uploads if resource bank insertion fails.
+        console.error('Resource bank upsert failed (lesson material)', rbErr)
+      }
 
       return res.status(201).json(material)
     } catch (err: any) {

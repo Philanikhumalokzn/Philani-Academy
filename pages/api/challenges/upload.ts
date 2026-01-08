@@ -6,6 +6,9 @@ import { createReadStream } from 'fs'
 import { promises as fs } from 'fs'
 import { put } from '@vercel/blob'
 import { getUserIdFromReq } from '../../../lib/auth'
+import { getUserGrade, getUserRole } from '../../../lib/auth'
+import { normalizeGradeInput } from '../../../lib/grades'
+import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
 
 export const config = {
   api: {
@@ -67,6 +70,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userId = await getUserIdFromReq(req)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
+  const role = (await getUserRole(req)) || 'student'
+  const grade = normalizeGradeInput(await getUserGrade(req))
+  if (role !== 'admin' && !grade) {
+    return res.status(403).json({ message: 'Grade not configured for this account' })
+  }
+
   try {
     const { files } = await parseForm(req)
     const upload = pickFile(files.file as File | File[] | undefined)
@@ -85,6 +94,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const filename = buildFilename(upload)
     const relativePath = path.posix.join('uploads', 'challenges', userId, filename).replace(/\\/g, '/')
+
+    const checksum = await computeFileSha256Hex(upload.filepath)
 
     const blobToken = process.env.BLOB_READ_WRITE_TOKEN
 
@@ -105,6 +116,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const absoluteDestination = path.join(process.cwd(), 'public', relativePath)
       await fs.mkdir(path.dirname(absoluteDestination), { recursive: true })
       await fs.copyFile(upload.filepath, absoluteDestination)
+    }
+
+    if (grade) {
+      try {
+        await upsertResourceBankItem({
+          grade,
+          title: upload.originalFilename || 'Challenge image',
+          tag: 'Challenge image',
+          url: publicUrl,
+          filename: storedPath,
+          contentType: upload.mimetype || null,
+          size: fileSize || null,
+          checksum,
+          source: 'challenge-upload',
+          createdById: userId || null,
+        })
+      } catch (rbErr) {
+        // Do not block challenge image uploads if resource bank insertion fails.
+        console.error('Resource bank upsert failed (challenge upload)', rbErr)
+      }
     }
 
     return res.status(200).json({ url: publicUrl, pathname: storedPath })

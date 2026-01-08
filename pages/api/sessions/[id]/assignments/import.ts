@@ -7,6 +7,7 @@ import { promises as fs } from 'fs'
 import { put } from '@vercel/blob'
 import prisma from '../../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../../lib/grades'
+import { computeFileSha256Hex, upsertResourceBankItem } from '../../../../../lib/resourceBank'
 
 export const config = {
   api: {
@@ -191,6 +192,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const role = (token as any)?.role as string | undefined
   const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+  const authUserId = String((token as any)?.id || (token as any)?.sub || '')
 
   if (role !== 'admin' && role !== 'teacher') {
     return res.status(403).json({ message: 'Only instructors may import assignments' })
@@ -231,6 +233,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const titleField = fields.title
     const providedTitle = Array.isArray(titleField) ? titleField[0] : titleField
     const titleHint = clampText((providedTitle || '').toString().trim(), 160)
+
+    const checksum = await computeFileSha256Hex(uploadedFile.filepath)
 
     const safeFilename = sanitizeFilename(uploadedFile.originalFilename)
     const relativePath = path.posix
@@ -315,6 +319,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       include: { questions: true },
     })
+
+    try {
+      const storedSize = typeof uploadedFile.size === 'number' ? uploadedFile.size : null
+      await upsertResourceBankItem({
+        grade: sessionRecord.grade,
+        title: assignmentTitle,
+        tag: sectionLabel || 'Assignment',
+        url: publicUrl,
+        filename: storedFilename,
+        contentType: uploadedFile.mimetype || null,
+        size: storedSize,
+        checksum,
+        source: 'assignment-import',
+        createdById: authUserId || null,
+      })
+    } catch (rbErr) {
+      // Do not block assignment import if resource bank insertion fails.
+      console.error('Resource bank upsert failed (assignment import)', rbErr)
+    }
 
     return res.status(201).json(created)
   } catch (err: any) {

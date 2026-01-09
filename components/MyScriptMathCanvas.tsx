@@ -886,10 +886,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const current = clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: (currentEditorBadge?.name || String(controllerId)).trim() }
 
-    const uniqueMap = new Map<string, { clientId: string; name: string }>()
-    for (const c of clients) uniqueMap.set(c.clientId, c)
-    uniqueMap.set(current.clientId, current)
-    const all = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    // Dedupe by display name to avoid showing the same user multiple times
+    // (e.g. multiple tabs/devices with the same name).
+    const nameKey = (value: string) => String(value || '').trim().toLowerCase()
+    const uniqueByName = new Map<string, { clientId: string; name: string }>()
+    for (const c of clients) {
+      const key = nameKey(c.name)
+      if (!key) continue
+      if (!uniqueByName.has(key)) uniqueByName.set(key, c)
+    }
+    uniqueByName.set(nameKey(current.name) || String(current.clientId), current)
+    const all = Array.from(uniqueByName.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
     const n = all.length
     if (n <= 0) return
 
@@ -1202,9 +1209,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
   const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clientId = useMemo(() => {
-    const base = sanitizeIdentifier(userId || 'anonymous')
-    const randomSuffix = Math.random().toString(36).slice(2, 8)
-    return `${base}-${randomSuffix}`
+    // Ably clientIds are capped/sanitized by our token endpoint (60 chars).
+    // Keep the random suffix *within* that cap so (a) exclusive control works and
+    // (b) multiple tabs for the same user don't collide into the same clientId.
+    const rawBase = sanitizeIdentifier(userId || 'anonymous')
+    const randomSuffix = Math.random().toString(36).slice(2, 8) // 6 chars
+    const maxBaseLen = Math.max(1, 60 - 1 - randomSuffix.length)
+    const base = rawBase.slice(0, maxBaseLen)
+    return sanitizeIdentifier(`${base}-${randomSuffix}`)
   }, [userId])
 
   useEffect(() => {
@@ -7934,10 +7946,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                     const current = clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: (currentEditorBadge?.name || String(controllerId)).trim() }
 
-                    const uniqueMap = new Map<string, { clientId: string; name: string }>()
-                    for (const c of clients) uniqueMap.set(c.clientId, c)
-                    uniqueMap.set(current.clientId, current)
-                    const all = Array.from(uniqueMap.values())
+                    // Dedupe by display name so we don't render the same person multiple times.
+                    const nameKey = (value: string) => String(value || '').trim().toLowerCase()
+                    const uniqueByName = new Map<string, { clientId: string; name: string }>()
+                    for (const c of clients) {
+                      const key = nameKey(c.name)
+                      if (!key) continue
+                      if (!uniqueByName.has(key)) uniqueByName.set(key, c)
+                    }
+                    uniqueByName.set(nameKey(current.name) || String(current.clientId), current)
+                    const all = Array.from(uniqueByName.values())
                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
                     const n = all.length

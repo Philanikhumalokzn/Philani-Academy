@@ -844,6 +844,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const [topPanelSelectedStep, setTopPanelSelectedStep] = useState<number | null>(null)
 
+  // Step navigation redo stack (used when undo/redo crosses between step lines).
+  // We represent the draft line as index === adminSteps.length.
+  const stepNavRedoStackRef = useRef<number[]>([])
+
+  // Long-press repeat (undo/redo) + long-press hard reset (bin)
+  const pressRepeatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pressRepeatActiveRef = useRef(false)
+  const pressRepeatTriggeredRef = useRef(false)
+  const pressRepeatPointerIdRef = useRef<number | null>(null)
+
+  const binLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const binLongPressTriggeredRef = useRef(false)
+
   const textIconLastTapRef = useRef<number | null>(null)
   const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -4413,30 +4426,129 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName])
 
-  const handleClear = () => {
+  const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
+
+  const isCurrentLineEmptyNow = () => {
+    if (useAdminStepComposer && isAdmin) {
+      return !(adminDraftLatex || '').trim()
+    }
+    return !((latexOutput || '').trim())
+  }
+
+  const clearEverything = () => {
+    if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
+
+    try {
+      editorInstanceRef.current.clear()
+    } catch {}
+    setLatexOutput('')
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+
+    if (useAdminStepComposer) {
+      setAdminSteps([])
+      setAdminDraftLatex('')
+      setAdminSendingStep(false)
+      setAdminEditIndex(null)
+      clearTopPanelSelection()
+      stepNavRedoStackRef.current = []
+    }
+
+    if (pageIndex === sharedPageIndexRef.current) {
+      broadcastSnapshot(true, { force: true, reason: 'clear' })
+    }
+  }
+
+  const clearCurrentOnly = () => {
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
+    if (useAdminStepComposer && isAdmin) {
+      setAdminDraftLatex('')
+      clearTopPanelSelection()
+    }
     if (pageIndex === sharedPageIndexRef.current) {
       broadcastSnapshot(true, { force: true, reason: 'clear' })
     }
   }
 
-  const handleUndo = () => {
-    if (!editorInstanceRef.current) return
-    if (lockedOutRef.current) return
-    editorInstanceRef.current.undo()
-    broadcastSnapshot(false)
+  const handleTrashClick = () => {
+    const emptyCanvas = isEditorEmptyNow()
+    const emptyLine = isCurrentLineEmptyNow()
+
+    if (emptyCanvas && emptyLine) {
+      const ok = typeof window !== 'undefined'
+        ? window.confirm('Clear everything? This will remove all lines and the canvas.')
+        : false
+      if (!ok) return
+      clearEverything()
+      return
+    }
+
+    clearCurrentOnly()
   }
 
-  const handleRedo = () => {
+  const handleClear = () => {
+    handleTrashClick()
+  }
+
+  const handleUndo = async () => {
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
-    editorInstanceRef.current.redo()
+
+    try {
+      editorInstanceRef.current.undo()
+    } catch {}
     broadcastSnapshot(false)
+
+    // Step-boundary undo: once empty, go to the line above.
+    if (!useAdminStepComposer || !isAdmin) return
+    const emptyCanvas = isEditorEmptyNow()
+    if (!emptyCanvas) return
+    setAdminDraftLatex('')
+    if (!isCurrentLineEmptyNow()) return
+
+    const currentIndex = adminEditIndex !== null ? adminEditIndex : adminSteps.length
+    const prevIndex = currentIndex - 1
+    if (prevIndex < 0) return
+
+    // Push current index for step-boundary redo.
+    stepNavRedoStackRef.current.push(currentIndex)
+    await loadAdminStepForEditing(prevIndex)
+  }
+
+  const handleRedo = async () => {
+    if (!editorInstanceRef.current) return
+    if (lockedOutRef.current) return
+
+    try {
+      editorInstanceRef.current.redo()
+    } catch {}
+    broadcastSnapshot(false)
+
+    // Step-boundary redo: when empty, redo to the next line we previously stepped from.
+    if (!useAdminStepComposer || !isAdmin) return
+    const emptyCanvas = isEditorEmptyNow()
+    if (!emptyCanvas) return
+    setAdminDraftLatex('')
+    if (!isCurrentLineEmptyNow()) return
+
+    const nextIndex = stepNavRedoStackRef.current.pop()
+    if (nextIndex === undefined) return
+
+    if (nextIndex >= adminSteps.length) {
+      // Return to draft line.
+      setAdminEditIndex(null)
+      setAdminDraftLatex('')
+      clearTopPanelSelection()
+      return
+    }
+
+    await loadAdminStepForEditing(nextIndex)
   }
 
   const handleConvert = () => {
@@ -7006,7 +7118,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleUndo)}
-          disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && isAdmin))}
         >
           Undo
         </button>
@@ -7014,7 +7126,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleRedo)}
-          disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && isAdmin))}
         >
           Redo
         </button>
@@ -7693,7 +7805,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={!canUndo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && isAdmin))}
+                              onPointerDown={(e) => {
+                                if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                                if (!canUndo && !(useAdminStepComposer && isAdmin)) return
+                                pressRepeatTriggeredRef.current = false
+                                pressRepeatActiveRef.current = true
+                                pressRepeatPointerIdRef.current = e.pointerId
+                                if (pressRepeatTimeoutRef.current) {
+                                  clearTimeout(pressRepeatTimeoutRef.current)
+                                  pressRepeatTimeoutRef.current = null
+                                }
+                                pressRepeatTimeoutRef.current = setTimeout(() => {
+                                  if (!pressRepeatActiveRef.current) return
+                                  pressRepeatTriggeredRef.current = true
+
+                                  const tick = async () => {
+                                    if (!pressRepeatActiveRef.current) return
+                                    await runCanvasAction(handleUndo)
+                                    if (!pressRepeatActiveRef.current) return
+                                    pressRepeatTimeoutRef.current = setTimeout(() => {
+                                      void tick()
+                                    }, 110)
+                                  }
+
+                                  void tick()
+                                }, 320)
+                                try {
+                                  e.currentTarget.setPointerCapture(e.pointerId)
+                                } catch {}
+                              }}
+                              onPointerUp={(e) => {
+                                if (pressRepeatPointerIdRef.current !== e.pointerId) return
+                                pressRepeatActiveRef.current = false
+                                pressRepeatPointerIdRef.current = null
+                                if (pressRepeatTimeoutRef.current) {
+                                  clearTimeout(pressRepeatTimeoutRef.current)
+                                  pressRepeatTimeoutRef.current = null
+                                }
+                              }}
+                              onPointerCancel={(e) => {
+                                if (pressRepeatPointerIdRef.current !== e.pointerId) return
+                                pressRepeatActiveRef.current = false
+                                pressRepeatPointerIdRef.current = null
+                                if (pressRepeatTimeoutRef.current) {
+                                  clearTimeout(pressRepeatTimeoutRef.current)
+                                  pressRepeatTimeoutRef.current = null
+                                }
+                              }}
                             >
                               <span className="sr-only">Undo</span>
                               <svg
@@ -7714,7 +7873,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={!canRedo || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && isAdmin))}
+                              onPointerDown={(e) => {
+                                if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                                if (!canRedo && !(useAdminStepComposer && isAdmin)) return
+                                pressRepeatTriggeredRef.current = false
+                                pressRepeatActiveRef.current = true
+                                pressRepeatPointerIdRef.current = e.pointerId
+                                if (pressRepeatTimeoutRef.current) {
+                                  clearTimeout(pressRepeatTimeoutRef.current)
+                                  pressRepeatTimeoutRef.current = null
+                                }
+                                pressRepeatTimeoutRef.current = setTimeout(() => {
+                                  if (!pressRepeatActiveRef.current) return
+                                  pressRepeatTriggeredRef.current = true
+
+                                  const tick = async () => {
+                                    if (!pressRepeatActiveRef.current) return
+                                    await runCanvasAction(handleRedo)
+                                    if (!pressRepeatActiveRef.current) return
+                                    pressRepeatTimeoutRef.current = setTimeout(() => {
+                                      void tick()
+                                    }, 110)
+                                  }
+
+                                  void tick()
+                                }, 320)
+                                try {
+                                  e.currentTarget.setPointerCapture(e.pointerId)
+                                } catch {}
+                              }}
+                              onPointerUp={(e) => {
+                                if (pressRepeatPointerIdRef.current !== e.pointerId) return
+                                pressRepeatActiveRef.current = false
+                                pressRepeatPointerIdRef.current = null
+                                if (pressRepeatTimeoutRef.current) {
+                                  clearTimeout(pressRepeatTimeoutRef.current)
+                                  pressRepeatTimeoutRef.current = null
+                                }
+                              }}
+                              onPointerCancel={(e) => {
+                                if (pressRepeatPointerIdRef.current !== e.pointerId) return
+                                pressRepeatActiveRef.current = false
+                                pressRepeatPointerIdRef.current = null
+                                if (pressRepeatTimeoutRef.current) {
+                                  clearTimeout(pressRepeatTimeoutRef.current)
+                                  pressRepeatTimeoutRef.current = null
+                                }
+                              }}
                             >
                               <span className="sr-only">Redo</span>
                               <svg
@@ -7734,8 +7940,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               type="button"
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Clear"
-                              onClick={() => runCanvasAction(handleClear)}
+                              onClick={(e) => {
+                                if (binLongPressTriggeredRef.current) {
+                                  // Long press already cleared everything.
+                                  binLongPressTriggeredRef.current = false
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  return
+                                }
+                                runCanvasAction(handleClear)
+                              }}
                               disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              onPointerDown={(e) => {
+                                if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                                binLongPressTriggeredRef.current = false
+                                if (binLongPressTimeoutRef.current) {
+                                  clearTimeout(binLongPressTimeoutRef.current)
+                                  binLongPressTimeoutRef.current = null
+                                }
+                                binLongPressTimeoutRef.current = setTimeout(() => {
+                                  binLongPressTimeoutRef.current = null
+                                  binLongPressTriggeredRef.current = true
+                                  void runCanvasAction(() => clearEverything())
+                                }, 520)
+                                try {
+                                  e.currentTarget.setPointerCapture(e.pointerId)
+                                } catch {}
+                              }}
+                              onPointerUp={() => {
+                                if (binLongPressTimeoutRef.current) {
+                                  clearTimeout(binLongPressTimeoutRef.current)
+                                  binLongPressTimeoutRef.current = null
+                                }
+                              }}
+                              onPointerCancel={() => {
+                                if (binLongPressTimeoutRef.current) {
+                                  clearTimeout(binLongPressTimeoutRef.current)
+                                  binLongPressTimeoutRef.current = null
+                                }
+                              }}
                             >
                               <span className="sr-only">Clear</span>
                               <svg

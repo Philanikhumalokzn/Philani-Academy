@@ -919,6 +919,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     focusTopPanelInput()
   }, [adminEditIndex, adminSteps, focusTopPanelInput, getEditableLineText, useAdminStepComposer])
 
+  useEffect(() => {
+    if (!topPanelEditingMode) return
+    if (topPanelSelectedLine === null) return
+    const el = topPanelHiddenInputRef.current
+    if (!el) return
+    // Keep the native caret in sync (even though the input is hidden).
+    const t = window.requestAnimationFrame(() => {
+      try {
+        el.setSelectionRange(topPanelCaretPos, topPanelCaretPos)
+      } catch {}
+    })
+    return () => {
+      try {
+        window.cancelAnimationFrame(t)
+      } catch {}
+    }
+  }, [topPanelCaretPos, topPanelEditingMode, topPanelSelectedLine])
+
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
   const [lessonScriptError, setLessonScriptError] = useState<string | null>(null)
@@ -7608,8 +7626,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           aria-hidden="true"
                           tabIndex={-1}
                           className="absolute -left-[9999px] -top-[9999px] opacity-0"
-                          value=""
-                          onChange={() => { /* controlled via keydown */ }}
+                          value={topPanelSelectedLine !== null ? getEditableLineText(topPanelSelectedLine) : ''}
+                          onChange={() => { /* controlled via beforeinput */ }}
+                          onBeforeInput={(e: any) => {
+                            if (!useAdminStepComposer) return
+                            const sel = topPanelSelectedLineRef.current
+                            if (sel === null) return
+
+                            const inputType: string | undefined = e?.nativeEvent?.inputType
+                            const data: string | undefined = e?.nativeEvent?.data
+
+                            if (inputType === 'deleteContentBackward') {
+                              e.preventDefault()
+                              const current = getEditableLineText(sel)
+                              setTopPanelCaretPos(prev => {
+                                const caret = Math.min(Math.max(0, prev), current.length)
+                                if (caret <= 0) return 0
+                                const next = current.slice(0, caret - 1) + current.slice(caret)
+                                setEditableLineText(sel, next)
+                                return Math.max(0, caret - 1)
+                              })
+                              return
+                            }
+
+                            if (inputType === 'deleteContentForward') {
+                              e.preventDefault()
+                              const current = getEditableLineText(sel)
+                              const caret = Math.min(Math.max(0, topPanelCaretPos), current.length)
+                              if (caret >= current.length) return
+                              const next = current.slice(0, caret) + current.slice(caret + 1)
+                              setEditableLineText(sel, next)
+                              return
+                            }
+
+                            // Insert text / composition text.
+                            if (data && (inputType?.startsWith('insert') || inputType === 'insertText')) {
+                              e.preventDefault()
+                              const current = getEditableLineText(sel)
+                              setTopPanelCaretPos(prev => {
+                                const caret = Math.min(Math.max(0, prev), current.length)
+                                const next = current.slice(0, caret) + data + current.slice(caret)
+                                setEditableLineText(sel, next)
+                                return Math.min(next.length, caret + data.length)
+                              })
+                            }
+                          }}
+                          onPaste={(e) => {
+                            if (!useAdminStepComposer) return
+                            const sel = topPanelSelectedLineRef.current
+                            if (sel === null) return
+                            const text = e.clipboardData?.getData('text') || ''
+                            if (!text) return
+                            e.preventDefault()
+                            const current = getEditableLineText(sel)
+                            setTopPanelCaretPos(prev => {
+                              const caret = Math.min(Math.max(0, prev), current.length)
+                              const next = current.slice(0, caret) + text + current.slice(caret)
+                              setEditableLineText(sel, next)
+                              return Math.min(next.length, caret + text.length)
+                            })
+                          }}
                           onKeyDown={(event) => {
                             if (!useAdminStepComposer) return
                             const sel = topPanelSelectedLineRef.current
@@ -7628,16 +7704,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             }
 
                             const current = getEditableLineText(sel)
-                            const caret = topPanelCaretPos
+                            const caret = Math.min(Math.max(0, topPanelCaretPos), current.length)
 
                             if (key === 'ArrowLeft') {
                               event.preventDefault()
-                              setTopPanelCaretPos(Math.max(0, caret - 1))
+                              setTopPanelCaretPos(prev => Math.max(0, prev - 1))
                               return
                             }
                             if (key === 'ArrowRight') {
                               event.preventDefault()
-                              setTopPanelCaretPos(Math.min(current.length, caret + 1))
+                              setTopPanelCaretPos(prev => Math.min(current.length, prev + 1))
                               return
                             }
                             if (key === 'Home') {
@@ -7665,17 +7741,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               const next = current.slice(0, caret) + current.slice(caret + 1)
                               setEditableLineText(sel, next)
                               return
-                            }
-
-                            if (event.ctrlKey || event.metaKey || event.altKey) {
-                              return
-                            }
-
-                            if (key.length === 1) {
-                              event.preventDefault()
-                              const next = current.slice(0, caret) + key + current.slice(caret)
-                              setEditableLineText(sel, next)
-                              setTopPanelCaretPos(Math.min(next.length, caret + 1))
                             }
                           }}
                         />
@@ -7707,7 +7772,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                     )}
                                     {selected && (
                                       <span className="inline-block align-middle ml-1" aria-hidden="true">
-                                        <span className="inline-block w-[2px] h-[1.2em] bg-slate-700" />
+                                        <span className="inline-block w-[2px] h-[1.2em] bg-slate-700 animate-pulse" />
                                       </span>
                                     )}
                                   </button>

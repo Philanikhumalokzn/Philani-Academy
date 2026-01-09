@@ -5101,7 +5101,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const renderLatexLine = useCallback((latex: string) => {
     if (!latex) return ''
     try {
-      return renderToString(latex, { throwOnError: false, displayMode: true })
+      // Inline render here so the caret can sit visually at the end of the expression.
+      // (displayMode renders a block-level wrapper which pushes the caret below/left.)
+      return renderToString(latex, { throwOnError: false, displayMode: false })
     } catch {
       return ''
     }
@@ -7691,7 +7693,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   <button
                                     type="button"
                                     data-top-latex-line={String(index)}
-                                    className={`w-full text-left rounded px-2 py-1 ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
+                                    className={`w-full text-left rounded px-2 py-1 focus:outline-none focus:ring-0 ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
                                     onClick={(ev) => {
                                       ev.preventDefault()
                                       ev.stopPropagation()
@@ -7699,7 +7701,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                     }}
                                   >
                                     {html ? (
-                                      <span className="inline" dangerouslySetInnerHTML={{ __html: html }} />
+                                      <span className="inline align-middle" dangerouslySetInnerHTML={{ __html: html }} />
                                     ) : (
                                       <span className="text-slate-500">&nbsp;</span>
                                     )}

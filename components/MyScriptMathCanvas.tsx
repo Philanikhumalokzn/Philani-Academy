@@ -782,6 +782,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const editorPickerOpenRef = useRef(false)
   const editorBadgeButtonRef = useRef<HTMLButtonElement | null>(null)
   const [editorPickerAnchor, setEditorPickerAnchor] = useState<{ x: number; y: number } | null>(null)
+  const editorPickerScrollRef = useRef<HTMLDivElement | null>(null)
   const OVERLAY_CHROME_PEEK_MS = 2500
 
   useEffect(() => {
@@ -868,6 +869,52 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     return { controllerId, name: resolvedName, initials }
   }, [connectedClients, controlState?.controllerId, controlState?.controllerName])
+
+  useEffect(() => {
+    if (!editorPickerOpen) return
+    if (!editorPickerAnchor) return
+    if (!isOverlayMode || !isCompactViewport) return
+    const container = studentStackRef.current
+    const scroller = editorPickerScrollRef.current
+    if (!container || !scroller) return
+    const controllerId = currentEditorBadge?.controllerId
+    if (!controllerId || controllerId === ALL_STUDENTS_ID) return
+
+    const clients = connectedClients
+      .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
+      .map(c => ({ clientId: c.clientId, name: (c.name || '').trim() || c.clientId }))
+
+    const current = clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: (currentEditorBadge?.name || String(controllerId)).trim() }
+
+    const uniqueMap = new Map<string, { clientId: string; name: string }>()
+    for (const c of clients) uniqueMap.set(c.clientId, c)
+    uniqueMap.set(current.clientId, current)
+    const all = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    const n = all.length
+    if (n <= 0) return
+
+    const currentSlot = Math.floor((n - 1) / 2)
+    const box = container.getBoundingClientRect()
+    const height = box.height
+    const topMargin = 12
+    const bottomMargin = 12
+    const avatarSize = 36
+    const spacing = 10
+    const rowStep = avatarSize + spacing
+
+    const innerHeight = Math.max(height, topMargin + bottomMargin + ((n - 1) * rowStep) + avatarSize)
+    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
+    const anchorTop = anchorY - avatarSize / 2
+    const currentY = innerHeight - bottomMargin - avatarSize - (currentSlot * rowStep)
+    const desiredScrollTop = Math.max(0, Math.min(innerHeight - height, currentY - anchorTop))
+
+    requestAnimationFrame(() => {
+      if (!editorPickerOpenRef.current) return
+      try {
+        scroller.scrollTop = desiredScrollTop
+      } catch {}
+    })
+  }, [connectedClients, currentEditorBadge?.controllerId, currentEditorBadge?.name, editorPickerAnchor, editorPickerOpen, isCompactViewport, isOverlayMode])
 
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
@@ -4795,10 +4842,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!isAdmin) return
     if (status !== 'ready') return
     if (!channelRef.current) return
-    if (controlState?.controllerId === clientId) return
-    if (controlState?.controllerId === ALL_STUDENTS_ID) return
-    lockStudentEditing()
-  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing])
+    const controllerId = controlState?.controllerId
+    if (!controllerId) {
+      // No controller set yet: take control by default.
+      lockStudentEditing()
+      return
+    }
+    if (controllerId === clientId) return
+    if (controllerId === ALL_STUDENTS_ID) return
+    // Only take control back if the controller is no longer present.
+    const controllerStillConnected = connectedClients.some(c => c.clientId === controllerId)
+    if (!controllerStillConnected) {
+      lockStudentEditing()
+    }
+  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing, connectedClients])
 
   const forcePublishLatex = async () => {
     if (!isAdmin) return
@@ -7866,21 +7923,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const bottomMargin = 12
                     const avatarSize = 36
                     const spacing = 10
+                    const rowStep = avatarSize + spacing
+
+                    const controllerId = currentEditorBadge?.controllerId
+                    if (!controllerId || controllerId === ALL_STUDENTS_ID) return null
 
                     const clients = connectedClients
                       .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
-                      .map(c => ({
-                        clientId: c.clientId,
-                        name: (c.name || '').trim() || c.clientId,
-                      }))
+                      .map(c => ({ clientId: c.clientId, name: (c.name || '').trim() || c.clientId }))
 
-                    const controllerId = currentEditorBadge?.controllerId
-                    const hasController = Boolean(controllerId && controllerId !== ALL_STUDENTS_ID)
-                    const current = hasController
-                      ? (clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: currentEditorBadge?.name || String(controllerId) })
-                      : null
-
-                    if (!current) return null
+                    const current = clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: (currentEditorBadge?.name || String(controllerId)).trim() }
 
                     const uniqueMap = new Map<string, { clientId: string; name: string }>()
                     for (const c of clients) uniqueMap.set(c.clientId, c)
@@ -7889,22 +7941,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
                     const n = all.length
-                    const mid = Math.floor(n / 2)
-                    const currentIndex = Math.max(0, all.findIndex(c => c.clientId === current.clientId))
-                    const start = ((currentIndex - mid) % n + n) % n
-                    const ordered = [...all.slice(start), ...all.slice(0, start)]
+                    if (n <= 0) return null
 
-                    const below = ordered.slice(0, mid)
-                    const above = ordered.slice(mid + 1)
+                    // Slot indices are measured from the bottom: 0 is bottom-most.
+                    // Keep the current editor fixed in the middle slot.
+                    const currentSlot = Math.floor((n - 1) / 2)
+
+                    // Fill other slots bottom-to-top in alphabetical order.
+                    const others = all.filter(c => c.clientId !== current.clientId)
+                    const slotToClient = new Map<number, { clientId: string; name: string }>()
+                    slotToClient.set(currentSlot, current)
+                    let writeIndex = 0
+                    for (let slot = 0; slot < n; slot += 1) {
+                      if (slot === currentSlot) continue
+                      const next = others[writeIndex]
+                      if (!next) break
+                      slotToClient.set(slot, next)
+                      writeIndex += 1
+                    }
 
                     const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
                     const anchorX = Math.max(10, editorPickerAnchor.x)
                     const anchorTop = anchorY - avatarSize / 2
 
-                    const topLimit = topMargin
-                    const bottomLimit = height - bottomMargin - avatarSize
-                    const belowMax = Math.min(bottomLimit, anchorTop - (avatarSize + spacing))
-                    const aboveMin = Math.max(topLimit, anchorTop)
+                    const innerHeight = Math.max(height, topMargin + bottomMargin + ((n - 1) * rowStep) + avatarSize)
 
                     const initialsFor = (name: string) => {
                       const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
@@ -7913,10 +7973,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       return (a + b).toUpperCase()
                     }
 
+                    const closePicker = () => {
+                      setEditorPickerOpen(false)
+                      setEditorPickerAnchor(null)
+                      clearOverlayChromeAutoHide()
+                      overlayChromeHideTimeoutRef.current = setTimeout(() => {
+                        if (editorPickerOpenRef.current) return
+                        setOverlayChromePeekVisible(false)
+                        onOverlayChromeVisibilityChange?.(false)
+                      }, OVERLAY_CHROME_PEEK_MS)
+                    }
+
                     const grant = async (targetId: string) => {
                       const channel = channelRef.current
                       if (!channel) return
-                      const target = ordered.find(c => c.clientId === targetId)
+                      const target = all.find(c => c.clientId === targetId)
                       if (!target) return
                       const ts = Date.now()
                       // Ensure student publishing is off in single-editor mode.
@@ -7938,16 +8009,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }
                     }
 
-                    const renderAvatar = (c: { clientId: string; name: string }, top: number, isCurrent: boolean) => (
+                    const renderAvatar = (c: { clientId: string; name: string }, top: number, isCurrentAvatar: boolean, zIndex?: number) => (
                       <button
                         key={c.clientId}
                         type="button"
-                        className={`absolute rounded-full border shadow-sm flex items-center justify-center ${isCurrent ? 'bg-slate-900 text-white border-slate-900' : 'bg-white/90 text-slate-800 border-slate-200 hover:bg-white'}`}
+                        className={`absolute rounded-full border shadow-sm flex items-center justify-center ${isCurrentAvatar ? 'bg-slate-900 text-white border-slate-900' : 'bg-white/90 text-slate-800 border-slate-200 hover:bg-white'}`}
                         style={{
                           left: anchorX,
                           top,
                           width: avatarSize,
                           height: avatarSize,
+                          zIndex,
                         }}
                         onPointerDown={(e) => {
                           e.preventDefault()
@@ -7957,14 +8029,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           e.preventDefault()
                           e.stopPropagation()
                           await grant(c.clientId)
-                          setEditorPickerOpen(false)
-                          setEditorPickerAnchor(null)
-                          clearOverlayChromeAutoHide()
-                          overlayChromeHideTimeoutRef.current = setTimeout(() => {
-                            if (editorPickerOpenRef.current) return
-                            setOverlayChromePeekVisible(false)
-                            onOverlayChromeVisibilityChange?.(false)
-                          }, OVERLAY_CHROME_PEEK_MS)
+                          closePicker()
                         }}
                         title={c.name}
                         aria-label={c.name}
@@ -7973,36 +8038,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )
 
-                    const elems: any[] = []
+                    const currentY = innerHeight - bottomMargin - avatarSize - (currentSlot * rowStep)
+                    const currentTopInView = anchorTop
+                    const fixedCurrentTop = currentTopInView
 
-                    // Below: place bottom-to-top.
-                    if (below.length) {
-                      const startY = Math.max(topLimit, belowMax)
-                      const endY = bottomLimit
-                      const span = Math.max(0, endY - startY)
-                      for (let i = 0; i < below.length; i += 1) {
-                        const t = below.length === 1 ? 1 : i / (below.length - 1)
-                        const top = Math.round(endY - t * span)
-                        elems.push(renderAvatar(below[i], top, false))
-                      }
+                    const othersElems: any[] = []
+                    for (let slot = 0; slot < n; slot += 1) {
+                      const c = slotToClient.get(slot)
+                      if (!c) continue
+                      if (slot === currentSlot) continue
+                      const y = innerHeight - bottomMargin - avatarSize - (slot * rowStep)
+                      othersElems.push(renderAvatar(c, y, false))
                     }
 
-                    // Current stays anchored.
-                    elems.push(renderAvatar(current, Math.round(anchorTop), true))
+                    return (
+                      <>
+                        {/* Scrollable layer for the rest of the users (no duplication; overflow scrolls). */}
+                        <div
+                          ref={editorPickerScrollRef}
+                          className="absolute inset-0 overflow-y-auto"
+                          onPointerDown={(e) => {
+                            // Prevent backdrop-close when starting to scroll inside.
+                            e.stopPropagation()
+                          }}
+                        >
+                          <div className="relative" style={{ height: innerHeight }}>
+                            {/* Position others in inner coordinates; scrollTop is set so the current slot aligns to the fixed current avatar. */}
+                            <div
+                              className="absolute"
+                              style={{
+                                left: 0,
+                                top: 0,
+                                width: '100%',
+                                height: innerHeight,
+                              }}
+                            >
+                              {othersElems}
+                            </div>
+                          </div>
+                        </div>
 
-                    // Above: place near anchor up to top.
-                    if (above.length) {
-                      const startY = topLimit
-                      const endY = Math.min(bottomLimit, Math.max(topLimit, aboveMin - (avatarSize + spacing)))
-                      const span = Math.max(0, endY - startY)
-                      for (let j = 0; j < above.length; j += 1) {
-                        const t = above.length === 1 ? 0 : j / (above.length - 1)
-                        const top = Math.round(endY - t * span)
-                        elems.push(renderAvatar(above[j], top, false))
-                      }
-                    }
-
-                    return elems
+                        {/* Fixed current editor avatar (stays pinned to the top-panel badge position). */}
+                        {renderAvatar(current, fixedCurrentTop, true, 50)}
+                      </>
+                    )
                   })()}
                 </div>
               )}

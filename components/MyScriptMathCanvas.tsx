@@ -7528,7 +7528,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     topPanelEditingMode ? (
                       adminTopPanelStepItems.length ? (
                         <div
-                          className="text-slate-900 leading-relaxed"
+                          className="text-slate-900 leading-relaxed text-center"
                           style={latexOverlayStyle}
                         >
                           {adminTopPanelStepItems.map(({ index, latex }) => {
@@ -7540,7 +7540,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   type="button"
                                   data-top-panel-step
                                   data-step-idx={String(index)}
-                                  className={`w-full rounded px-2 py-1 focus:outline-none focus:ring-0 ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
+                                  className={`w-full rounded px-2 py-1 focus:outline-none focus:ring-0 text-center ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
                                   onClick={(ev) => {
                                     ev.preventDefault()
                                     ev.stopPropagation()

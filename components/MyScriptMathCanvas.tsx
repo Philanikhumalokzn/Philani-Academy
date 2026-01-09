@@ -852,14 +852,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
 
   const currentEditorBadge = useMemo(() => {
-    const controllerId = controlState?.controllerId
-    if (!controllerId) return null
+    const controllerId = (controlState?.controllerId || '').trim()
+    const controllerUserId = (controlState?.controllerUserId && typeof controlState.controllerUserId === 'string')
+      ? controlState.controllerUserId
+      : ''
+    if (!controllerId && !controllerUserId) return null
 
     const name = (controlState?.controllerName && typeof controlState.controllerName === 'string')
       ? controlState.controllerName.trim()
       : ''
 
-    const resolvedName = name || (connectedClients.find(c => c.clientId === controllerId)?.name || '').trim() || (controllerId === ALL_STUDENTS_ID ? 'All Students' : 'Editor')
+    const byUser = controllerUserId ? connectedClients.find(c => String(c.userId || '') === controllerUserId) : null
+    const byClient = controllerId ? connectedClients.find(c => c.clientId === controllerId) : null
+    const resolvedName =
+      name ||
+      (String(byUser?.name || '').trim()) ||
+      (String(byClient?.name || '').trim()) ||
+      (controllerId === ALL_STUDENTS_ID ? 'All Students' : 'Editor')
 
     const initials = (() => {
       if (controllerId === ALL_STUDENTS_ID) return 'AS'
@@ -869,8 +878,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (a + b).toUpperCase()
     })()
 
-    return { controllerId, name: resolvedName, initials }
-  }, [connectedClients, controlState?.controllerId, controlState?.controllerName])
+    return { controllerId: controllerId || (controllerUserId ? `user:${controllerUserId}` : ''), name: resolvedName, initials }
+  }, [connectedClients, controlState?.controllerId, controlState?.controllerName, controlState?.controllerUserId])
 
   useEffect(() => {
     if (!editorPickerOpen) return
@@ -4350,11 +4359,65 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         try {
           await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin), userId })
           const members = await channel.presence.get()
-          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin), userId: m.data?.userId })))
+          const normalizePresenceName = (value: any) => String(value || '').trim().replace(/\s+/g, ' ')
+          const toPresenceClient = (m: any) => ({
+            clientId: String(m?.clientId || ''),
+            name: normalizePresenceName(m?.data?.name),
+            isAdmin: Boolean(m?.data?.isAdmin),
+            userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
+          })
+          const dedupePresence = (list: any[]) => {
+            const byKey = new Map<string, any>()
+            const nameToKey = new Map<string, string>()
+
+            for (const raw of Array.isArray(list) ? list : []) {
+              const c = toPresenceClient(raw)
+              if (!c.clientId) continue
+              const nk = normalizePresenceName(c.name || c.clientId).toLowerCase()
+              const hasUserId = Boolean(c.userId)
+
+              let key = ''
+              if (hasUserId) {
+                key = `uid:${String(c.userId)}`
+                const existingKeyForName = nk ? nameToKey.get(nk) : undefined
+                if (existingKeyForName && existingKeyForName !== key) {
+                  // If the name maps to a DIFFERENT userId, keep both entries (same display name can be shared).
+                  if (existingKeyForName.startsWith('uid:') && key.startsWith('uid:')) {
+                    const prev = byKey.get(key)
+                    byKey.set(key, prev ? { ...prev, ...c } : c)
+                    continue
+                  }
+                  const existing = byKey.get(existingKeyForName)
+                  if (existing) {
+                    // Migrate the previous (name-keyed) entry into the userId-keyed entry.
+                    byKey.delete(existingKeyForName)
+                    byKey.set(key, { ...existing, ...c })
+                  } else {
+                    byKey.set(key, c)
+                  }
+                } else {
+                  const prev = byKey.get(key)
+                  byKey.set(key, prev ? { ...prev, ...c } : c)
+                }
+                if (nk) nameToKey.set(nk, key)
+              } else {
+                const existingKeyForName = nk ? nameToKey.get(nk) : undefined
+                key = existingKeyForName || (nk ? `name:${nk}` : `cid:${c.clientId}`)
+                if (nk && !nameToKey.has(nk)) nameToKey.set(nk, key)
+                const prev = byKey.get(key)
+                // Prefer existing entries that already have a userId.
+                if (prev && prev.userId) continue
+                byKey.set(key, prev ? { ...c, ...prev } : c)
+              }
+            }
+            return Array.from(byKey.values())
+          }
+
+          setConnectedClients(dedupePresence(members))
           channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
-              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin), userId: m.data?.userId })))
+              setConnectedClients(dedupePresence(list))
               // When someone new enters, proactively push current snapshot and states from any client with data.
               if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {

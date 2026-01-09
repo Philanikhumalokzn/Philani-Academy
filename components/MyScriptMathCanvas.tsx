@@ -778,7 +778,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const overlayChromeInitialPeekDoneRef = useRef(false)
   const [overlayChromePeekVisible, setOverlayChromePeekVisible] = useState(false)
+  const [editorPickerOpen, setEditorPickerOpen] = useState(false)
+  const editorPickerOpenRef = useRef(false)
+  const editorBadgeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const [editorPickerAnchor, setEditorPickerAnchor] = useState<{ x: number; y: number } | null>(null)
   const OVERLAY_CHROME_PEEK_MS = 2500
+
+  useEffect(() => {
+    editorPickerOpenRef.current = editorPickerOpen
+  }, [editorPickerOpen])
+
   const clearOverlayChromeAutoHide = useCallback(() => {
     if (overlayChromeHideTimeoutRef.current) {
       clearTimeout(overlayChromeHideTimeoutRef.current)
@@ -793,6 +802,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     onOverlayChromeVisibilityChange(true)
     clearOverlayChromeAutoHide()
     overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      if (editorPickerOpenRef.current) return
       setOverlayChromePeekVisible(false)
       onOverlayChromeVisibilityChange(false)
     }, OVERLAY_CHROME_PEEK_MS)
@@ -809,6 +819,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     onOverlayChromeVisibilityChange(true)
     clearOverlayChromeAutoHide()
     overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      if (editorPickerOpenRef.current) return
       setOverlayChromePeekVisible(false)
       onOverlayChromeVisibilityChange(false)
     }, OVERLAY_CHROME_PEEK_MS)
@@ -857,6 +868,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     return { controllerId, name: resolvedName, initials }
   }, [connectedClients, controlState?.controllerId, controlState?.controllerName])
+
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -1108,6 +1120,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
+  const canPresent = Boolean(isAdmin) || hasExclusiveControlRef.current
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -1380,12 +1393,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 
   const studentCanPublish = useCallback(() => {
-    if (!isStudentPublishEnabledRef.current) return false
+    // Publishing rights must follow editing rights on the shared canvas.
+    // Non-admin work during quizzes/assignments is private (no live ink publishing).
+    if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) return false
+
+    if (isAdmin) return true
+
     const controllerId = controlStateRef.current?.controllerId
     if (!controllerId) return false
     if (controllerId === ALL_STUDENTS_ID) return true
     return controllerId === clientIdRef.current
-  }, [])
+  }, [isAdmin])
 
   const clearOverlayAutoHide = useCallback(() => {
     if (overlayHideTimeoutRef.current) {
@@ -7672,10 +7690,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   )}
 
                   {overlayChromePeekVisible && isOverlayMode && isCompactViewport && currentEditorBadge && (
-                    <div
+                    <button
+                      ref={editorBadgeButtonRef}
+                      type="button"
                       className="absolute left-3 bottom-3 flex items-center gap-2 px-2 py-1 rounded-full bg-white/85 backdrop-blur border border-slate-200 shadow-sm"
-                      style={{ pointerEvents: 'none' }}
-                      aria-hidden
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (!isAdmin) return
+                        if (!studentStackRef.current) return
+                        const badgeEl = editorBadgeButtonRef.current
+                        if (!badgeEl) return
+                        const containerBox = studentStackRef.current.getBoundingClientRect()
+                        const badgeBox = badgeEl.getBoundingClientRect()
+                        const anchorX = Math.round(badgeBox.left - containerBox.left)
+                        const anchorY = Math.round((badgeBox.top - containerBox.top) + (badgeBox.height / 2))
+
+                        setEditorPickerAnchor({ x: anchorX, y: anchorY })
+                        setEditorPickerOpen(prev => {
+                          const next = !prev
+                          if (next) {
+                            // Keep the peek chrome visible while the picker is open.
+                            setOverlayChromePeekVisible(true)
+                            clearOverlayChromeAutoHide()
+                            try {
+                              onOverlayChromeVisibilityChange?.(true)
+                            } catch {}
+                          }
+                          return next
+                        })
+                      }}
+                      aria-label={isAdmin ? `Current editor: ${currentEditorBadge.name}. Tap to choose editor.` : `Current editor: ${currentEditorBadge.name}`}
+                      title={isAdmin ? 'Choose who can edit' : undefined}
+                      disabled={!isAdmin}
                     >
                       <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
                         {currentEditorBadge.initials}
@@ -7683,7 +7730,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <div className="text-[11px] text-slate-700 max-w-[180px] truncate">
                         {currentEditorBadge.name}
                       </div>
-                    </div>
+                    </button>
                   )}
                   {isAdmin ? (
                     topPanelEditingMode ? (
@@ -7786,6 +7833,179 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   )}
                 </div>
               </div>
+
+              {isAdmin && editorPickerOpen && editorPickerAnchor && isOverlayMode && isCompactViewport && (
+                <div
+                  className="absolute inset-0 z-40"
+                  onPointerDown={(e) => {
+                    // Tap outside closes.
+                    const target = e.target as HTMLElement | null
+                    if (target?.getAttribute?.('data-editor-picker-backdrop') === '1') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setEditorPickerOpen(false)
+                      setEditorPickerAnchor(null)
+                      // Let the peek chrome auto-hide normally again.
+                      clearOverlayChromeAutoHide()
+                      overlayChromeHideTimeoutRef.current = setTimeout(() => {
+                        if (editorPickerOpenRef.current) return
+                        setOverlayChromePeekVisible(false)
+                        onOverlayChromeVisibilityChange?.(false)
+                      }, OVERLAY_CHROME_PEEK_MS)
+                    }
+                  }}
+                >
+                  <div className="absolute inset-0" data-editor-picker-backdrop="1" />
+
+                  {(() => {
+                    const container = studentStackRef.current
+                    if (!container) return null
+                    const box = container.getBoundingClientRect()
+                    const height = box.height
+                    const topMargin = 12
+                    const bottomMargin = 12
+                    const avatarSize = 36
+                    const spacing = 10
+
+                    const clients = connectedClients
+                      .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
+                      .map(c => ({
+                        clientId: c.clientId,
+                        name: (c.name || '').trim() || c.clientId,
+                      }))
+
+                    const controllerId = currentEditorBadge?.controllerId
+                    const hasController = Boolean(controllerId && controllerId !== ALL_STUDENTS_ID)
+                    const current = hasController
+                      ? (clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: currentEditorBadge?.name || String(controllerId) })
+                      : null
+
+                    if (!current) return null
+
+                    const uniqueMap = new Map<string, { clientId: string; name: string }>()
+                    for (const c of clients) uniqueMap.set(c.clientId, c)
+                    uniqueMap.set(current.clientId, current)
+                    const all = Array.from(uniqueMap.values())
+                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+                    const n = all.length
+                    const mid = Math.floor(n / 2)
+                    const currentIndex = Math.max(0, all.findIndex(c => c.clientId === current.clientId))
+                    const start = ((currentIndex - mid) % n + n) % n
+                    const ordered = [...all.slice(start), ...all.slice(0, start)]
+
+                    const below = ordered.slice(0, mid)
+                    const above = ordered.slice(mid + 1)
+
+                    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
+                    const anchorX = Math.max(10, editorPickerAnchor.x)
+                    const anchorTop = anchorY - avatarSize / 2
+
+                    const topLimit = topMargin
+                    const bottomLimit = height - bottomMargin - avatarSize
+                    const belowMax = Math.min(bottomLimit, anchorTop - (avatarSize + spacing))
+                    const aboveMin = Math.max(topLimit, anchorTop)
+
+                    const initialsFor = (name: string) => {
+                      const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
+                      const a = parts[0]?.[0] || 'U'
+                      const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
+                      return (a + b).toUpperCase()
+                    }
+
+                    const grant = async (targetId: string) => {
+                      const channel = channelRef.current
+                      if (!channel) return
+                      const target = ordered.find(c => c.clientId === targetId)
+                      if (!target) return
+                      const ts = Date.now()
+                      // Ensure student publishing is off in single-editor mode.
+                      setIsStudentPublishEnabled(false)
+                      isStudentPublishEnabledRef.current = false
+                      try {
+                        await channel.publish('control', {
+                          clientId: clientIdRef.current,
+                          author: userDisplayName,
+                          locked: true,
+                          controllerId: target.clientId,
+                          controllerName: target.name,
+                          ts,
+                        })
+                        lastControlBroadcastTsRef.current = ts
+                        updateControlState({ controllerId: target.clientId, controllerName: target.name, ts })
+                      } catch (err) {
+                        console.warn('Failed to grant selected client editing rights', err)
+                      }
+                    }
+
+                    const renderAvatar = (c: { clientId: string; name: string }, top: number, isCurrent: boolean) => (
+                      <button
+                        key={c.clientId}
+                        type="button"
+                        className={`absolute rounded-full border shadow-sm flex items-center justify-center ${isCurrent ? 'bg-slate-900 text-white border-slate-900' : 'bg-white/90 text-slate-800 border-slate-200 hover:bg-white'}`}
+                        style={{
+                          left: anchorX,
+                          top,
+                          width: avatarSize,
+                          height: avatarSize,
+                        }}
+                        onPointerDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          await grant(c.clientId)
+                          setEditorPickerOpen(false)
+                          setEditorPickerAnchor(null)
+                          clearOverlayChromeAutoHide()
+                          overlayChromeHideTimeoutRef.current = setTimeout(() => {
+                            if (editorPickerOpenRef.current) return
+                            setOverlayChromePeekVisible(false)
+                            onOverlayChromeVisibilityChange?.(false)
+                          }, OVERLAY_CHROME_PEEK_MS)
+                        }}
+                        title={c.name}
+                        aria-label={c.name}
+                      >
+                        <span className="text-[12px] font-semibold" aria-hidden="true">{initialsFor(c.name)}</span>
+                      </button>
+                    )
+
+                    const elems: any[] = []
+
+                    // Below: place bottom-to-top.
+                    if (below.length) {
+                      const startY = Math.max(topLimit, belowMax)
+                      const endY = bottomLimit
+                      const span = Math.max(0, endY - startY)
+                      for (let i = 0; i < below.length; i += 1) {
+                        const t = below.length === 1 ? 1 : i / (below.length - 1)
+                        const top = Math.round(endY - t * span)
+                        elems.push(renderAvatar(below[i], top, false))
+                      }
+                    }
+
+                    // Current stays anchored.
+                    elems.push(renderAvatar(current, Math.round(anchorTop), true))
+
+                    // Above: place near anchor up to top.
+                    if (above.length) {
+                      const startY = topLimit
+                      const endY = Math.min(bottomLimit, Math.max(topLimit, aboveMin - (avatarSize + spacing)))
+                      const span = Math.max(0, endY - startY)
+                      for (let j = 0; j < above.length; j += 1) {
+                        const t = above.length === 1 ? 0 : j / (above.length - 1)
+                        const top = Math.round(endY - t * span)
+                        elems.push(renderAvatar(above[j], top, false))
+                      }
+                    }
+
+                    return elems
+                  })()}
+                </div>
+              )}
             </div>
             <div
               role="separator"
@@ -8092,9 +8312,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(isAdmin || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
+                {(canPresent || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
                   <div className="flex items-center gap-2">
-                    {isAdmin && isCompactViewport && (
+                    {canPresent && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -8123,7 +8343,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && isCompactViewport && (
+                    {canPresent && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -8175,7 +8395,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && isCompactViewport && (
+                    {canPresent && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"

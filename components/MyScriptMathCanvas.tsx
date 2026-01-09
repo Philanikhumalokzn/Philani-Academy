@@ -859,15 +859,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!editor) return
     if (lockedOutRef.current) return
 
-    // If there's active ink and a draft, commit it as a new step before switching.
-    const currentSymbols = captureFullSnapshot()?.symbols
-    const hasInk = Array.isArray(currentSymbols) ? currentSymbols.length > 0 : Boolean(currentSymbols)
-    const currentStep = adminDraftLatex
-    if (hasInk && currentStep) {
-      const symbols = captureFullSnapshot()?.symbols ?? null
-      setAdminSteps(prev => [...prev, { latex: currentStep, symbols }])
-    }
-
     setTopPanelSelectedStep(index)
 
     // Load selected step ink.
@@ -889,7 +880,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
     setAdminDraftLatex(adminSteps[index]?.latex || '')
-  }, [adminDraftLatex, adminSteps, useAdminStepComposer])
+  }, [adminSteps, useAdminStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -7549,7 +7540,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   type="button"
                                   data-top-panel-step
                                   data-step-idx={String(index)}
-                                  className={`w-full text-left rounded px-2 py-1 focus:outline-none focus:ring-0 ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
+                                  className={`w-full rounded px-2 py-1 focus:outline-none focus:ring-0 ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
                                   onClick={(ev) => {
                                     ev.preventDefault()
                                     ev.stopPropagation()

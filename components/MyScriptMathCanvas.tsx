@@ -836,6 +836,89 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
 
+  const [topPanelEditingMode, setTopPanelEditingMode] = useState(false)
+  const topPanelEditingModeRef = useRef(false)
+  useEffect(() => {
+    topPanelEditingModeRef.current = topPanelEditingMode
+  }, [topPanelEditingMode])
+
+  const [topPanelSelectedLine, setTopPanelSelectedLine] = useState<number | null>(null)
+  const topPanelSelectedLineRef = useRef<number | null>(null)
+  useEffect(() => {
+    topPanelSelectedLineRef.current = topPanelSelectedLine
+  }, [topPanelSelectedLine])
+
+  const [topPanelCaretPos, setTopPanelCaretPos] = useState(0)
+  const topPanelHiddenInputRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const textIconLastTapRef = useRef<number | null>(null)
+  const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearTopPanelSelection = useCallback(() => {
+    setTopPanelSelectedLine(null)
+  }, [])
+
+  const focusTopPanelInput = useCallback(() => {
+    const el = topPanelHiddenInputRef.current
+    if (!el) return
+    try {
+      el.focus({ preventScroll: true } as any)
+    } catch {
+      try {
+        el.focus()
+      } catch {}
+    }
+  }, [])
+
+  const getEditableLineText = useCallback((lineIndex: number): string => {
+    if (!useAdminStepComposer) return ''
+    if (lineIndex < 0) return ''
+    if (adminEditIndex !== null && lineIndex === adminEditIndex) return adminDraftLatex || ''
+    if (lineIndex < adminSteps.length) return adminSteps[lineIndex]?.latex || ''
+    if (lineIndex === adminSteps.length) return adminDraftLatex || ''
+    return ''
+  }, [adminDraftLatex, adminEditIndex, adminSteps, useAdminStepComposer])
+
+  const setEditableLineText = useCallback((lineIndex: number, next: string) => {
+    if (!useAdminStepComposer) return
+    if (lineIndex < 0) return
+    if (lineIndex < adminSteps.length) {
+      if (adminEditIndex !== lineIndex) {
+        setAdminEditIndex(lineIndex)
+      }
+      setAdminDraftLatex(next)
+      return
+    }
+    if (lineIndex === adminSteps.length) {
+      if (adminEditIndex !== null) {
+        setAdminEditIndex(null)
+      }
+      setAdminDraftLatex(next)
+    }
+  }, [adminEditIndex, adminSteps.length, useAdminStepComposer])
+
+  const selectTopPanelLineForEditing = useCallback((lineIndex: number) => {
+    if (!useAdminStepComposer) return
+    if (lineIndex < 0) return
+    const lineText = getEditableLineText(lineIndex)
+
+    setTopPanelSelectedLine(lineIndex)
+    setTopPanelCaretPos(Math.max(0, lineText.length))
+
+    if (lineIndex < adminSteps.length) {
+      if (adminEditIndex !== lineIndex) {
+        setAdminEditIndex(lineIndex)
+        setAdminDraftLatex(adminSteps[lineIndex]?.latex || '')
+      }
+    } else if (lineIndex === adminSteps.length) {
+      if (adminEditIndex !== null) {
+        setAdminEditIndex(null)
+      }
+    }
+
+    focusTopPanelInput()
+  }, [adminEditIndex, adminSteps, focusTopPanelInput, getEditableLineText, useAdminStepComposer])
+
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
   const [lessonScriptError, setLessonScriptError] = useState<string | null>(null)
@@ -3485,6 +3568,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 const normalized = normalizeStepLatex(latexValue)
                 // In edit mode, we want the draft to track the current ink, including scratch-to-erase.
                 // So we allow the draft to become empty.
+                if (topPanelEditingModeRef.current && topPanelSelectedLineRef.current !== null) {
+                  return
+                }
                 setAdminDraftLatex(normalized)
               })()
                 .finally(() => {
@@ -4991,6 +5077,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return ''
     }
   }, [latexRenderOptions.alignAtEquals, latexProjectionRenderSource])
+
+  const adminTopPanelLineItems = useMemo(() => {
+    if (!isAdmin) return [] as Array<{ index: number; latex: string }>
+    if (!topPanelEditingMode) return [] as Array<{ index: number; latex: string }>
+
+    if (useAdminStepComposer) {
+      const lines = adminSteps.map(s => (s?.latex || '').trimEnd())
+      if (adminEditIndex !== null) {
+        lines[adminEditIndex] = adminDraftLatex
+      } else if (adminDraftLatex) {
+        lines.push(adminDraftLatex)
+      }
+      return lines.map((latex, index) => ({ index, latex }))
+    }
+
+    const src = (latexProjectionRenderSource || '').trim()
+    if (!src) return []
+    const parts = src.split(/\\/g).map(p => p.trim())
+    return parts.map((latex, index) => ({ index, latex }))
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, latexProjectionRenderSource, topPanelEditingMode, useAdminStepComposer])
+
+  const renderLatexLine = useCallback((latex: string) => {
+    if (!latex) return ''
+    try {
+      return renderToString(latex, { throwOnError: false, displayMode: true })
+    } catch {
+      return ''
+    }
+  }, [])
 
   const studentQuizLatexPreviewMarkup = useMemo(() => {
     if (isAdmin) return ''
@@ -7376,7 +7491,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 <div
                   className="h-full bg-white rounded-lg p-3 overflow-auto relative"
                   ref={isAdmin ? adminTopPanelRef : undefined}
-                  onPointerDown={() => {
+                  onPointerDown={(e) => {
+                    if (isAdmin && topPanelEditingMode) {
+                      const target = e.target as HTMLElement | null
+                      const btn = target?.closest?.('[data-top-latex-line]') as HTMLElement | null
+                      const indexStr = btn?.getAttribute?.('data-top-latex-line') || ''
+                      const idx = indexStr ? Number(indexStr) : NaN
+                      if (Number.isFinite(idx)) {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        selectTopPanelLineForEditing(idx)
+                        return
+                      }
+
+                      // Tap on empty space clears selection.
+                      clearTopPanelSelection()
+                      return
+                    }
+
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
                     revealOverlayChrome()
                     if (isAssignmentView && typeof window !== 'undefined') {
@@ -7385,7 +7517,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       } catch {}
                     }
                   }}
-                  onClick={isAdmin ? async (e) => {
+                  onClick={isAdmin && !topPanelEditingMode ? async (e) => {
                     if (!useAdminStepComposer) return
                     if (!adminSteps.length) return
                     const now = Date.now()
@@ -7467,7 +7599,127 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
                   )}
                   {isAdmin ? (
-                    latexProjectionMarkup ? (
+                    topPanelEditingMode ? (
+                      <>
+                        <textarea
+                          ref={topPanelHiddenInputRef}
+                          aria-hidden="true"
+                          tabIndex={-1}
+                          className="absolute -left-[9999px] -top-[9999px] opacity-0"
+                          value=""
+                          onChange={() => { /* controlled via keydown */ }}
+                          onKeyDown={(event) => {
+                            if (!useAdminStepComposer) return
+                            const sel = topPanelSelectedLineRef.current
+                            if (sel === null) return
+
+                            const key = event.key
+                            if (key === 'Escape') {
+                              event.preventDefault()
+                              clearTopPanelSelection()
+                              return
+                            }
+                            if (key === 'Enter') {
+                              event.preventDefault()
+                              clearTopPanelSelection()
+                              return
+                            }
+
+                            const current = getEditableLineText(sel)
+                            const caret = topPanelCaretPos
+
+                            if (key === 'ArrowLeft') {
+                              event.preventDefault()
+                              setTopPanelCaretPos(Math.max(0, caret - 1))
+                              return
+                            }
+                            if (key === 'ArrowRight') {
+                              event.preventDefault()
+                              setTopPanelCaretPos(Math.min(current.length, caret + 1))
+                              return
+                            }
+                            if (key === 'Home') {
+                              event.preventDefault()
+                              setTopPanelCaretPos(0)
+                              return
+                            }
+                            if (key === 'End') {
+                              event.preventDefault()
+                              setTopPanelCaretPos(current.length)
+                              return
+                            }
+
+                            if (key === 'Backspace') {
+                              event.preventDefault()
+                              if (caret <= 0) return
+                              const next = current.slice(0, caret - 1) + current.slice(caret)
+                              setEditableLineText(sel, next)
+                              setTopPanelCaretPos(Math.max(0, caret - 1))
+                              return
+                            }
+                            if (key === 'Delete') {
+                              event.preventDefault()
+                              if (caret >= current.length) return
+                              const next = current.slice(0, caret) + current.slice(caret + 1)
+                              setEditableLineText(sel, next)
+                              return
+                            }
+
+                            if (event.ctrlKey || event.metaKey || event.altKey) {
+                              return
+                            }
+
+                            if (key.length === 1) {
+                              event.preventDefault()
+                              const next = current.slice(0, caret) + key + current.slice(caret)
+                              setEditableLineText(sel, next)
+                              setTopPanelCaretPos(Math.min(next.length, caret + 1))
+                            }
+                          }}
+                        />
+
+                        {adminTopPanelLineItems.length ? (
+                          <div
+                            className="text-slate-900 leading-relaxed"
+                            style={latexOverlayStyle}
+                          >
+                            {adminTopPanelLineItems.map(({ index, latex }) => {
+                              const selected = topPanelSelectedLine === index
+                              const html = renderLatexLine(latex)
+                              return (
+                                <div key={index} className="py-1">
+                                  <button
+                                    type="button"
+                                    data-top-latex-line={String(index)}
+                                    className={`w-full text-left rounded px-2 py-1 ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
+                                    onClick={(ev) => {
+                                      ev.preventDefault()
+                                      ev.stopPropagation()
+                                      selectTopPanelLineForEditing(index)
+                                    }}
+                                  >
+                                    {html ? (
+                                      <span className="inline" dangerouslySetInnerHTML={{ __html: html }} />
+                                    ) : (
+                                      <span className="text-slate-500">&nbsp;</span>
+                                    )}
+                                    {selected && (
+                                      <span className="inline-block align-middle ml-1" aria-hidden="true">
+                                        <span className="inline-block w-[2px] h-[1.2em] bg-slate-700" />
+                                      </span>
+                                    )}
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <p className="text-slate-500 text-sm text-center">Convert to notes to preview the typeset LaTeX here.</p>
+                          </div>
+                        )}
+                      </>
+                    ) : latexProjectionMarkup ? (
                       <div
                         className="text-slate-900 leading-relaxed"
                         style={latexOverlayStyle}
@@ -7742,8 +7994,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         className="px-2 py-1"
                         title="Text"
                         onClick={() => {
-                          toggleMobileTextTray()
-                          openPickerOrApplySingle('text')
+                          const now = Date.now()
+                          const last = textIconLastTapRef.current
+
+                          if (textIconTapTimeoutRef.current) {
+                            clearTimeout(textIconTapTimeoutRef.current)
+                            textIconTapTimeoutRef.current = null
+                          }
+
+                          if (last && (now - last) < 320) {
+                            // Double tap: keep the current behaviour (tray + picker).
+                            textIconLastTapRef.current = null
+                            toggleMobileTextTray()
+                            openPickerOrApplySingle('text')
+                            return
+                          }
+
+                          // Single tap: toggle Editing Mode. Delay slightly to allow double-tap.
+                          textIconLastTapRef.current = now
+                          textIconTapTimeoutRef.current = setTimeout(() => {
+                            textIconTapTimeoutRef.current = null
+                            setTopPanelEditingMode(prev => {
+                              const next = !prev
+                              if (!next) {
+                                clearTopPanelSelection()
+                              }
+                              return next
+                            })
+                          }, 260)
                         }}
                         disabled={Boolean(fatalError)}
                       >

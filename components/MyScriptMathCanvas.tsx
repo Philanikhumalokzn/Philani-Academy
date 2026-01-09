@@ -777,6 +777,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const overlayChromeInitialPeekDoneRef = useRef(false)
+  const [overlayChromePeekVisible, setOverlayChromePeekVisible] = useState(false)
   const OVERLAY_CHROME_PEEK_MS = 2500
   const clearOverlayChromeAutoHide = useCallback(() => {
     if (overlayChromeHideTimeoutRef.current) {
@@ -788,9 +789,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const revealOverlayChrome = useCallback(() => {
     if (!onOverlayChromeVisibilityChange) return
     if (!isOverlayMode || !isCompactViewport) return
+    setOverlayChromePeekVisible(true)
     onOverlayChromeVisibilityChange(true)
     clearOverlayChromeAutoHide()
     overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      setOverlayChromePeekVisible(false)
       onOverlayChromeVisibilityChange(false)
     }, OVERLAY_CHROME_PEEK_MS)
   }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
@@ -802,15 +805,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     // On first open/refresh in mobile overlay mode, peek the chrome briefly.
     overlayChromeInitialPeekDoneRef.current = true
+    setOverlayChromePeekVisible(true)
     onOverlayChromeVisibilityChange(true)
     clearOverlayChromeAutoHide()
     overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      setOverlayChromePeekVisible(false)
       onOverlayChromeVisibilityChange(false)
     }, OVERLAY_CHROME_PEEK_MS)
   }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
 
   useEffect(() => {
+    if (!isOverlayMode || !isCompactViewport) {
+      setOverlayChromePeekVisible(false)
+      clearOverlayChromeAutoHide()
+    }
+  }, [clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode])
+
+  useEffect(() => {
     return () => {
+      setOverlayChromePeekVisible(false)
       clearOverlayChromeAutoHide()
     }
   }, [clearOverlayChromeAutoHide])
@@ -823,6 +836,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
+
+  const currentEditorBadge = useMemo(() => {
+    const controllerId = controlState?.controllerId
+    if (!controllerId) return null
+
+    const name = (controlState?.controllerName && typeof controlState.controllerName === 'string')
+      ? controlState.controllerName.trim()
+      : ''
+
+    const resolvedName = name || (connectedClients.find(c => c.clientId === controllerId)?.name || '').trim() || (controllerId === ALL_STUDENTS_ID ? 'All Students' : 'Editor')
+
+    const initials = (() => {
+      if (controllerId === ALL_STUDENTS_ID) return 'AS'
+      const parts = resolvedName.split(/\s+/).filter(Boolean)
+      const a = parts[0]?.[0] || 'E'
+      const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
+      return (a + b).toUpperCase()
+    })()
+
+    return { controllerId, name: resolvedName, initials }
+  }, [connectedClients, controlState?.controllerId, controlState?.controllerName])
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -7635,6 +7669,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         style={{ pointerEvents: 'none' }}
                       />
                     </button>
+                  )}
+
+                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && currentEditorBadge && (
+                    <div
+                      className="absolute left-3 bottom-3 flex items-center gap-2 px-2 py-1 rounded-full bg-white/85 backdrop-blur border border-slate-200 shadow-sm"
+                      style={{ pointerEvents: 'none' }}
+                      aria-hidden
+                    >
+                      <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
+                        {currentEditorBadge.initials}
+                      </div>
+                      <div className="text-[11px] text-slate-700 max-w-[180px] truncate">
+                        {currentEditorBadge.name}
+                      </div>
+                    </div>
                   )}
                   {isAdmin ? (
                     topPanelEditingMode ? (

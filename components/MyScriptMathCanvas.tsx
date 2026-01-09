@@ -147,6 +147,7 @@ type SnapshotMessage = {
 type ControlState = {
   controllerId: string
   controllerName?: string
+  controllerUserId?: string
   ts: number
 } | null
 
@@ -195,6 +196,7 @@ type PresenceClient = {
   clientId: string
   name?: string
   isAdmin?: boolean
+  userId?: string
 }
 
 type OverlayControlsHandle = {
@@ -880,23 +882,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const controllerId = currentEditorBadge?.controllerId
     if (!controllerId || controllerId === ALL_STUDENTS_ID) return
 
+    const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
+    const nameKey = (value: string) => normalizeName(value).toLowerCase()
+
     const clients = connectedClients
       .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
-      .map(c => ({ clientId: c.clientId, name: (c.name || '').trim() || c.clientId }))
+      .map(c => ({ clientId: c.clientId, name: normalizeName(c.name || '') || c.clientId, userId: typeof c.userId === 'string' ? c.userId : undefined }))
 
-    const current = clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: (currentEditorBadge?.name || String(controllerId)).trim() }
-
-    // Dedupe by display name to avoid showing the same user multiple times
-    // (e.g. multiple tabs/devices with the same name).
-    const nameKey = (value: string) => String(value || '').trim().toLowerCase()
-    const uniqueByName = new Map<string, { clientId: string; name: string }>()
-    for (const c of clients) {
-      const key = nameKey(c.name)
-      if (!key) continue
-      if (!uniqueByName.has(key)) uniqueByName.set(key, c)
+    const current = clients.find(c => c.clientId === controllerId) || {
+      clientId: String(controllerId),
+      name: normalizeName(currentEditorBadge?.name || String(controllerId)),
+      userId: undefined,
     }
-    uniqueByName.set(nameKey(current.name) || String(current.clientId), current)
-    const all = Array.from(uniqueByName.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+    // Dedupe by stable userId when available; fall back to name.
+    const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
+    for (const c of clients) {
+      const key = (c.userId && String(c.userId)) ? `uid:${String(c.userId)}` : `name:${nameKey(c.name)}`
+      if (!key.trim()) continue
+      if (!uniqueUsers.has(key)) uniqueUsers.set(key, c)
+    }
+    {
+      const key = (current.userId && String(current.userId)) ? `uid:${String(current.userId)}` : `name:${nameKey(current.name)}`
+      uniqueUsers.set(key || `cid:${String(current.clientId)}`, current)
+    }
+
+    const all = Array.from(uniqueUsers.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
     const n = all.length
     if (n <= 0) return
 
@@ -1438,9 +1449,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     (next: ControlState) => {
       controlStateRef.current = next
       const controllerId = next?.controllerId
-      const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
+      const controllerUserId = next?.controllerUserId
+      const isExclusiveController = Boolean(
+        (controllerId && controllerId === clientIdRef.current) ||
+        (controllerUserId && controllerUserId === userId)
+      )
       hasExclusiveControlRef.current = isExclusiveController
-      const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
+      const hasWriteAccess = Boolean(isAdmin) ||
+        forceEditableForAssignment ||
+        controllerId === clientIdRef.current ||
+        controllerId === ALL_STUDENTS_ID ||
+        (controllerUserId && controllerUserId === userId)
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -1448,7 +1467,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       setControlState(next)
     },
-    [forceEditableForAssignment, isAdmin]
+    [forceEditableForAssignment, isAdmin, userId]
   )
 
   const studentCanPublish = useCallback(() => {
@@ -1459,10 +1478,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (isAdmin) return true
 
     const controllerId = controlStateRef.current?.controllerId
+    const controllerUserId = controlStateRef.current?.controllerUserId
+    if (controllerUserId && controllerUserId === userId) return true
     if (!controllerId) return false
     if (controllerId === ALL_STUDENTS_ID) return true
     return controllerId === clientIdRef.current
-  }, [isAdmin])
+  }, [isAdmin, userId])
 
   const clearOverlayAutoHide = useCallback(() => {
     if (overlayHideTimeoutRef.current) {
@@ -3947,6 +3968,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             locked?: boolean
             controllerId?: string
             controllerName?: string
+            controllerUserId?: string
             ts?: number
             action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz'
             targetClientId?: string
@@ -4194,12 +4216,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (typeof data?.locked !== 'boolean') return
           const controlTs = data?.ts ?? Date.now()
           if (data.locked) {
-            if (!data.controllerId) return
-            updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: controlTs })
+            if (!data.controllerId && !data.controllerUserId) return
+            // Accept either controllerId or controllerUserId for exclusive grants.
+            updateControlState({ controllerId: data.controllerId || '', controllerName: data.controllerName, controllerUserId: data.controllerUserId, ts: controlTs })
             return
           }
           if (!data.controllerId || data.controllerId === ALL_STUDENTS_ID) {
-            updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: data.controllerName || 'All Students', ts: controlTs })
+            updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: data.controllerName || 'All Students', controllerUserId: undefined, ts: controlTs })
           } else {
             updateControlState(null)
           }
@@ -4325,13 +4348,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Presence tracking (simplified; no broadcaster election)
         try {
-          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin), userId })
           const members = await channel.presence.get()
-          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
+          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin), userId: m.data?.userId })))
           channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
-              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
+              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin), userId: m.data?.userId })))
               // When someone new enters, proactively push current snapshot and states from any client with data.
               if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {
@@ -4535,7 +4558,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName, userId])
 
   const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
 
@@ -5137,7 +5160,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || Boolean(
-    controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
+    controlState && (
+      controlState.controllerId === clientId ||
+      controlState.controllerId === ALL_STUDENTS_ID ||
+      (controlState.controllerUserId && controlState.controllerUserId === userId)
+    )
   )
   const isViewOnly = !hasWriteAccess
   const controlOwnerLabel = (() => {
@@ -5145,7 +5172,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (controlState.controllerId === ALL_STUDENTS_ID) {
         return 'Everyone'
       }
-      if (controlState.controllerId === clientId) {
+      if (controlState.controllerId === clientId || (controlState.controllerUserId && controlState.controllerUserId === userId)) {
         return 'You'
       }
       return controlState.controllerName || 'Teacher'
@@ -7940,22 +7967,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const controllerId = currentEditorBadge?.controllerId
                     if (!controllerId || controllerId === ALL_STUDENTS_ID) return null
 
+                    const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
+                    const nameKey = (value: string) => normalizeName(value).toLowerCase()
+
                     const clients = connectedClients
                       .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
-                      .map(c => ({ clientId: c.clientId, name: (c.name || '').trim() || c.clientId }))
+                      .map(c => ({ clientId: c.clientId, name: normalizeName(c.name || '') || c.clientId, userId: typeof c.userId === 'string' ? c.userId : undefined }))
 
-                    const current = clients.find(c => c.clientId === controllerId) || { clientId: String(controllerId), name: (currentEditorBadge?.name || String(controllerId)).trim() }
-
-                    // Dedupe by display name so we don't render the same person multiple times.
-                    const nameKey = (value: string) => String(value || '').trim().toLowerCase()
-                    const uniqueByName = new Map<string, { clientId: string; name: string }>()
-                    for (const c of clients) {
-                      const key = nameKey(c.name)
-                      if (!key) continue
-                      if (!uniqueByName.has(key)) uniqueByName.set(key, c)
+                    const current = clients.find(c => c.clientId === controllerId) || {
+                      clientId: String(controllerId),
+                      name: normalizeName(currentEditorBadge?.name || String(controllerId)),
+                      userId: undefined,
                     }
-                    uniqueByName.set(nameKey(current.name) || String(current.clientId), current)
-                    const all = Array.from(uniqueByName.values())
+
+                    const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
+                    for (const c of clients) {
+                      const key = (c.userId && String(c.userId)) ? `uid:${String(c.userId)}` : `name:${nameKey(c.name)}`
+                      if (!key.trim()) continue
+                      if (!uniqueUsers.has(key)) uniqueUsers.set(key, c)
+                    }
+                    {
+                      const key = (current.userId && String(current.userId)) ? `uid:${String(current.userId)}` : `name:${nameKey(current.name)}`
+                      uniqueUsers.set(key || `cid:${String(current.clientId)}`, current)
+                    }
+                    const all = Array.from(uniqueUsers.values())
                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
                     const n = all.length
@@ -8018,10 +8053,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           locked: true,
                           controllerId: target.clientId,
                           controllerName: target.name,
+                          controllerUserId: target.userId,
                           ts,
                         })
                         lastControlBroadcastTsRef.current = ts
-                        updateControlState({ controllerId: target.clientId, controllerName: target.name, ts })
+                        updateControlState({ controllerId: target.clientId, controllerName: target.name, controllerUserId: target.userId, ts })
                       } catch (err) {
                         console.warn('Failed to grant selected client editing rights', err)
                       }

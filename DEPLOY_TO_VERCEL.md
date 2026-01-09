@@ -26,14 +26,11 @@ This guide walks through deploying the app to Vercel with a managed Postgres DB 
 
 4) Migrate DB and seed admin
 
-Migrations should be applied in the Vercel environment (not from a developer machine).
+Migrations should be applied manually from a trusted environment that can reach the database (your machine or CI).
 
-- Ensure `DATABASE_URL` is set in Vercel Project Settings → Environment Variables.
-- Set the Vercel **Build Command** to run migrations with:
+- Ensure `DATABASE_URL` is set in the environment where you run the command.
+- Apply migrations with:
   - `npx prisma migrate deploy`
-
-This repo includes a helper script that does this with retries for transient Vercel DB timeouts:
-- `node scripts/vercel_migrate.js`
 
 Seeding admin:
 - Run `node scripts/create_admin.js` from a trusted environment that can reach the DB.
@@ -42,7 +39,8 @@ Seeding admin:
 - Vercel will build on push. Once the build completes, open your app URL.
 
 Notes and troubleshooting
-- Migrations are run during Vercel builds via `prisma migrate deploy`.
+- Migrations are **not** run during Vercel builds (to avoid build-time DB connectivity/locking issues).
+- Run migrations manually when deploying (e.g. from your machine/CI): `npx prisma migrate deploy`
 - Prisma Client is generated during the build (`npm run build` runs `prisma generate`).
 - If you use environment variables in build time, set them in Vercel for the Build step too.
 - For support connecting to Supabase from Vercel, ensure the DB allows connections from Vercel's IPs (Supabase generally supports this).

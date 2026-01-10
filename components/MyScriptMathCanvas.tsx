@@ -446,6 +446,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastBroadcastBaseCountRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stepComposerPreviewEpochRef = useRef(0)
   const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportInFlightRef = useRef(false)
   const studentQuizPreviewEpochRef = useRef(0)
@@ -968,6 +969,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
   const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
 
+  // In normal shared sessions, the selected student editor should get the same "step composer"
+  // behaviour as the teacher (committed steps + a live draft line).
+  const isStudentSharedSessionStepComposer = Boolean(
+    !isAdmin &&
+    useStackedStudentLayout &&
+    !quizActive &&
+    !Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId) &&
+    Boolean(controlState) &&
+    (controlState?.controllerId !== ALL_STUDENTS_ID) &&
+    (
+      (controlState?.controllerUserId && controlState.controllerUserId === userId) ||
+      (controlState?.controllerId && controlState.controllerId === clientIdRef.current)
+    )
+  )
+  const useStepComposer = Boolean(useAdminStepComposer || isStudentSharedSessionStepComposer)
+
   const currentEditorBadge = useMemo(() => {
     const controllerId = (controlState?.controllerId || '').trim()
     const controllerUserId = (controlState?.controllerUserId && typeof controlState.controllerUserId === 'string')
@@ -1102,7 +1119,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const loadAdminStepForEditing = useCallback(async (index: number) => {
-    if (!useAdminStepComposer) return
+    if (!useStepComposer) return
     if (index < 0 || index >= adminSteps.length) return
 
     const editor = editorInstanceRef.current
@@ -1130,7 +1147,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
     setAdminDraftLatex(adminSteps[index]?.latex || '')
-  }, [adminSteps, useAdminStepComposer])
+  }, [adminSteps, useStepComposer])
+
+  const studentComposerWasActiveRef = useRef(false)
+  useEffect(() => {
+    if (isAdmin) return
+    const active = isStudentSharedSessionStepComposer
+    const was = studentComposerWasActiveRef.current
+    studentComposerWasActiveRef.current = active
+
+    // When the student gains or loses exclusive control in a normal shared session,
+    // reset the local step composer so steps never "carry" between different editors.
+    if (active === was) return
+    stepComposerPreviewEpochRef.current += 1
+    if (pendingExportRef.current) {
+      clearTimeout(pendingExportRef.current)
+      pendingExportRef.current = null
+    }
+    setAdminSteps([])
+    setAdminDraftLatex('')
+    setAdminSendingStep(false)
+    setAdminEditIndex(null)
+    clearTopPanelSelection()
+    stepNavRedoStackRef.current = []
+  }, [clearTopPanelSelection, isAdmin, isStudentSharedSessionStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -3799,22 +3839,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             broadcastSnapshot(false)
           }
 
-          // Admin compact/stacked mode: keep a live typeset preview updated without mutating the ink.
-          if (useAdminStepComposer) {
+          // Step-composer mode (teacher, or selected student in normal shared sessions):
+          // keep a live typeset preview updated without mutating the ink.
+          if (useStepComposer) {
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
+            const epochAtSchedule = stepComposerPreviewEpochRef.current
             pendingExportRef.current = setTimeout(() => {
               pendingExportRef.current = null
               if (previewExportInFlightRef.current) return
               previewExportInFlightRef.current = true
               ;(async () => {
+                if (epochAtSchedule !== stepComposerPreviewEpochRef.current) return
                 let latexValue = getLatexFromEditorModel()
                 if (!latexValue || latexValue.trim().length === 0) {
                   const exported = await exportLatexFromEditor()
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
+                if (epochAtSchedule !== stepComposerPreviewEpochRef.current) return
                 setLatexOutput(latexValue)
                 const normalized = normalizeStepLatex(latexValue)
                 // In edit mode, we want the draft to track the current ink, including scratch-to-erase.
@@ -3957,12 +4001,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [broadcastSnapshot, editorInitKey, exportLatexFromEditor, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
 
   useEffect(() => {
-    if (!useAdminStepComposer) return
+    if (!useStepComposer) return
     setAdminSteps([])
     setAdminDraftLatex('')
     setAdminSendingStep(false)
     setAdminEditIndex(null)
-  }, [boardId, useAdminStepComposer])
+  }, [boardId, useStepComposer])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -4768,7 +4812,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
 
   const isCurrentLineEmptyNow = () => {
-    if (useAdminStepComposer && isAdmin) {
+    if (useStepComposer) {
       return !(adminDraftLatex || '').trim()
     }
     return !((latexOutput || '').trim())
@@ -4785,7 +4829,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
 
-    if (useAdminStepComposer) {
+    stepComposerPreviewEpochRef.current += 1
+    if (pendingExportRef.current) {
+      clearTimeout(pendingExportRef.current)
+      pendingExportRef.current = null
+    }
+
+    if (useStepComposer) {
       setAdminSteps([])
       setAdminDraftLatex('')
       setAdminSendingStep(false)
@@ -4806,7 +4856,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setLatexOutput('')
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
-    if (useAdminStepComposer && isAdmin) {
+    stepComposerPreviewEpochRef.current += 1
+    if (pendingExportRef.current) {
+      clearTimeout(pendingExportRef.current)
+      pendingExportRef.current = null
+    }
+    if (useStepComposer) {
       setAdminDraftLatex('')
       clearTopPanelSelection()
     }
@@ -4846,7 +4901,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     broadcastSnapshot(!isAdmin)
 
     // Step-boundary undo: once empty, go to the line above.
-    if (!useAdminStepComposer || !isAdmin) return
+    if (!useStepComposer) return
     const emptyCanvas = isEditorEmptyNow()
     if (!emptyCanvas) return
     setAdminDraftLatex('')
@@ -4872,7 +4927,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     broadcastSnapshot(!isAdmin)
 
     // Step-boundary redo: when empty, redo to the next line we previously stepped from.
-    if (!useAdminStepComposer || !isAdmin) return
+    if (!useStepComposer) return
     const emptyCanvas = isEditorEmptyNow()
     if (!emptyCanvas) return
     setAdminDraftLatex('')
@@ -5375,7 +5430,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return 'Teacher'
   })()
 
-  const latexRenderOptions = useAdminStepComposer
+  const latexRenderOptions = useStepComposer
     ? { ...latexProjectionOptions, alignAtEquals: true }
     : (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout)
       ? { ...stackedNotesState.options, alignAtEquals: true }
@@ -5387,7 +5442,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           ? stackedNotesState.options
           : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
-    if (useAdminStepComposer) {
+    if (useStepComposer) {
       const lines = adminSteps.map(s => s.latex)
       if (adminEditIndex !== null) {
         if (adminDraftLatex) {
@@ -5418,7 +5473,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -5439,7 +5494,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     const hasInk = lastSymbolCountRef.current > 0
-    const hasSteps = useAdminStepComposer && adminSteps.length > 0
+    const hasSteps = useStepComposer && adminSteps.length > 0
     if (hasInk || hasSteps) {
       // Keep current stable preview.
       return
@@ -5449,7 +5504,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       stableAdminStackedLatexRenderSourceRef.current = ''
       setStableAdminStackedLatexRenderSource('')
     }
-  }, [adminSteps.length, isAdmin, latexRenderSource, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminSteps.length, isAdmin, latexRenderSource, useStepComposer, useStackedStudentLayout])
 
   const latexProjectionRenderSource = (isAdmin && useStackedStudentLayout)
     ? stableAdminStackedLatexRenderSource
@@ -7471,7 +7526,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleUndo)}
-          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && isAdmin))}
+                        disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !useStepComposer)}
         >
           Undo
         </button>
@@ -7479,7 +7534,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleRedo)}
-          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && isAdmin))}
+                        disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !useStepComposer)}
         >
           Redo
         </button>
@@ -7906,9 +7961,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
                   className="h-full bg-white rounded-lg p-3 overflow-auto relative"
-                  ref={isAdmin ? adminTopPanelRef : undefined}
+                  ref={useStepComposer ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
-                    if (isAdmin && topPanelEditingMode && useAdminStepComposer) {
+                    if (useStepComposer && topPanelEditingMode) {
                       // Step-recall mode: tap a step line to restore its ink for editing.
                       const target = e.target as HTMLElement | null
                       const stepEl = target?.closest?.('[data-top-panel-step]') as HTMLElement | null
@@ -7941,8 +7996,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       } catch {}
                     }
                   }}
-                  onClick={isAdmin && !topPanelEditingMode ? async (e) => {
-                    if (!useAdminStepComposer) return
+                  onClick={!topPanelEditingMode ? async (e) => {
+                    if (!useStepComposer) return
                     if (!adminSteps.length) return
                     const now = Date.now()
                     const box = adminTopPanelRef.current?.getBoundingClientRect()
@@ -8433,10 +8488,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && isAdmin))}
+                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !useStepComposer)}
                               onPointerDown={(e) => {
                                 if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
-                                if (!canUndo && !(useAdminStepComposer && isAdmin)) return
+                                if (!canUndo && !useStepComposer) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
                                 pressRepeatPointerIdRef.current = e.pointerId
@@ -8501,10 +8556,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && isAdmin))}
+                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !useStepComposer)}
                               onPointerDown={(e) => {
                                 if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
-                                if (!canRedo && !(useAdminStepComposer && isAdmin)) return
+                                if (!canRedo && !useStepComposer) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
                                 pressRepeatPointerIdRef.current = e.pointerId
@@ -8916,6 +8971,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminDraftLatex('')
                         setAdminEditIndex(null)
                         setLatexOutput('')
+
+                        // Cancel any pending preview export so stale recognition can’t re-fill the draft.
+                        stepComposerPreviewEpochRef.current += 1
+                        if (pendingExportRef.current) {
+                          clearTimeout(pendingExportRef.current)
+                          pendingExportRef.current = null
+                        }
 
                         // Clear handwriting for next step without broadcasting a global clear.
                         suppressBroadcastUntilTsRef.current = Date.now() + 1200

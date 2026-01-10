@@ -5045,10 +5045,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         locked: !isAll,
         controllerId,
         controllerName,
+        controllerUserId: isAll ? undefined : targetRecord?.userId,
         ts,
       })
       lastControlBroadcastTsRef.current = ts
-      updateControlState({ controllerId, controllerName, ts })
+      updateControlState({ controllerId, controllerName, controllerUserId: isAll ? undefined : targetRecord?.userId, ts })
     } catch (err) {
       console.warn('Failed to grant selected client editing rights', err)
     }
@@ -5080,6 +5081,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (status !== 'ready') return
     if (!channelRef.current) return
     const controllerId = controlState?.controllerId
+    const controllerUserId = controlState?.controllerUserId
     if (!controllerId) {
       // No controller set yet: take control by default.
       lockStudentEditing()
@@ -5088,11 +5090,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (controllerId === clientId) return
     if (controllerId === ALL_STUDENTS_ID) return
     // Only take control back if the controller is no longer present.
-    const controllerStillConnected = connectedClients.some(c => c.clientId === controllerId)
+    const controllerUserIdFromControllerId = (typeof controllerId === 'string' && controllerId.startsWith('user:'))
+      ? controllerId.slice('user:'.length)
+      : ''
+    const effectiveControllerUserId = (typeof controllerUserId === 'string' && controllerUserId.trim())
+      ? controllerUserId
+      : (controllerUserIdFromControllerId.trim() ? controllerUserIdFromControllerId : undefined)
+
+    const controllerStillConnected = connectedClients.some(c =>
+      c.clientId === controllerId ||
+      (effectiveControllerUserId && c.userId && String(c.userId) === String(effectiveControllerUserId))
+    )
     if (!controllerStillConnected) {
       lockStudentEditing()
     }
-  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing, connectedClients])
+  }, [isAdmin, status, controlState?.controllerId, controlState?.controllerUserId, clientId, lockStudentEditing, connectedClients])
 
   const forcePublishLatex = async () => {
     if (!isAdmin) return

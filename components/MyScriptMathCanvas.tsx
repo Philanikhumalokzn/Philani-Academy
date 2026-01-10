@@ -492,8 +492,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const isStudentView = !isAdmin
   const isQuizMode = Boolean(quizMode)
+  const isAssignmentContext = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
-  const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
+  const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
+  const canPresent = Boolean(isAdmin) || hasExclusiveControl
+  const useAdminStepComposer = Boolean(useStackedStudentLayout && canPresent && !isQuizMode && !isAssignmentContext)
 
   const [quizSubmitting, setQuizSubmitting] = useState(false)
   const [quizActive, setQuizActive] = useState(false)
@@ -965,7 +968,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
-  const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
 
   const currentEditorBadge = useMemo(() => {
     const controllerId = (controlState?.controllerId || '').trim()
@@ -1310,7 +1312,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
-  const canPresent = Boolean(isAdmin) || hasExclusiveControl
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -8916,7 +8917,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
+                      disabled={
+                        status !== 'ready' ||
+                        Boolean(fatalError) ||
+                        (isAdmin
+                          ? (adminSendingStep || (!adminDraftLatex && !canClear))
+                          : (quizSubmitting || ((!quizActive && !isAssignmentView) && !canPresent)))
+                      }
                     >
                       <span className="sr-only">Send</span>
                       <svg

@@ -8164,6 +8164,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const avatarSize = 36
                     const spacing = 8
                     const rowStep = avatarSize + spacing
+                    const halfStep = Math.max(0, Math.round(rowStep / 2))
+                    const stackedStep = avatarSize + halfStep
 
                     const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
                     const nameKey = (value: string) => normalizeName(value).toLowerCase()
@@ -8202,26 +8204,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const anchorX = Math.max(10, Math.round(editorPickerAnchor.x))
                     const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, Math.round(editorPickerAnchor.y)))
                     const anchorTop = anchorY - avatarSize / 2
-
-                    const n = others.length + 1
-                    const adminSlot = Math.floor((n - 1) / 2)
-                    const innerHeight = Math.max(height, topMargin + bottomMargin + ((n - 1) * rowStep) + avatarSize)
-
-                    // Map the deduped user list into slots above/below the admin.
-                    const slotToUser = new Map<number, { clientId: string; name: string; userId?: string }>()
-                    slotToUser.set(adminSlot, adminEntry)
-                    let writeIndex = 0
-                    for (let slot = 0; slot < n; slot += 1) {
-                      if (slot === adminSlot) continue
-                      const next = others[writeIndex]
-                      if (!next) break
-                      slotToUser.set(slot, next)
-                      writeIndex += 1
-                    }
-
-                    // Compute scrollTop so the admin slot aligns with the fixed admin avatar.
-                    const adminY = innerHeight - bottomMargin - avatarSize - (adminSlot * rowStep)
-                    const desiredScrollTop = Math.max(0, Math.min(innerHeight - height, adminY - anchorTop))
+                    const listTop = anchorTop + avatarSize + halfStep
+                    const listViewportHeight = Math.max(0, Math.round(height - bottomMargin - listTop))
+                    const innerHeight = Math.max(listViewportHeight, (others.length * stackedStep) + avatarSize)
 
                     const closePicker = () => {
                       setEditorPickerOpen(false)
@@ -8262,24 +8247,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }
                     }
 
-                    const renderAvatar = (
-                      c: { clientId: string; name: string },
-                      left: number,
-                      top: number,
-                      variant: 'admin' | 'other' = 'other',
-                      zIndex?: number
+                    const renderUserRow = (
+                      u: { clientId: string; name: string },
+                      top: number
                     ) => (
                       <button
-                        key={c.clientId}
+                        key={u.clientId}
                         type="button"
-                        className={`absolute rounded-full border shadow-sm flex items-center justify-center ${variant === 'admin' ? 'bg-slate-900 text-white border-yellow-400 ring-2 ring-yellow-300/70' : 'bg-white/90 text-slate-800 border-slate-200 hover:bg-white'}`}
-                        style={{
-                          left,
-                          top,
-                          width: avatarSize,
-                          height: avatarSize,
-                          zIndex,
-                        }}
+                        className="absolute flex items-center gap-2"
+                        style={{ left: anchorX, top, height: avatarSize }}
                         onPointerDown={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
@@ -8287,40 +8263,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         onClick={async (e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          await grant(c.clientId)
+                          await grant(u.clientId)
                           closePicker()
                         }}
-                        title={c.name}
-                        aria-label={c.name}
+                        title={u.name}
+                        aria-label={u.name}
                       >
-                        <span className="text-[12px] font-semibold" aria-hidden="true">{initialsFor(c.name)}</span>
+                        <span
+                          className="rounded-full border border-slate-200 bg-white/90 text-slate-800 shadow-sm flex items-center justify-center"
+                          style={{ width: avatarSize, height: avatarSize }}
+                        >
+                          <span className="text-[12px] font-semibold" aria-hidden="true">{initialsFor(u.name)}</span>
+                        </span>
+                        <span className="text-[12px] text-slate-800 whitespace-nowrap max-w-[220px] truncate">{u.name}</span>
                       </button>
                     )
 
                     const otherElems: any[] = []
-                    for (let slot = 0; slot < n; slot += 1) {
-                      if (slot === adminSlot) continue
-                      const u = slotToUser.get(slot)
-                      if (!u) continue
-                      const y = innerHeight - bottomMargin - avatarSize - (slot * rowStep)
-                      otherElems.push(renderAvatar(u, anchorX, y, 'other'))
+                    for (let i = 0; i < others.length; i += 1) {
+                      const u = others[i]
+                      const y = (i * stackedStep)
+                      otherElems.push(renderUserRow(u, y))
                     }
-
-                    requestAnimationFrame(() => {
-                      if (!editorPickerOpenRef.current) return
-                      const scroller = editorPickerScrollRef.current
-                      if (!scroller) return
-                      try {
-                        scroller.scrollTop = desiredScrollTop
-                      } catch {}
-                    })
 
                     return (
                       <>
-                        {/* Scrollable layer for the other users; the admin avatar is pinned in the middle. */}
+                        {/* Scrollable layer for the other users; rendered below the pinned admin avatar. */}
                         <div
                           ref={editorPickerScrollRef}
-                          className="absolute inset-0 overflow-y-auto"
+                          className="absolute overflow-y-auto"
+                          style={{ left: 0, right: 0, top: listTop, height: listViewportHeight }}
                           onScroll={() => {
                             if (!editorPickerOpenRef.current) return
                             editorPickerScrollingRef.current = true
@@ -8355,8 +8327,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           </div>
                         </div>
 
-                        {/* Fixed admin avatar (gold outline) pinned to the anchor position. */}
-                        {renderAvatar(adminEntry, anchorX, anchorTop, 'admin', 60)}
+                        {/* Fixed admin avatar pinned to the anchor position (no special gold styling). */}
+                        <button
+                          type="button"
+                          className="absolute rounded-full border border-slate-200 bg-white/90 text-slate-800 shadow-sm flex items-center justify-center"
+                          style={{ left: anchorX, top: anchorTop, width: avatarSize, height: avatarSize, zIndex: 60 }}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          onClick={(e) => {
+                            // Keep open; selecting others happens below. (Takeover is already true when admin is controller.)
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }}
+                          title={adminEntry.name}
+                          aria-label={adminEntry.name}
+                        >
+                          <span className="text-[12px] font-semibold" aria-hidden="true">{initialsFor(adminEntry.name)}</span>
+                        </button>
                       </>
                     )
                   })()}

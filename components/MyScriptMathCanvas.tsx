@@ -7974,7 +7974,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
                   )}
 
-                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && currentEditorBadge && (
+                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && (
                     <button
                       ref={editorBadgeButtonRef}
                       type="button"
@@ -8004,15 +8004,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           return next
                         })
                       }}
-                      aria-label={isAdmin ? `Current editor: ${currentEditorBadge.name}. Tap to choose editor.` : `Current editor: ${currentEditorBadge.name}`}
+                      aria-label={isAdmin
+                        ? `Current editor: ${(currentEditorBadge?.name || 'All Students')}. Tap to choose editor.`
+                        : `Current editor: ${(currentEditorBadge?.name || 'All Students')}`}
                       title={isAdmin ? 'Choose who can edit' : undefined}
                       disabled={!isAdmin}
                     >
                       <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
-                        {currentEditorBadge.initials}
+                        {(currentEditorBadge?.initials || 'AS')}
                       </div>
                       <div className="text-[11px] text-slate-700 max-w-[180px] truncate">
-                        {currentEditorBadge.name}
+                        {(currentEditorBadge?.name || 'All Students')}
                       </div>
                     </button>
                   )}

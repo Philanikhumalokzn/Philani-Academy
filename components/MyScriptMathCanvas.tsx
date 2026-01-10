@@ -3,6 +3,96 @@ import { renderToString } from 'katex'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
+const PHILANI_ERASER_POINTER_TYPE = 'eraser'
+
+function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean): boolean {
+  if (!editor || typeof editor !== 'object') return false
+
+  const tryInstallOn = (candidate: any): boolean => {
+    if (!candidate || typeof candidate !== 'object') return false
+    if ((candidate as any).__philaniEraserShimInstalled) return true
+    if (typeof candidate.onPointerDown !== 'function') return false
+    if (typeof candidate.onPointerMove !== 'function') return false
+    if (typeof candidate.onPointerUp !== 'function') return false
+    // Heuristic: the capture layer object also has an attach() method.
+    if (typeof candidate.attach !== 'function') return false
+
+    const originalDown = candidate.onPointerDown.bind(candidate)
+    const originalMove = candidate.onPointerMove.bind(candidate)
+    const originalUp = candidate.onPointerUp.bind(candidate)
+
+    candidate.onPointerDown = (info: any) => {
+      const next = (isEraserActive() && info && typeof info === 'object')
+        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
+        : info
+      return originalDown(next)
+    }
+    candidate.onPointerMove = (info: any) => {
+      const next = (isEraserActive() && info && typeof info === 'object')
+        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
+        : info
+      return originalMove(next)
+    }
+    candidate.onPointerUp = (info: any) => {
+      const next = (isEraserActive() && info && typeof info === 'object')
+        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
+        : info
+      return originalUp(next)
+    }
+
+    try {
+      ;(candidate as any).__philaniEraserShimInstalled = true
+    } catch {}
+    return true
+  }
+
+  // Fast path: most builds expose a pointer event capture object directly.
+  const directCandidates: any[] = [
+    (editor as any).pointerEvents,
+    (editor as any).pointerEvent,
+    (editor as any)._pointerEvents,
+    (editor as any).pointerEventCapture,
+    (editor as any).pointerCapture,
+    (editor as any).recognizer?.pointerEvents,
+    (editor as any).recognizer?.pointerEvent,
+  ].filter(Boolean)
+  for (const c of directCandidates) {
+    if (tryInstallOn(c)) return true
+  }
+
+  // Best-effort shallow scan of the editor object graph.
+  try {
+    const visited = new Set<any>()
+    const queue: Array<{ value: any; depth: number }> = [{ value: editor, depth: 0 }]
+
+    while (queue.length) {
+      const { value, depth } = queue.shift()!
+      if (!value || typeof value !== 'object') continue
+      if (visited.has(value)) continue
+      visited.add(value)
+
+      if (tryInstallOn(value)) return true
+      if (depth >= 2) continue
+
+      const keys = Object.getOwnPropertyNames(value)
+      for (const k of keys) {
+        if (k === '__proto__') continue
+        let child: any = null
+        try {
+          child = (value as any)[k]
+        } catch {
+          child = null
+        }
+        if (child && typeof child === 'object' && !visited.has(child)) {
+          queue.push({ value: child, depth: depth + 1 })
+        }
+      }
+    }
+  } catch {}
+
+  return false
+}
+
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 const SCRIPT_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.js'
@@ -378,6 +468,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
+
+  const [isEraserMode, setIsEraserMode] = useState(false)
+  const isEraserModeRef = useRef(false)
+  useEffect(() => {
+    isEraserModeRef.current = isEraserMode
+  }, [isEraserMode])
+  const [eraserShimReady, setEraserShimReady] = useState(false)
+  const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const eraserLongPressTriggeredRef = useRef(false)
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
@@ -3648,6 +3747,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         editorInstanceRef.current = editor
+        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current))
         setStatus('ready')
 
         // Ensure the editor has a valid view size after any initial layout shifts.
@@ -3826,6 +3926,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // ignore during teardown
         }
         editorInstanceRef.current = null
+      }
+
+      if (eraserLongPressTimeoutRef.current) {
+        clearTimeout(eraserLongPressTimeoutRef.current)
+        eraserLongPressTimeoutRef.current = null
       }
     }
   }, [broadcastSnapshot, editorInitKey, exportLatexFromEditor, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
@@ -5246,6 +5351,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     )
   )
   const isViewOnly = !hasWriteAccess
+
+  useEffect(() => {
+    if (isViewOnly) {
+      setIsEraserMode(false)
+    }
+  }, [isViewOnly])
   const controlOwnerLabel = (() => {
     if (controlState) {
       if (controlState.controllerId === ALL_STUDENTS_ID) {
@@ -8630,27 +8741,68 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isAdmin && isOverlayMode && (
+                    {isOverlayMode && (
                       <button
                         type="button"
-                        className="px-2 py-1"
-                        title="Canvas controls"
-                        onClick={() => {
-                          openOverlayControls()
+                        className={`px-2 py-1 rounded ${isEraserMode ? 'bg-slate-900/10' : ''} ${isViewOnly ? 'opacity-50' : ''}`}
+                        title={isEraserMode ? (eraserShimReady ? 'Eraser (on)' : 'Eraser (on, initializing)') : (eraserShimReady ? 'Eraser' : 'Eraser (initializing)')}
+                        aria-pressed={isEraserMode}
+                        onClick={(e) => {
+                          if (eraserLongPressTriggeredRef.current) {
+                            eraserLongPressTriggeredRef.current = false
+                            e.preventDefault()
+                            e.stopPropagation()
+                            return
+                          }
+                          if (isViewOnly) return
+                          setIsEraserMode(prev => !prev)
                         }}
-                        disabled={status !== 'ready' || Boolean(fatalError)}
+                        disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                        onPointerDown={(e) => {
+                          if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                          eraserLongPressTriggeredRef.current = false
+                          if (eraserLongPressTimeoutRef.current) {
+                            clearTimeout(eraserLongPressTimeoutRef.current)
+                            eraserLongPressTimeoutRef.current = null
+                          }
+                          if (isAdmin) {
+                            // Admin-only: long press opens the old canvas controls (replaces the gear icon).
+                            eraserLongPressTimeoutRef.current = setTimeout(() => {
+                              eraserLongPressTimeoutRef.current = null
+                              eraserLongPressTriggeredRef.current = true
+                              openOverlayControls()
+                            }, 520)
+                          }
+                          try {
+                            e.currentTarget.setPointerCapture(e.pointerId)
+                          } catch {}
+                        }}
+                        onPointerUp={() => {
+                          if (eraserLongPressTimeoutRef.current) {
+                            clearTimeout(eraserLongPressTimeoutRef.current)
+                            eraserLongPressTimeoutRef.current = null
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          if (eraserLongPressTimeoutRef.current) {
+                            clearTimeout(eraserLongPressTimeoutRef.current)
+                            eraserLongPressTimeoutRef.current = null
+                          }
+                        }}
                       >
-                        <span className="sr-only">Canvas controls</span>
+                        <span className="sr-only">Eraser</span>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           viewBox="0 0 24 24"
                           width="18"
                           height="18"
                           fill="currentColor"
-                          className="text-slate-700"
+                          className={isEraserMode ? 'text-slate-900' : 'text-slate-700'}
                           aria-hidden="true"
                         >
-                          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.06 7.06 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.65.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.25.1.52.01.65-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" />
+                          <path d="M16.24 3.56a2.5 2.5 0 0 1 3.54 0l.66.66a2.5 2.5 0 0 1 0 3.54l-9.2 9.2a2.5 2.5 0 0 1-1.77.73H5.5a1.5 1.5 0 0 1-1.06-.44l-1.1-1.1a1.5 1.5 0 0 1 0-2.12l12.9-12.9z" opacity="0.25" />
+                          <path d="M15.53 4.27 4.04 15.76a.5.5 0 0 0 0 .71l1.1 1.1c.09.1.22.15.35.15h3.97c.2 0 .38-.08.52-.21l9.2-9.2a1.5 1.5 0 0 0 0-2.12l-.66-.66a1.5 1.5 0 0 0-2.12 0z" />
+                          <path d="M4 20h16v2H4v-2z" />
                         </svg>
                       </button>
                     )}

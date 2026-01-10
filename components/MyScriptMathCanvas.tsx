@@ -7915,6 +7915,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
                     revealOverlayChrome()
+
+                    // And for admins, immediately open the student editor picker at the tap point.
+                    if (isAdmin && isOverlayMode && isCompactViewport && studentStackRef.current) {
+                      const containerBox = studentStackRef.current.getBoundingClientRect()
+                      const clientX = (e as any).clientX ?? 0
+                      const clientY = (e as any).clientY ?? 0
+                      const anchorX = Math.round(clientX - containerBox.left)
+                      const anchorY = Math.round(clientY - containerBox.top)
+                      setEditorPickerAnchor({ x: anchorX, y: anchorY })
+                      setEditorPickerOpen(true)
+                      editorPickerScrollingRef.current = false
+                      setOverlayChromePeekVisible(true)
+                      try { onOverlayChromeVisibilityChange?.(true) } catch {}
+                      scheduleOverlayChromeAutoHide()
+                    }
+
                     if (isAssignmentView && typeof window !== 'undefined') {
                       try {
                         window.dispatchEvent(new CustomEvent('philani:assignment-meta-peek'))

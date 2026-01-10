@@ -4838,7 +4838,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       editorInstanceRef.current.undo()
     } catch {}
-    broadcastSnapshot(false)
+    // Students need immediate propagation so the teacher sees undo/redo reliably.
+    broadcastSnapshot(!isAdmin)
 
     // Step-boundary undo: once empty, go to the line above.
     if (!useAdminStepComposer || !isAdmin) return
@@ -4863,7 +4864,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       editorInstanceRef.current.redo()
     } catch {}
-    broadcastSnapshot(false)
+    // Students need immediate propagation so the teacher sees undo/redo reliably.
+    broadcastSnapshot(!isAdmin)
 
     // Step-boundary redo: when empty, redo to the next line we previously stepped from.
     if (!useAdminStepComposer || !isAdmin) return
@@ -8868,6 +8870,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         return
                       }
 
+                      // Non-admin, non-quiz shared sessions: treat send as an explicit "commit" of the
+                      // current shared snapshot (force-broadcast after a convert so LaTeX export is fresh).
+                      if (!isAdmin) {
+                        const editor = editorInstanceRef.current
+                        if (!editor) return
+                        if (lockedOutRef.current) return
+                        if (!studentCanPublish()) return
+                        if (pageIndex !== sharedPageIndexRef.current) return
+                        if (isBroadcastPausedRef.current) return
+
+                        try {
+                          editor.convert?.()
+                        } catch {}
+                        try {
+                          if (typeof editor.waitForIdle === 'function') {
+                            await editor.waitForIdle()
+                          }
+                        } catch {}
+
+                        broadcastSnapshot(true, { force: true, reason: 'update' })
+                        return
+                      }
+
                       const editor = editorInstanceRef.current
                       if (!editor) return
                       if (lockedOutRef.current) return
@@ -8947,7 +8972,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
+                      disabled={(() => {
+                        if (status !== 'ready' || Boolean(fatalError)) return true
+                        if (isAdmin) {
+                          return Boolean(adminSendingStep || (!adminDraftLatex && !canClear))
+                        }
+
+                        // Quiz/assignment: commit/submit flow controls availability.
+                        if (quizActive || isAssignmentView) {
+                          return Boolean(quizSubmitting)
+                        }
+
+                        // Normal shared session: only the current controller can send.
+                        const isSharedPage = pageIndex === sharedPageIndexRef.current
+                        const canSendShared = studentCanPublish() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+                        return !canSendShared
+                      })()}
                     >
                       <span className="sr-only">Send</span>
                       <svg

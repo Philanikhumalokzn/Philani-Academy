@@ -7919,16 +7919,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     // And for admins, immediately open the student editor picker at the tap point.
                     if (isAdmin && isOverlayMode && isCompactViewport && studentStackRef.current) {
                       const containerBox = studentStackRef.current.getBoundingClientRect()
-                      const clientX = (e as any).clientX ?? 0
-                      const clientY = (e as any).clientY ?? 0
-                      const anchorX = Math.round(clientX - containerBox.left)
-                      const anchorY = Math.round(clientY - containerBox.top)
-                      setEditorPickerAnchor({ x: anchorX, y: anchorY })
+                      // Anchor the picker to the (fixed) editor badge position, not to the tap.
+                      // This keeps the avatar column stable and prevents “dropping” a new column on random taps.
+                      const fallbackX = 18
+                      const fallbackY = Math.round(containerBox.height * 0.5)
+                      const setFallback = () => setEditorPickerAnchor({ x: fallbackX, y: fallbackY })
+                      setFallback()
                       setEditorPickerOpen(true)
                       editorPickerScrollingRef.current = false
                       setOverlayChromePeekVisible(true)
                       try { onOverlayChromeVisibilityChange?.(true) } catch {}
                       scheduleOverlayChromeAutoHide()
+
+                      // Best-effort: once the badge exists in the DOM, refine the anchor to its position.
+                      requestAnimationFrame(() => {
+                        if (!editorPickerOpenRef.current) return
+                        const badgeEl = editorBadgeButtonRef.current
+                        if (!badgeEl) return
+                        const badgeBox = badgeEl.getBoundingClientRect()
+                        const refinedX = Math.round(badgeBox.left - containerBox.left)
+                        const refinedY = Math.round((badgeBox.top - containerBox.top) + (badgeBox.height / 2))
+                        setEditorPickerAnchor({ x: refinedX, y: refinedY })
+                      })
                     }
 
                     if (isAssignmentView && typeof window !== 'undefined') {
@@ -7990,7 +8002,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
                   )}
 
-                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && (
+                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && !editorPickerOpen && (
                     <button
                       ref={editorBadgeButtonRef}
                       type="button"
@@ -8168,15 +8180,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const container = studentStackRef.current
                     if (!container) return null
                     const box = container.getBoundingClientRect()
-                    const width = box.width
                     const height = box.height
                     const topMargin = 12
                     const bottomMargin = 12
                     const avatarSize = 36
-                    const spacing = 10
+                    const spacing = 8
                     const rowStep = avatarSize + spacing
-                    const colGap = 14
-                    const sideOffset = avatarSize + colGap
 
                     const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
                     const nameKey = (value: string) => normalizeName(value).toLowerCase()
@@ -8191,14 +8200,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     // Dedup users (no duplicates): prefer stable userId, fall back to normalized name.
                     const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
                     const adminUserId = (typeof userId === 'string' ? userId : '').trim()
-
                     for (const raw of connectedClients) {
                       const clientId = String((raw as any)?.clientId || '').trim()
                       if (!clientId) continue
                       if (clientId === ALL_STUDENTS_ID) continue
                       const nm = normalizeName((raw as any)?.name || '') || clientId
                       const uid = (typeof (raw as any)?.userId === 'string') ? String((raw as any).userId).trim() : ''
-                      // Skip admin (we always render admin separately as the center avatar)
+                      // Skip admin (rendered separately as the centered avatar).
                       if (adminUserId && uid && uid === adminUserId) continue
                       if (clientId === clientIdRef.current) continue
                       const key = uid ? `uid:${uid}` : `name:${nameKey(nm)}`
@@ -8213,29 +8221,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       .filter(u => u.clientId !== adminEntry.clientId)
                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
-                    const leftUsers: Array<{ clientId: string; name: string; userId?: string }> = []
-                    const rightUsers: Array<{ clientId: string; name: string; userId?: string }> = []
-                    for (let i = 0; i < others.length; i += 1) {
-                      if (i % 2 === 0) leftUsers.push(others[i])
-                      else rightUsers.push(others[i])
+                    const anchorX = Math.max(10, Math.round(editorPickerAnchor.x))
+                    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, Math.round(editorPickerAnchor.y)))
+                    const anchorTop = anchorY - avatarSize / 2
+
+                    const n = others.length + 1
+                    const adminSlot = Math.floor((n - 1) / 2)
+                    const innerHeight = Math.max(height, topMargin + bottomMargin + ((n - 1) * rowStep) + avatarSize)
+
+                    // Map the deduped user list into slots above/below the admin.
+                    const slotToUser = new Map<number, { clientId: string; name: string; userId?: string }>()
+                    slotToUser.set(adminSlot, adminEntry)
+                    let writeIndex = 0
+                    for (let slot = 0; slot < n; slot += 1) {
+                      if (slot === adminSlot) continue
+                      const next = others[writeIndex]
+                      if (!next) break
+                      slotToUser.set(slot, next)
+                      writeIndex += 1
                     }
 
-                    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
-
-                    const paddingX = 10
-                    const minAdminLeft = paddingX + sideOffset
-                    const maxAdminLeft = Math.max(paddingX, width - paddingX - (avatarSize + sideOffset))
-                    const desiredAdminLeft = editorPickerAnchor.x
-                    const adminLeft = Math.max(minAdminLeft, Math.min(maxAdminLeft, desiredAdminLeft))
-                    const adminTop = anchorY - avatarSize / 2
-                    const leftColLeft = adminLeft - sideOffset
-                    const rightColLeft = adminLeft + sideOffset
-
-                    const yForColumn = (len: number, index: number) => {
-                      if (len <= 1) return anchorY - avatarSize / 2
-                      const startY = anchorY - ((len - 1) * rowStep) / 2
-                      return startY + (index * rowStep) - (avatarSize / 2)
-                    }
+                    // Compute scrollTop so the admin slot aligns with the fixed admin avatar.
+                    const adminY = innerHeight - bottomMargin - avatarSize - (adminSlot * rowStep)
+                    const desiredScrollTop = Math.max(0, Math.min(innerHeight - height, adminY - anchorTop))
 
                     const closePicker = () => {
                       setEditorPickerOpen(false)
@@ -8252,7 +8260,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }
                       const channel = channelRef.current
                       if (!channel) return
-                      const target = [...leftUsers, ...rightUsers].find(c => c.clientId === targetId)
+                      const target = others.find(c => c.clientId === targetId)
                       if (!target) return
 
                       const ts = Date.now()
@@ -8311,22 +8319,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )
 
-                    const leftElems: any[] = []
-                    for (let i = 0; i < leftUsers.length; i += 1) {
-                      const u = leftUsers[i]
-                      const y = yForColumn(leftUsers.length, i)
-                      leftElems.push(renderAvatar(u, leftColLeft, y, 'other'))
+                    const otherElems: any[] = []
+                    for (let slot = 0; slot < n; slot += 1) {
+                      if (slot === adminSlot) continue
+                      const u = slotToUser.get(slot)
+                      if (!u) continue
+                      const y = innerHeight - bottomMargin - avatarSize - (slot * rowStep)
+                      otherElems.push(renderAvatar(u, anchorX, y, 'other'))
                     }
-                    const rightElems: any[] = []
-                    for (let i = 0; i < rightUsers.length; i += 1) {
-                      const u = rightUsers[i]
-                      const y = yForColumn(rightUsers.length, i)
-                      rightElems.push(renderAvatar(u, rightColLeft, y, 'other'))
-                    }
+
+                    requestAnimationFrame(() => {
+                      if (!editorPickerOpenRef.current) return
+                      const scroller = editorPickerScrollRef.current
+                      if (!scroller) return
+                      try {
+                        scroller.scrollTop = desiredScrollTop
+                      } catch {}
+                    })
 
                     return (
                       <>
-                        {/* Simple scroll layer: if there are many users, allow the overlay to scroll. */}
+                        {/* Scrollable layer for the other users; the admin avatar is pinned in the middle. */}
                         <div
                           ref={editorPickerScrollRef}
                           className="absolute inset-0 overflow-y-auto"
@@ -8349,12 +8362,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             e.stopPropagation()
                           }}
                         >
-                          <div className="relative" style={{ height: height }}>
-                            {leftElems}
-                            {rightElems}
-                            {renderAvatar(adminEntry, adminLeft, adminTop, 'admin', 60)}
+                          <div className="relative" style={{ height: innerHeight }}>
+                            <div
+                              className="absolute"
+                              style={{
+                                left: 0,
+                                top: 0,
+                                width: '100%',
+                                height: innerHeight,
+                              }}
+                            >
+                              {otherElems}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Fixed admin avatar (gold outline) pinned to the anchor position. */}
+                        {renderAvatar(adminEntry, anchorX, anchorTop, 'admin', 60)}
                       </>
                     )
                   })()}

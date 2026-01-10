@@ -1168,9 +1168,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const was = studentComposerWasActiveRef.current
     studentComposerWasActiveRef.current = active
 
-    // When the student gains or loses exclusive control in a normal shared session,
-    // reset the local step composer so steps never "carry" between different editors.
+    // When the student LOSES exclusive control in a normal shared session,
+    // reset the local step composer so steps don't carry between different editors.
+    // IMPORTANT: do NOT reset on gain, because we want handover to inherit the teacher's
+    // current composer state (and handover messages can arrive before/after the lock message).
     if (active === was) return
+    if (active) return
     stepComposerPreviewEpochRef.current += 1
     if (pendingExportRef.current) {
       clearTimeout(pendingExportRef.current)
@@ -1183,6 +1186,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     clearTopPanelSelection()
     stepNavRedoStackRef.current = []
   }, [clearTopPanelSelection, isAdmin, isStudentSharedSessionStepComposer])
+
+  const pendingHandoverRef = useRef<null | {
+    receivedAt: number
+    snapshot: SnapshotPayload | null
+  }>(null)
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -4362,43 +4370,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               }
             } catch {}
 
-            // Finally, overwrite the ink snapshot.
-            const incomingSnapshot = data.snapshot
-            const applyAndBroadcast = async () => {
-              try {
-                await applyPageSnapshot(incomingSnapshot ?? null)
-              } catch {}
-
-              // The receiver becomes canonical. Immediately publish a full sync-state so all
-              // other clients converge on this new controller's canvas.
-              try {
-                const cs = controlStateRef.current
-                const controllerId = (cs?.controllerId || '').trim()
-                const controllerUserId = (cs?.controllerUserId && typeof cs.controllerUserId === 'string') ? cs.controllerUserId : ''
-                const isControllerNow = Boolean(
-                  (controllerId && controllerId === clientIdRef.current) ||
-                  (controllerUserId && controllerUserId === userId)
-                )
-                if (!isControllerNow) return
-                const ch = channelRef.current
-                if (!ch) return
-                const canonical = captureFullSnapshot()
-                if (!canonical || isSnapshotEmpty(canonical)) return
-                const ts = Date.now()
-                await ch.publish('sync-state', {
-                  clientId: clientIdRef.current,
-                  author: userDisplayName,
-                  snapshot: canonical,
-                  ts,
-                  reason: 'update',
-                  originClientId: clientIdRef.current,
-                })
-              } catch (err) {
-                console.warn('Failed to broadcast sync-state after handover', err)
+            // Cache the handover so we can broadcast it once the lock/control message
+            // has definitely made us the exclusive controller.
+            try {
+              pendingHandoverRef.current = {
+                receivedAt: Date.now(),
+                snapshot: (data.snapshot ?? null) as any,
               }
+            } catch {}
+
+            // Finally, overwrite the ink snapshot. If snapshot is missing/empty, do NOT clear;
+            // instead request a sync from the current controller (likely the teacher) as a fallback.
+            const incomingSnapshot = data.snapshot ?? null
+            const applyNow = async () => {
+              if (!incomingSnapshot || isSnapshotEmpty(incomingSnapshot)) {
+                try {
+                  channel
+                    ?.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
+                    .catch(() => {})
+                } catch {}
+                return
+              }
+              try {
+                await applyPageSnapshot(incomingSnapshot)
+              } catch {}
             }
 
-            void applyAndBroadcast()
+            void applyNow()
 
             return
           }
@@ -5894,7 +5892,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const channel = channelRef.current
     if (!channel) return
 
-    const snapshot = captureFullSnapshot()
+    // Prefer the last-known canonical snapshot (already used for realtime publishing).
+    // This avoids rare cases where collectEditorSnapshot serialization returns null symbols.
+    const snapshot = (latestSnapshotRef.current?.snapshot ?? captureFullSnapshot())
     const viewportScrollLeft = (() => {
       try {
         return Math.max(0, Math.trunc(studentViewportRef.current?.scrollLeft ?? 0))
@@ -5939,6 +5939,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       })
       .catch(() => {})
   }, [canvasOrientation, captureFullSnapshot, horizontalPanValue, isFullscreen, latexOutput, pageIndex, stackedNotesState, topPanelSelectedStep, userDisplayName])
+
+  // If a handover arrives slightly before the lock/control message, cache it and
+  // broadcast once we are definitely the exclusive controller so others converge.
+  useEffect(() => {
+    if (!hasExclusiveControl) return
+    const pending = pendingHandoverRef.current
+    if (!pending) return
+    if (Date.now() - pending.receivedAt > 8000) {
+      pendingHandoverRef.current = null
+      return
+    }
+    const channel = channelRef.current
+    if (!channel) return
+    if (lockedOutRef.current) return
+    const canonical = captureFullSnapshot()
+    if (!canonical || isSnapshotEmpty(canonical)) return
+    const ts = Date.now()
+    channel
+      .publish('sync-state', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        snapshot: canonical,
+        ts,
+        reason: 'update',
+        originClientId: clientIdRef.current,
+      })
+      .catch(() => {})
+      .finally(() => {
+        pendingHandoverRef.current = null
+      })
+  }, [captureFullSnapshot, hasExclusiveControl, userDisplayName])
 
   const horizontalPanRafRef = useRef<number | null>(null)
   const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)

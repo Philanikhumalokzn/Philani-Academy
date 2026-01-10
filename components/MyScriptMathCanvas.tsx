@@ -448,6 +448,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportInFlightRef = useRef(false)
+  const studentQuizPreviewEpochRef = useRef(0)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
@@ -3833,17 +3834,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (studentQuizPreviewExportRef.current) {
               clearTimeout(studentQuizPreviewExportRef.current)
             }
+            const epochAtSchedule = studentQuizPreviewEpochRef.current
             studentQuizPreviewExportRef.current = setTimeout(() => {
               studentQuizPreviewExportRef.current = null
               if (studentQuizPreviewExportInFlightRef.current) return
               studentQuizPreviewExportInFlightRef.current = true
               ;(async () => {
+                if (epochAtSchedule !== studentQuizPreviewEpochRef.current) return
                 let latexValue = getLatexFromEditorModel()
                 if (!latexValue || latexValue.trim().length === 0) {
                   const exported = await exportLatexFromEditor()
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
+                if (epochAtSchedule !== studentQuizPreviewEpochRef.current) return
                 setLatexOutput(latexValue)
               })()
                 .finally(() => {
@@ -6295,6 +6299,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setStudentCommittedLatex(nextCombined)
 
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
+        studentQuizPreviewEpochRef.current += 1
+        if (studentQuizPreviewExportRef.current) {
+          clearTimeout(studentQuizPreviewExportRef.current)
+          studentQuizPreviewExportRef.current = null
+        }
         try {
           editor.clear?.()
         } catch {}
@@ -6385,6 +6394,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         quizHasCommittedRef.current = false
         setStudentCommittedLatex('')
         suppressBroadcastUntilTsRef.current = Date.now() + 600
+        studentQuizPreviewEpochRef.current += 1
+        if (studentQuizPreviewExportRef.current) {
+          clearTimeout(studentQuizPreviewExportRef.current)
+          studentQuizPreviewExportRef.current = null
+        }
         try {
           editor.clear?.()
         } catch {}

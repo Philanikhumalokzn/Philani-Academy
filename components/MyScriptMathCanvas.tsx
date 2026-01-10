@@ -7918,32 +7918,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
                     revealOverlayChrome()
 
-                    // And for admins, immediately open the student editor picker at the tap point.
-                    if (isAdmin && isOverlayMode && isCompactViewport && studentStackRef.current) {
-                      const containerBox = studentStackRef.current.getBoundingClientRect()
-                      // Anchor the picker to the (fixed) editor badge position, not to the tap.
-                      // This keeps the avatar column stable and prevents “dropping” a new column on random taps.
-                      const fallbackX = 18
-                      const fallbackY = Math.round(containerBox.height * 0.5)
-                      const setFallback = () => setEditorPickerAnchor({ x: fallbackX, y: fallbackY })
-                      setFallback()
-                      setEditorPickerOpen(true)
-                      editorPickerScrollingRef.current = false
-                      setOverlayChromePeekVisible(true)
-                      try { onOverlayChromeVisibilityChange?.(true) } catch {}
-                      scheduleOverlayChromeAutoHide()
-
-                      // Best-effort: once the badge exists in the DOM, refine the anchor to its position.
-                      requestAnimationFrame(() => {
-                        if (!editorPickerOpenRef.current) return
-                        const badgeEl = editorBadgeButtonRef.current
-                        if (!badgeEl) return
-                        const badgeBox = badgeEl.getBoundingClientRect()
-                        const refinedX = Math.round(badgeBox.left - containerBox.left)
-                        const refinedY = Math.round((badgeBox.top - containerBox.top) + (badgeBox.height / 2))
-                        setEditorPickerAnchor({ x: refinedX, y: refinedY })
-                      })
-                    }
+                    // Desired UX: top-panel tap only reveals chrome + the single current-editor badge.
+                    // The full avatar picker opens only when the badge is tapped.
 
                     if (isAssignmentView && typeof window !== 'undefined') {
                       try {

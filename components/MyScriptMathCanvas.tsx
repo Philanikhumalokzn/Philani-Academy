@@ -8870,29 +8870,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         return
                       }
 
-                      // Non-admin, non-quiz shared sessions: treat send as an explicit "commit" of the
-                      // current shared snapshot (force-broadcast after a convert so LaTeX export is fresh).
-                      if (!isAdmin) {
-                        const editor = editorInstanceRef.current
-                        if (!editor) return
-                        if (lockedOutRef.current) return
-                        if (!studentCanPublish()) return
-                        if (pageIndex !== sharedPageIndexRef.current) return
-                        if (isBroadcastPausedRef.current) return
-
-                        try {
-                          editor.convert?.()
-                        } catch {}
-                        try {
-                          if (typeof editor.waitForIdle === 'function') {
-                            await editor.waitForIdle()
-                          }
-                        } catch {}
-
-                        broadcastSnapshot(true, { force: true, reason: 'update' })
-                        return
-                      }
-
                       const editor = editorInstanceRef.current
                       if (!editor) return
                       if (lockedOutRef.current) return
@@ -8983,10 +8960,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           return Boolean(quizSubmitting)
                         }
 
-                        // Normal shared session: only the current controller can send.
-                        const isSharedPage = pageIndex === sharedPageIndexRef.current
-                        const canSendShared = studentCanPublish() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
-                        return !canSendShared
+                        // Normal shared session: mirror admin behaviour (enabled when there's something
+                        // on-canvas to commit) but only for the current editor.
+                        if (lockedOutRef.current) return true
+                        if (!studentCanPublish()) return true
+                        return Boolean(adminSendingStep || (!adminDraftLatex && !canClear))
                       })()}
                     >
                       <span className="sr-only">Send</span>

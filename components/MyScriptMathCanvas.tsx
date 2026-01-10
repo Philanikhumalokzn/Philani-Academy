@@ -782,6 +782,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [overlayChromePeekVisible, setOverlayChromePeekVisible] = useState(false)
   const [editorPickerOpen, setEditorPickerOpen] = useState(false)
   const editorPickerOpenRef = useRef(false)
+  const editorPickerScrollingRef = useRef(false)
+  const editorPickerScrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editorBadgeButtonRef = useRef<HTMLButtonElement | null>(null)
   const [editorPickerAnchor, setEditorPickerAnchor] = useState<{ x: number; y: number } | null>(null)
   const editorPickerScrollRef = useRef<HTMLDivElement | null>(null)
@@ -798,18 +800,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [])
 
+  const scheduleOverlayChromeAutoHide = useCallback(() => {
+    if (!onOverlayChromeVisibilityChange) return
+    if (!isOverlayMode || !isCompactViewport) return
+    clearOverlayChromeAutoHide()
+    overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      // Only keep chrome/picker visible while actively scrolling the picker list.
+      if (editorPickerOpenRef.current && editorPickerScrollingRef.current) return
+
+      // If the picker is open but we're not scrolling, auto-close it like the rest of the chrome.
+      if (editorPickerOpenRef.current) {
+        setEditorPickerOpen(false)
+        setEditorPickerAnchor(null)
+      }
+
+      setOverlayChromePeekVisible(false)
+      onOverlayChromeVisibilityChange(false)
+    }, OVERLAY_CHROME_PEEK_MS)
+  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+
   const revealOverlayChrome = useCallback(() => {
     if (!onOverlayChromeVisibilityChange) return
     if (!isOverlayMode || !isCompactViewport) return
     setOverlayChromePeekVisible(true)
     onOverlayChromeVisibilityChange(true)
-    clearOverlayChromeAutoHide()
-    overlayChromeHideTimeoutRef.current = setTimeout(() => {
-      if (editorPickerOpenRef.current) return
-      setOverlayChromePeekVisible(false)
-      onOverlayChromeVisibilityChange(false)
-    }, OVERLAY_CHROME_PEEK_MS)
-  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+    scheduleOverlayChromeAutoHide()
+  }, [isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange, scheduleOverlayChromeAutoHide])
 
   useEffect(() => {
     if (!onOverlayChromeVisibilityChange) return
@@ -820,13 +836,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     overlayChromeInitialPeekDoneRef.current = true
     setOverlayChromePeekVisible(true)
     onOverlayChromeVisibilityChange(true)
-    clearOverlayChromeAutoHide()
-    overlayChromeHideTimeoutRef.current = setTimeout(() => {
-      if (editorPickerOpenRef.current) return
-      setOverlayChromePeekVisible(false)
-      onOverlayChromeVisibilityChange(false)
-    }, OVERLAY_CHROME_PEEK_MS)
-  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
+    scheduleOverlayChromeAutoHide()
+  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange, scheduleOverlayChromeAutoHide])
 
   useEffect(() => {
     if (!isOverlayMode || !isCompactViewport) {
@@ -839,6 +850,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return () => {
       setOverlayChromePeekVisible(false)
       clearOverlayChromeAutoHide()
+      if (editorPickerScrollIdleTimeoutRef.current) {
+        clearTimeout(editorPickerScrollIdleTimeoutRef.current)
+        editorPickerScrollIdleTimeoutRef.current = null
+      }
+      editorPickerScrollingRef.current = false
     }
   }, [clearOverlayChromeAutoHide])
   // Broadcaster role removed: all clients can publish.
@@ -7869,12 +7885,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setEditorPickerOpen(prev => {
                           const next = !prev
                           if (next) {
-                            // Keep the peek chrome visible while the picker is open.
+                            // Ensure chrome is visible, but keep auto-hide behaviour.
                             setOverlayChromePeekVisible(true)
-                            clearOverlayChromeAutoHide()
-                            try {
-                              onOverlayChromeVisibilityChange?.(true)
-                            } catch {}
+                            try { onOverlayChromeVisibilityChange?.(true) } catch {}
+                            editorPickerScrollingRef.current = false
+                            scheduleOverlayChromeAutoHide()
                           }
                           return next
                         })
@@ -8004,13 +8019,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       e.stopPropagation()
                       setEditorPickerOpen(false)
                       setEditorPickerAnchor(null)
-                      // Let the peek chrome auto-hide normally again.
-                      clearOverlayChromeAutoHide()
-                      overlayChromeHideTimeoutRef.current = setTimeout(() => {
-                        if (editorPickerOpenRef.current) return
-                        setOverlayChromePeekVisible(false)
-                        onOverlayChromeVisibilityChange?.(false)
-                      }, OVERLAY_CHROME_PEEK_MS)
+                      editorPickerScrollingRef.current = false
+                      scheduleOverlayChromeAutoHide()
                     }
                   }}
                 >
@@ -8092,12 +8102,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const closePicker = () => {
                       setEditorPickerOpen(false)
                       setEditorPickerAnchor(null)
-                      clearOverlayChromeAutoHide()
-                      overlayChromeHideTimeoutRef.current = setTimeout(() => {
-                        if (editorPickerOpenRef.current) return
-                        setOverlayChromePeekVisible(false)
-                        onOverlayChromeVisibilityChange?.(false)
-                      }, OVERLAY_CHROME_PEEK_MS)
+                      editorPickerScrollingRef.current = false
+                      scheduleOverlayChromeAutoHide()
                     }
 
                     const grant = async (targetId: string) => {
@@ -8174,6 +8180,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         <div
                           ref={editorPickerScrollRef}
                           className="absolute inset-0 overflow-y-auto"
+                          onScroll={() => {
+                            if (!editorPickerOpenRef.current) return
+                            editorPickerScrollingRef.current = true
+                            setOverlayChromePeekVisible(true)
+                            try { onOverlayChromeVisibilityChange?.(true) } catch {}
+                            // While actively scrolling, don't let the chrome disappear.
+                            clearOverlayChromeAutoHide()
+                            if (editorPickerScrollIdleTimeoutRef.current) {
+                              clearTimeout(editorPickerScrollIdleTimeoutRef.current)
+                            }
+                            editorPickerScrollIdleTimeoutRef.current = setTimeout(() => {
+                              editorPickerScrollIdleTimeoutRef.current = null
+                              editorPickerScrollingRef.current = false
+                              // Start the normal hide countdown once scrolling stops.
+                              scheduleOverlayChromeAutoHide()
+                            }, 220)
+                          }}
                           onPointerDown={(e) => {
                             // Prevent backdrop-close when starting to scroll inside.
                             e.stopPropagation()

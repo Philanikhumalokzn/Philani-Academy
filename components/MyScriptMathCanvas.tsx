@@ -5038,6 +5038,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const targetRecord = connectedClients.find(c => c.clientId === targetId)
     const controllerId = isAll ? ALL_STUDENTS_ID : targetId
     const controllerName = isAll ? 'All Students' : targetRecord?.name || targetId
+    const controllerUserId = (!isAll && targetRecord?.userId) ? String(targetRecord.userId) : undefined
     try {
       await channel.publish('control', {
         clientId: clientIdRef.current,
@@ -5045,10 +5046,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         locked: !isAll,
         controllerId,
         controllerName,
+        controllerUserId,
         ts,
       })
       lastControlBroadcastTsRef.current = ts
-      updateControlState({ controllerId, controllerName, ts })
+      updateControlState({ controllerId, controllerName, controllerUserId, ts })
     } catch (err) {
       console.warn('Failed to grant selected client editing rights', err)
     }
@@ -5079,20 +5081,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!isAdmin) return
     if (status !== 'ready') return
     if (!channelRef.current) return
-    const controllerId = controlState?.controllerId
-    if (!controllerId) {
+    const controllerId = (controlState?.controllerId || '').trim()
+    const controllerUserId = (controlState?.controllerUserId && typeof controlState.controllerUserId === 'string')
+      ? controlState.controllerUserId
+      : undefined
+    if (!controllerId && !controllerUserId) {
       // No controller set yet: take control by default.
       lockStudentEditing()
       return
     }
-    if (controllerId === clientId) return
+    if ((controllerId && controllerId === clientId) || (controllerUserId && controllerUserId === userId)) return
     if (controllerId === ALL_STUDENTS_ID) return
     // Only take control back if the controller is no longer present.
-    const controllerStillConnected = connectedClients.some(c => c.clientId === controllerId)
+    const controllerStillConnected = connectedClients.some(c => (
+      (controllerId && c.clientId === controllerId) ||
+      (controllerUserId && typeof c.userId === 'string' && c.userId === controllerUserId)
+    ))
     if (!controllerStillConnected) {
       lockStudentEditing()
     }
-  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing, connectedClients])
+  }, [isAdmin, status, controlState?.controllerId, controlState?.controllerUserId, clientId, lockStudentEditing, connectedClients, userId])
 
   const forcePublishLatex = async () => {
     if (!isAdmin) return

@@ -1083,9 +1083,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   type AdminStep = { latex: string; symbols: any[] | null }
   const [adminSteps, setAdminSteps] = useState<AdminStep[]>([])
+  const adminStepsRef = useRef<AdminStep[]>([])
+  useEffect(() => {
+    adminStepsRef.current = adminSteps
+  }, [adminSteps])
   const [adminDraftLatex, setAdminDraftLatex] = useState('')
+  const adminDraftLatexRef = useRef('')
+  useEffect(() => {
+    adminDraftLatexRef.current = adminDraftLatex
+  }, [adminDraftLatex])
   const [adminSendingStep, setAdminSendingStep] = useState(false)
   const [adminEditIndex, setAdminEditIndex] = useState<number | null>(null)
+  const adminEditIndexRef = useRef<number | null>(null)
+  useEffect(() => {
+    adminEditIndexRef.current = adminEditIndex
+  }, [adminEditIndex])
   const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
@@ -4181,9 +4193,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             controllerName?: string
             controllerUserId?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz' | 'handover'
             targetClientId?: string
+            targetUserId?: string
             snapshot?: SnapshotPayload | null
+            pageIndex?: number
+            sharedPageIndex?: number
+            canvasOrientation?: CanvasOrientation
+            isFullscreen?: boolean
+            studentSplitRatio?: number
+            horizontalPanValue?: number
+            viewportScrollLeft?: number
+            latexOutput?: string
+            latexDisplayState?: LatexDisplayState
+            stackedNotesState?: StackedNotesState
+            adminSteps?: Array<{ latex: string; symbols: any[] | null }>
+            adminDraftLatex?: string
+            adminEditIndex?: number | null
+            topPanelEditingMode?: boolean
+            topPanelSelectedStep?: number | null
+            stepNavRedoStack?: number[]
             enabled?: boolean
             quizId?: string
             quizLabel?: string
@@ -4200,6 +4229,110 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             fromUserId?: string
             fromName?: string
           }
+
+          if (data?.action === 'handover') {
+            const targetClientId = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const targetUserId = typeof data.targetUserId === 'string' ? data.targetUserId : ''
+            if (targetClientId && targetClientId !== clientIdRef.current) return
+            if (targetUserId && targetUserId !== userId) return
+
+            // Overwrite local UI/view state first.
+            try {
+              stepComposerPreviewEpochRef.current += 1
+              if (pendingExportRef.current) {
+                clearTimeout(pendingExportRef.current)
+                pendingExportRef.current = null
+              }
+            } catch {}
+
+            try {
+              const incomingOrientation = data.canvasOrientation
+              if (incomingOrientation === 'portrait' || incomingOrientation === 'landscape') {
+                setCanvasOrientation(incomingOrientation)
+              }
+            } catch {}
+
+            try {
+              if (typeof data.isFullscreen === 'boolean') {
+                setIsFullscreen(Boolean(data.isFullscreen))
+              }
+            } catch {}
+
+            try {
+              if (typeof data.studentSplitRatio === 'number' && Number.isFinite(data.studentSplitRatio)) {
+                const clamped = Math.max(0.2, Math.min(0.8, data.studentSplitRatio))
+                setStudentSplitRatio(clamped)
+                studentSplitRatioRef.current = clamped
+              }
+            } catch {}
+
+            try {
+              if (typeof data.horizontalPanValue === 'number' && Number.isFinite(data.horizontalPanValue)) {
+                setHorizontalPanValue(Math.max(0, Math.trunc(data.horizontalPanValue)))
+              }
+            } catch {}
+
+            try {
+              if (typeof data.viewportScrollLeft === 'number' && Number.isFinite(data.viewportScrollLeft)) {
+                const nextLeft = Math.max(0, Math.trunc(data.viewportScrollLeft))
+                requestAnimationFrame(() => {
+                  try {
+                    const viewport = studentViewportRef.current
+                    if (viewport) viewport.scrollLeft = nextLeft
+                  } catch {}
+                })
+              }
+            } catch {}
+
+            try {
+              if (data.latexDisplayState && typeof data.latexDisplayState === 'object') {
+                setLatexDisplayState(data.latexDisplayState as any)
+              }
+              if (data.stackedNotesState && typeof data.stackedNotesState === 'object') {
+                setStackedNotesState(data.stackedNotesState as any)
+              }
+              if (typeof data.latexOutput === 'string') {
+                setLatexOutput(data.latexOutput)
+              }
+            } catch {}
+
+            // Step composer overwrite (same state machine for teacher + selected student).
+            try {
+              setAdminSteps(Array.isArray(data.adminSteps) ? (data.adminSteps as any) : [])
+              setAdminDraftLatex(typeof data.adminDraftLatex === 'string' ? data.adminDraftLatex : '')
+              setAdminEditIndex((typeof data.adminEditIndex === 'number' && Number.isFinite(data.adminEditIndex)) ? Math.trunc(data.adminEditIndex) : null)
+              setTopPanelEditingMode(Boolean(data.topPanelEditingMode))
+              setTopPanelSelectedStep((typeof data.topPanelSelectedStep === 'number' && Number.isFinite(data.topPanelSelectedStep)) ? Math.trunc(data.topPanelSelectedStep) : null)
+              stepNavRedoStackRef.current = Array.isArray(data.stepNavRedoStack)
+                ? (data.stepNavRedoStack.filter(n => typeof n === 'number' && Number.isFinite(n)).map(n => Math.trunc(n)))
+                : []
+            } catch {}
+
+            // Page selection: keep sharedPageIndex consistent with the sender's shared page.
+            try {
+              const incomingShared = (typeof data.sharedPageIndex === 'number' && Number.isFinite(data.sharedPageIndex)) ? Math.trunc(data.sharedPageIndex) : null
+              const incomingPage = (typeof data.pageIndex === 'number' && Number.isFinite(data.pageIndex)) ? Math.trunc(data.pageIndex) : null
+              if (incomingShared !== null && incomingShared >= 0) {
+                setSharedPageIndex(incomingShared)
+                sharedPageIndexRef.current = incomingShared
+              }
+              if (incomingPage !== null && incomingPage >= 0) {
+                setPageIndex(incomingPage)
+              }
+            } catch {}
+
+            // Finally, overwrite the ink snapshot.
+            const incomingSnapshot = data.snapshot
+            if (incomingSnapshot) {
+              void applyPageSnapshot(incomingSnapshot)
+            } else {
+              // Explicitly clear if snapshot was null.
+              void applyPageSnapshot(null)
+            }
+
+            return
+          }
+
           if (data?.action === 'quiz') {
             const phase = data.phase
             // Teacher sees incoming submissions in realtime; minimal UX for now.
@@ -5661,6 +5794,82 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
+  const prevExclusiveControlForHandoverRef = useRef(false)
+  const lastHandoverSentForControlTsRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const wasExclusive = prevExclusiveControlForHandoverRef.current
+    const isExclusive = hasExclusiveControlRef.current
+    prevExclusiveControlForHandoverRef.current = isExclusive
+
+    // Only the current controller sends handover when they lose control.
+    if (!wasExclusive || isExclusive) return
+
+    const next = controlStateRef.current
+    const nextControllerId = (next?.controllerId || '').trim()
+    const nextControllerUserId = (next?.controllerUserId && typeof next.controllerUserId === 'string') ? next.controllerUserId : ''
+    if (!nextControllerId && !nextControllerUserId) return
+    if (nextControllerId === ALL_STUDENTS_ID) return
+
+    const isTargetSelf = Boolean(
+      (nextControllerId && nextControllerId === clientIdRef.current) ||
+      (nextControllerUserId && nextControllerUserId === userId)
+    )
+    if (isTargetSelf) return
+
+    const controlTs = (typeof next?.ts === 'number' && Number.isFinite(next.ts)) ? Math.trunc(next.ts) : Date.now()
+    if (lastHandoverSentForControlTsRef.current === controlTs) return
+    lastHandoverSentForControlTsRef.current = controlTs
+
+    const channel = channelRef.current
+    if (!channel) return
+
+    const snapshot = captureFullSnapshot()
+    const viewportScrollLeft = (() => {
+      try {
+        return Math.max(0, Math.trunc(studentViewportRef.current?.scrollLeft ?? 0))
+      } catch {
+        return 0
+      }
+    })()
+
+    channel
+      .publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'handover',
+        targetClientId: nextControllerId || undefined,
+        targetUserId: nextControllerUserId || undefined,
+        ts: Date.now(),
+
+        // View/page
+        pageIndex,
+        sharedPageIndex: sharedPageIndexRef.current,
+        canvasOrientation,
+        isFullscreen,
+        studentSplitRatio: studentSplitRatioRef.current,
+        horizontalPanValue,
+        viewportScrollLeft,
+
+        // Top display state
+        latexOutput: (latexOutput || '').toString(),
+        latexDisplayState: latexDisplayStateRef.current,
+        stackedNotesState,
+
+        // Step composer state
+        adminSteps: adminStepsRef.current,
+        adminDraftLatex: adminDraftLatexRef.current,
+        adminEditIndex: adminEditIndexRef.current,
+        topPanelEditingMode: topPanelEditingModeRef.current,
+        topPanelSelectedStep,
+        stepNavRedoStack: [...stepNavRedoStackRef.current],
+
+        // Ink snapshot
+        snapshot,
+      })
+      .catch(() => {})
+  }, [canvasOrientation, captureFullSnapshot, horizontalPanValue, isFullscreen, latexOutput, pageIndex, stackedNotesState, topPanelSelectedStep, userDisplayName])
+
   const horizontalPanRafRef = useRef<number | null>(null)
   const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; usableTrackWidth: number; maxScroll: number }>(

@@ -86,11 +86,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
-  // Cost control: optionally restrict to admins via env flag.
-  // Default is to allow authenticated students during quizzes.
+  // Cost control: AI tools are admin-only.
   const role = ((token as any)?.role as string | undefined) || ''
-  const adminOnly = String(process.env.AI_QUIZ_FEEDBACK_ADMIN_ONLY || '').trim() === '1'
-  if (adminOnly && role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
+  if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
 
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
   if (!geminiApiKey) {

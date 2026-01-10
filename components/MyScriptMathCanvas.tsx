@@ -492,11 +492,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const isStudentView = !isAdmin
   const isQuizMode = Boolean(quizMode)
-  const isAssignmentContext = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
-  const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
-  const canPresent = Boolean(isAdmin) || hasExclusiveControl
-  const useAdminStepComposer = Boolean(useStackedStudentLayout && canPresent && !isQuizMode && !isAssignmentContext)
+  const useAdminStepComposer = Boolean(isAdmin && useStackedStudentLayout)
 
   const [quizSubmitting, setQuizSubmitting] = useState(false)
   const [quizActive, setQuizActive] = useState(false)
@@ -968,6 +965,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
+  const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
 
   const currentEditorBadge = useMemo(() => {
     const controllerId = (controlState?.controllerId || '').trim()
@@ -1312,6 +1310,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
+  const canPresent = Boolean(isAdmin) || hasExclusiveControl
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -5038,7 +5037,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const targetRecord = connectedClients.find(c => c.clientId === targetId)
     const controllerId = isAll ? ALL_STUDENTS_ID : targetId
     const controllerName = isAll ? 'All Students' : targetRecord?.name || targetId
-    const controllerUserId = (!isAll && targetRecord?.userId) ? String(targetRecord.userId) : undefined
     try {
       await channel.publish('control', {
         clientId: clientIdRef.current,
@@ -5046,11 +5044,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         locked: !isAll,
         controllerId,
         controllerName,
-        controllerUserId,
+        controllerUserId: isAll ? undefined : targetRecord?.userId,
         ts,
       })
       lastControlBroadcastTsRef.current = ts
-      updateControlState({ controllerId, controllerName, controllerUserId, ts })
+      updateControlState({ controllerId, controllerName, controllerUserId: isAll ? undefined : targetRecord?.userId, ts })
     } catch (err) {
       console.warn('Failed to grant selected client editing rights', err)
     }
@@ -5076,31 +5074,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to grant all students editing rights', err)
     }
   }, [isAdmin, updateControlState, userDisplayName])
-
-  useEffect(() => {
-    if (!isAdmin) return
-    if (status !== 'ready') return
-    if (!channelRef.current) return
-    const controllerId = (controlState?.controllerId || '').trim()
-    const controllerUserId = (controlState?.controllerUserId && typeof controlState.controllerUserId === 'string')
-      ? controlState.controllerUserId
-      : undefined
-    if (!controllerId && !controllerUserId) {
-      // No controller set yet: take control by default.
-      lockStudentEditing()
-      return
-    }
-    if ((controllerId && controllerId === clientId) || (controllerUserId && controllerUserId === userId)) return
-    if (controllerId === ALL_STUDENTS_ID) return
-    // Only take control back if the controller is no longer present.
-    const controllerStillConnected = connectedClients.some(c => (
-      (controllerId && c.clientId === controllerId) ||
-      (controllerUserId && typeof c.userId === 'string' && c.userId === controllerUserId)
-    ))
-    if (!controllerStillConnected) {
-      lockStudentEditing()
-    }
-  }, [isAdmin, status, controlState?.controllerId, controlState?.controllerUserId, clientId, lockStudentEditing, connectedClients, userId])
 
   const forcePublishLatex = async () => {
     if (!isAdmin) return
@@ -8248,6 +8221,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       if (!channel) return
                       const target = all.find(c => c.clientId === targetId)
                       if (!target) return
+
+                      // If the admin taps the CURRENT controller again, treat it as a revoke/takeover.
+                      // This is the only way the admin should retake control (no automatic takeover).
+                      const currentControllerId = (controlStateRef.current?.controllerId || '').trim()
+                      const currentControllerUserId = (controlStateRef.current?.controllerUserId || '').trim()
+                      const isCurrentlySelected =
+                        (currentControllerId && currentControllerId === target.clientId) ||
+                        (currentControllerUserId && target.userId && currentControllerUserId === String(target.userId))
+                      if (isCurrentlySelected) {
+                        await disableStudentPublishingAndTakeControl()
+                        return
+                      }
+
                       const ts = Date.now()
                       // Ensure student publishing is off in single-editor mode.
                       setIsStudentPublishEnabled(false)
@@ -8925,13 +8911,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={
-                        status !== 'ready' ||
-                        Boolean(fatalError) ||
-                        (isAdmin
-                          ? (adminSendingStep || (!adminDraftLatex && !canClear))
-                          : (quizSubmitting || ((!quizActive && !isAssignmentView) && !canPresent)))
-                      }
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

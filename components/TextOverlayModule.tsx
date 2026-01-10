@@ -256,6 +256,23 @@ export default function TextOverlayModule(props: {
 }) {
   const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin } = props
 
+  const [presenterOverride, setPresenterOverride] = useState(false)
+  const canPresent = Boolean(isAdmin) || presenterOverride
+  const canPresentRef = useRef(canPresent)
+  useEffect(() => {
+    canPresentRef.current = canPresent
+  }, [canPresent])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail as any
+      setPresenterOverride(Boolean(detail?.canPresent))
+    }
+    window.addEventListener('philani-canvas:presenter', handler as any)
+    return () => window.removeEventListener('philani-canvas:presenter', handler as any)
+  }, [])
+
   const clientId = useMemo(() => {
     const base = sanitizeIdentifier(userId || 'anonymous')
     const randomSuffix = Math.random().toString(36).slice(2, 8)
@@ -393,10 +410,10 @@ export default function TextOverlayModule(props: {
   }, [])
 
   const broadcastFullState = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     await publish({ kind: 'state', state: overlayStateRef.current })
     await publish({ kind: 'boxes', boxes: boxesRef.current })
-  }, [isAdmin, publish])
+  }, [publish])
 
   useEffect(() => {
     if (!userId) return
@@ -486,7 +503,7 @@ export default function TextOverlayModule(props: {
         try {
           await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
           channel.presence.subscribe(async (presenceMsg: any) => {
-            if (!isAdmin) return
+            if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return
             await broadcastFullState()
           })
@@ -495,7 +512,7 @@ export default function TextOverlayModule(props: {
         }
 
         // Teacher: publish initial state so late joiners get something quickly.
-        if (isAdmin) {
+        if (canPresentRef.current) {
           await broadcastFullState()
         }
       } catch (err) {
@@ -521,18 +538,18 @@ export default function TextOverlayModule(props: {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const handler = () => {
-      if (!isAdmin) return
+      if (!canPresentRef.current) return
       setOverlayState(prev => ({ ...prev, isOpen: !prev.isOpen }))
     }
     window.addEventListener('philani-text:toggle-tray', handler as any)
     return () => window.removeEventListener('philani-text:toggle-tray', handler as any)
-  }, [isAdmin])
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const handler = (event: Event) => {
-      if (!isAdmin) return
+      if (!canPresentRef.current) return
       const detail = (event as CustomEvent)?.detail as { requestId?: string } | undefined
       const requestId = typeof detail?.requestId === 'string' ? detail.requestId : ''
       if (!requestId) return
@@ -554,24 +571,24 @@ export default function TextOverlayModule(props: {
 
     window.addEventListener('philani-text:request-context', handler as any)
     return () => window.removeEventListener('philani-text:request-context', handler as any)
-  }, [isAdmin])
+  }, [])
 
   const setStateAndBroadcast = useCallback(async (next: TextOverlayState) => {
     setOverlayState(next)
-    if (!isAdmin) return
+    if (!canPresent) return
     pushTextTimeline({
       ts: Date.now(),
       kind: 'overlay-state',
       action: next.isOpen ? 'open' : 'close',
     })
     await publish({ kind: 'state', state: next })
-  }, [isAdmin, publish, pushTextTimeline])
+  }, [canPresent, publish, pushTextTimeline])
 
   const setBoxesAndBroadcast = useCallback(async (nextBoxes: TextBoxRecord[]) => {
     const prev = boxesRef.current
     setBoxes(nextBoxes)
     boxesRef.current = nextBoxes
-    if (!isAdmin) return
+    if (!canPresent) return
 
     try {
       const prevById = new Map(prev.map(b => [b.id, b]))
@@ -606,10 +623,10 @@ export default function TextOverlayModule(props: {
     }
 
     await publish({ kind: 'boxes', boxes: nextBoxes })
-  }, [isAdmin, publish, pushTextTimeline])
+  }, [canPresent, publish, pushTextTimeline])
 
   const upsertScriptBox = useCallback(async (detail: ScriptTextEventDetail) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const targetIdRaw = typeof detail?.id === 'string' ? detail.id : ''
     const targetId = targetIdRaw.trim().length > 0 ? targetIdRaw.trim() : SCRIPT_BOX_ID
     // Backwards-compat + safety: if an unknown id is passed, allow it, but cap length.
@@ -654,20 +671,20 @@ export default function TextOverlayModule(props: {
       ? boxesRef.current.map(b => (b.id === resolvedId ? nextRecord : b))
       : [...boxesRef.current, nextRecord]
     await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+  }, [setBoxesAndBroadcast])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const handler = (event: Event) => {
-      if (!isAdmin) return
+      if (!canPresentRef.current) return
       const detail = (event as CustomEvent)?.detail as ScriptTextEventDetail
       void upsertScriptBox(detail || {})
     }
 
     window.addEventListener('philani-text:script-apply', handler as any)
     return () => window.removeEventListener('philani-text:script-apply', handler as any)
-  }, [isAdmin, upsertScriptBox])
+  }, [upsertScriptBox])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -752,7 +769,7 @@ export default function TextOverlayModule(props: {
   }, [clearQuizFeedbackAutoHide, isAdmin])
 
   const addBox = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const id = randomId()
     const maxZ = boxesRef.current.reduce((m, b) => Math.max(m, b.z), 0)
     const next: TextBoxRecord = {
@@ -770,72 +787,72 @@ export default function TextOverlayModule(props: {
     const nextBoxes = [...boxesRef.current, next]
     await setBoxesAndBroadcast(nextBoxes)
     await setStateAndBroadcast({ isOpen: true, activeId: id })
-  }, [isAdmin, setBoxesAndBroadcast, setStateAndBroadcast])
+  }, [setBoxesAndBroadcast, setStateAndBroadcast])
 
   const deleteBoxById = useCallback(async (boxId: string) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const nextBoxes = boxesRef.current.filter(b => b.id !== boxId)
     const nextActive = nextBoxes[0]?.id ?? null
     await setBoxesAndBroadcast(nextBoxes)
     if (overlayStateRef.current.activeId === boxId) {
       await setStateAndBroadcast({ ...overlayStateRef.current, activeId: nextActive })
     }
-  }, [isAdmin, setBoxesAndBroadcast, setStateAndBroadcast])
+  }, [setBoxesAndBroadcast, setStateAndBroadcast])
 
   const toggleBoxVisibilityById = useCallback(async (boxId: string) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, visible: !b.visible } : b))
     await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+  }, [setBoxesAndBroadcast])
 
   const toggleBoxLockById = useCallback(async (boxId: string) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, locked: !Boolean(b.locked) } : b))
     await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+  }, [setBoxesAndBroadcast])
 
   const bringBoxToFrontById = useCallback(async (boxId: string) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const maxZ = boxesRef.current.reduce((m, b) => Math.max(m, b.z), 0)
     const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, z: maxZ + 1 } : b))
     await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+  }, [setBoxesAndBroadcast])
 
   const sendBoxToBackById = useCallback(async (boxId: string) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const minZ = boxesRef.current.reduce((m, b) => Math.min(m, b.z), 0)
     const nextBoxes = boxesRef.current.map(b => (b.id === boxId ? { ...b, z: minZ - 1 } : b))
     await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+  }, [setBoxesAndBroadcast])
 
   const deleteActive = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const targetId = overlayStateRef.current.activeId
     if (!targetId) return
     await deleteBoxById(targetId)
-  }, [deleteBoxById, isAdmin])
+  }, [deleteBoxById])
 
   const updateActiveText = useCallback(async (text: string) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const targetId = overlayStateRef.current.activeId
     if (!targetId) return
     const nextBoxes = boxesRef.current.map(b => (b.id === targetId ? { ...b, text } : b))
     await setBoxesAndBroadcast(nextBoxes)
-  }, [isAdmin, setBoxesAndBroadcast])
+  }, [setBoxesAndBroadcast])
 
   const toggleActiveVisibility = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const targetId = overlayStateRef.current.activeId
     if (!targetId) return
     await toggleBoxVisibilityById(targetId)
-  }, [isAdmin, toggleBoxVisibilityById])
+  }, [toggleBoxVisibilityById])
 
   const toggleActiveLock = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const targetId = overlayStateRef.current.activeId
     if (!targetId) return
     await toggleBoxLockById(targetId)
-  }, [isAdmin, toggleBoxLockById])
+  }, [toggleBoxLockById])
 
   const dragRef = useRef<{
     id: string
@@ -862,26 +879,26 @@ export default function TextOverlayModule(props: {
   const longPressRef = useRef<null | { timer: number; pointerId: number; startX: number; startY: number; boxId: string }>(null)
 
   const openBoxContextMenu = useCallback((boxId: string, clientX: number, clientY: number, host: HTMLElement | null) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     if (!host) return
     const rect = host.getBoundingClientRect()
     const x = Math.max(0, Math.round(clientX - rect.left))
     const y = Math.max(0, Math.round(clientY - rect.top))
     setContextMenu({ x, y, boxId })
-  }, [isAdmin])
+  }, [])
 
   const onBoxPointerDown = useCallback((box: TextBoxRecord, event: React.PointerEvent<HTMLDivElement>) => {
     const isQuizBox = box.id === QUIZ_BOX_ID
-    const canManipulate = isAdmin || isQuizBox
+    const canManipulate = canPresentRef.current || isQuizBox
     if (!canManipulate) return
     event.stopPropagation()
 
-    if (isAdmin) {
+    if (canPresentRef.current) {
       void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
     }
 
     // Long-press opens context menu (similar to diagram module behaviour).
-    if (typeof window !== 'undefined' && isAdmin) {
+    if (typeof window !== 'undefined' && canPresentRef.current) {
       if (longPressRef.current?.timer) {
         window.clearTimeout(longPressRef.current.timer)
       }
@@ -930,7 +947,7 @@ export default function TextOverlayModule(props: {
 
   const onResizeHandlePointerDown = useCallback((box: TextBoxRecord, event: React.PointerEvent<HTMLButtonElement>) => {
     const isQuizBox = box.id === QUIZ_BOX_ID
-    const canManipulate = isAdmin || isQuizBox
+    const canManipulate = canPresentRef.current || isQuizBox
     if (!canManipulate) return
     event.preventDefault()
     event.stopPropagation()
@@ -1005,7 +1022,7 @@ export default function TextOverlayModule(props: {
         return
       }
 
-      if (!isAdmin) return
+      if (!canPresentRef.current) return
       const target = boxesRef.current.find(b => b.id === targetId)
       if (!target || Boolean(target.locked)) return
 
@@ -1018,7 +1035,7 @@ export default function TextOverlayModule(props: {
     if (!drag) return
     const targetId = drag.id
     const isQuizBox = targetId === QUIZ_BOX_ID
-    if (isAdmin) {
+    if (canPresentRef.current) {
       const target = boxesRef.current.find(b => b.id === targetId)
       if (!target || Boolean(target.locked)) return
     }
@@ -1045,7 +1062,7 @@ export default function TextOverlayModule(props: {
       return
     }
 
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
 
     const nextBoxes = boxesRef.current.map(b => {
       if (b.id !== targetId) return b
@@ -1071,23 +1088,23 @@ export default function TextOverlayModule(props: {
     dragRef.current = null
     resizeRef.current = null
 
-    // Students: local-only changes (no publish).
-    if (!isAdmin) return
+    // Non-presenters: local-only changes (no publish).
+    if (!canPresentRef.current) return
 
     const didChange = Boolean(drag?.didMove) || Boolean(resize?.didResize)
     if (!didChange) return
     await publish({ kind: 'boxes', boxes: boxesRef.current })
-  }, [isAdmin, publish])
+  }, [publish])
 
   const onBoxContextMenu = useCallback((box: TextBoxRecord, event: React.MouseEvent<HTMLDivElement>) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     event.preventDefault()
     event.stopPropagation()
     void setStateAndBroadcast({ ...overlayStateRef.current, activeId: box.id })
     openBoxContextMenu(box.id, event.clientX, event.clientY, (event.currentTarget.parentElement as HTMLElement | null))
-  }, [isAdmin, openBoxContextMenu, setStateAndBroadcast])
+  }, [openBoxContextMenu, setStateAndBroadcast])
 
-  const tray = overlayState.isOpen && isAdmin ? (
+  const tray = overlayState.isOpen && canPresent ? (
     <div className="fixed inset-x-2 bottom-16 z-[650] md:hidden">
       <div className="card p-3">
         <div className="flex items-center justify-between gap-2">
@@ -1229,7 +1246,7 @@ export default function TextOverlayModule(props: {
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
                   color: 'white',
                   backdropFilter: 'blur(10px)',
-                  cursor: (isAdmin || isQuizBox) ? (box.locked ? 'default' : 'grab') : 'default',
+                  cursor: (canPresent || isQuizBox) ? (box.locked ? 'default' : 'grab') : 'default',
                   height: shouldAutoFitHeight ? 'auto' : '100%',
                   overflow: shouldAutoFitHeight ? 'hidden' : 'auto',
                   touchAction: 'none',
@@ -1341,7 +1358,7 @@ export default function TextOverlayModule(props: {
           </button>
         )}
 
-        {isAdmin && contextMenu && (
+        {canPresent && contextMenu && (
           <div
             className="pointer-events-auto absolute z-[900]"
             style={{ left: contextMenu.x, top: contextMenu.y }}

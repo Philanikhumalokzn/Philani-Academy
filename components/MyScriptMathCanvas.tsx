@@ -965,6 +965,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
   const [controlState, setControlState] = useState<ControlState>(null)
+  const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
 
   const currentEditorBadge = useMemo(() => {
     const controllerId = (controlState?.controllerId || '').trim()
@@ -1309,7 +1310,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
-  const canPresent = Boolean(isAdmin) || hasExclusiveControlRef.current
+  const canPresent = Boolean(isAdmin) || hasExclusiveControl
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -1579,6 +1580,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         (controllerUserId && controllerUserId === userId)
       )
       hasExclusiveControlRef.current = isExclusiveController
+      setHasExclusiveControl(isExclusiveController)
       const hasWriteAccess = Boolean(isAdmin) ||
         forceEditableForAssignment ||
         controllerId === clientIdRef.current ||
@@ -1593,6 +1595,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     },
     [forceEditableForAssignment, isAdmin, userId]
   )
+
+  // Let overlay modules (diagrams/text) know whether this client is currently the presenter.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.dispatchEvent(new CustomEvent('philani-canvas:presenter', {
+        detail: {
+          canPresent,
+          ts: Date.now(),
+        },
+      }))
+    } catch {
+      // ignore
+    }
+  }, [canPresent])
 
   const studentCanPublish = useCallback(() => {
     // Publishing rights must follow editing rights on the shared canvas.
@@ -6572,7 +6589,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const openPickerOrApplySingle = useCallback(
     (type: MobileModulePickerType) => {
-      if (!isAdmin) return
+      if (!canPresent) return
       if (typeof window === 'undefined') return
       // The icon row that calls this only renders on compact viewports.
       if (!isCompactViewport) return
@@ -6590,7 +6607,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       setMobileModulePicker({ type })
     },
-    [applyLessonScriptPlaybackV2, isAdmin, isCompactViewport, isLessonAuthoringMode, lessonScriptPhaseKey, lessonScriptPointIndex, v2ModuleChoices]
+    [applyLessonScriptPlaybackV2, canPresent, isCompactViewport, isLessonAuthoringMode, lessonScriptPhaseKey, lessonScriptPointIndex, v2ModuleChoices]
   )
 
   const closeMobileModulePicker = useCallback(() => {
@@ -6606,22 +6623,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     if (typeof window === 'undefined') return
     const handler = () => {
-      if (!isAdmin) return
+      if (!canPresent) return
       setMobileLatexTrayOpen(prev => !prev)
     }
     window.addEventListener('philani-latex:toggle-tray', handler as any)
     return () => window.removeEventListener('philani-latex:toggle-tray', handler as any)
-  }, [isAdmin])
+  }, [canPresent])
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!canPresent) {
       setMobileLatexTrayOpen(false)
       return
     }
     if (!isCompactViewport) {
       setMobileLatexTrayOpen(false)
     }
-  }, [isAdmin, isCompactViewport])
+  }, [canPresent, isCompactViewport])
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )

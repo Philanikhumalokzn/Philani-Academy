@@ -64,6 +64,23 @@ export default function DiagramOverlayModule(props: {
 }) {
   const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
 
+  const [presenterOverride, setPresenterOverride] = useState(false)
+  const canPresent = Boolean(isAdmin) || presenterOverride
+  const canPresentRef = useRef(canPresent)
+  useEffect(() => {
+    canPresentRef.current = canPresent
+  }, [canPresent])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail as any
+      setPresenterOverride(Boolean(detail?.canPresent))
+    }
+    window.addEventListener('philani-canvas:presenter', handler as any)
+    return () => window.removeEventListener('philani-canvas:presenter', handler as any)
+  }, [])
+
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const isLessonAuthoring = Boolean(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId)
   const didAutoOpenInAuthoringRef = useRef(false)
@@ -162,7 +179,7 @@ export default function DiagramOverlayModule(props: {
     if (typeof window === 'undefined') return
 
     const handler = (event: Event) => {
-      if (!isAdmin) return
+      if (!canPresentRef.current) return
       const detail = (event as CustomEvent)?.detail as { requestId?: string } | undefined
       const requestId = typeof detail?.requestId === 'string' ? detail.requestId : ''
       if (!requestId) return
@@ -197,7 +214,7 @@ export default function DiagramOverlayModule(props: {
 
     window.addEventListener('philani-diagrams:request-context', handler as any)
     return () => window.removeEventListener('philani-diagrams:request-context', handler as any)
-  }, [isAdmin])
+  }, [])
 
   useEffect(() => {
     if (!isLessonAuthoring) return
@@ -416,29 +433,31 @@ export default function DiagramOverlayModule(props: {
 
   const setOverlayState = useCallback(async (next: DiagramState) => {
     setDiagramState(next)
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
 
-    try {
-      const prev = diagramStateRef.current
-      if (Boolean(prev?.isOpen) !== Boolean(next.isOpen)) {
-        pushDiagramTimeline({ ts: Date.now(), kind: 'overlay-state', action: next.isOpen ? 'open' : 'close' })
+    if (isAdmin) {
+      try {
+        const prev = diagramStateRef.current
+        if (Boolean(prev?.isOpen) !== Boolean(next.isOpen)) {
+          pushDiagramTimeline({ ts: Date.now(), kind: 'overlay-state', action: next.isOpen ? 'open' : 'close' })
+        }
+        if ((prev?.activeDiagramId || null) !== (next.activeDiagramId || null)) {
+          const diag = next.activeDiagramId ? diagramsRef.current.find(d => d.id === next.activeDiagramId) : null
+          pushDiagramTimeline({
+            ts: Date.now(),
+            kind: 'diagram',
+            action: 'set-active',
+            diagramId: next.activeDiagramId || undefined,
+            title: diag?.title || undefined,
+            imageUrl: diag?.imageUrl || undefined,
+          })
+        }
+      } catch {
+        // ignore
       }
-      if ((prev?.activeDiagramId || null) !== (next.activeDiagramId || null)) {
-        const diag = next.activeDiagramId ? diagramsRef.current.find(d => d.id === next.activeDiagramId) : null
-        pushDiagramTimeline({
-          ts: Date.now(),
-          kind: 'diagram',
-          action: 'set-active',
-          diagramId: next.activeDiagramId || undefined,
-          title: diag?.title || undefined,
-          imageUrl: diag?.imageUrl || undefined,
-        })
-      }
-    } catch {
-      // ignore
+
+      await persistState(next)
     }
-
-    await persistState(next)
     await publish({ kind: 'state', activeDiagramId: next.activeDiagramId, isOpen: next.isOpen })
 
     // Also broadcast the active diagram record + full annotations so students can render immediately.
@@ -473,11 +492,11 @@ export default function DiagramOverlayModule(props: {
   const didAutoOpenExplicitRef = useRef(false)
   useEffect(() => {
     if (!autoOpen) return
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     if (didAutoOpenExplicitRef.current) return
     didAutoOpenExplicitRef.current = true
     void setOverlayState({ ...diagramStateRef.current, isOpen: true })
-  }, [autoOpen, isAdmin, setOverlayState])
+  }, [autoOpen, setOverlayState])
 
   useEffect(() => {
     if (!isLessonAuthoring) return
@@ -502,7 +521,7 @@ export default function DiagramOverlayModule(props: {
     }),
     []
   )
-  const mobileDiagramTray = isAdmin && mobileTrayOpen ? (
+  const mobileDiagramTray = canPresent && mobileTrayOpen ? (
     <div
       className="md:hidden"
       style={trayPopOverSeparatorCss as any}
@@ -517,15 +536,17 @@ export default function DiagramOverlayModule(props: {
         <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
 
         <div className="flex gap-2 overflow-x-auto">
-          <button
-            type="button"
-            className="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            disabled={uploading}
-            onClick={requestUpload}
-            title="Upload a new diagram"
-          >
-            {uploading ? 'Uploading…' : 'Upload'}
-          </button>
+          {isAdmin ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              disabled={uploading}
+              onClick={requestUpload}
+              title="Upload a new diagram"
+            >
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+          ) : null}
 
           {diagrams.length === 0 ? (
             <div className="text-[11px] text-slate-500 px-2 py-2">No diagrams yet.</div>
@@ -583,7 +604,7 @@ export default function DiagramOverlayModule(props: {
     if (typeof window === 'undefined') return
 
     const handler = (event: Event) => {
-      if (!isAdmin) return
+      if (!canPresentRef.current) return
       const detail = (event as CustomEvent)?.detail as ScriptDiagramEventDetail
       const wantsOpen = typeof detail?.open === 'boolean' ? detail.open : true
       const title = typeof detail?.title === 'string' ? detail.title.trim() : ''
@@ -610,7 +631,7 @@ export default function DiagramOverlayModule(props: {
 
     window.addEventListener('philani-diagrams:script-apply', handler as any)
     return () => window.removeEventListener('philani-diagrams:script-apply', handler as any)
-  }, [isAdmin, setOverlayState])
+  }, [setOverlayState])
 
   useEffect(() => {
     if (diagramState.isOpen) {
@@ -724,7 +745,7 @@ export default function DiagramOverlayModule(props: {
         try {
           await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
           channel.presence.subscribe(async (presenceMsg: any) => {
-            if (!isAdmin) return
+            if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return
             const state = diagramStateRef.current
             await publish({ kind: 'state', activeDiagramId: state.activeDiagramId, isOpen: Boolean(state.isOpen) })
@@ -1487,7 +1508,7 @@ export default function DiagramOverlayModule(props: {
   }, [applyAnnotations, normalizeAnnotations, pushUndoSnapshot])
 
   const onPointerDown = async (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     if (!diagramState.isOpen) return
     setContextMenu(null)
@@ -1581,7 +1602,7 @@ export default function DiagramOverlayModule(props: {
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
 
@@ -1634,7 +1655,7 @@ export default function DiagramOverlayModule(props: {
   }
 
   const onPointerUp = () => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
 
@@ -1717,7 +1738,7 @@ export default function DiagramOverlayModule(props: {
   }
 
   const handleUndo = useCallback(() => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     const diagramId = activeDiagram.id
     const prev = undoRef.current.pop() || null
@@ -1730,10 +1751,10 @@ export default function DiagramOverlayModule(props: {
     redoRef.current.push(current)
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: prev.strokes || [], arrows: prev.arrows || [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isAdmin, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
 
   const handleRedo = useCallback(() => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     const diagramId = activeDiagram.id
     const next = redoRef.current.pop() || null
@@ -1746,10 +1767,10 @@ export default function DiagramOverlayModule(props: {
     undoRef.current.push(current)
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: next.strokes || [], arrows: next.arrows || [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isAdmin, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
 
   const handleClearInk = useCallback(() => {
-    if (!isAdmin) return
+    if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     const diagramId = activeDiagram.id
     const diag = diagramsRef.current.find(d => d.id === diagramId)
@@ -1758,7 +1779,7 @@ export default function DiagramOverlayModule(props: {
     redoRef.current = []
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: [], arrows: [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isAdmin, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
 
   // Best-effort migration: legacy strokes were stored in container-normalized space (0..1 of host).
   // Convert to image-relative space so portrait/landscape clients render identically.
@@ -2019,7 +2040,7 @@ export default function DiagramOverlayModule(props: {
                     {uploading ? 'Uploading…' : 'Upload'}
                   </button>
                 )}
-                {isAdmin && (
+                {canPresent && (
                   <button
                     type="button"
                     className="btn"
@@ -2088,7 +2109,7 @@ export default function DiagramOverlayModule(props: {
           className="relative w-full flex-1 min-h-0"
           onMouseDown={() => setContextMenu(null)}
         >
-          {isAdmin && (
+          {canPresent && (
             <div className="absolute bottom-2 left-2 z-40 pointer-events-none">
               <div className="pointer-events-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm">
                 <button
@@ -2448,7 +2469,7 @@ export default function DiagramOverlayModule(props: {
           />
           <canvas
             ref={canvasRef}
-            className={isAdmin
+            className={canPresent
               ? tool === 'select'
                 ? 'absolute inset-0 cursor-default'
                 : tool === 'eraser'
@@ -2461,7 +2482,7 @@ export default function DiagramOverlayModule(props: {
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
             onContextMenu={(e) => {
-              if (!isAdmin) return
+              if (!canPresentRef.current) return
               if (!activeDiagram?.id) return
               e.preventDefault()
               e.stopPropagation()

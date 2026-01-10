@@ -8020,17 +8020,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           return next
                         })
                       }}
-                      aria-label={isAdmin
-                        ? `Current editor: ${(currentEditorBadge?.name || 'All Students')}. Tap to choose editor.`
-                        : `Current editor: ${(currentEditorBadge?.name || 'All Students')}`}
+                      aria-label={(() => {
+                        const fallbackName = currentEditorBadge?.name || (isAdmin ? (userDisplayName || 'Teacher') : 'Teacher')
+                        return isAdmin
+                          ? `Current editor: ${fallbackName}. Tap to choose editor.`
+                          : `Current editor: ${fallbackName}`
+                      })()}
                       title={isAdmin ? 'Choose who can edit' : undefined}
                       disabled={!isAdmin}
                     >
                       <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
-                        {(currentEditorBadge?.initials || 'AS')}
+                        {(() => {
+                          if (currentEditorBadge?.initials) return currentEditorBadge.initials
+                          const name = (isAdmin ? (userDisplayName || 'Teacher') : 'Teacher').trim()
+                          const parts = name.split(/\s+/).filter(Boolean)
+                          const a = parts[0]?.[0] || 'T'
+                          const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
+                          return (a + b).toUpperCase()
+                        })()}
                       </div>
                       <div className="text-[11px] text-slate-700 max-w-[180px] truncate">
-                        {(currentEditorBadge?.name || 'All Students')}
+                        {(currentEditorBadge?.name || (isAdmin ? (userDisplayName || 'Teacher') : 'Teacher'))}
                       </div>
                     </button>
                   )}
@@ -8165,9 +8175,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const spacing = 10
                     const rowStep = avatarSize + spacing
 
-                    const controllerId = currentEditorBadge?.controllerId
-                    if (!controllerId || controllerId === ALL_STUDENTS_ID) return null
-
                     const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
                     const nameKey = (value: string) => normalizeName(value).toLowerCase()
 
@@ -8175,13 +8182,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
                       .map(c => ({ clientId: c.clientId, name: normalizeName(c.name || '') || c.clientId, userId: typeof c.userId === 'string' ? c.userId : undefined }))
 
-                    const current = clients.find(c => c.clientId === controllerId) || {
-                      clientId: String(controllerId),
-                      name: normalizeName(currentEditorBadge?.name || String(controllerId)),
-                      userId: undefined,
-                    }
+                    const allStudentsEntry = { clientId: ALL_STUDENTS_ID, name: 'All Students', userId: undefined as string | undefined }
+
+                    const effectiveControllerId = String(controlStateRef.current?.controllerId || '').trim()
+                    const effectiveControllerUserId = String(controlStateRef.current?.controllerUserId || '').trim()
+
+                    const current = (() => {
+                      if (effectiveControllerId === ALL_STUDENTS_ID) return allStudentsEntry
+                      if (effectiveControllerId) {
+                        return clients.find(c => c.clientId === effectiveControllerId) || {
+                          clientId: effectiveControllerId,
+                          name: normalizeName(controlStateRef.current?.controllerName || effectiveControllerId),
+                          userId: effectiveControllerUserId || undefined,
+                        }
+                      }
+                      if (effectiveControllerUserId) {
+                        return clients.find(c => String(c.userId || '') === effectiveControllerUserId) || {
+                          clientId: `user:${effectiveControllerUserId}`,
+                          name: normalizeName(controlStateRef.current?.controllerName || 'Student'),
+                          userId: effectiveControllerUserId,
+                        }
+                      }
+                      // No explicit controller set: treat admin as the current editor.
+                      const fallbackName = normalizeName(userDisplayName || 'Teacher')
+                      return { clientId: clientIdRef.current, name: fallbackName || clientIdRef.current, userId: typeof userId === 'string' ? userId : undefined }
+                    })()
 
                     const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
+                    uniqueUsers.set('all:students', allStudentsEntry)
                     for (const c of clients) {
                       const key = (c.userId && String(c.userId)) ? `uid:${String(c.userId)}` : `name:${nameKey(c.name)}`
                       if (!key.trim()) continue
@@ -8235,6 +8263,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     }
 
                     const grant = async (targetId: string) => {
+                      if (targetId === ALL_STUDENTS_ID) {
+                        await allowAllStudentsEditing()
+                        return
+                      }
                       const channel = channelRef.current
                       if (!channel) return
                       const target = all.find(c => c.clientId === targetId)

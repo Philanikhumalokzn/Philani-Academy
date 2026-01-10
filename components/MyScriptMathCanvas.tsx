@@ -8168,91 +8168,73 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     const container = studentStackRef.current
                     if (!container) return null
                     const box = container.getBoundingClientRect()
+                    const width = box.width
                     const height = box.height
                     const topMargin = 12
                     const bottomMargin = 12
                     const avatarSize = 36
                     const spacing = 10
                     const rowStep = avatarSize + spacing
+                    const colGap = 14
+                    const sideOffset = avatarSize + colGap
 
                     const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
                     const nameKey = (value: string) => normalizeName(value).toLowerCase()
-
-                    const clients = connectedClients
-                      .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
-                      .map(c => ({ clientId: c.clientId, name: normalizeName(c.name || '') || c.clientId, userId: typeof c.userId === 'string' ? c.userId : undefined }))
-
-                    const allStudentsEntry = { clientId: ALL_STUDENTS_ID, name: 'All Students', userId: undefined as string | undefined }
-
-                    const effectiveControllerId = String(controlStateRef.current?.controllerId || '').trim()
-                    const effectiveControllerUserId = String(controlStateRef.current?.controllerUserId || '').trim()
-
-                    const current = (() => {
-                      if (effectiveControllerId === ALL_STUDENTS_ID) return allStudentsEntry
-                      if (effectiveControllerId) {
-                        return clients.find(c => c.clientId === effectiveControllerId) || {
-                          clientId: effectiveControllerId,
-                          name: normalizeName(controlStateRef.current?.controllerName || effectiveControllerId),
-                          userId: effectiveControllerUserId || undefined,
-                        }
-                      }
-                      if (effectiveControllerUserId) {
-                        return clients.find(c => String(c.userId || '') === effectiveControllerUserId) || {
-                          clientId: `user:${effectiveControllerUserId}`,
-                          name: normalizeName(controlStateRef.current?.controllerName || 'Student'),
-                          userId: effectiveControllerUserId,
-                        }
-                      }
-                      // No explicit controller set: treat admin as the current editor.
-                      const fallbackName = normalizeName(userDisplayName || 'Teacher')
-                      return { clientId: clientIdRef.current, name: fallbackName || clientIdRef.current, userId: typeof userId === 'string' ? userId : undefined }
-                    })()
-
-                    const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
-                    uniqueUsers.set('all:students', allStudentsEntry)
-                    for (const c of clients) {
-                      const key = (c.userId && String(c.userId)) ? `uid:${String(c.userId)}` : `name:${nameKey(c.name)}`
-                      if (!key.trim()) continue
-                      if (!uniqueUsers.has(key)) uniqueUsers.set(key, c)
-                    }
-                    {
-                      const key = (current.userId && String(current.userId)) ? `uid:${String(current.userId)}` : `name:${nameKey(current.name)}`
-                      uniqueUsers.set(key || `cid:${String(current.clientId)}`, current)
-                    }
-                    const all = Array.from(uniqueUsers.values())
-                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-
-                    const n = all.length
-                    if (n <= 0) return null
-
-                    // Slot indices are measured from the bottom: 0 is bottom-most.
-                    // Keep the current editor fixed in the middle slot.
-                    const currentSlot = Math.floor((n - 1) / 2)
-
-                    // Fill other slots bottom-to-top in alphabetical order.
-                    const others = all.filter(c => c.clientId !== current.clientId)
-                    const slotToClient = new Map<number, { clientId: string; name: string }>()
-                    slotToClient.set(currentSlot, current)
-                    let writeIndex = 0
-                    for (let slot = 0; slot < n; slot += 1) {
-                      if (slot === currentSlot) continue
-                      const next = others[writeIndex]
-                      if (!next) break
-                      slotToClient.set(slot, next)
-                      writeIndex += 1
-                    }
-
-                    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
-                    const anchorX = Math.max(10, editorPickerAnchor.x)
-                    const anchorTop = anchorY - avatarSize / 2
-
-                    const innerHeight = Math.max(height, topMargin + bottomMargin + ((n - 1) * rowStep) + avatarSize)
 
                     const initialsFor = (name: string) => {
                       const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
                       const a = parts[0]?.[0] || 'U'
                       const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
                       return (a + b).toUpperCase()
+                    }
+
+                    // Dedup users (no duplicates): prefer stable userId, fall back to normalized name.
+                    const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
+                    const adminUserId = (typeof userId === 'string' ? userId : '').trim()
+
+                    for (const raw of connectedClients) {
+                      const clientId = String((raw as any)?.clientId || '').trim()
+                      if (!clientId) continue
+                      if (clientId === ALL_STUDENTS_ID) continue
+                      const nm = normalizeName((raw as any)?.name || '') || clientId
+                      const uid = (typeof (raw as any)?.userId === 'string') ? String((raw as any).userId).trim() : ''
+                      // Skip admin (we always render admin separately as the center avatar)
+                      if (adminUserId && uid && uid === adminUserId) continue
+                      if (clientId === clientIdRef.current) continue
+                      const key = uid ? `uid:${uid}` : `name:${nameKey(nm)}`
+                      if (!key.trim()) continue
+                      if (!uniqueUsers.has(key)) uniqueUsers.set(key, { clientId, name: nm, userId: uid || undefined })
+                    }
+
+                    const adminName = normalizeName(userDisplayName || '') || 'Teacher'
+                    const adminEntry = { clientId: clientIdRef.current, name: adminName, userId: adminUserId || undefined }
+
+                    const others = Array.from(uniqueUsers.values())
+                      .filter(u => u.clientId !== adminEntry.clientId)
+                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+                    const leftUsers: Array<{ clientId: string; name: string; userId?: string }> = []
+                    const rightUsers: Array<{ clientId: string; name: string; userId?: string }> = []
+                    for (let i = 0; i < others.length; i += 1) {
+                      if (i % 2 === 0) leftUsers.push(others[i])
+                      else rightUsers.push(others[i])
+                    }
+
+                    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
+
+                    const paddingX = 10
+                    const minAdminLeft = paddingX + sideOffset
+                    const maxAdminLeft = Math.max(paddingX, width - paddingX - (avatarSize + sideOffset))
+                    const desiredAdminLeft = editorPickerAnchor.x
+                    const adminLeft = Math.max(minAdminLeft, Math.min(maxAdminLeft, desiredAdminLeft))
+                    const adminTop = anchorY - avatarSize / 2
+                    const leftColLeft = adminLeft - sideOffset
+                    const rightColLeft = adminLeft + sideOffset
+
+                    const yForColumn = (len: number, index: number) => {
+                      if (len <= 1) return anchorY - avatarSize / 2
+                      const startY = anchorY - ((len - 1) * rowStep) / 2
+                      return startY + (index * rowStep) - (avatarSize / 2)
                     }
 
                     const closePicker = () => {
@@ -8263,26 +8245,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     }
 
                     const grant = async (targetId: string) => {
-                      if (targetId === ALL_STUDENTS_ID) {
-                        await allowAllStudentsEditing()
+                      // Admin takes over ONLY by tapping their own avatar.
+                      if (targetId === adminEntry.clientId) {
+                        await disableStudentPublishingAndTakeControl()
                         return
                       }
                       const channel = channelRef.current
                       if (!channel) return
-                      const target = all.find(c => c.clientId === targetId)
+                      const target = [...leftUsers, ...rightUsers].find(c => c.clientId === targetId)
                       if (!target) return
-
-                      // If the admin taps the CURRENT controller again, treat it as a revoke/takeover.
-                      // This is the only way the admin should retake control (no automatic takeover).
-                      const currentControllerId = (controlStateRef.current?.controllerId || '').trim()
-                      const currentControllerUserId = (controlStateRef.current?.controllerUserId || '').trim()
-                      const isCurrentlySelected =
-                        (currentControllerId && currentControllerId === target.clientId) ||
-                        (currentControllerUserId && target.userId && currentControllerUserId === String(target.userId))
-                      if (isCurrentlySelected) {
-                        await disableStudentPublishingAndTakeControl()
-                        return
-                      }
 
                       const ts = Date.now()
                       // Ensure student publishing is off in single-editor mode.
@@ -8305,13 +8276,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }
                     }
 
-                    const renderAvatar = (c: { clientId: string; name: string }, top: number, isCurrentAvatar: boolean, zIndex?: number) => (
+                    const renderAvatar = (
+                      c: { clientId: string; name: string },
+                      left: number,
+                      top: number,
+                      variant: 'admin' | 'other' = 'other',
+                      zIndex?: number
+                    ) => (
                       <button
                         key={c.clientId}
                         type="button"
-                        className={`absolute rounded-full border shadow-sm flex items-center justify-center ${isCurrentAvatar ? 'bg-slate-900 text-white border-slate-900' : 'bg-white/90 text-slate-800 border-slate-200 hover:bg-white'}`}
+                        className={`absolute rounded-full border shadow-sm flex items-center justify-center ${variant === 'admin' ? 'bg-slate-900 text-white border-yellow-400 ring-2 ring-yellow-300/70' : 'bg-white/90 text-slate-800 border-slate-200 hover:bg-white'}`}
                         style={{
-                          left: anchorX,
+                          left,
                           top,
                           width: avatarSize,
                           height: avatarSize,
@@ -8334,22 +8311,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )
 
-                    const currentY = innerHeight - bottomMargin - avatarSize - (currentSlot * rowStep)
-                    const currentTopInView = anchorTop
-                    const fixedCurrentTop = currentTopInView
-
-                    const othersElems: any[] = []
-                    for (let slot = 0; slot < n; slot += 1) {
-                      const c = slotToClient.get(slot)
-                      if (!c) continue
-                      if (slot === currentSlot) continue
-                      const y = innerHeight - bottomMargin - avatarSize - (slot * rowStep)
-                      othersElems.push(renderAvatar(c, y, false))
+                    const leftElems: any[] = []
+                    for (let i = 0; i < leftUsers.length; i += 1) {
+                      const u = leftUsers[i]
+                      const y = yForColumn(leftUsers.length, i)
+                      leftElems.push(renderAvatar(u, leftColLeft, y, 'other'))
+                    }
+                    const rightElems: any[] = []
+                    for (let i = 0; i < rightUsers.length; i += 1) {
+                      const u = rightUsers[i]
+                      const y = yForColumn(rightUsers.length, i)
+                      rightElems.push(renderAvatar(u, rightColLeft, y, 'other'))
                     }
 
                     return (
                       <>
-                        {/* Scrollable layer for the rest of the users (no duplication; overflow scrolls). */}
+                        {/* Simple scroll layer: if there are many users, allow the overlay to scroll. */}
                         <div
                           ref={editorPickerScrollRef}
                           className="absolute inset-0 overflow-y-auto"
@@ -8358,7 +8335,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             editorPickerScrollingRef.current = true
                             setOverlayChromePeekVisible(true)
                             try { onOverlayChromeVisibilityChange?.(true) } catch {}
-                            // While actively scrolling, don't let the chrome disappear.
                             clearOverlayChromeAutoHide()
                             if (editorPickerScrollIdleTimeoutRef.current) {
                               clearTimeout(editorPickerScrollIdleTimeoutRef.current)
@@ -8366,33 +8342,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             editorPickerScrollIdleTimeoutRef.current = setTimeout(() => {
                               editorPickerScrollIdleTimeoutRef.current = null
                               editorPickerScrollingRef.current = false
-                              // Start the normal hide countdown once scrolling stops.
                               scheduleOverlayChromeAutoHide()
                             }, 220)
                           }}
                           onPointerDown={(e) => {
-                            // Prevent backdrop-close when starting to scroll inside.
                             e.stopPropagation()
                           }}
                         >
-                          <div className="relative" style={{ height: innerHeight }}>
-                            {/* Position others in inner coordinates; scrollTop is set so the current slot aligns to the fixed current avatar. */}
-                            <div
-                              className="absolute"
-                              style={{
-                                left: 0,
-                                top: 0,
-                                width: '100%',
-                                height: innerHeight,
-                              }}
-                            >
-                              {othersElems}
-                            </div>
+                          <div className="relative" style={{ height: height }}>
+                            {leftElems}
+                            {rightElems}
+                            {renderAvatar(adminEntry, adminLeft, adminTop, 'admin', 60)}
                           </div>
                         </div>
-
-                        {/* Fixed current editor avatar (stays pinned to the top-panel badge position). */}
-                        {renderAvatar(current, fixedCurrentTop, true, 50)}
                       </>
                     )
                   })()}

@@ -3005,30 +3005,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const editor = editorInstanceRef.current
       if (!editor) return
       suppressBroadcastUntilTsRef.current = Date.now() + 800
-      await nextAnimationFrame()
-      editor.clear()
-      if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-      const symbolsArray = snapshot?.symbols
-      if (symbolsArray && countSymbols(symbolsArray) > 0) {
+
+      const rawSymbols = snapshot?.symbols
+      const points: any[] = Array.isArray(rawSymbols)
+        ? rawSymbols
+        : Array.isArray((rawSymbols as any)?.events)
+        ? (rawSymbols as any).events
+        : []
+      const nextCount = points.length
+
+      try {
         await nextAnimationFrame()
-        const points = Array.isArray(symbolsArray)
-          ? symbolsArray
-          : Array.isArray((symbolsArray as any)?.events)
-          ? (symbolsArray as any).events
-          : []
-        if (points.length) {
+        editor.clear()
+        if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+
+        if (nextCount > 0) {
+          await nextAnimationFrame()
           await editor.importPointEvents(points)
           if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+          if (snapshot?.latex) {
+            setLatexOutput(snapshot.latex)
+          }
+        } else {
+          setLatexOutput('')
         }
-        if (snapshot?.latex) {
-          setLatexOutput(snapshot.latex)
-        }
-      } else {
-        setLatexOutput('')
+      } catch (err) {
+        console.error('applyPageSnapshot failed', err)
+      } finally {
+        lastSymbolCountRef.current = nextCount
+        lastBroadcastBaseCountRef.current = nextCount
       }
-      const count = countSymbols(symbolsArray)
-      lastSymbolCountRef.current = count
-      lastBroadcastBaseCountRef.current = count
     },
     []
   )
@@ -4089,7 +4095,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          if (isAdmin && connected && pendingPublishQueueRef.current.length && channelRef.current) {
+          // Flush queued publishes for whichever client currently has write authority.
+          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
+            const cs = controlStateRef.current
+            const controllerId = (cs?.controllerId || '').trim()
+            const controllerUserId = (cs?.controllerUserId && typeof cs.controllerUserId === 'string') ? cs.controllerUserId : ''
+            const isControllerNow = Boolean(
+              (controllerId && controllerId === clientIdRef.current) ||
+              (controllerUserId && controllerUserId === userId) ||
+              (isAdmin && (!cs || controllerId === ALL_STUDENTS_ID))
+            )
+            if (!isControllerNow || lockedOutRef.current) {
+              return
+            }
             const toSend = [...pendingPublishQueueRef.current]
             pendingPublishQueueRef.current = []
             for (const rec of toSend) {
@@ -4127,12 +4145,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         channelRef.current = channel
         await channel.attach()
 
+        // Only accept snapshots originating from the current exclusive controller.
+        // This is critical after handover: we must ignore stale snapshots from the previous controller
+        // (e.g., the admin) even if they have newer timestamps.
+        const isFromCurrentController = (senderClientId: string) => {
+          const cs = controlStateRef.current
+          if (!cs) return true
+          const controllerId = (cs.controllerId || '').trim()
+          if (!controllerId) return true
+          if (controllerId === ALL_STUDENTS_ID) return true
+          return controllerId === senderClientId
+        }
+
+        const canRespondToSyncRequests = () => {
+          const cs = controlStateRef.current
+          if (!cs) return Boolean(isAdmin)
+          const controllerId = (cs.controllerId || '').trim()
+          if (!controllerId || controllerId === ALL_STUDENTS_ID) return Boolean(isAdmin)
+          return hasExclusiveControlRef.current
+        }
+
         const handleStroke = (message: any) => {
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
             return
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
+          if (typeof data.clientId === 'string' && !isFromCurrentController(data.clientId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -4142,12 +4181,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
+          if (typeof data.clientId === 'string' && !isFromCurrentController(data.clientId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
+          if (!canRespondToSyncRequests()) return
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
               return latestSnapshotRef.current
@@ -4323,12 +4364,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
             // Finally, overwrite the ink snapshot.
             const incomingSnapshot = data.snapshot
-            if (incomingSnapshot) {
-              void applyPageSnapshot(incomingSnapshot)
-            } else {
-              // Explicitly clear if snapshot was null.
-              void applyPageSnapshot(null)
+            const applyAndBroadcast = async () => {
+              try {
+                await applyPageSnapshot(incomingSnapshot ?? null)
+              } catch {}
+
+              // The receiver becomes canonical. Immediately publish a full sync-state so all
+              // other clients converge on this new controller's canvas.
+              try {
+                const cs = controlStateRef.current
+                const controllerId = (cs?.controllerId || '').trim()
+                const controllerUserId = (cs?.controllerUserId && typeof cs.controllerUserId === 'string') ? cs.controllerUserId : ''
+                const isControllerNow = Boolean(
+                  (controllerId && controllerId === clientIdRef.current) ||
+                  (controllerUserId && controllerUserId === userId)
+                )
+                if (!isControllerNow) return
+                const ch = channelRef.current
+                if (!ch) return
+                const canonical = captureFullSnapshot()
+                if (!canonical || isSnapshotEmpty(canonical)) return
+                const ts = Date.now()
+                await ch.publish('sync-state', {
+                  clientId: clientIdRef.current,
+                  author: userDisplayName,
+                  snapshot: canonical,
+                  ts,
+                  reason: 'update',
+                  originClientId: clientIdRef.current,
+                })
+              } catch (err) {
+                console.warn('Failed to broadcast sync-state after handover', err)
+              }
             }
+
+            void applyAndBroadcast()
 
             return
           }

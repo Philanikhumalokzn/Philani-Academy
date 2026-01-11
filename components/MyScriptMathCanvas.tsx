@@ -5471,7 +5471,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const composed = lines.filter(Boolean).join(' \\\\ ').trim()
       // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
-      return composed || (latexDisplayState.latex || '').trim()
+      if (composed) return composed
+      // Student controller handoff: keep showing the existing shared preview until
+      // the local composer state is seeded.
+      return (isAdmin ? (latexDisplayState.latex || '') : (stackedNotesState.latex || latexDisplayState.latex || '')).trim()
     }
     if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()

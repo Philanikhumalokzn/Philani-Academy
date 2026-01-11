@@ -3856,9 +3856,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
           const now = Date.now()
-          if (now < suppressBroadcastUntilTsRef.current) {
-            return
-          }
+          const suppressBroadcast = now < suppressBroadcastUntilTsRef.current
           // Respect assignment override + general lock state.
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
@@ -3867,7 +3865,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend =
+            (isAdmin || studentCanPublish()) &&
+            isSharedPage &&
+            !isBroadcastPausedRef.current &&
+            !lockedOutRef.current &&
+            !suppressBroadcast
           const snapshot = collectEditorSnapshot(canSend)
           if (snapshot) {
             // Update local symbol count tracking for accurate delta math for remote peers.
@@ -5508,13 +5511,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useStepComposer) {
+      // Sometimes recognition updates `latexOutput` before the debounced step-composer draft state
+      // (`adminDraftLatex`) is set. Use `latexOutput` as a best-effort draft fallback so the active
+      // controller can always see a live preview while writing.
+      const draftFallback = (() => {
+        if (adminDraftLatex) return ''
+        if (isAdmin && isViewOnly) return ''
+        const raw = (latexOutput || '').trim()
+        if (!raw) return ''
+        // Only treat this as a draft while there is ink on the canvas.
+        if (!canClear) return ''
+        return normalizeStepLatex(raw)
+      })()
+
       const lines = adminSteps.map(s => s.latex)
       if (adminEditIndex !== null) {
-        if (adminDraftLatex) {
-          lines[adminEditIndex] = adminDraftLatex
+        const nextDraft = adminDraftLatex || draftFallback
+        if (nextDraft) {
+          lines[adminEditIndex] = nextDraft
         }
-      } else if (adminDraftLatex) {
-        lines.push(adminDraftLatex)
+      } else {
+        const nextDraft = adminDraftLatex || draftFallback
+        if (nextDraft) {
+          lines.push(nextDraft)
+        }
       }
       const composed = lines.filter(Boolean).join(' \\\\ ').trim()
       // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
@@ -5551,7 +5571,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, isViewOnly, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, canClear, isAdmin, isAssignmentView, isViewOnly, latexDisplayState.latex, latexOutput, normalizeStepLatex, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -9071,7 +9091,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         }
 
                         // Clear handwriting for next step without broadcasting a global clear.
-                        suppressBroadcastUntilTsRef.current = Date.now() + 1200
+                        // Only suppress long enough to swallow the editor.clear() changed events.
+                        // If we suppress too long, the controller won't see a live preview while
+                        // starting the next line.
+                        suppressBroadcastUntilTsRef.current = Date.now() + 250
                         try {
                           editor.clear?.()
                         } catch {}

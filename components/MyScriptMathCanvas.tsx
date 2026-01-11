@@ -5615,6 +5615,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
   const isViewOnly = !hasWriteAccess
 
+  // Student stacked-layout: continuously export LaTeX while writing so the top panel preview updates
+  // in realtime (even when the engine doesn't update model.exports on every stroke).
+  useEffect(() => {
+    if (isAdmin) return
+    if (!useStackedStudentLayout) return
+    if (useStepComposer) return
+    if (quizActiveRef.current || isAssignmentViewRef.current) return
+    if (status !== 'ready') return
+    if (isViewOnly) return
+
+    // Nudge epoch so any pending scheduled exports ignore stale runs.
+    studentLivePreviewEpochRef.current += 1
+    const epoch = studentLivePreviewEpochRef.current
+
+    const interval = setInterval(() => {
+      if (studentLivePreviewExportInFlightRef.current) return
+      if (epoch !== studentLivePreviewEpochRef.current) return
+      if (lockedOutRef.current) return
+      if (!canClear) {
+        // No ink -> clear preview.
+        if (latexOutput) setLatexOutput('')
+        return
+      }
+
+      studentLivePreviewExportInFlightRef.current = true
+      ;(async () => {
+        let latexValue = getLatexFromEditorModel()
+        if (!latexValue || latexValue.trim().length === 0) {
+          const exported = await exportLatexFromEditor()
+          latexValue = typeof exported === 'string' ? exported : ''
+        }
+        if (epoch !== studentLivePreviewEpochRef.current) return
+        setLatexOutput(latexValue)
+      })()
+        .finally(() => {
+          studentLivePreviewExportInFlightRef.current = false
+        })
+    }, 450)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [canClear, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, isViewOnly, latexOutput, status, useStackedStudentLayout, useStepComposer])
+
   useEffect(() => {
     if (isViewOnly) {
       setIsEraserMode(false)
@@ -8416,7 +8460,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           style={latexOverlayStyle}
                           dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                         />
-                      ) : isAssignmentView ? null : (
+                      ) : isAssignmentView ? null : !isAdmin && !isViewOnly ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <p className="text-slate-500 text-sm text-center">Write below to see your LaTeX preview here.</p>
+                        </div>
+                      ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                         </div>

@@ -459,6 +459,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportInFlightRef = useRef(false)
   const studentQuizPreviewEpochRef = useRef(0)
+  const studentLivePreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const studentLivePreviewExportInFlightRef = useRef(false)
+  const studentLivePreviewEpochRef = useRef(0)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
@@ -4006,6 +4009,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             }, 450)
           }
 
+          // Student (normal) stacked layout: keep a live LaTeX preview updated while the learner writes.
+          // This is separate from quiz/assignment mode, which uses its own preview/export loop.
+          if (!isAdmin && useStackedStudentLayout && !quizActiveRef.current && !isAssignmentViewRef.current) {
+            // If view-only (teacher has exclusive control), the top panel should follow remote stacked-notes.
+            if (lockedOutRef.current) {
+              return
+            }
+            if (studentLivePreviewExportRef.current) {
+              clearTimeout(studentLivePreviewExportRef.current)
+            }
+            const epochAtSchedule = studentLivePreviewEpochRef.current
+            studentLivePreviewExportRef.current = setTimeout(() => {
+              studentLivePreviewExportRef.current = null
+              if (studentLivePreviewExportInFlightRef.current) return
+              studentLivePreviewExportInFlightRef.current = true
+              ;(async () => {
+                if (epochAtSchedule !== studentLivePreviewEpochRef.current) return
+                let latexValue = getLatexFromEditorModel()
+                if (!latexValue || latexValue.trim().length === 0) {
+                  const exported = await exportLatexFromEditor()
+                  latexValue = typeof exported === 'string' ? exported : ''
+                }
+                if (cancelled) return
+                if (epochAtSchedule !== studentLivePreviewEpochRef.current) return
+                setLatexOutput(latexValue)
+              })()
+                .finally(() => {
+                  studentLivePreviewExportInFlightRef.current = false
+                })
+            }, 320)
+          }
+
           // Student quiz/assignment mode: show a live LaTeX preview while the learner writes.
           // (The normal student view doesn't continuously export LaTeX, so we enable it for
           // active quizzes and for assignment pages that use the same commit-then-submit flow.)
@@ -5668,10 +5703,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
     if (useStackedStudentLayout) {
-      return (stackedNotesState.latex || '').trim()
+      // Students should see their own live preview while writing.
+      if (!lockedOutRef.current && studentCanPublish()) {
+        const local = (latexOutput || '').trim()
+        if (local) return local
+      }
+      return (stackedNotesState.latex || latexOutput || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, canClear, isAdmin, isAssignmentView, isViewOnly, latexDisplayState.latex, latexOutput, normalizeStepLatex, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, canClear, isAdmin, isAssignmentView, isViewOnly, latexDisplayState.latex, latexOutput, normalizeStepLatex, stackedNotesState.latex, studentCommittedLatex, studentCanPublish, useStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty

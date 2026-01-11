@@ -1164,8 +1164,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (pendingExportRef.current) {
         clearTimeout(pendingExportRef.current)
         pendingExportRef.current = null
-      }
 
+            // The top display can be driven by stacked-notes or (older path) latex-display.
+            // Seed from whichever is currently visible to avoid losing prior lines on first commit.
+            const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
       const seed = (stackedNotesState.latex || '').trim()
       const parts = seed
         ? seed.split(/\\\\/g).map(s => (s || '').trim()).filter(Boolean)
@@ -1177,7 +1179,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setAdminEditIndex(null)
       }
     }
-  }, [isAdmin, isStudentSharedSessionStepComposer, stackedNotesState.latex])
+  }, [isAdmin, isStudentSharedSessionStepComposer, stackedNotesState.latex, latexDisplayState.latex])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -4031,13 +4033,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [broadcastSnapshot, editorInitKey, exportLatexFromEditor, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
 
+  // Reset composer state when switching boards.
+  // Do NOT reset when a student gains exclusive control on the same board; we seed from
+  // the existing top display so commits append instead of overwriting.
   useEffect(() => {
-    if (!useStepComposer) return
     setAdminSteps([])
     setAdminDraftLatex('')
     setAdminSendingStep(false)
     setAdminEditIndex(null)
-  }, [boardId, useStepComposer])
+  }, [boardId])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -9010,7 +9014,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         const snapshot = captureFullSnapshot()
                         const symbols = snapshot?.symbols ?? null
                         setAdminSteps(prev => {
-                          const next = [...prev]
+                          let next = [...prev]
+
+                          // Student controller handoff: if the composer hasn't been seeded yet
+                          // (effects can lag behind a fast tap), preserve any existing top display
+                          // as committed steps before appending the new line.
+                          if (!isAdmin && isStudentSharedSessionStepComposer && adminEditIndex === null && next.length === 0) {
+                            const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
+                            const parts = seed
+                              ? seed.split(/\\/g).map(s => (s || '').trim()).filter(Boolean)
+                              : []
+                            if (parts.length) {
+                              next = parts.map(latex => ({ latex, symbols: null }))
+                            }
+                          }
+
                           if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
                             next[adminEditIndex] = { latex: step, symbols }
                           } else {

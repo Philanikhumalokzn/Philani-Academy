@@ -1083,21 +1083,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   type AdminStep = { latex: string; symbols: any[] | null }
   const [adminSteps, setAdminSteps] = useState<AdminStep[]>([])
-  const adminStepsRef = useRef<AdminStep[]>([])
-  useEffect(() => {
-    adminStepsRef.current = adminSteps
-  }, [adminSteps])
   const [adminDraftLatex, setAdminDraftLatex] = useState('')
-  const adminDraftLatexRef = useRef('')
-  useEffect(() => {
-    adminDraftLatexRef.current = adminDraftLatex
-  }, [adminDraftLatex])
   const [adminSendingStep, setAdminSendingStep] = useState(false)
   const [adminEditIndex, setAdminEditIndex] = useState<number | null>(null)
-  const adminEditIndexRef = useRef<number | null>(null)
-  useEffect(() => {
-    adminEditIndexRef.current = adminEditIndex
-  }, [adminEditIndex])
   const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
@@ -1168,12 +1156,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const was = studentComposerWasActiveRef.current
     studentComposerWasActiveRef.current = active
 
-    // When the student LOSES exclusive control in a normal shared session,
-    // reset the local step composer so steps don't carry between different editors.
-    // IMPORTANT: do NOT reset on gain, because we want handover to inherit the teacher's
-    // current composer state (and handover messages can arrive before/after the lock message).
+    // When the student gains or loses exclusive control in a normal shared session,
+    // reset the local step composer so steps never "carry" between different editors.
     if (active === was) return
-    if (active) return
     stepComposerPreviewEpochRef.current += 1
     if (pendingExportRef.current) {
       clearTimeout(pendingExportRef.current)
@@ -1186,11 +1171,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     clearTopPanelSelection()
     stepNavRedoStackRef.current = []
   }, [clearTopPanelSelection, isAdmin, isStudentSharedSessionStepComposer])
-
-  const pendingHandoverRef = useRef<null | {
-    receivedAt: number
-    snapshot: SnapshotPayload | null
-  }>(null)
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -3013,36 +2993,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const editor = editorInstanceRef.current
       if (!editor) return
       suppressBroadcastUntilTsRef.current = Date.now() + 800
-
-      const rawSymbols = snapshot?.symbols
-      const points: any[] = Array.isArray(rawSymbols)
-        ? rawSymbols
-        : Array.isArray((rawSymbols as any)?.events)
-        ? (rawSymbols as any).events
-        : []
-      const nextCount = points.length
-
-      try {
+      await nextAnimationFrame()
+      editor.clear()
+      if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+      const symbolsArray = snapshot?.symbols
+      if (symbolsArray && countSymbols(symbolsArray) > 0) {
         await nextAnimationFrame()
-        editor.clear()
-        if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-
-        if (nextCount > 0) {
-          await nextAnimationFrame()
+        const points = Array.isArray(symbolsArray)
+          ? symbolsArray
+          : Array.isArray((symbolsArray as any)?.events)
+          ? (symbolsArray as any).events
+          : []
+        if (points.length) {
           await editor.importPointEvents(points)
           if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
-          if (snapshot?.latex) {
-            setLatexOutput(snapshot.latex)
-          }
-        } else {
-          setLatexOutput('')
         }
-      } catch (err) {
-        console.error('applyPageSnapshot failed', err)
-      } finally {
-        lastSymbolCountRef.current = nextCount
-        lastBroadcastBaseCountRef.current = nextCount
+        if (snapshot?.latex) {
+          setLatexOutput(snapshot.latex)
+        }
+      } else {
+        setLatexOutput('')
       }
+      const count = countSymbols(symbolsArray)
+      lastSymbolCountRef.current = count
+      lastBroadcastBaseCountRef.current = count
     },
     []
   )
@@ -4103,19 +4077,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          // Flush queued publishes for whichever client currently has write authority.
-          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
-            const cs = controlStateRef.current
-            const controllerId = (cs?.controllerId || '').trim()
-            const controllerUserId = (cs?.controllerUserId && typeof cs.controllerUserId === 'string') ? cs.controllerUserId : ''
-            const isControllerNow = Boolean(
-              (controllerId && controllerId === clientIdRef.current) ||
-              (controllerUserId && controllerUserId === userId) ||
-              (isAdmin && (!cs || controllerId === ALL_STUDENTS_ID))
-            )
-            if (!isControllerNow || lockedOutRef.current) {
-              return
-            }
+          if (isAdmin && connected && pendingPublishQueueRef.current.length && channelRef.current) {
             const toSend = [...pendingPublishQueueRef.current]
             pendingPublishQueueRef.current = []
             for (const rec of toSend) {
@@ -4153,33 +4115,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         channelRef.current = channel
         await channel.attach()
 
-        // Only accept snapshots originating from the current exclusive controller.
-        // This is critical after handover: we must ignore stale snapshots from the previous controller
-        // (e.g., the admin) even if they have newer timestamps.
-        const isFromCurrentController = (senderClientId: string) => {
-          const cs = controlStateRef.current
-          if (!cs) return true
-          const controllerId = (cs.controllerId || '').trim()
-          if (!controllerId) return true
-          if (controllerId === ALL_STUDENTS_ID) return true
-          return controllerId === senderClientId
-        }
-
-        const canRespondToSyncRequests = () => {
-          const cs = controlStateRef.current
-          if (!cs) return Boolean(isAdmin)
-          const controllerId = (cs.controllerId || '').trim()
-          if (!controllerId || controllerId === ALL_STUDENTS_ID) return Boolean(isAdmin)
-          return hasExclusiveControlRef.current
-        }
-
         const handleStroke = (message: any) => {
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
             return
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          if (typeof data.clientId === 'string' && !isFromCurrentController(data.clientId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -4189,14 +4130,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          if (typeof data.clientId === 'string' && !isFromCurrentController(data.clientId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
-          if (!canRespondToSyncRequests()) return
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
               return latestSnapshotRef.current
@@ -4242,26 +4181,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             controllerName?: string
             controllerUserId?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz' | 'handover'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz'
             targetClientId?: string
-            targetUserId?: string
             snapshot?: SnapshotPayload | null
-            pageIndex?: number
-            sharedPageIndex?: number
-            canvasOrientation?: CanvasOrientation
-            isFullscreen?: boolean
-            studentSplitRatio?: number
-            horizontalPanValue?: number
-            viewportScrollLeft?: number
-            latexOutput?: string
-            latexDisplayState?: LatexDisplayState
-            stackedNotesState?: StackedNotesState
-            adminSteps?: Array<{ latex: string; symbols: any[] | null }>
-            adminDraftLatex?: string
-            adminEditIndex?: number | null
-            topPanelEditingMode?: boolean
-            topPanelSelectedStep?: number | null
-            stepNavRedoStack?: number[]
             enabled?: boolean
             quizId?: string
             quizLabel?: string
@@ -4278,129 +4200,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             fromUserId?: string
             fromName?: string
           }
-
-          if (data?.action === 'handover') {
-            const targetClientId = typeof data.targetClientId === 'string' ? data.targetClientId : ''
-            const targetUserId = typeof data.targetUserId === 'string' ? data.targetUserId : ''
-            if (targetClientId && targetClientId !== clientIdRef.current) return
-            if (targetUserId && targetUserId !== userId) return
-
-            // Overwrite local UI/view state first.
-            try {
-              stepComposerPreviewEpochRef.current += 1
-              if (pendingExportRef.current) {
-                clearTimeout(pendingExportRef.current)
-                pendingExportRef.current = null
-              }
-            } catch {}
-
-            try {
-              const incomingOrientation = data.canvasOrientation
-              if (incomingOrientation === 'portrait' || incomingOrientation === 'landscape') {
-                setCanvasOrientation(incomingOrientation)
-              }
-            } catch {}
-
-            try {
-              if (typeof data.isFullscreen === 'boolean') {
-                setIsFullscreen(Boolean(data.isFullscreen))
-              }
-            } catch {}
-
-            try {
-              if (typeof data.studentSplitRatio === 'number' && Number.isFinite(data.studentSplitRatio)) {
-                const clamped = Math.max(0.2, Math.min(0.8, data.studentSplitRatio))
-                setStudentSplitRatio(clamped)
-                studentSplitRatioRef.current = clamped
-              }
-            } catch {}
-
-            try {
-              if (typeof data.horizontalPanValue === 'number' && Number.isFinite(data.horizontalPanValue)) {
-                setHorizontalPanValue(Math.max(0, Math.trunc(data.horizontalPanValue)))
-              }
-            } catch {}
-
-            try {
-              if (typeof data.viewportScrollLeft === 'number' && Number.isFinite(data.viewportScrollLeft)) {
-                const nextLeft = Math.max(0, Math.trunc(data.viewportScrollLeft))
-                requestAnimationFrame(() => {
-                  try {
-                    const viewport = studentViewportRef.current
-                    if (viewport) viewport.scrollLeft = nextLeft
-                  } catch {}
-                })
-              }
-            } catch {}
-
-            try {
-              if (data.latexDisplayState && typeof data.latexDisplayState === 'object') {
-                setLatexDisplayState(data.latexDisplayState as any)
-              }
-              if (data.stackedNotesState && typeof data.stackedNotesState === 'object') {
-                setStackedNotesState(data.stackedNotesState as any)
-              }
-              if (typeof data.latexOutput === 'string') {
-                setLatexOutput(data.latexOutput)
-              }
-            } catch {}
-
-            // Step composer overwrite (same state machine for teacher + selected student).
-            try {
-              setAdminSteps(Array.isArray(data.adminSteps) ? (data.adminSteps as any) : [])
-              setAdminDraftLatex(typeof data.adminDraftLatex === 'string' ? data.adminDraftLatex : '')
-              setAdminEditIndex((typeof data.adminEditIndex === 'number' && Number.isFinite(data.adminEditIndex)) ? Math.trunc(data.adminEditIndex) : null)
-              setTopPanelEditingMode(Boolean(data.topPanelEditingMode))
-              setTopPanelSelectedStep((typeof data.topPanelSelectedStep === 'number' && Number.isFinite(data.topPanelSelectedStep)) ? Math.trunc(data.topPanelSelectedStep) : null)
-              stepNavRedoStackRef.current = Array.isArray(data.stepNavRedoStack)
-                ? (data.stepNavRedoStack.filter(n => typeof n === 'number' && Number.isFinite(n)).map(n => Math.trunc(n)))
-                : []
-            } catch {}
-
-            // Page selection: keep sharedPageIndex consistent with the sender's shared page.
-            try {
-              const incomingShared = (typeof data.sharedPageIndex === 'number' && Number.isFinite(data.sharedPageIndex)) ? Math.trunc(data.sharedPageIndex) : null
-              const incomingPage = (typeof data.pageIndex === 'number' && Number.isFinite(data.pageIndex)) ? Math.trunc(data.pageIndex) : null
-              if (incomingShared !== null && incomingShared >= 0) {
-                setSharedPageIndex(incomingShared)
-                sharedPageIndexRef.current = incomingShared
-              }
-              if (incomingPage !== null && incomingPage >= 0) {
-                setPageIndex(incomingPage)
-              }
-            } catch {}
-
-            // Cache the handover so we can broadcast it once the lock/control message
-            // has definitely made us the exclusive controller.
-            try {
-              pendingHandoverRef.current = {
-                receivedAt: Date.now(),
-                snapshot: (data.snapshot ?? null) as any,
-              }
-            } catch {}
-
-            // Finally, overwrite the ink snapshot. If snapshot is missing/empty, do NOT clear;
-            // instead request a sync from the current controller (likely the teacher) as a fallback.
-            const incomingSnapshot = data.snapshot ?? null
-            const applyNow = async () => {
-              if (!incomingSnapshot || isSnapshotEmpty(incomingSnapshot)) {
-                try {
-                  channel
-                    ?.publish('sync-request', { clientId: clientIdRef.current, author: userDisplayName, ts: Date.now() })
-                    .catch(() => {})
-                } catch {}
-                return
-              }
-              try {
-                await applyPageSnapshot(incomingSnapshot)
-              } catch {}
-            }
-
-            void applyNow()
-
-            return
-          }
-
           if (data?.action === 'quiz') {
             const phase = data.phase
             // Teacher sees incoming submissions in realtime; minimal UX for now.
@@ -5862,115 +5661,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
-  const prevExclusiveControlForHandoverRef = useRef(false)
-  const lastHandoverSentForControlTsRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    const wasExclusive = prevExclusiveControlForHandoverRef.current
-    const isExclusive = hasExclusiveControlRef.current
-    prevExclusiveControlForHandoverRef.current = isExclusive
-
-    // Only the current controller sends handover when they lose control.
-    if (!wasExclusive || isExclusive) return
-
-    const next = controlStateRef.current
-    const nextControllerId = (next?.controllerId || '').trim()
-    const nextControllerUserId = (next?.controllerUserId && typeof next.controllerUserId === 'string') ? next.controllerUserId : ''
-    if (!nextControllerId && !nextControllerUserId) return
-    if (nextControllerId === ALL_STUDENTS_ID) return
-
-    const isTargetSelf = Boolean(
-      (nextControllerId && nextControllerId === clientIdRef.current) ||
-      (nextControllerUserId && nextControllerUserId === userId)
-    )
-    if (isTargetSelf) return
-
-    const controlTs = (typeof next?.ts === 'number' && Number.isFinite(next.ts)) ? Math.trunc(next.ts) : Date.now()
-    if (lastHandoverSentForControlTsRef.current === controlTs) return
-    lastHandoverSentForControlTsRef.current = controlTs
-
-    const channel = channelRef.current
-    if (!channel) return
-
-    // Prefer the last-known canonical snapshot (already used for realtime publishing).
-    // This avoids rare cases where collectEditorSnapshot serialization returns null symbols.
-    const snapshot = (latestSnapshotRef.current?.snapshot ?? captureFullSnapshot())
-    const viewportScrollLeft = (() => {
-      try {
-        return Math.max(0, Math.trunc(studentViewportRef.current?.scrollLeft ?? 0))
-      } catch {
-        return 0
-      }
-    })()
-
-    channel
-      .publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'handover',
-        targetClientId: nextControllerId || undefined,
-        targetUserId: nextControllerUserId || undefined,
-        ts: Date.now(),
-
-        // View/page
-        pageIndex,
-        sharedPageIndex: sharedPageIndexRef.current,
-        canvasOrientation,
-        isFullscreen,
-        studentSplitRatio: studentSplitRatioRef.current,
-        horizontalPanValue,
-        viewportScrollLeft,
-
-        // Top display state
-        latexOutput: (latexOutput || '').toString(),
-        latexDisplayState: latexDisplayStateRef.current,
-        stackedNotesState,
-
-        // Step composer state
-        adminSteps: adminStepsRef.current,
-        adminDraftLatex: adminDraftLatexRef.current,
-        adminEditIndex: adminEditIndexRef.current,
-        topPanelEditingMode: topPanelEditingModeRef.current,
-        topPanelSelectedStep,
-        stepNavRedoStack: [...stepNavRedoStackRef.current],
-
-        // Ink snapshot
-        snapshot,
-      })
-      .catch(() => {})
-  }, [canvasOrientation, captureFullSnapshot, horizontalPanValue, isFullscreen, latexOutput, pageIndex, stackedNotesState, topPanelSelectedStep, userDisplayName])
-
-  // If a handover arrives slightly before the lock/control message, cache it and
-  // broadcast once we are definitely the exclusive controller so others converge.
-  useEffect(() => {
-    if (!hasExclusiveControl) return
-    const pending = pendingHandoverRef.current
-    if (!pending) return
-    if (Date.now() - pending.receivedAt > 8000) {
-      pendingHandoverRef.current = null
-      return
-    }
-    const channel = channelRef.current
-    if (!channel) return
-    if (lockedOutRef.current) return
-    const canonical = captureFullSnapshot()
-    if (!canonical || isSnapshotEmpty(canonical)) return
-    const ts = Date.now()
-    channel
-      .publish('sync-state', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        snapshot: canonical,
-        ts,
-        reason: 'update',
-        originClientId: clientIdRef.current,
-      })
-      .catch(() => {})
-      .finally(() => {
-        pendingHandoverRef.current = null
-      })
-  }, [captureFullSnapshot, hasExclusiveControl, userDisplayName])
-
   const horizontalPanRafRef = useRef<number | null>(null)
   const horizontalPanTrackRef = useRef<HTMLDivElement | null>(null)
   const horizontalPanDragRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number; usableTrackWidth: number; maxScroll: number }>(

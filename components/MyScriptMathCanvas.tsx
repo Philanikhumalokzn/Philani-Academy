@@ -7161,7 +7161,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setLatexSaveError('Finish Question is only available inside a live session.')
         return null
       }
-      if (!isAdmin || !useAdminStepComposer) {
+      if (!isAdmin) {
         setLatexSaveError('Finish Question is only available for teachers.')
         return null
       }
@@ -7220,7 +7220,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setIsSavingLatex(false)
       }
     },
-    [adminSteps, canPersistLatex, isAdmin, isLessonAuthoring, normalizeStepLatex, sessionKey, useAdminStepComposer]
+    [adminSteps, canPersistLatex, isAdmin, isLessonAuthoring, normalizeStepLatex, sessionKey]
   )
 
   useEffect(() => {
@@ -8050,7 +8050,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               type="button"
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Notes"
-                              onClick={() => { void openNotesLibrary() }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                void openNotesLibrary()
+                              }}
                               disabled={notesLibraryLoading}
                             >
                               <span className="sr-only">Open notes</span>
@@ -8454,7 +8458,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       if (lockedOutRef.current) return
                       if (adminSendingStep) return
 
-                      if (isAdmin && useAdminStepComposer && !isAssignmentSolutionAuthoring) {
+                      if (isAdmin && !isAssignmentSolutionAuthoring) {
                         const emptyCanvas = isEditorEmptyNow()
                         const emptyLine = isCurrentLineEmptyNow()
                         if (emptyCanvas && emptyLine && adminSteps.length > 0) {
@@ -8541,7 +8545,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear && !(useAdminStepComposer && adminSteps.length > 0))) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear && !(adminSteps.length > 0))) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
                     >
                       <span className="sr-only">Send</span>
                       <svg
@@ -10029,7 +10033,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       {notesLibraryOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center"
+          className="fixed inset-0 z-[10000] flex items-center justify-center"
           role="dialog"
           aria-modal="true"
           aria-label="Session notes"

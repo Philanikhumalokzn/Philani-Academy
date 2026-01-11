@@ -969,21 +969,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
   const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
 
-  // In normal shared sessions, the selected student editor should get the same "step composer"
-  // behaviour as the teacher (committed steps + a live draft line).
-  const isStudentSharedSessionStepComposer = Boolean(
-    !isAdmin &&
+  // Live-session controller flag:
+  // - `isAdmin` means the real teacher/admin role (passed in)
+  // - `isController` means this client is the currently selected exclusive editor (non-admin)
+  // - `isAdminLike` enables teacher-like canvas UX for the active controller without granting
+  //   teacher-only powers (those should stay guarded by `isAdmin`).
+  const controllerId = (controlState?.controllerId || '').trim()
+  const controllerUserId = (typeof controlState?.controllerUserId === 'string' ? controlState.controllerUserId : '').trim()
+  const isController = Boolean(!isAdmin && hasExclusiveControl && (controllerId || controllerUserId) && controllerId !== ALL_STUDENTS_ID)
+  const isAdminLike = Boolean(isAdmin || isController)
+
+  // In normal shared sessions, the controller should get the same "step composer" behaviour as the teacher
+  // (committed steps + a live draft line). We intentionally keep quizzes/assignments on the dedicated flow.
+  const isControllerStepComposer = Boolean(
+    isController &&
     useStackedStudentLayout &&
     !quizActive &&
-    !Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId) &&
-    Boolean(controlState) &&
-    (controlState?.controllerId !== ALL_STUDENTS_ID) &&
-    (
-      (controlState?.controllerUserId && controlState.controllerUserId === userId) ||
-      (controlState?.controllerId && controlState.controllerId === clientIdRef.current)
-    )
+    !Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   )
-  const useStepComposer = Boolean(useAdminStepComposer || isStudentSharedSessionStepComposer)
+  const useStepComposer = Boolean(useAdminStepComposer || isControllerStepComposer)
 
   const currentEditorBadge = useMemo(() => {
     const controllerId = (controlState?.controllerId || '').trim()
@@ -1152,7 +1156,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const studentComposerWasActiveRef = useRef(false)
   useEffect(() => {
     if (isAdmin) return
-    const active = isStudentSharedSessionStepComposer
+    const active = isControllerStepComposer
     const was = studentComposerWasActiveRef.current
     studentComposerWasActiveRef.current = active
 
@@ -1164,11 +1168,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (pendingExportRef.current) {
         clearTimeout(pendingExportRef.current)
         pendingExportRef.current = null
+      }
 
-            // The top display can be driven by stacked-notes or (older path) latex-display.
-            // Seed from whichever is currently visible to avoid losing prior lines on first commit.
-            const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
-      const seed = (stackedNotesState.latex || '').trim()
+      // The top display can be driven by stacked-notes or (older path) latex-display.
+      // Seed from whichever is currently visible to avoid losing prior lines on first commit.
+      const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
       const parts = seed
         ? seed.split(/\\\\/g).map(s => (s || '').trim()).filter(Boolean)
         : []
@@ -1179,7 +1183,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setAdminEditIndex(null)
       }
     }
-  }, [isAdmin, isStudentSharedSessionStepComposer, stackedNotesState.latex, latexDisplayState.latex])
+  }, [isAdmin, isControllerStepComposer, stackedNotesState.latex, latexDisplayState.latex])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -4948,7 +4952,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       editorInstanceRef.current.undo()
     } catch {}
     // Students need immediate propagation so the teacher sees undo/redo reliably.
-    broadcastSnapshot(!isAdmin)
+    broadcastSnapshot(!isAdminLike)
 
     // Step-boundary undo: once empty, go to the line above.
     if (!useStepComposer) return
@@ -4974,7 +4978,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       editorInstanceRef.current.redo()
     } catch {}
     // Students need immediate propagation so the teacher sees undo/redo reliably.
-    broadcastSnapshot(!isAdmin)
+    broadcastSnapshot(!isAdminLike)
 
     // Step-boundary redo: when empty, redo to the next line we previously stepped from.
     if (!useStepComposer) return
@@ -5002,7 +5006,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (lockedOutRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
-    if (isAdmin && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
+    if (isAdminLike && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
       const channel = channelRef.current
       if (channel) {
         channel
@@ -5536,7 +5540,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [stableAdminStackedLatexRenderSource, setStableAdminStackedLatexRenderSource] = useState('')
   const stableAdminStackedLatexRenderSourceRef = useRef('')
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isAdminLike) return
     if (!useStackedStudentLayout) return
 
     const next = (latexRenderSource || '').trim()
@@ -5559,9 +5563,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       stableAdminStackedLatexRenderSourceRef.current = ''
       setStableAdminStackedLatexRenderSource('')
     }
-  }, [adminSteps.length, isAdmin, latexRenderSource, useStepComposer, useStackedStudentLayout])
+  }, [adminSteps.length, isAdminLike, latexRenderSource, useStepComposer, useStackedStudentLayout])
 
-  const latexProjectionRenderSource = (isAdmin && useStackedStudentLayout)
+  const latexProjectionRenderSource = (isAdminLike && useStackedStudentLayout)
     ? stableAdminStackedLatexRenderSource
     : latexRenderSource
 
@@ -5603,15 +5607,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [latexRenderOptions.alignAtEquals, latexProjectionRenderSource])
 
   const adminTopPanelStepItems = useMemo(() => {
-    if (!isAdmin) return [] as Array<{ index: number; latex: string }>
+    if (!isAdminLike) return [] as Array<{ index: number; latex: string }>
     if (!topPanelEditingMode) return [] as Array<{ index: number; latex: string }>
 
-    if (!useAdminStepComposer) return []
+    if (!useStepComposer) return []
     return adminSteps.map((s, index) => {
       const latex = (adminEditIndex === index ? adminDraftLatex : (s?.latex || '')).trimEnd()
       return { index, latex }
     })
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, topPanelEditingMode, useAdminStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdminLike, topPanelEditingMode, useStepComposer])
 
   const renderLatexStepInline = useCallback((latex: string) => {
     if (!latex) return ''
@@ -8157,7 +8161,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </div>
                     </button>
                   )}
-                  {isAdmin ? (
+                  {isAdminLike ? (
                     topPanelEditingMode ? (
                       adminTopPanelStepItems.length ? (
                         <div
@@ -8903,7 +8907,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             clearTimeout(eraserLongPressTimeoutRef.current)
                             eraserLongPressTimeoutRef.current = null
                           }
-                          if (isAdmin) {
+                          if (isAdminLike) {
                             // Admin-only: long press opens the old canvas controls (replaces the gear icon).
                             eraserLongPressTimeoutRef.current = setTimeout(() => {
                               eraserLongPressTimeoutRef.current = null
@@ -9019,10 +9023,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           // Student controller handoff: if the composer hasn't been seeded yet
                           // (effects can lag behind a fast tap), preserve any existing top display
                           // as committed steps before appending the new line.
-                          if (!isAdmin && isStudentSharedSessionStepComposer && adminEditIndex === null && next.length === 0) {
+                          if (!isAdmin && isControllerStepComposer && adminEditIndex === null && next.length === 0) {
                             const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
                             const parts = seed
-                              ? seed.split(/\\/g).map(s => (s || '').trim()).filter(Boolean)
+                              ? seed.split(/\\\\/g).map(s => (s || '').trim()).filter(Boolean)
                               : []
                             if (parts.length) {
                               next = parts.map(latex => ({ latex, symbols: null }))
@@ -9060,7 +9064,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }}
                       disabled={(() => {
                         if (status !== 'ready' || Boolean(fatalError)) return true
-                        if (isAdmin) {
+                        if (isAdminLike) {
                           return Boolean(adminSendingStep || (!adminDraftLatex && !canClear))
                         }
 

@@ -8,3 +8,7 @@ node_modules
 backups/
 
 .vercel
+
+# Local build artifacts/logs
+build*.log
+*.tsbuildinfo

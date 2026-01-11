@@ -56,13 +56,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'PATCH') {
-    const { title } = req.body || {}
+    const { title, noteId, payload } = req.body || {}
     const nextTitle = sanitizeTitle(title)
     if (!nextTitle) return res.status(400).json({ message: 'Title is required' })
 
     const updated = await prisma.latexSave.update({
       where: { id: saveId },
-      data: { title: nextTitle },
+      data: {
+        title: nextTitle,
+        noteId: typeof noteId === 'string' && noteId.trim() ? noteId.trim() : record.noteId,
+        payload: payload === undefined ? record.payload : payload,
+      },
     })
     return res.status(200).json(updated)
   }

@@ -476,6 +476,8 @@ model LatexSave {
   userEmail  String?
   title      String
   latex      String
+  noteId     String?
+  payload    Json?
   shared     Boolean  @default(false)
   filename   String?
   url        String?
@@ -484,6 +486,7 @@ model LatexSave {
 
   @@index([sessionKey])
   @@index([sessionKey, userId])
+  @@index([sessionKey, noteId])
 }
 
 model LearnerResponse {

@@ -1028,8 +1028,8 @@ export default function Dashboard() {
   const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
   const isLearner = normalizedRole === 'student'
   const isTestStudent = useMemo(() => isSpecialTestStudentEmail(session?.user?.email || ''), [session?.user?.email])
-  const learnerNotesLabel = isLearner ? 'Saved notes' : 'LaTeX saves'
-  const learnerNotesLabelLower = isLearner ? 'saved notes' : 'LaTeX saves'
+  const learnerNotesLabel = 'Notes'
+  const learnerNotesLabelLower = 'notes'
   const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
   const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
 

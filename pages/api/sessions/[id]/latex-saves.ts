@@ -79,7 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { latex, title, shared } = req.body || {}
+      const { latex, title, shared, noteId, payload } = req.body || {}
     if (!latex || typeof latex !== 'string') {
       return res.status(400).json({ message: 'Latex content is required' })
     }
@@ -106,6 +106,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           title: saveTitle,
           latex,
           shared: willShare,
+            noteId: typeof noteId === 'string' && noteId.trim() ? noteId.trim() : null,
+            payload: payload ?? null,
           filename: stored.storedPath,
           url: stored.url,
         },

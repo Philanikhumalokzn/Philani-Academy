@@ -940,10 +940,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(0.55)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
-  const [latestSharedLatex, setLatestSharedLatex] = useState<string | null>(null)
-  const [latestPersonalLatex, setLatestPersonalLatex] = useState<string | null>(null)
+
+  type NotesSaveRecord = {
+    id: string
+    title: string
+    latex: string
+    shared: boolean
+    noteId?: string | null
+    payload?: any | null
+    createdAt?: string
+    updatedAt?: string
+  }
+
+  const [latestSharedSave, setLatestSharedSave] = useState<NotesSaveRecord | null>(null)
+  const [latestPersonalSave, setLatestPersonalSave] = useState<NotesSaveRecord | null>(null)
   const [isSavingLatex, setIsSavingLatex] = useState(false)
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
+
+  const [finishQuestionModalOpen, setFinishQuestionModalOpen] = useState(false)
+  const [finishQuestionTitle, setFinishQuestionTitle] = useState('')
+  const [finishQuestionNoteId, setFinishQuestionNoteId] = useState<string | null>(null)
 
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
@@ -3316,6 +3332,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       .replace(/\\end\{aligned\}\s*$/, '')
       .trim()
     return stripped
+  }, [])
+
+  const prettyPrintTitleFromLatex = useCallback((value: string) => {
+    const raw = normalizeStepLatex(value)
+    if (!raw) return 'Notes'
+
+    const simplified = raw
+      .replace(/\$\$?/g, '')
+      .replace(/\\\(|\\\)/g, '')
+      .replace(/\\begin\{[^}]+\}|\\end\{[^}]+\}/g, '')
+      .replace(/\\(left|right)/g, '')
+      .replace(/&/g, ' ')
+      .replace(/\\{2,}/g, ' ')
+      .replace(/\\(quad|qquad|,|;|:|!)/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return simplified.length > 72 ? `${simplified.slice(0, 72).trim()}…` : simplified
+  }, [normalizeStepLatex])
+
+  const createSessionNoteId = useCallback(() => {
+    try {
+      const cryptoAny = (globalThis as any)?.crypto
+      if (cryptoAny?.randomUUID) return `q_${cryptoAny.randomUUID()}`
+    } catch {}
+    const rand = Math.random().toString(16).slice(2)
+    return `q_${Date.now().toString(16)}_${rand}`
   }, [])
 
   const exportLatexFromEditor = useCallback(async () => {
@@ -7002,8 +7045,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const data = await res.json()
       const latestShared = Array.isArray(data?.shared) && data.shared.length > 0 ? data.shared[0] : null
       const latestMine = Array.isArray(data?.mine) && data.mine.length > 0 ? data.mine[0] : null
-      setLatestSharedLatex(latestShared?.latex || null)
-      setLatestPersonalLatex(latestMine?.latex || null)
+      setLatestSharedSave(latestShared || null)
+      setLatestPersonalSave(latestMine || null)
     } catch (err) {
       console.warn('Failed to fetch saved notes', err)
     }
@@ -7056,11 +7099,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           throw new Error(typeof message === 'string' ? message : 'Failed to save notes')
         }
         const payload = await res.json()
-        if (payload?.shared) {
-          setLatestSharedLatex(payload.latex || latexValue)
-        } else {
-          setLatestPersonalLatex(payload.latex || latexValue)
-        }
+        if (payload?.shared) setLatestSharedSave(payload)
+        else setLatestPersonalSave(payload)
         lastSavedHashRef.current = hash
       } catch (err: any) {
         const message = err?.message || 'Failed to save notes'
@@ -7073,6 +7113,111 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [canPersistLatex, isAdmin, isLessonAuthoring, latexOutput, saveLatexIntoLessonDraft, sessionKey]
   )
 
+  const saveQuestionAsNotes = useCallback(
+    async (options: { title: string; noteId: string }) => {
+      if (isLessonAuthoring) {
+        setLatexSaveError('Finish Question is only available inside a live session.')
+        return null
+      }
+      if (!isAdmin || !useAdminStepComposer) {
+        setLatexSaveError('Finish Question is only available for teachers.')
+        return null
+      }
+      if (!canPersistLatex || !sessionKey) {
+        setLatexSaveError('Saving is only available inside a scheduled session.')
+        return null
+      }
+
+      const steps = adminSteps
+        .filter(s => s && typeof s === 'object')
+        .map(s => ({ latex: normalizeStepLatex((s as any).latex || ''), symbols: Array.isArray((s as any).symbols) ? (s as any).symbols : [] }))
+        .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
+
+      if (!steps.length) {
+        setLatexSaveError('Nothing to save yet.')
+        return null
+      }
+
+      const latexValue = steps.map(s => s.latex).filter(Boolean).join(' \\\\ ').trim()
+      const payload = {
+        kind: 'question-v1',
+        noteId: options.noteId,
+        questionId: options.noteId,
+        createdAt: Date.now(),
+        steps,
+      }
+
+      setIsSavingLatex(true)
+      setLatexSaveError(null)
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: options.title,
+            latex: latexValue,
+            shared: true,
+            noteId: options.noteId,
+            payload,
+          }),
+        })
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null)
+          const message = errorData?.message || 'Failed to save notes'
+          throw new Error(typeof message === 'string' ? message : 'Failed to save notes')
+        }
+        const saved = await res.json()
+        setLatestSharedSave(saved)
+        return saved
+      } catch (err: any) {
+        const message = err?.message || 'Failed to save notes'
+        setLatexSaveError(message)
+        console.warn('Save question notes error', err)
+        return null
+      } finally {
+        setIsSavingLatex(false)
+      }
+    },
+    [adminSteps, canPersistLatex, isAdmin, isLessonAuthoring, normalizeStepLatex, sessionKey, useAdminStepComposer]
+  )
+
+  useEffect(() => {
+    if (!finishQuestionModalOpen) return
+    if (typeof window === 'undefined') return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFinishQuestionModalOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [finishQuestionModalOpen])
+
+  const confirmFinishQuestionSave = useCallback(async () => {
+    if (!finishQuestionNoteId) return
+    const title = String(finishQuestionTitle || '').trim()
+    if (!title) {
+      setLatexSaveError('Title is required.')
+      return
+    }
+    const saved = await saveQuestionAsNotes({ title, noteId: finishQuestionNoteId })
+    if (!saved) return
+
+    setFinishQuestionModalOpen(false)
+    setFinishQuestionNoteId(null)
+
+    // Start the next question on a clean slate.
+    try {
+      setLatexDisplayState(curr => ({ ...curr, latex: '' }))
+    } catch {}
+    try {
+      setStackedNotesState(curr => ({ ...curr, latex: '' }))
+    } catch {}
+    clearEverything()
+  }, [clearEverything, finishQuestionNoteId, finishQuestionTitle, saveQuestionAsNotes])
+
   useEffect(() => {
     fetchLatexSaves()
     return () => {
@@ -7084,8 +7229,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     if (canPersistLatex) return
-    setLatestSharedLatex(null)
-    setLatestPersonalLatex(null)
+    setLatestSharedSave(null)
+    setLatestPersonalSave(null)
     setLatexSaveError(null)
     lastSavedHashRef.current = null
   }, [canPersistLatex])
@@ -7110,10 +7255,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
-      const value = scope === 'shared' ? latestSharedLatex : latestPersonalLatex
-      applyLoadedLatex(value || null)
+      const save = scope === 'shared' ? latestSharedSave : latestPersonalSave
+      if (!save) return
+      // If this note is a saved "question" payload, restore the editable step composer for admins.
+      const payload: any = (save as any)?.payload
+      if (isAdmin && useAdminStepComposer && payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
+        const steps = payload.steps
+          .filter((s: any) => s && typeof s === 'object')
+          .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
+          .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
+
+        setAdminSteps(steps)
+        setAdminEditIndex(null)
+        setAdminDraftLatex('')
+        setTopPanelSelectedStep(null)
+        try {
+          editorInstanceRef.current?.clear?.()
+        } catch {}
+        lastSymbolCountRef.current = 0
+        lastBroadcastBaseCountRef.current = 0
+        // Also keep the LaTeX panel in sync with the loaded note.
+        applyLoadedLatex(save.latex || null)
+        return
+      }
+      applyLoadedLatex(save.latex || null)
     },
-    [applyLoadedLatex, latestPersonalLatex, latestSharedLatex]
+    [applyLoadedLatex, isAdmin, latestPersonalSave, latestSharedSave, useAdminStepComposer]
   )
 
   // On mount or layout change, pick a conservative default scale for student stacked view so full content is visible on small screens.
@@ -7562,7 +7729,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     type="button"
                     className="px-2 py-1 text-slate-700 disabled:opacity-50"
                     onClick={() => handleLoadSavedLatex('shared')}
-                    disabled={!latestSharedLatex}
+                    disabled={!latestSharedSave}
                   >
                     Load class
                   </button>
@@ -7570,7 +7737,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     type="button"
                     className="px-2 py-1 text-slate-700 disabled:opacity-50"
                     onClick={() => handleLoadSavedLatex('mine')}
-                    disabled={!latestPersonalLatex}
+                    disabled={!latestPersonalSave}
                   >
                     Load my save
                   </button>
@@ -8060,7 +8227,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               type="button"
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               onClick={() => handleLoadSavedLatex('shared')}
-                              disabled={!latestSharedLatex}
+                              disabled={!latestSharedSave}
                             >
                               Load class
                             </button>
@@ -8068,7 +8235,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               type="button"
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               onClick={() => handleLoadSavedLatex('mine')}
-                              disabled={!latestPersonalLatex}
+                              disabled={!latestPersonalSave}
                             >
                               Load my notes
                             </button>
@@ -8234,6 +8401,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       if (lockedOutRef.current) return
                       if (adminSendingStep) return
 
+                      if (isAdmin && useAdminStepComposer && !isAssignmentSolutionAuthoring) {
+                        const emptyCanvas = isEditorEmptyNow()
+                        const emptyLine = isCurrentLineEmptyNow()
+                        if (emptyCanvas && emptyLine && adminSteps.length > 0) {
+                          const noteId = createSessionNoteId()
+                          setFinishQuestionNoteId(noteId)
+                          setFinishQuestionTitle(prettyPrintTitleFromLatex(adminSteps[0]?.latex || ''))
+                          setLatexSaveError(null)
+                          setFinishQuestionModalOpen(true)
+                          return
+                        }
+                      }
+
                       // Reset the manual horizontal scrollbar to the start whenever a step is sent.
                       // (Keeps the next step starting from the left.)
                       try {
@@ -8308,7 +8488,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear && !(useAdminStepComposer && adminSteps.length > 0))) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
                     >
                       <span className="sr-only">Send</span>
                       <svg
@@ -9642,7 +9822,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               type="button"
               className="btn btn-ghost btn-xs"
               onClick={() => handleLoadSavedLatex('shared')}
-              disabled={!latestSharedLatex}
+              disabled={!latestSharedSave}
             >
               Load class notes
             </button>
@@ -9724,6 +9904,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
       </div>
+
+      {finishQuestionModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Save question as notes"
+          onMouseDown={(e) => {
+            // Click outside to close.
+            if (e.target === e.currentTarget) setFinishQuestionModalOpen(false)
+          }}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-[min(560px,calc(100vw-24px))] rounded-lg bg-white shadow-lg border border-slate-200 p-4">
+            <div className="text-sm font-semibold text-slate-800">Save As</div>
+            <div className="text-xs text-slate-600 mt-1">
+              Saves the full question (all top steps) into Notes.
+            </div>
+
+            <form
+              className="mt-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void confirmFinishQuestionSave()
+              }}
+            >
+              <label className="block text-xs font-medium text-slate-700">Title</label>
+              <input
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={finishQuestionTitle}
+                onChange={(e) => setFinishQuestionTitle(e.target.value)}
+                autoFocus
+                placeholder="e.g. Solve for x"
+              />
+
+              {latexSaveError && (
+                <div className="mt-2 text-xs text-red-600">{latexSaveError}</div>
+              )}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setFinishQuestionModalOpen(false)}
+                  disabled={isSavingLatex}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-sm"
+                  disabled={isSavingLatex || !finishQuestionNoteId}
+                >
+                  {isSavingLatex ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
 
 

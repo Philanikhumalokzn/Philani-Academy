@@ -3860,12 +3860,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const isSharedPage = pageIndex === sharedPageIndexRef.current
           const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
-          if (!snapshot) return
-          if (snapshot.version === lastAppliedRemoteVersionRef.current) return
-          // Update local symbol count tracking for accurate delta math for remote peers.
-          lastSymbolCountRef.current = countSymbols(snapshot.symbols)
-          if (canSend) {
-            broadcastSnapshot(false)
+          if (snapshot) {
+            // Update local symbol count tracking for accurate delta math for remote peers.
+            lastSymbolCountRef.current = countSymbols(snapshot.symbols)
+            if (snapshot.version !== lastAppliedRemoteVersionRef.current) {
+              if (canSend) {
+                broadcastSnapshot(false)
+              }
+            }
           }
 
           // Step-composer mode (teacher, or selected student in normal shared sessions):

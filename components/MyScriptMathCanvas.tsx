@@ -3412,8 +3412,74 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [userDisplayName]
   )
 
+  const controllerLatexMirrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastControllerLatexMirrorRef = useRef<{ latex: string; ts: number }>({ latex: '', ts: 0 })
+  const publishControllerLatexMirrorToAdmins = useCallback(
+    (latex: string, options: LatexDisplayOptions) => {
+      // Requirement: when a learner has exclusive control, the teacher/admin must only RECEIVE
+      // the controlling learner's recognized (typeset) LaTeX in realtime (one-way sync).
+      if (isAdmin) return
+      if (lockedOutRef.current) return
+      if (!hasExclusiveControlRef.current) return
+
+      const channel = channelRef.current
+      if (!channel) return
+
+      const targets = connectedClients.filter(c => Boolean(c?.isAdmin) && Boolean(c?.clientId) && c.clientId !== clientIdRef.current)
+      if (!targets.length) return
+
+      const trimmed = String(latex || '').trim()
+      const now = Date.now()
+      if (trimmed === lastControllerLatexMirrorRef.current.latex && now - lastControllerLatexMirrorRef.current.ts < 120) {
+        return
+      }
+
+      if (controllerLatexMirrorTimeoutRef.current) {
+        clearTimeout(controllerLatexMirrorTimeoutRef.current)
+        controllerLatexMirrorTimeoutRef.current = null
+      }
+
+      controllerLatexMirrorTimeoutRef.current = setTimeout(() => {
+        controllerLatexMirrorTimeoutRef.current = null
+        if (lockedOutRef.current) return
+        if (!hasExclusiveControlRef.current) return
+
+        const ts = Date.now()
+        lastControllerLatexMirrorRef.current = { latex: trimmed, ts }
+
+        for (const t of targets) {
+          channel
+            .publish('control', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              action: 'latex-display',
+              enabled: true,
+              latex: trimmed,
+              options,
+              targetClientId: t.clientId,
+              ts,
+            })
+            .catch(err => console.warn('Failed to mirror controller LaTeX to admin', err))
+        }
+      }, 80)
+    },
+    [connectedClients, isAdmin, userDisplayName]
+  )
+
+  useEffect(() => {
+    return () => {
+      if (controllerLatexMirrorTimeoutRef.current) {
+        clearTimeout(controllerLatexMirrorTimeoutRef.current)
+        controllerLatexMirrorTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!isAdmin) return
+    // When the teacher/admin is view-only (a learner has control), the LaTeX display is driven
+    // by the controlling learner. Do not overwrite it by echoing `latexOutput`.
+    if (lockedOutRef.current) return
     if (!latexDisplayStateRef.current.enabled) return
     const trimmed = (latexOutput || '').trim()
     if (trimmed === latexDisplayStateRef.current.latex) return
@@ -4161,6 +4227,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (isAdmin && isBroadcastPausedRef.current) {
             return
           }
+          // Admin view-only mode (learner has control): mirror LaTeX only.
+          if (isAdmin && lockedOutRef.current) {
+            return
+          }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
           const senderId = (data.originClientId || data.clientId || '').toString()
@@ -4175,6 +4245,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           // Admin: if broadcast is paused, ignore incoming sync states
           if (isAdmin && isBroadcastPausedRef.current) {
+            return
+          }
+          // Admin view-only mode (learner has control): mirror LaTeX only.
+          if (isAdmin && lockedOutRef.current) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -4415,12 +4489,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'latex-display') {
+            if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
             if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             const enabled = Boolean(data.enabled)
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
             setLatexDisplayState({ enabled, latex, options })
             if (!isAdmin) {
+              setLatexProjectionOptions(options)
+            } else if (lockedOutRef.current) {
+              // Teacher view-only mode: rendering should match the controlling student's display.
               setLatexProjectionOptions(options)
             }
             if (!isAdmin) {
@@ -5235,6 +5313,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const toggleLatexProjection = async () => {
     if (!isAdmin) return
+    if (lockedOutRef.current) return
     const nextEnabled = !latexDisplayStateRef.current.enabled
     const latex = nextEnabled ? (latexOutput || '').trim() : ''
     const options = latexProjectionOptionsRef.current
@@ -5244,6 +5323,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const updateLatexProjectionOptions = useCallback(
     (partial: Partial<LatexDisplayOptions>) => {
+      if (lockedOutRef.current) return
       setLatexProjectionOptions(prev => {
         const next = sanitizeLatexOptions({ ...prev, ...partial })
         if (latexDisplayStateRef.current.enabled) {
@@ -5258,6 +5338,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const forcePublishCanvas = async (targetClientId?: string) => {
     if (!isAdmin) return
+    if (lockedOutRef.current) return
     const channel = channelRef.current
     if (!channel) return
     const snapshot = captureFullSnapshot()
@@ -5617,6 +5698,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionRenderSource = (isAdminLike && useStackedStudentLayout)
     ? stableAdminStackedLatexRenderSource
     : latexRenderSource
+
+  const controllerMirrorWasActiveRef = useRef(false)
+  useEffect(() => {
+    // Only the controlling student should drive the admin's top-panel LaTeX.
+    if (isAdmin) return
+
+    const isActive = Boolean(!lockedOutRef.current && hasExclusiveControlRef.current)
+    if (isActive) {
+      publishControllerLatexMirrorToAdmins(latexProjectionRenderSource, latexRenderOptions)
+    } else if (controllerMirrorWasActiveRef.current) {
+      // Best-effort: when control ends, release the admin display.
+      const channel = channelRef.current
+      if (channel) {
+        const targets = connectedClients.filter(c => Boolean(c?.isAdmin) && Boolean(c?.clientId) && c.clientId !== clientIdRef.current)
+        const ts = Date.now()
+        for (const t of targets) {
+          channel
+            .publish('control', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              action: 'latex-display',
+              enabled: false,
+              latex: '',
+              options: latexRenderOptions,
+              targetClientId: t.clientId,
+              ts,
+            })
+            .catch(() => {})
+        }
+      }
+    }
+    controllerMirrorWasActiveRef.current = isActive
+  }, [connectedClients, isAdmin, latexProjectionRenderSource, latexRenderOptions, publishControllerLatexMirrorToAdmins, userDisplayName])
 
   useEffect(() => {
     if (!useStepComposer) return

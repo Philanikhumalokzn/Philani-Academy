@@ -3508,7 +3508,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       } else if (isFullSnapshot) {
         applied = await rebuildFromSnapshot(incomingSymbolCount)
       } else if (hasBaseMetadata && typeof baseCount === 'number') {
-        if (incomingSymbolCount < baseCount || baseCount > previousCount) {
+        // If our local symbol count doesn't match the sender's declared base, histories have diverged
+        // (common case: sender cleared locally between steps). Rebuild from the full snapshot instead of
+        // applying a delta that would append onto stale ink.
+        if (incomingSymbolCount < baseCount || baseCount !== previousCount) {
           applied = await rebuildFromSnapshot(incomingSymbolCount)
         } else {
           applied = await applyDelta(baseCount)
@@ -3879,6 +3882,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // Step-composer mode (teacher, or selected student in normal shared sessions):
           // keep a live typeset preview updated without mutating the ink.
           if (useStepComposer) {
+            // When this client is view-only (e.g., teacher while a student has exclusive control),
+            // do not attempt to compute a local draft preview from remote ink. In that mode the
+            // top panel should follow the authoritative controller via stacked-notes broadcast.
+            if (lockedOutRef.current) {
+              return
+            }
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
@@ -5511,9 +5520,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
       if (composed) return composed
+      // If there are no local steps/draft:
+      // - When the teacher is view-only (student has control), follow the authoritative controller preview.
+      // - Otherwise (teacher is the editor), keep the normal teacher display fallback.
+      if (isAdmin) {
+        if (isViewOnly) {
+          return (stackedNotesState.latex || latexDisplayState.latex || latexOutput || '').trim()
+        }
+        return (latexDisplayState.latex || latexOutput || '').trim()
+      }
+
       // Student controller handoff: keep showing the existing shared preview until
       // the local composer state is seeded.
-      return (isAdmin ? (latexDisplayState.latex || '') : (stackedNotesState.latex || latexDisplayState.latex || '')).trim()
+      return (stackedNotesState.latex || latexDisplayState.latex || '').trim()
     }
     if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
@@ -5532,7 +5551,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, isViewOnly, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty

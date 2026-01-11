@@ -4153,7 +4153,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         await channel.attach()
 
         const handleStroke = (message: any) => {
+          // Non-admin: if latex projection is enabled on their screen, ignore incoming strokes
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
+            return
+          }
+          // Admin: if broadcast is paused, ignore incoming strokes
+          if (isAdmin && isBroadcastPausedRef.current) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -4164,7 +4169,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         const handleSyncState = (message: any) => {
+          // Non-admin: if latex projection is enabled on their screen, ignore incoming sync states
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
+            return
+          }
+          // Admin: if broadcast is paused, ignore incoming sync states
+          if (isAdmin && isBroadcastPausedRef.current) {
             return
           }
           const data = message?.data as SnapshotMessage

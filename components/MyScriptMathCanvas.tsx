@@ -7872,25 +7872,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             >
               {!isOverlayMode && !isCompactViewport && canPersistLatex && (
                 <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                      onClick={() => saveLatexSnapshot({ shared: true })}
-                      disabled={isSavingLatex}
-                    >
-                      {isSavingLatex ? 'Saving…' : 'Save for class'}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                      onClick={() => saveLatexSnapshot({ shared: false })}
-                      disabled={isSavingLatex}
-                    >
-                      {isSavingLatex ? 'Saving…' : 'Save my copy'}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                    onClick={() => { void openNotesLibrary() }}
+                    disabled={notesLibraryLoading}
+                  >
+                    {notesLibraryLoading ? 'Loading…' : 'Notes'}
+                  </button>
                   <button
                     type="button"
                     className="px-2 py-1 text-slate-700 disabled:opacity-50"
@@ -8384,10 +8373,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           <button
                             type="button"
                             className="px-2 py-1 text-slate-700 disabled:opacity-50 whitespace-nowrap"
-                            onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
-                            disabled={isSavingLatex}
+                            onClick={() => { void openNotesLibrary() }}
+                            disabled={notesLibraryLoading}
                           >
-                            {isSavingLatex ? 'Saving…' : (isAdmin ? 'Save for class' : 'Save my copy')}
+                            {notesLibraryLoading ? 'Loading…' : 'Notes'}
                           </button>
                         )}
 

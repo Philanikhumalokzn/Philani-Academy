@@ -1351,7 +1351,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
-  const canPresent = Boolean(isAdmin) || hasExclusiveControl
+  const canPresent = !lockedOutRef.current && (Boolean(isAdmin) || hasExclusiveControl)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -1622,11 +1622,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       )
       hasExclusiveControlRef.current = isExclusiveController
       setHasExclusiveControl(isExclusiveController)
-      const hasWriteAccess = Boolean(isAdmin) ||
+      // Exclusive control must lock out everyone except the selected controller.
+      // `next === null` is the default classroom mode: teacher writes, students locked.
+      const hasWriteAccess =
         forceEditableForAssignment ||
         controllerId === clientIdRef.current ||
         controllerId === ALL_STUDENTS_ID ||
-        (controllerUserId && controllerUserId === userId)
+        (controllerUserId && controllerUserId === userId) ||
+        (Boolean(isAdmin) && !controllerId && !controllerUserId)
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -1657,7 +1660,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // Non-admin work during quizzes/assignments is private (no live ink publishing).
     if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) return false
 
-    if (isAdmin) return true
+    if (isAdmin) return !lockedOutRef.current
 
     const controllerId = controlStateRef.current?.controllerId
     const controllerUserId = controlStateRef.current?.controllerUserId
@@ -5140,6 +5143,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!isAdmin) return
     const channel = channelRef.current
     if (!channel) return
+    if (lockedOutRef.current) return
     const latex = (latexOutput || '').trim()
     if (!latex) return
     const ts = Date.now()
@@ -5403,12 +5407,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }
 
-  const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || Boolean(
-    controlState && (
+  const hasWriteAccess = forceEditableForAssignment || Boolean(
+    (controlState && (
       controlState.controllerId === clientId ||
       controlState.controllerId === ALL_STUDENTS_ID ||
       (controlState.controllerUserId && controlState.controllerUserId === userId)
-    )
+    )) ||
+    (Boolean(isAdmin) && (!controlState?.controllerId && !controlState?.controllerUserId))
   )
   const isViewOnly = !hasWriteAccess
 

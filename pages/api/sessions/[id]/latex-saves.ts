@@ -65,13 +65,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'GET') {
+    const takeRaw = Array.isArray(req.query.take) ? req.query.take[0] : req.query.take
+    const takeParsed = takeRaw ? Number(takeRaw) : NaN
+    const take = Number.isFinite(takeParsed) ? Math.min(200, Math.max(1, Math.floor(takeParsed))) : 25
+
     const records = await prisma.latexSave.findMany({
       where: {
         sessionKey,
         OR: [{ shared: true }, { userId: userId ?? '__none__' }],
       },
       orderBy: { updatedAt: 'desc' },
-      take: 25,
+      take,
     })
     const shared = records.filter(r => r.shared)
     const mine = userId ? records.filter(r => !r.shared && r.userId === userId) : []

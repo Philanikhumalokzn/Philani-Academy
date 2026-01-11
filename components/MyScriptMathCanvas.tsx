@@ -961,6 +961,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [finishQuestionTitle, setFinishQuestionTitle] = useState('')
   const [finishQuestionNoteId, setFinishQuestionNoteId] = useState<string | null>(null)
 
+  const [notesLibraryOpen, setNotesLibraryOpen] = useState(false)
+  const [notesLibraryLoading, setNotesLibraryLoading] = useState(false)
+  const [notesLibraryError, setNotesLibraryError] = useState<string | null>(null)
+  const [notesLibraryItems, setNotesLibraryItems] = useState<NotesSaveRecord[]>([])
+
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
   type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number; z?: number; locked?: boolean }
@@ -7034,6 +7039,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const applyLoadedLatex = useCallback((latexValue: string | null) => {
     if (!latexValue) return
     setLatexDisplayState(curr => ({ ...curr, enabled: true, latex: latexValue }))
+    // In stacked mode (students and compact teacher view), the top panel may render from stackedNotesState.
+    // Keep it in sync so loading a note overwrites the display immediately.
+    setStackedNotesState(curr => ({ ...curr, latex: latexValue, ts: Date.now() }))
   }, [])
 
   const fetchLatexSaves = useCallback(async () => {
@@ -7051,6 +7059,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to fetch saved notes', err)
     }
   }, [canPersistLatex, isLessonAuthoring, sessionKey])
+
+  const fetchAllSessionQuestionNotes = useCallback(async () => {
+    if (isLessonAuthoring) return [] as NotesSaveRecord[]
+    if (!canPersistLatex || !sessionKey) return [] as NotesSaveRecord[]
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves?take=200`)
+    if (!res.ok) return [] as NotesSaveRecord[]
+    const data = await res.json().catch(() => null)
+    const shared = Array.isArray(data?.shared) ? data.shared : []
+    const questions = shared.filter((r: any) => r && r.payload && r.payload.kind === 'question-v1')
+    return questions as NotesSaveRecord[]
+  }, [canPersistLatex, isLessonAuthoring, sessionKey])
+
+  const openNotesLibrary = useCallback(async () => {
+    if (!canPersistLatex || !sessionKey) {
+      setNotesLibraryError('Notes are only available inside a scheduled session.')
+      setNotesLibraryItems([])
+      setNotesLibraryOpen(true)
+      return
+    }
+
+    setNotesLibraryOpen(true)
+    setNotesLibraryLoading(true)
+    setNotesLibraryError(null)
+    try {
+      const items = await fetchAllSessionQuestionNotes()
+      setNotesLibraryItems(items)
+    } catch (err: any) {
+      console.warn('Failed to load session notes library', err)
+      setNotesLibraryError(err?.message || 'Failed to load notes')
+      setNotesLibraryItems([])
+    } finally {
+      setNotesLibraryLoading(false)
+    }
+  }, [canPersistLatex, fetchAllSessionQuestionNotes, sessionKey])
 
   const saveLatexSnapshot = useCallback(
     async (options?: { shared?: boolean; auto?: boolean }) => {
@@ -7253,34 +7295,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canPersistLatex, isAdmin, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
+  const applySavedNotesRecord = useCallback((save: NotesSaveRecord) => {
+    if (!save) return
+
+    // Overwrite the current local state.
+    try {
+      editorInstanceRef.current?.clear?.()
+    } catch {}
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+
+    const payload: any = (save as any)?.payload
+    if (isAdmin && useAdminStepComposer && payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
+      const steps = payload.steps
+        .filter((s: any) => s && typeof s === 'object')
+        .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
+        .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
+
+      setAdminSteps(steps)
+      setAdminEditIndex(null)
+      setAdminDraftLatex('')
+      setTopPanelSelectedStep(null)
+    } else if (useAdminStepComposer && isAdmin) {
+      // If a non-question note is loaded in composer mode, clear the step list so the LaTeX panel can take over.
+      setAdminSteps([])
+      setAdminEditIndex(null)
+      setAdminDraftLatex('')
+      setTopPanelSelectedStep(null)
+    }
+
+    applyLoadedLatex((save as any)?.latex || null)
+  }, [applyLoadedLatex, isAdmin, useAdminStepComposer])
+
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
       const save = scope === 'shared' ? latestSharedSave : latestPersonalSave
       if (!save) return
-      // If this note is a saved "question" payload, restore the editable step composer for admins.
-      const payload: any = (save as any)?.payload
-      if (isAdmin && useAdminStepComposer && payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
-        const steps = payload.steps
-          .filter((s: any) => s && typeof s === 'object')
-          .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
-          .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
-
-        setAdminSteps(steps)
-        setAdminEditIndex(null)
-        setAdminDraftLatex('')
-        setTopPanelSelectedStep(null)
-        try {
-          editorInstanceRef.current?.clear?.()
-        } catch {}
-        lastSymbolCountRef.current = 0
-        lastBroadcastBaseCountRef.current = 0
-        // Also keep the LaTeX panel in sync with the loaded note.
-        applyLoadedLatex(save.latex || null)
-        return
-      }
-      applyLoadedLatex(save.latex || null)
+      applySavedNotesRecord(save)
     },
-    [applyLoadedLatex, isAdmin, latestPersonalSave, latestSharedSave, useAdminStepComposer]
+    [applySavedNotesRecord, latestPersonalSave, latestSharedSave]
   )
 
   // On mount or layout change, pick a conservative default scale for student stacked view so full content is visible on small screens.
@@ -7996,24 +8049,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             <button
                               type="button"
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
-                              title="Save notes"
-                              onClick={() => saveLatexSnapshot({ shared: Boolean(isAdmin) })}
-                              disabled={isSavingLatex}
+                              title="Notes"
+                              onClick={() => { void openNotesLibrary() }}
+                              disabled={notesLibraryLoading}
                             >
-                              <span className="sr-only">Save notes</span>
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                width="18"
-                                height="18"
-                                fill="currentColor"
-                                className="text-slate-700"
-                                aria-hidden="true"
-                              >
-                                <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
-                                <path d="M7 12h10v8H7z" opacity="0.2" />
-                                <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
-                              </svg>
+                              <span className="sr-only">Open notes</span>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  width="18"
+                                  height="18"
+                                  fill="currentColor"
+                                  className="text-slate-700"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
+                                  <path d="M7 12h10v8H7z" opacity="0.2" />
+                                  <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
+                                </svg>
                             </button>
 
                             <button
@@ -9970,6 +10023,85 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {notesLibraryOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Session notes"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setNotesLibraryOpen(false)
+          }}
+        >
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+          <div className="relative w-[min(680px,calc(100vw-24px))] max-h-[min(78vh,720px)] rounded-lg bg-slate-50 shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Notes</div>
+                <div className="text-[11px] text-slate-200 mt-0.5">Saved questions for this session</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={() => setNotesLibraryOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-4 overflow-auto">
+              {notesLibraryLoading ? (
+                <div className="text-sm text-slate-600">Loading…</div>
+              ) : notesLibraryError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {notesLibraryError}
+                </div>
+              ) : notesLibraryItems.length === 0 ? (
+                <div className="text-sm text-slate-600">No saved questions yet.</div>
+              ) : (
+                <div className="space-y-2">
+                  {notesLibraryItems.map((item) => {
+                    const updatedAt = (item as any)?.updatedAt
+                    const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="w-full text-left rounded-md border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50"
+                        onClick={() => {
+                          applySavedNotesRecord(item)
+                          setNotesLibraryOpen(false)
+                        }}
+                      >
+                        <div className="text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                          <span className="truncate">{when}</span>
+                          <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-3 border-t border-slate-200 bg-white flex items-center justify-between">
+              <div className="text-[11px] text-slate-500">
+                Selecting a question overwrites your current notes view.
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => { void openNotesLibrary() }}
+                disabled={notesLibraryLoading}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
       )}

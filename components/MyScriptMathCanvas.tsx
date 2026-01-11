@@ -1156,21 +1156,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const was = studentComposerWasActiveRef.current
     studentComposerWasActiveRef.current = active
 
-    // When the student gains or loses exclusive control in a normal shared session,
-    // reset the local step composer so steps never "carry" between different editors.
-    if (active === was) return
-    stepComposerPreviewEpochRef.current += 1
-    if (pendingExportRef.current) {
-      clearTimeout(pendingExportRef.current)
-      pendingExportRef.current = null
+    // When the student gains exclusive control in a normal shared session, do NOT clear the top display.
+    // Instead, seed the composer from the current shared stacked-notes preview so the display stays
+    // identical, and the student can continue from that point.
+    if (active && !was) {
+      stepComposerPreviewEpochRef.current += 1
+      if (pendingExportRef.current) {
+        clearTimeout(pendingExportRef.current)
+        pendingExportRef.current = null
+      }
+
+      const seed = (stackedNotesState.latex || '').trim()
+      const parts = seed
+        ? seed.split(/\\\\/g).map(s => (s || '').trim()).filter(Boolean)
+        : []
+
+      if (parts.length) {
+        setAdminSteps(parts.map(latex => ({ latex, symbols: null })))
+        setAdminDraftLatex('')
+        setAdminEditIndex(null)
+      }
     }
-    setAdminSteps([])
-    setAdminDraftLatex('')
-    setAdminSendingStep(false)
-    setAdminEditIndex(null)
-    clearTopPanelSelection()
-    stepNavRedoStackRef.current = []
-  }, [clearTopPanelSelection, isAdmin, isStudentSharedSessionStepComposer])
+  }, [isAdmin, isStudentSharedSessionStepComposer, stackedNotesState.latex])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -3340,7 +3347,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastStackedNotesBroadcastRef = useRef<{ latex: string; ts: number }>({ latex: '', ts: 0 })
   const publishStackedNotesPreview = useCallback(
     (latex: string, options: LatexDisplayOptions) => {
-      if (!isAdmin) return
+      // The shared top-panel preview must follow whoever currently has write access.
+      // When a student is granted exclusive control, only that student should be able
+      // to publish the stacked-notes preview.
+      if (lockedOutRef.current) return
       const channel = channelRef.current
       if (!channel) return
 
@@ -3357,6 +3367,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       stackedNotesBroadcastTimeoutRef.current = setTimeout(() => {
         stackedNotesBroadcastTimeoutRef.current = null
+
+        if (lockedOutRef.current) return
 
         // Avoid broadcasting a temporary empty string while the teacher is still writing
         // (recognition can lag and would cause students to see the preview blink).
@@ -3377,7 +3389,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           .catch(err => console.warn('Failed to broadcast stacked notes preview', err))
       }, 220)
     },
-    [isAdmin, userDisplayName]
+    [userDisplayName]
   )
 
   useEffect(() => {
@@ -5516,11 +5528,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     : latexRenderSource
 
   useEffect(() => {
-    if (!isAdmin) return
-    if (!useAdminStepComposer) return
+    if (!useStepComposer) return
     if (Date.now() < suppressStackedNotesPreviewUntilTsRef.current) return
     publishStackedNotesPreview(latexRenderSource, latexRenderOptions)
-  }, [isAdmin, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
+  }, [latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
     if (!latexProjectionRenderSource) return ''

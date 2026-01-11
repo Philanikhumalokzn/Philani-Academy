@@ -234,15 +234,6 @@ type SnapshotMessage = {
   targetClientId?: string
 }
 
-type LatexRealtimeMessage = {
-  clientId?: string
-  author?: string
-  latex?: string
-  ts?: number
-  originClientId?: string
-  targetClientId?: string
-}
-
 type ControlState = {
   controllerId: string
   controllerName?: string
@@ -442,7 +433,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin: isAdminRole, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -459,9 +450,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportInFlightRef = useRef(false)
   const studentQuizPreviewEpochRef = useRef(0)
-  const studentLivePreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const studentLivePreviewExportInFlightRef = useRef(false)
-  const studentLivePreviewEpochRef = useRef(0)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
@@ -483,6 +471,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
 
+  // Control state is used to determine whether this client is the current exclusive controller.
+  const [controlState, setControlState] = useState<ControlState>(null)
+
   const [isEraserMode, setIsEraserMode] = useState(false)
   const isEraserModeRef = useRef(false)
   useEffect(() => {
@@ -491,9 +482,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [eraserShimReady, setEraserShimReady] = useState(false)
   const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const eraserLongPressTriggeredRef = useRef(false)
+  const isOverlayMode = uiMode === 'overlay'
+
+  // Live sessions (overlay mode only): the current exclusive controller gets full admin powers.
+  // Outside overlay mode, admin powers remain role-based.
+  const isOverlayExclusiveController = Boolean(
+    isOverlayMode &&
+    controlState &&
+    (String(controlState.controllerId || '').trim() !== ALL_STUDENTS_ID) &&
+    (
+      (controlState.controllerUserId && String(controlState.controllerUserId) === userId) ||
+      (controlState.controllerId && String(controlState.controllerId) === clientIdRef.current)
+    )
+  )
+  const isAdmin = Boolean(isAdminRole) || isOverlayExclusiveController
+
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
-  const isOverlayMode = uiMode === 'overlay'
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -978,28 +983,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isStudentPublishEnabled, setIsStudentPublishEnabled] = useState(false)
   const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
-  const [controlState, setControlState] = useState<ControlState>(null)
   const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
 
-  // Live-session controller flag:
-  // - `isAdmin` means the real teacher/admin role (passed in)
-  // - `isController` means this client is the currently selected exclusive editor (non-admin)
-  // - `isAdminLike` enables teacher-like canvas UX for the active controller without granting
-  //   teacher-only powers (those should stay guarded by `isAdmin`).
-  const controllerId = (controlState?.controllerId || '').trim()
-  const controllerUserId = (typeof controlState?.controllerUserId === 'string' ? controlState.controllerUserId : '').trim()
-  const isController = Boolean(!isAdmin && hasExclusiveControl && (controllerId || controllerUserId) && controllerId !== ALL_STUDENTS_ID)
-  const isAdminLike = Boolean(isAdmin || isController)
-
-  // In normal shared sessions, the controller should get the same "step composer" behaviour as the teacher
-  // (committed steps + a live draft line). We intentionally keep quizzes/assignments on the dedicated flow.
-  const isControllerStepComposer = Boolean(
-    isController &&
+  // In normal shared sessions, the selected student editor should get the same "step composer"
+  // behaviour as the teacher (committed steps + a live draft line).
+  const isStudentSharedSessionStepComposer = Boolean(
+    !isAdmin &&
     useStackedStudentLayout &&
     !quizActive &&
-    !Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
+    !Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId) &&
+    Boolean(controlState) &&
+    (controlState?.controllerId !== ALL_STUDENTS_ID) &&
+    (
+      (controlState?.controllerUserId && controlState.controllerUserId === userId) ||
+      (controlState?.controllerId && controlState.controllerId === clientIdRef.current)
+    )
   )
-  const useStepComposer = Boolean(useAdminStepComposer || isControllerStepComposer)
+  const useStepComposer = Boolean(useAdminStepComposer || isStudentSharedSessionStepComposer)
 
   const currentEditorBadge = useMemo(() => {
     const controllerId = (controlState?.controllerId || '').trim()
@@ -1168,7 +1168,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const studentComposerWasActiveRef = useRef(false)
   useEffect(() => {
     if (isAdmin) return
-    const active = isControllerStepComposer
+    const active = isStudentSharedSessionStepComposer
     const was = studentComposerWasActiveRef.current
     studentComposerWasActiveRef.current = active
 
@@ -1186,7 +1186,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // Seed from whichever is currently visible to avoid losing prior lines on first commit.
       const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
       const parts = seed
-        ? seed.split(/\\\\/g).map(s => (s || '').trim()).filter(Boolean)
+        ? seed.split(/\\/g).map(s => (s || '').trim()).filter(Boolean)
         : []
 
       if (parts.length) {
@@ -1195,7 +1195,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setAdminEditIndex(null)
       }
     }
-  }, [isAdmin, isControllerStepComposer, stackedNotesState.latex, latexDisplayState.latex])
+  }, [isAdmin, isStudentSharedSessionStepComposer, stackedNotesState.latex, latexDisplayState.latex])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -1382,8 +1382,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const suppressStackedNotesPreviewUntilTsRef = useRef(0)
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
-  const studentLatexToAdminBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastStudentLatexToAdminBroadcastRef = useRef<{ latex: string; ts: number }>({ latex: '', ts: 0 })
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
@@ -3426,81 +3424,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [userDisplayName]
   )
 
-  const publishStudentLatexToAdmins = useCallback(
-    (latex: string) => {
-      // Only students (non-admin) should push their live LaTeX to the teacher.
-      if (isAdmin) return
-      // Respect privacy: do not live-stream LaTeX during quizzes/assignment views.
-      if (quizActiveRef.current || isAssignmentViewRef.current) return
-      // Only the current controller should publish.
-      if (lockedOutRef.current) return
-      if (!studentCanPublish()) return
-      // Avoid ambiguity when multiple writers exist.
-      if (!isExclusiveControlModeActive()) return
-      // Only publish for the shared page unless forced.
-      if (pageIndex !== sharedPageIndexRef.current) return
-
-      const channel = channelRef.current
-      if (!channel) return
-
-      const trimmed = (latex || '').trim()
-      const now = Date.now()
-      if (trimmed === lastStudentLatexToAdminBroadcastRef.current.latex && now - lastStudentLatexToAdminBroadcastRef.current.ts < 250) {
-        return
-      }
-
-      if (studentLatexToAdminBroadcastTimeoutRef.current) {
-        clearTimeout(studentLatexToAdminBroadcastTimeoutRef.current)
-        studentLatexToAdminBroadcastTimeoutRef.current = null
-      }
-
-      studentLatexToAdminBroadcastTimeoutRef.current = setTimeout(() => {
-        studentLatexToAdminBroadcastTimeoutRef.current = null
-        if (lockedOutRef.current) return
-        if (!studentCanPublish()) return
-        if (!isExclusiveControlModeActive()) return
-        if (pageIndex !== sharedPageIndexRef.current) return
-
-        // Avoid spamming an empty string while ink exists (recognition can lag).
-        const symbolCount = lastSymbolCountRef.current
-        if (!trimmed && symbolCount > 0) return
-
-        const ts = Date.now()
-        lastStudentLatexToAdminBroadcastRef.current = { latex: trimmed, ts }
-
-        const adminTargets = connectedClients
-          .filter(c => Boolean(c?.isAdmin) && Boolean(c?.clientId) && c.clientId !== clientIdRef.current)
-          .map(c => c.clientId)
-
-        if (!adminTargets.length) return
-
-        for (const targetClientId of adminTargets) {
-          channel
-            .publish('latex', {
-              clientId: clientIdRef.current,
-              author: userDisplayName,
-              latex: trimmed,
-              ts,
-              originClientId: clientIdRef.current,
-              targetClientId,
-            } satisfies LatexRealtimeMessage)
-            .catch(err => console.warn('Failed to publish student LaTeX to admin', err))
-        }
-      }, 240)
-    },
-    [connectedClients, isAdmin, pageIndex, studentCanPublish, userDisplayName]
-  )
-
-  // When a student has exclusive control and is NOT in step-composer mode,
-  // push their full LaTeX to the teacher's top display.
-  useEffect(() => {
-    if (isAdmin) return
-    if (useStepComposer) return
-    publishStudentLatexToAdmins(latexOutput)
-    // Also keep the shared top-panel preview in sync for admin view-only mode.
-    publishStackedNotesPreview(latexOutput, latexProjectionOptionsRef.current)
-  }, [isAdmin, latexOutput, publishStackedNotesPreview, publishStudentLatexToAdmins, useStepComposer])
-
   useEffect(() => {
     if (!isAdmin) return
     if (!latexDisplayStateRef.current.enabled) return
@@ -3597,10 +3520,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       } else if (isFullSnapshot) {
         applied = await rebuildFromSnapshot(incomingSymbolCount)
       } else if (hasBaseMetadata && typeof baseCount === 'number') {
-        // If our local symbol count doesn't match the sender's declared base, histories have diverged
-        // (common case: sender cleared locally between steps). Rebuild from the full snapshot instead of
-        // applying a delta that would append onto stale ink.
-        if (incomingSymbolCount < baseCount || baseCount !== previousCount) {
+        if (incomingSymbolCount < baseCount || baseCount > previousCount) {
           applied = await rebuildFromSnapshot(incomingSymbolCount)
         } else {
           applied = await applyDelta(baseCount)
@@ -3945,7 +3865,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
           const now = Date.now()
-          const suppressBroadcast = now < suppressBroadcastUntilTsRef.current
+          if (now < suppressBroadcastUntilTsRef.current) {
+            return
+          }
           // Respect assignment override + general lock state.
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
@@ -3954,12 +3876,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend =
-            (isAdmin || studentCanPublish()) &&
-            isSharedPage &&
-            !isBroadcastPausedRef.current &&
-            !lockedOutRef.current &&
-            !suppressBroadcast
+          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (snapshot) {
             // Update local symbol count tracking for accurate delta math for remote peers.
@@ -3974,12 +3891,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // Step-composer mode (teacher, or selected student in normal shared sessions):
           // keep a live typeset preview updated without mutating the ink.
           if (useStepComposer) {
-            // When this client is view-only (e.g., teacher while a student has exclusive control),
-            // do not attempt to compute a local draft preview from remote ink. In that mode the
-            // top panel should follow the authoritative controller via stacked-notes broadcast.
-            if (lockedOutRef.current) {
-              return
-            }
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
@@ -4007,38 +3918,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   previewExportInFlightRef.current = false
                 })
             }, 450)
-          }
-
-          // Student (normal) stacked layout: keep a live LaTeX preview updated while the learner writes.
-          // This is separate from quiz/assignment mode, which uses its own preview/export loop.
-          if (!isAdmin && useStackedStudentLayout && !quizActiveRef.current && !isAssignmentViewRef.current) {
-            // If view-only (teacher has exclusive control), the top panel should follow remote stacked-notes.
-            if (lockedOutRef.current) {
-              return
-            }
-            if (studentLivePreviewExportRef.current) {
-              clearTimeout(studentLivePreviewExportRef.current)
-            }
-            const epochAtSchedule = studentLivePreviewEpochRef.current
-            studentLivePreviewExportRef.current = setTimeout(() => {
-              studentLivePreviewExportRef.current = null
-              if (studentLivePreviewExportInFlightRef.current) return
-              studentLivePreviewExportInFlightRef.current = true
-              ;(async () => {
-                if (epochAtSchedule !== studentLivePreviewEpochRef.current) return
-                let latexValue = getLatexFromEditorModel()
-                if (!latexValue || latexValue.trim().length === 0) {
-                  const exported = await exportLatexFromEditor()
-                  latexValue = typeof exported === 'string' ? exported : ''
-                }
-                if (cancelled) return
-                if (epochAtSchedule !== studentLivePreviewEpochRef.current) return
-                setLatexOutput(latexValue)
-              })()
-                .finally(() => {
-                  studentLivePreviewExportInFlightRef.current = false
-                })
-            }, 320)
           }
 
           // Student quiz/assignment mode: show a live LaTeX preview while the learner writes.
@@ -4274,12 +4153,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         await channel.attach()
 
         const handleStroke = (message: any) => {
-          // Non-admin: if latex projection is enabled on their screen, ignore incoming strokes
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
-            return
-          }
-          // Admin: if broadcast is paused, ignore incoming strokes
-          if (isAdmin && isBroadcastPausedRef.current) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -4290,12 +4164,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         const handleSyncState = (message: any) => {
-          // Non-admin: if latex projection is enabled on their screen, ignore incoming sync states
           if (!isAdmin && latexDisplayStateRef.current.enabled) {
-            return
-          }
-          // Admin: if broadcast is paused, ignore incoming sync states
-          if (isAdmin && isBroadcastPausedRef.current) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -4620,14 +4489,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         const handleLatexMessage = (message: any) => {
-          const data = message?.data as LatexRealtimeMessage
-          if (!data || data.clientId === clientIdRef.current) return
-          if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
-          const senderId = (data.originClientId || data.clientId || '').toString()
-          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(senderId)) return
-
-          // Allow empty strings so remote clears can propagate.
+          const data = message?.data as { latex?: string; ts?: number; clientId?: string }
           const latex = typeof data?.latex === 'string' ? data.latex : ''
+          if (!latex) return
+          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
           const msgTs = typeof message?.timestamp === 'number' ? message.timestamp : data?.ts ?? Date.now()
           if (msgTs < lastLatexBroadcastTsRef.current) return
           lastLatexBroadcastTsRef.current = msgTs
@@ -4744,7 +4609,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Presence tracking (simplified; no broadcaster election)
         try {
-          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin), userId })
+          // Presence should reflect the *role* admin status to avoid confusing the roster UI.
+          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdminRole), userId })
           const members = await channel.presence.get()
           const normalizePresenceName = (value: any) => String(value || '').trim().replace(/\s+/g, ' ')
           const toPresenceClient = (m: any) => ({
@@ -5099,7 +4965,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       editorInstanceRef.current.undo()
     } catch {}
     // Students need immediate propagation so the teacher sees undo/redo reliably.
-    broadcastSnapshot(!isAdminLike)
+    broadcastSnapshot(!isAdmin)
 
     // Step-boundary undo: once empty, go to the line above.
     if (!useStepComposer) return
@@ -5125,7 +4991,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       editorInstanceRef.current.redo()
     } catch {}
     // Students need immediate propagation so the teacher sees undo/redo reliably.
-    broadcastSnapshot(!isAdminLike)
+    broadcastSnapshot(!isAdmin)
 
     // Step-boundary redo: when empty, redo to the next line we previously stepped from.
     if (!useStepComposer) return
@@ -5153,7 +5019,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (lockedOutRef.current) return
     setIsConverting(true)
     editorInstanceRef.current.convert()
-    if (isAdminLike && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
+    if (isAdmin && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
       const channel = channelRef.current
       if (channel) {
         channel
@@ -5613,51 +5479,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     )) ||
     (Boolean(isAdmin) && (!controlState?.controllerId && !controlState?.controllerUserId))
   )
+  // Explicit control flags used throughout the component.
+  // `isAdmin` already exists as the role flag; `isController` means "this client currently has write access".
+  const isController = hasWriteAccess
   const isViewOnly = !hasWriteAccess
-
-  // Student stacked-layout: continuously export LaTeX while writing so the top panel preview updates
-  // in realtime (even when the engine doesn't update model.exports on every stroke).
-  useEffect(() => {
-    if (isAdmin) return
-    if (!useStackedStudentLayout) return
-    if (useStepComposer) return
-    if (quizActiveRef.current || isAssignmentViewRef.current) return
-    if (status !== 'ready') return
-    if (isViewOnly) return
-
-    // Nudge epoch so any pending scheduled exports ignore stale runs.
-    studentLivePreviewEpochRef.current += 1
-    const epoch = studentLivePreviewEpochRef.current
-
-    const interval = setInterval(() => {
-      if (studentLivePreviewExportInFlightRef.current) return
-      if (epoch !== studentLivePreviewEpochRef.current) return
-      if (lockedOutRef.current) return
-      if (!canClear) {
-        // No ink -> clear preview.
-        if (latexOutput) setLatexOutput('')
-        return
-      }
-
-      studentLivePreviewExportInFlightRef.current = true
-      ;(async () => {
-        let latexValue = getLatexFromEditorModel()
-        if (!latexValue || latexValue.trim().length === 0) {
-          const exported = await exportLatexFromEditor()
-          latexValue = typeof exported === 'string' ? exported : ''
-        }
-        if (epoch !== studentLivePreviewEpochRef.current) return
-        setLatexOutput(latexValue)
-      })()
-        .finally(() => {
-          studentLivePreviewExportInFlightRef.current = false
-        })
-    }, 450)
-
-    return () => {
-      clearInterval(interval)
-    }
-  }, [canClear, exportLatexFromEditor, getLatexFromEditorModel, isAdmin, isViewOnly, latexOutput, status, useStackedStudentLayout, useStepComposer])
 
   useEffect(() => {
     if (isViewOnly) {
@@ -5690,48 +5515,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useStepComposer) {
-      // Sometimes recognition updates `latexOutput` before the debounced step-composer draft state
-      // (`adminDraftLatex`) is set. Use `latexOutput` as a best-effort draft fallback so the active
-      // controller can always see a live preview while writing.
-      const draftFallback = (() => {
-        if (adminDraftLatex) return ''
-        if (isAdmin && isViewOnly) return ''
-        const raw = (latexOutput || '').trim()
-        if (!raw) return ''
-        // Only treat this as a draft while there is ink on the canvas.
-        if (!canClear) return ''
-        return normalizeStepLatex(raw)
-      })()
-
       const lines = adminSteps.map(s => s.latex)
       if (adminEditIndex !== null) {
-        const nextDraft = adminDraftLatex || draftFallback
-        if (nextDraft) {
-          lines[adminEditIndex] = nextDraft
+        if (adminDraftLatex) {
+          lines[adminEditIndex] = adminDraftLatex
         }
-      } else {
-        const nextDraft = adminDraftLatex || draftFallback
-        if (nextDraft) {
-          lines.push(nextDraft)
-        }
+      } else if (adminDraftLatex) {
+        lines.push(adminDraftLatex)
       }
       const composed = lines.filter(Boolean).join(' \\\\ ').trim()
       // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
       if (composed) return composed
-      // If there are no local steps/draft:
-      // - When the teacher is view-only (student has control), follow the authoritative controller preview.
-      // - Otherwise (teacher is the editor), keep the normal teacher display fallback.
-      if (isAdmin) {
-        if (isViewOnly) {
-          return (stackedNotesState.latex || latexDisplayState.latex || latexOutput || '').trim()
-        }
-        return (latexDisplayState.latex || latexOutput || '').trim()
-      }
-
       // Student controller handoff: keep showing the existing shared preview until
       // the local composer state is seeded.
-      return (stackedNotesState.latex || latexDisplayState.latex || '').trim()
+      return (isAdmin ? (latexDisplayState.latex || '') : (stackedNotesState.latex || latexDisplayState.latex || '')).trim()
     }
     if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
@@ -5747,15 +5545,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (latexDisplayState.latex || latexOutput || '').trim()
     }
     if (useStackedStudentLayout) {
-      // Students should see their own live preview while writing.
-      if (!lockedOutRef.current && studentCanPublish()) {
-        const local = (latexOutput || '').trim()
-        if (local) return local
-      }
-      return (stackedNotesState.latex || latexOutput || '').trim()
+      return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, canClear, isAdmin, isAssignmentView, isViewOnly, latexDisplayState.latex, latexOutput, normalizeStepLatex, stackedNotesState.latex, studentCommittedLatex, studentCanPublish, useStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -5763,7 +5556,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [stableAdminStackedLatexRenderSource, setStableAdminStackedLatexRenderSource] = useState('')
   const stableAdminStackedLatexRenderSourceRef = useRef('')
   useEffect(() => {
-    if (!isAdminLike) return
+    if (!isAdmin) return
     if (!useStackedStudentLayout) return
 
     const next = (latexRenderSource || '').trim()
@@ -5786,9 +5579,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       stableAdminStackedLatexRenderSourceRef.current = ''
       setStableAdminStackedLatexRenderSource('')
     }
-  }, [adminSteps.length, isAdminLike, latexRenderSource, useStepComposer, useStackedStudentLayout])
+  }, [adminSteps.length, isAdmin, latexRenderSource, useStepComposer, useStackedStudentLayout])
 
-  const latexProjectionRenderSource = (isAdminLike && useStackedStudentLayout)
+  const latexProjectionRenderSource = (isAdmin && useStackedStudentLayout)
     ? stableAdminStackedLatexRenderSource
     : latexRenderSource
 
@@ -5830,15 +5623,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [latexRenderOptions.alignAtEquals, latexProjectionRenderSource])
 
   const adminTopPanelStepItems = useMemo(() => {
-    if (!isAdminLike) return [] as Array<{ index: number; latex: string }>
+    if (!isAdmin) return [] as Array<{ index: number; latex: string }>
     if (!topPanelEditingMode) return [] as Array<{ index: number; latex: string }>
 
-    if (!useStepComposer) return []
+    if (!useAdminStepComposer) return []
     return adminSteps.map((s, index) => {
       const latex = (adminEditIndex === index ? adminDraftLatex : (s?.latex || '')).trimEnd()
       return { index, latex }
     })
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdminLike, topPanelEditingMode, useStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, topPanelEditingMode, useAdminStepComposer])
 
   const renderLatexStepInline = useCallback((latex: string) => {
     if (!latex) return ''
@@ -8384,7 +8177,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </div>
                     </button>
                   )}
-                  {isAdminLike ? (
+                  {isAdmin ? (
                     topPanelEditingMode ? (
                       adminTopPanelStepItems.length ? (
                         <div
@@ -8460,11 +8253,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           style={latexOverlayStyle}
                           dangerouslySetInnerHTML={{ __html: latexProjectionMarkup }}
                         />
-                      ) : isAssignmentView ? null : !isAdmin && !isViewOnly ? (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <p className="text-slate-500 text-sm text-center">Write below to see your LaTeX preview here.</p>
-                        </div>
-                      ) : (
+                      ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
                         </div>
@@ -9134,7 +8923,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             clearTimeout(eraserLongPressTimeoutRef.current)
                             eraserLongPressTimeoutRef.current = null
                           }
-                          if (isAdminLike) {
+                          if (isAdmin) {
                             // Admin-only: long press opens the old canvas controls (replaces the gear icon).
                             eraserLongPressTimeoutRef.current = setTimeout(() => {
                               eraserLongPressTimeoutRef.current = null
@@ -9250,10 +9039,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           // Student controller handoff: if the composer hasn't been seeded yet
                           // (effects can lag behind a fast tap), preserve any existing top display
                           // as committed steps before appending the new line.
-                          if (!isAdmin && isControllerStepComposer && adminEditIndex === null && next.length === 0) {
+                          if (!isAdmin && isStudentSharedSessionStepComposer && adminEditIndex === null && next.length === 0) {
                             const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
                             const parts = seed
-                              ? seed.split(/\\\\/g).map(s => (s || '').trim()).filter(Boolean)
+                              ? seed.split(/\\/g).map(s => (s || '').trim()).filter(Boolean)
                               : []
                             if (parts.length) {
                               next = parts.map(latex => ({ latex, symbols: null }))
@@ -9279,10 +9068,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         }
 
                         // Clear handwriting for next step without broadcasting a global clear.
-                        // Only suppress long enough to swallow the editor.clear() changed events.
-                        // If we suppress too long, the controller won't see a live preview while
-                        // starting the next line.
-                        suppressBroadcastUntilTsRef.current = Date.now() + 250
+                        suppressBroadcastUntilTsRef.current = Date.now() + 1200
                         try {
                           editor.clear?.()
                         } catch {}
@@ -9294,7 +9080,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }}
                       disabled={(() => {
                         if (status !== 'ready' || Boolean(fatalError)) return true
-                        if (isAdminLike) {
+                        if (isAdmin) {
                           return Boolean(adminSendingStep || (!adminDraftLatex && !canClear))
                         }
 

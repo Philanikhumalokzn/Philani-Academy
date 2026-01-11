@@ -1677,6 +1677,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return controllerId === clientIdRef.current
   }, [isAdmin, userId])
 
+  const isExclusiveControlModeActive = useCallback(() => {
+    const controllerId = (controlStateRef.current?.controllerId || '').trim()
+    if (!controllerId) return false
+    if (controllerId === ALL_STUDENTS_ID) return false
+    return true
+  }, [])
+
+  const isAuthoritativeInboundSender = useCallback((senderClientId?: string | null) => {
+    const controllerId = (controlStateRef.current?.controllerId || '').trim()
+    if (!controllerId) return true
+    if (controllerId === ALL_STUDENTS_ID) return true
+    return Boolean(senderClientId && String(senderClientId) === controllerId)
+  }, [])
+
   const clearOverlayAutoHide = useCallback(() => {
     if (overlayHideTimeoutRef.current) {
       clearTimeout(overlayHideTimeoutRef.current)
@@ -4076,7 +4090,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          if (isAdmin && connected && pendingPublishQueueRef.current.length && channelRef.current) {
+          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
+            if (lockedOutRef.current) return
+            if (!(isAdmin || studentCanPublish())) return
             const toSend = [...pendingPublishQueueRef.current]
             pendingPublishQueueRef.current = []
             for (const rec of toSend) {
@@ -4120,6 +4136,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
+          const senderId = (data.originClientId || data.clientId || '').toString()
+          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(senderId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -4129,12 +4147,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
+          const senderId = (data.originClientId || data.clientId || '').toString()
+          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(senderId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
+          // In exclusive-control mode, only the current controller is allowed to respond.
+          if (lockedOutRef.current) return
+          if (isExclusiveControlModeActive() && !(isAdmin || studentCanPublish())) return
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
               return latestSnapshotRef.current
@@ -4350,6 +4373,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'convert') {
+            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             if (isAdmin) return
             if (isBroadcastPausedRef.current) return
             if (!editor) return
@@ -4359,6 +4383,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'latex-display') {
+            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             const enabled = Boolean(data.enabled)
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
@@ -4386,6 +4411,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'stacked-notes') {
+            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
             const ts = data?.ts ?? Date.now()
@@ -4396,6 +4422,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'force-resync') {
+            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
             const snapshot = data.snapshot
             if (snapshot) {
@@ -4416,6 +4443,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'wipe') {
+            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
             editor.clear()
             lastSymbolCountRef.current = 0
@@ -4442,6 +4470,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const data = message?.data as { latex?: string; ts?: number; clientId?: string }
           const latex = typeof data?.latex === 'string' ? data.latex : ''
           if (!latex) return
+          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
           const msgTs = typeof message?.timestamp === 'number' ? message.timestamp : data?.ts ?? Date.now()
           if (msgTs < lastLatexBroadcastTsRef.current) return
           lastLatexBroadcastTsRef.current = msgTs

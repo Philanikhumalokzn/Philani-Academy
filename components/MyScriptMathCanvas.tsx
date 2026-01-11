@@ -1622,25 +1622,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       )
       hasExclusiveControlRef.current = isExclusiveController
       setHasExclusiveControl(isExclusiveController)
-      const hasWriteAccess = (() => {
-        if (forceEditableForAssignment) return true
-
-        // Admin is NOT implicitly editable: exclusive control means only the selected controller
-        // (admin or a student) may write at a time.
-        if (isAdmin) {
-          if (!next) return true
-          if (controllerId === ALL_STUDENTS_ID) return true
-          if (controllerId === clientIdRef.current) return true
-          if (controllerUserId && controllerUserId === userId) return true
-          return false
-        }
-
-        if (!next) return false
-        if (controllerId === ALL_STUDENTS_ID) return true
-        if (controllerId === clientIdRef.current) return true
-        if (controllerUserId && controllerUserId === userId) return true
-        return false
-      })()
+      const hasWriteAccess = Boolean(isAdmin) ||
+        forceEditableForAssignment ||
+        controllerId === clientIdRef.current ||
+        controllerId === ALL_STUDENTS_ID ||
+        (controllerUserId && controllerUserId === userId)
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -1667,8 +1653,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [canPresent])
 
   const studentCanPublish = useCallback(() => {
-    if (lockedOutRef.current) return false
-
     // Publishing rights must follow editing rights on the shared canvas.
     // Non-admin work during quizzes/assignments is private (no live ink publishing).
     if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) return false
@@ -3840,12 +3824,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // Respect assignment override + general lock state.
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
-          if (lockedOutRef.current) {
+          if (!isAdmin && lockedOutRef.current) {
             enforceAuthoritativeSnapshot()
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = studentCanPublish() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -5419,21 +5403,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }
 
-  const hasWriteAccess = (() => {
-    if (forceEditableForAssignment) return true
-    if (isAdmin) {
-      if (!controlState) return true
-      if (controlState.controllerId === ALL_STUDENTS_ID) return true
-      if (controlState.controllerId === clientId) return true
-      if (controlState.controllerUserId && controlState.controllerUserId === userId) return true
-      return false
-    }
-    if (!controlState) return false
-    if (controlState.controllerId === ALL_STUDENTS_ID) return true
-    if (controlState.controllerId === clientId) return true
-    if (controlState.controllerUserId && controlState.controllerUserId === userId) return true
-    return false
-  })()
+  const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || Boolean(
+    controlState && (
+      controlState.controllerId === clientId ||
+      controlState.controllerId === ALL_STUDENTS_ID ||
+      (controlState.controllerUserId && controlState.controllerUserId === userId)
+    )
+  )
   const isViewOnly = !hasWriteAccess
 
   useEffect(() => {

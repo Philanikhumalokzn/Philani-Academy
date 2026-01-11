@@ -3,96 +3,6 @@ import { renderToString } from 'katex'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
-const PHILANI_ERASER_POINTER_TYPE = 'eraser'
-
-function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean): boolean {
-  if (!editor || typeof editor !== 'object') return false
-
-  const tryInstallOn = (candidate: any): boolean => {
-    if (!candidate || typeof candidate !== 'object') return false
-    if ((candidate as any).__philaniEraserShimInstalled) return true
-    if (typeof candidate.onPointerDown !== 'function') return false
-    if (typeof candidate.onPointerMove !== 'function') return false
-    if (typeof candidate.onPointerUp !== 'function') return false
-    // Heuristic: the capture layer object also has an attach() method.
-    if (typeof candidate.attach !== 'function') return false
-
-    const originalDown = candidate.onPointerDown.bind(candidate)
-    const originalMove = candidate.onPointerMove.bind(candidate)
-    const originalUp = candidate.onPointerUp.bind(candidate)
-
-    candidate.onPointerDown = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalDown(next)
-    }
-    candidate.onPointerMove = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalMove(next)
-    }
-    candidate.onPointerUp = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalUp(next)
-    }
-
-    try {
-      ;(candidate as any).__philaniEraserShimInstalled = true
-    } catch {}
-    return true
-  }
-
-  // Fast path: most builds expose a pointer event capture object directly.
-  const directCandidates: any[] = [
-    (editor as any).pointerEvents,
-    (editor as any).pointerEvent,
-    (editor as any)._pointerEvents,
-    (editor as any).pointerEventCapture,
-    (editor as any).pointerCapture,
-    (editor as any).recognizer?.pointerEvents,
-    (editor as any).recognizer?.pointerEvent,
-  ].filter(Boolean)
-  for (const c of directCandidates) {
-    if (tryInstallOn(c)) return true
-  }
-
-  // Best-effort shallow scan of the editor object graph.
-  try {
-    const visited = new Set<any>()
-    const queue: Array<{ value: any; depth: number }> = [{ value: editor, depth: 0 }]
-
-    while (queue.length) {
-      const { value, depth } = queue.shift()!
-      if (!value || typeof value !== 'object') continue
-      if (visited.has(value)) continue
-      visited.add(value)
-
-      if (tryInstallOn(value)) return true
-      if (depth >= 2) continue
-
-      const keys = Object.getOwnPropertyNames(value)
-      for (const k of keys) {
-        if (k === '__proto__') continue
-        let child: any = null
-        try {
-          child = (value as any)[k]
-        } catch {
-          child = null
-        }
-        if (child && typeof child === 'object' && !visited.has(child)) {
-          queue.push({ value: child, depth: depth + 1 })
-        }
-      }
-    }
-  } catch {}
-
-  return false
-}
-
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 const SCRIPT_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.js'
@@ -237,7 +147,6 @@ type SnapshotMessage = {
 type ControlState = {
   controllerId: string
   controllerName?: string
-  controllerUserId?: string
   ts: number
 } | null
 
@@ -286,7 +195,6 @@ type PresenceClient = {
   clientId: string
   name?: string
   isAdmin?: boolean
-  userId?: string
 }
 
 type OverlayControlsHandle = {
@@ -433,7 +341,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin: isAdminRole, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -446,10 +354,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastBroadcastBaseCountRef = useRef(0)
   const pendingBroadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const stepComposerPreviewEpochRef = useRef(0)
   const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportInFlightRef = useRef(false)
-  const studentQuizPreviewEpochRef = useRef(0)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
@@ -470,35 +376,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
-
-  // Control state is used to determine whether this client is the current exclusive controller.
-  const [controlState, setControlState] = useState<ControlState>(null)
-
-  const [isEraserMode, setIsEraserMode] = useState(false)
-  const isEraserModeRef = useRef(false)
-  useEffect(() => {
-    isEraserModeRef.current = isEraserMode
-  }, [isEraserMode])
-  const [eraserShimReady, setEraserShimReady] = useState(false)
-  const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const eraserLongPressTriggeredRef = useRef(false)
-  const isOverlayMode = uiMode === 'overlay'
-
-  // Live sessions (overlay mode only): the current exclusive controller gets full admin powers.
-  // Outside overlay mode, admin powers remain role-based.
-  const isOverlayExclusiveController = Boolean(
-    isOverlayMode &&
-    controlState &&
-    (String(controlState.controllerId || '').trim() !== ALL_STUDENTS_ID) &&
-    (
-      (controlState.controllerUserId && String(controlState.controllerUserId) === userId) ||
-      (controlState.controllerId && String(controlState.controllerId) === clientIdRef.current)
-    )
-  )
-  const isAdmin = Boolean(isAdminRole) || isOverlayExclusiveController
-
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
+  const isOverlayMode = uiMode === 'overlay'
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -898,19 +778,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const overlayChromeInitialPeekDoneRef = useRef(false)
   const [overlayChromePeekVisible, setOverlayChromePeekVisible] = useState(false)
-  const [editorPickerOpen, setEditorPickerOpen] = useState(false)
-  const editorPickerOpenRef = useRef(false)
-  const editorPickerScrollingRef = useRef(false)
-  const editorPickerScrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const editorBadgeButtonRef = useRef<HTMLButtonElement | null>(null)
-  const [editorPickerAnchor, setEditorPickerAnchor] = useState<{ x: number; y: number } | null>(null)
-  const editorPickerScrollRef = useRef<HTMLDivElement | null>(null)
   const OVERLAY_CHROME_PEEK_MS = 2500
-
-  useEffect(() => {
-    editorPickerOpenRef.current = editorPickerOpen
-  }, [editorPickerOpen])
-
   const clearOverlayChromeAutoHide = useCallback(() => {
     if (overlayChromeHideTimeoutRef.current) {
       clearTimeout(overlayChromeHideTimeoutRef.current)
@@ -918,32 +786,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [])
 
-  const scheduleOverlayChromeAutoHide = useCallback(() => {
-    if (!onOverlayChromeVisibilityChange) return
-    if (!isOverlayMode || !isCompactViewport) return
-    clearOverlayChromeAutoHide()
-    overlayChromeHideTimeoutRef.current = setTimeout(() => {
-      // Only keep chrome/picker visible while actively scrolling the picker list.
-      if (editorPickerOpenRef.current && editorPickerScrollingRef.current) return
-
-      // If the picker is open but we're not scrolling, auto-close it like the rest of the chrome.
-      if (editorPickerOpenRef.current) {
-        setEditorPickerOpen(false)
-        setEditorPickerAnchor(null)
-      }
-
-      setOverlayChromePeekVisible(false)
-      onOverlayChromeVisibilityChange(false)
-    }, OVERLAY_CHROME_PEEK_MS)
-  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
-
   const revealOverlayChrome = useCallback(() => {
     if (!onOverlayChromeVisibilityChange) return
     if (!isOverlayMode || !isCompactViewport) return
     setOverlayChromePeekVisible(true)
     onOverlayChromeVisibilityChange(true)
-    scheduleOverlayChromeAutoHide()
-  }, [isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange, scheduleOverlayChromeAutoHide])
+    clearOverlayChromeAutoHide()
+    overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      setOverlayChromePeekVisible(false)
+      onOverlayChromeVisibilityChange(false)
+    }, OVERLAY_CHROME_PEEK_MS)
+  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
 
   useEffect(() => {
     if (!onOverlayChromeVisibilityChange) return
@@ -954,8 +807,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     overlayChromeInitialPeekDoneRef.current = true
     setOverlayChromePeekVisible(true)
     onOverlayChromeVisibilityChange(true)
-    scheduleOverlayChromeAutoHide()
-  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange, scheduleOverlayChromeAutoHide])
+    clearOverlayChromeAutoHide()
+    overlayChromeHideTimeoutRef.current = setTimeout(() => {
+      setOverlayChromePeekVisible(false)
+      onOverlayChromeVisibilityChange(false)
+    }, OVERLAY_CHROME_PEEK_MS)
+  }, [OVERLAY_CHROME_PEEK_MS, clearOverlayChromeAutoHide, isCompactViewport, isOverlayMode, onOverlayChromeVisibilityChange])
 
   useEffect(() => {
     if (!isOverlayMode || !isCompactViewport) {
@@ -968,11 +825,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return () => {
       setOverlayChromePeekVisible(false)
       clearOverlayChromeAutoHide()
-      if (editorPickerScrollIdleTimeoutRef.current) {
-        clearTimeout(editorPickerScrollIdleTimeoutRef.current)
-        editorPickerScrollIdleTimeoutRef.current = null
-      }
-      editorPickerScrollingRef.current = false
     }
   }, [clearOverlayChromeAutoHide])
   // Broadcaster role removed: all clients can publish.
@@ -983,42 +835,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isStudentPublishEnabled, setIsStudentPublishEnabled] = useState(false)
   const isStudentPublishEnabledRef = useRef(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(true)
-  const [hasExclusiveControl, setHasExclusiveControl] = useState(false)
-
-  // In normal shared sessions, the selected student editor should get the same "step composer"
-  // behaviour as the teacher (committed steps + a live draft line).
-  const isStudentSharedSessionStepComposer = Boolean(
-    !isAdmin &&
-    useStackedStudentLayout &&
-    !quizActive &&
-    !Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId) &&
-    Boolean(controlState) &&
-    (controlState?.controllerId !== ALL_STUDENTS_ID) &&
-    (
-      (controlState?.controllerUserId && controlState.controllerUserId === userId) ||
-      (controlState?.controllerId && controlState.controllerId === clientIdRef.current)
-    )
-  )
-  const useStepComposer = Boolean(useAdminStepComposer || isStudentSharedSessionStepComposer)
+  const [controlState, setControlState] = useState<ControlState>(null)
 
   const currentEditorBadge = useMemo(() => {
-    const controllerId = (controlState?.controllerId || '').trim()
-    const controllerUserId = (controlState?.controllerUserId && typeof controlState.controllerUserId === 'string')
-      ? controlState.controllerUserId
-      : ''
-    if (!controllerId && !controllerUserId) return null
+    const controllerId = controlState?.controllerId
+    if (!controllerId) return null
 
     const name = (controlState?.controllerName && typeof controlState.controllerName === 'string')
       ? controlState.controllerName.trim()
       : ''
 
-    const byUser = controllerUserId ? connectedClients.find(c => String(c.userId || '') === controllerUserId) : null
-    const byClient = controllerId ? connectedClients.find(c => c.clientId === controllerId) : null
-    const resolvedName =
-      name ||
-      (String(byUser?.name || '').trim()) ||
-      (String(byClient?.name || '').trim()) ||
-      (controllerId === ALL_STUDENTS_ID ? 'All Students' : 'Editor')
+    const resolvedName = name || (connectedClients.find(c => c.clientId === controllerId)?.name || '').trim() || (controllerId === ALL_STUDENTS_ID ? 'All Students' : 'Editor')
 
     const initials = (() => {
       if (controllerId === ALL_STUDENTS_ID) return 'AS'
@@ -1028,71 +855,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (a + b).toUpperCase()
     })()
 
-    return { controllerId: controllerId || (controllerUserId ? `user:${controllerUserId}` : ''), name: resolvedName, initials }
-  }, [connectedClients, controlState?.controllerId, controlState?.controllerName, controlState?.controllerUserId])
-
-  useEffect(() => {
-    if (!editorPickerOpen) return
-    if (!editorPickerAnchor) return
-    if (!isOverlayMode || !isCompactViewport) return
-    const container = studentStackRef.current
-    const scroller = editorPickerScrollRef.current
-    if (!container || !scroller) return
-    const controllerId = currentEditorBadge?.controllerId
-    if (!controllerId || controllerId === ALL_STUDENTS_ID) return
-
-    const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
-    const nameKey = (value: string) => normalizeName(value).toLowerCase()
-
-    const clients = connectedClients
-      .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
-      .map(c => ({ clientId: c.clientId, name: normalizeName(c.name || '') || c.clientId, userId: typeof c.userId === 'string' ? c.userId : undefined }))
-
-    const current = clients.find(c => c.clientId === controllerId) || {
-      clientId: String(controllerId),
-      name: normalizeName(currentEditorBadge?.name || String(controllerId)),
-      userId: undefined,
-    }
-
-    // Dedupe by stable userId when available; fall back to name.
-    const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
-    for (const c of clients) {
-      const key = (c.userId && String(c.userId)) ? `uid:${String(c.userId)}` : `name:${nameKey(c.name)}`
-      if (!key.trim()) continue
-      if (!uniqueUsers.has(key)) uniqueUsers.set(key, c)
-    }
-    {
-      const key = (current.userId && String(current.userId)) ? `uid:${String(current.userId)}` : `name:${nameKey(current.name)}`
-      uniqueUsers.set(key || `cid:${String(current.clientId)}`, current)
-    }
-
-    const all = Array.from(uniqueUsers.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-    const n = all.length
-    if (n <= 0) return
-
-    const currentSlot = Math.floor((n - 1) / 2)
-    const box = container.getBoundingClientRect()
-    const height = box.height
-    const topMargin = 12
-    const bottomMargin = 12
-    const avatarSize = 36
-    const spacing = 10
-    const rowStep = avatarSize + spacing
-
-    const innerHeight = Math.max(height, topMargin + bottomMargin + ((n - 1) * rowStep) + avatarSize)
-    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, editorPickerAnchor.y))
-    const anchorTop = anchorY - avatarSize / 2
-    const currentY = innerHeight - bottomMargin - avatarSize - (currentSlot * rowStep)
-    const desiredScrollTop = Math.max(0, Math.min(innerHeight - height, currentY - anchorTop))
-
-    requestAnimationFrame(() => {
-      if (!editorPickerOpenRef.current) return
-      try {
-        scroller.scrollTop = desiredScrollTop
-      } catch {}
-    })
-  }, [connectedClients, currentEditorBadge?.controllerId, currentEditorBadge?.name, editorPickerAnchor, editorPickerOpen, isCompactViewport, isOverlayMode])
-
+    return { controllerId, name: resolvedName, initials }
+  }, [connectedClients, controlState?.controllerId, controlState?.controllerName])
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -1135,7 +899,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const loadAdminStepForEditing = useCallback(async (index: number) => {
-    if (!useStepComposer) return
+    if (!useAdminStepComposer) return
     if (index < 0 || index >= adminSteps.length) return
 
     const editor = editorInstanceRef.current
@@ -1163,39 +927,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
     setAdminDraftLatex(adminSteps[index]?.latex || '')
-  }, [adminSteps, useStepComposer])
-
-  const studentComposerWasActiveRef = useRef(false)
-  useEffect(() => {
-    if (isAdmin) return
-    const active = isStudentSharedSessionStepComposer
-    const was = studentComposerWasActiveRef.current
-    studentComposerWasActiveRef.current = active
-
-    // When the student gains exclusive control in a normal shared session, do NOT clear the top display.
-    // Instead, seed the composer from the current shared stacked-notes preview so the display stays
-    // identical, and the student can continue from that point.
-    if (active && !was) {
-      stepComposerPreviewEpochRef.current += 1
-      if (pendingExportRef.current) {
-        clearTimeout(pendingExportRef.current)
-        pendingExportRef.current = null
-      }
-
-      // The top display can be driven by stacked-notes or (older path) latex-display.
-      // Seed from whichever is currently visible to avoid losing prior lines on first commit.
-      const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
-      const parts = seed
-        ? seed.split(/\\/g).map(s => (s || '').trim()).filter(Boolean)
-        : []
-
-      if (parts.length) {
-        setAdminSteps(parts.map(latex => ({ latex, symbols: null })))
-        setAdminDraftLatex('')
-        setAdminEditIndex(null)
-      }
-    }
-  }, [isAdmin, isStudentSharedSessionStepComposer, stackedNotesState.latex, latexDisplayState.latex])
+  }, [adminSteps, useAdminStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -1376,7 +1108,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [isAssignmentView])
   const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
-  const canPresent = !lockedOutRef.current && (Boolean(isAdmin) || hasExclusiveControl)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
   const latexDisplayStateRef = useRef<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
@@ -1411,14 +1142,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [overlayControlsVisible, setOverlayControlsVisible] = useState(false)
   const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clientId = useMemo(() => {
-    // Ably clientIds are capped/sanitized by our token endpoint (60 chars).
-    // Keep the random suffix *within* that cap so (a) exclusive control works and
-    // (b) multiple tabs for the same user don't collide into the same clientId.
-    const rawBase = sanitizeIdentifier(userId || 'anonymous')
-    const randomSuffix = Math.random().toString(36).slice(2, 8) // 6 chars
-    const maxBaseLen = Math.max(1, 60 - 1 - randomSuffix.length)
-    const base = rawBase.slice(0, maxBaseLen)
-    return sanitizeIdentifier(`${base}-${randomSuffix}`)
+    const base = sanitizeIdentifier(userId || 'anonymous')
+    const randomSuffix = Math.random().toString(36).slice(2, 8)
+    return `${base}-${randomSuffix}`
   }, [userId])
 
   useEffect(() => {
@@ -1640,21 +1366,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     (next: ControlState) => {
       controlStateRef.current = next
       const controllerId = next?.controllerId
-      const controllerUserId = next?.controllerUserId
-      const isExclusiveController = Boolean(
-        (controllerId && controllerId === clientIdRef.current) ||
-        (controllerUserId && controllerUserId === userId)
-      )
+      const isExclusiveController = Boolean(controllerId && controllerId === clientIdRef.current)
       hasExclusiveControlRef.current = isExclusiveController
-      setHasExclusiveControl(isExclusiveController)
-      // Exclusive control must lock out everyone except the selected controller.
-      // `next === null` is the default classroom mode: teacher writes, students locked.
-      const hasWriteAccess =
-        forceEditableForAssignment ||
-        controllerId === clientIdRef.current ||
-        controllerId === ALL_STUDENTS_ID ||
-        (controllerUserId && controllerUserId === userId) ||
-        (Boolean(isAdmin) && !controllerId && !controllerUserId)
+      const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || controllerId === clientIdRef.current || controllerId === ALL_STUDENTS_ID
       const lockedOut = !hasWriteAccess
       lockedOutRef.current = lockedOut
       if (lockedOut) {
@@ -1662,51 +1376,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       setControlState(next)
     },
-    [forceEditableForAssignment, isAdmin, userId]
+    [forceEditableForAssignment, isAdmin]
   )
 
-  // Let overlay modules (diagrams/text) know whether this client is currently the presenter.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      window.dispatchEvent(new CustomEvent('philani-canvas:presenter', {
-        detail: {
-          canPresent,
-          ts: Date.now(),
-        },
-      }))
-    } catch {
-      // ignore
-    }
-  }, [canPresent])
-
   const studentCanPublish = useCallback(() => {
-    // Publishing rights must follow editing rights on the shared canvas.
-    // Non-admin work during quizzes/assignments is private (no live ink publishing).
-    if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) return false
-
-    if (isAdmin) return !lockedOutRef.current
-
+    if (!isStudentPublishEnabledRef.current) return false
     const controllerId = controlStateRef.current?.controllerId
-    const controllerUserId = controlStateRef.current?.controllerUserId
-    if (controllerUserId && controllerUserId === userId) return true
     if (!controllerId) return false
     if (controllerId === ALL_STUDENTS_ID) return true
     return controllerId === clientIdRef.current
-  }, [isAdmin, userId])
-
-  const isExclusiveControlModeActive = useCallback(() => {
-    const controllerId = (controlStateRef.current?.controllerId || '').trim()
-    if (!controllerId) return false
-    if (controllerId === ALL_STUDENTS_ID) return false
-    return true
-  }, [])
-
-  const isAuthoritativeInboundSender = useCallback((senderClientId?: string | null) => {
-    const controllerId = (controlStateRef.current?.controllerId || '').trim()
-    if (!controllerId) return true
-    if (controllerId === ALL_STUDENTS_ID) return true
-    return Boolean(senderClientId && String(senderClientId) === controllerId)
   }, [])
 
   const clearOverlayAutoHide = useCallback(() => {
@@ -3379,10 +3057,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastStackedNotesBroadcastRef = useRef<{ latex: string; ts: number }>({ latex: '', ts: 0 })
   const publishStackedNotesPreview = useCallback(
     (latex: string, options: LatexDisplayOptions) => {
-      // The shared top-panel preview must follow whoever currently has write access.
-      // When a student is granted exclusive control, only that student should be able
-      // to publish the stacked-notes preview.
-      if (lockedOutRef.current) return
+      if (!isAdmin) return
       const channel = channelRef.current
       if (!channel) return
 
@@ -3399,8 +3074,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       stackedNotesBroadcastTimeoutRef.current = setTimeout(() => {
         stackedNotesBroadcastTimeoutRef.current = null
-
-        if (lockedOutRef.current) return
 
         // Avoid broadcasting a temporary empty string while the teacher is still writing
         // (recognition can lag and would cause students to see the preview blink).
@@ -3421,7 +3094,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           .catch(err => console.warn('Failed to broadcast stacked notes preview', err))
       }, 220)
     },
-    [userDisplayName]
+    [isAdmin, userDisplayName]
   )
 
   useEffect(() => {
@@ -3852,7 +3525,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         editorInstanceRef.current = editor
-        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current))
         setStatus('ready')
 
         // Ensure the editor has a valid view size after any initial layout shifts.
@@ -3878,36 +3550,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const isSharedPage = pageIndex === sharedPageIndexRef.current
           const canSend = (isAdmin || studentCanPublish()) && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
-          if (snapshot) {
-            // Update local symbol count tracking for accurate delta math for remote peers.
-            lastSymbolCountRef.current = countSymbols(snapshot.symbols)
-            if (snapshot.version !== lastAppliedRemoteVersionRef.current) {
-              if (canSend) {
-                broadcastSnapshot(false)
-              }
-            }
+          if (!snapshot) return
+          if (snapshot.version === lastAppliedRemoteVersionRef.current) return
+          // Update local symbol count tracking for accurate delta math for remote peers.
+          lastSymbolCountRef.current = countSymbols(snapshot.symbols)
+          if (canSend) {
+            broadcastSnapshot(false)
           }
 
-          // Step-composer mode (teacher, or selected student in normal shared sessions):
-          // keep a live typeset preview updated without mutating the ink.
-          if (useStepComposer) {
+          // Admin compact/stacked mode: keep a live typeset preview updated without mutating the ink.
+          if (useAdminStepComposer) {
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
-            const epochAtSchedule = stepComposerPreviewEpochRef.current
             pendingExportRef.current = setTimeout(() => {
               pendingExportRef.current = null
               if (previewExportInFlightRef.current) return
               previewExportInFlightRef.current = true
               ;(async () => {
-                if (epochAtSchedule !== stepComposerPreviewEpochRef.current) return
                 let latexValue = getLatexFromEditorModel()
                 if (!latexValue || latexValue.trim().length === 0) {
                   const exported = await exportLatexFromEditor()
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
-                if (epochAtSchedule !== stepComposerPreviewEpochRef.current) return
                 setLatexOutput(latexValue)
                 const normalized = normalizeStepLatex(latexValue)
                 // In edit mode, we want the draft to track the current ink, including scratch-to-erase.
@@ -3927,20 +3593,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (studentQuizPreviewExportRef.current) {
               clearTimeout(studentQuizPreviewExportRef.current)
             }
-            const epochAtSchedule = studentQuizPreviewEpochRef.current
             studentQuizPreviewExportRef.current = setTimeout(() => {
               studentQuizPreviewExportRef.current = null
               if (studentQuizPreviewExportInFlightRef.current) return
               studentQuizPreviewExportInFlightRef.current = true
               ;(async () => {
-                if (epochAtSchedule !== studentQuizPreviewEpochRef.current) return
                 let latexValue = getLatexFromEditorModel()
                 if (!latexValue || latexValue.trim().length === 0) {
                   const exported = await exportLatexFromEditor()
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
-                if (epochAtSchedule !== studentQuizPreviewEpochRef.current) return
                 setLatexOutput(latexValue)
               })()
                 .finally(() => {
@@ -4041,23 +3704,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         editorInstanceRef.current = null
       }
-
-      if (eraserLongPressTimeoutRef.current) {
-        clearTimeout(eraserLongPressTimeoutRef.current)
-        eraserLongPressTimeoutRef.current = null
-      }
     }
   }, [broadcastSnapshot, editorInitKey, exportLatexFromEditor, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
 
-  // Reset composer state when switching boards.
-  // Do NOT reset when a student gains exclusive control on the same board; we seed from
-  // the existing top display so commits append instead of overwriting.
   useEffect(() => {
+    if (!useAdminStepComposer) return
     setAdminSteps([])
     setAdminDraftLatex('')
     setAdminSendingStep(false)
     setAdminEditIndex(null)
-  }, [boardId])
+  }, [boardId, useAdminStepComposer])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -4112,9 +3768,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const state = stateChange?.current
           const connected = state === 'connected'
           setIsRealtimeConnected(connected)
-          if (connected && pendingPublishQueueRef.current.length && channelRef.current) {
-            if (lockedOutRef.current) return
-            if (!(isAdmin || studentCanPublish())) return
+          if (isAdmin && connected && pendingPublishQueueRef.current.length && channelRef.current) {
             const toSend = [...pendingPublishQueueRef.current]
             pendingPublishQueueRef.current = []
             for (const rec of toSend) {
@@ -4158,8 +3812,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          const senderId = (data.originClientId || data.clientId || '').toString()
-          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(senderId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -4169,17 +3821,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          const senderId = (data.originClientId || data.clientId || '').toString()
-          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(senderId)) return
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
         const handleSyncRequest = async (message: any) => {
           const data = message?.data
           if (!data || data.clientId === clientIdRef.current) return
-          // In exclusive-control mode, only the current controller is allowed to respond.
-          if (lockedOutRef.current) return
-          if (isExclusiveControlModeActive() && !(isAdmin || studentCanPublish())) return
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
               return latestSnapshotRef.current
@@ -4223,7 +3870,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             locked?: boolean
             controllerId?: string
             controllerName?: string
-            controllerUserId?: string
             ts?: number
             action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'student-broadcast' | 'stacked-notes' | 'quiz'
             targetClientId?: string
@@ -4395,7 +4041,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'convert') {
-            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             if (isAdmin) return
             if (isBroadcastPausedRef.current) return
             if (!editor) return
@@ -4405,7 +4050,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'latex-display') {
-            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             const enabled = Boolean(data.enabled)
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
@@ -4433,7 +4077,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'stacked-notes') {
-            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
             const ts = data?.ts ?? Date.now()
@@ -4444,7 +4087,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'force-resync') {
-            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
             const snapshot = data.snapshot
             if (snapshot) {
@@ -4465,7 +4107,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'wipe') {
-            if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
             if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
             editor.clear()
             lastSymbolCountRef.current = 0
@@ -4476,13 +4117,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (typeof data?.locked !== 'boolean') return
           const controlTs = data?.ts ?? Date.now()
           if (data.locked) {
-            if (!data.controllerId && !data.controllerUserId) return
-            // Accept either controllerId or controllerUserId for exclusive grants.
-            updateControlState({ controllerId: data.controllerId || '', controllerName: data.controllerName, controllerUserId: data.controllerUserId, ts: controlTs })
+            if (!data.controllerId) return
+            updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: controlTs })
             return
           }
           if (!data.controllerId || data.controllerId === ALL_STUDENTS_ID) {
-            updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: data.controllerName || 'All Students', controllerUserId: undefined, ts: controlTs })
+            updateControlState({ controllerId: ALL_STUDENTS_ID, controllerName: data.controllerName || 'All Students', ts: controlTs })
           } else {
             updateControlState(null)
           }
@@ -4492,7 +4132,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const data = message?.data as { latex?: string; ts?: number; clientId?: string }
           const latex = typeof data?.latex === 'string' ? data.latex : ''
           if (!latex) return
-          if (isExclusiveControlModeActive() && !isAuthoritativeInboundSender(data?.clientId || '')) return
           const msgTs = typeof message?.timestamp === 'number' ? message.timestamp : data?.ts ?? Date.now()
           if (msgTs < lastLatexBroadcastTsRef.current) return
           lastLatexBroadcastTsRef.current = msgTs
@@ -4609,68 +4248,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Presence tracking (simplified; no broadcaster election)
         try {
-          // Presence should reflect the *role* admin status to avoid confusing the roster UI.
-          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdminRole), userId })
+          await channel.presence.enter({ name: userDisplayName, isAdmin: Boolean(isAdmin) })
           const members = await channel.presence.get()
-          const normalizePresenceName = (value: any) => String(value || '').trim().replace(/\s+/g, ' ')
-          const toPresenceClient = (m: any) => ({
-            clientId: String(m?.clientId || ''),
-            name: normalizePresenceName(m?.data?.name),
-            isAdmin: Boolean(m?.data?.isAdmin),
-            userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
-          })
-          const dedupePresence = (list: any[]) => {
-            const byKey = new Map<string, any>()
-            const nameToKey = new Map<string, string>()
-
-            for (const raw of Array.isArray(list) ? list : []) {
-              const c = toPresenceClient(raw)
-              if (!c.clientId) continue
-              const nk = normalizePresenceName(c.name || c.clientId).toLowerCase()
-              const hasUserId = Boolean(c.userId)
-
-              let key = ''
-              if (hasUserId) {
-                key = `uid:${String(c.userId)}`
-                const existingKeyForName = nk ? nameToKey.get(nk) : undefined
-                if (existingKeyForName && existingKeyForName !== key) {
-                  // If the name maps to a DIFFERENT userId, keep both entries (same display name can be shared).
-                  if (existingKeyForName.startsWith('uid:') && key.startsWith('uid:')) {
-                    const prev = byKey.get(key)
-                    byKey.set(key, prev ? { ...prev, ...c } : c)
-                    continue
-                  }
-                  const existing = byKey.get(existingKeyForName)
-                  if (existing) {
-                    // Migrate the previous (name-keyed) entry into the userId-keyed entry.
-                    byKey.delete(existingKeyForName)
-                    byKey.set(key, { ...existing, ...c })
-                  } else {
-                    byKey.set(key, c)
-                  }
-                } else {
-                  const prev = byKey.get(key)
-                  byKey.set(key, prev ? { ...prev, ...c } : c)
-                }
-                if (nk) nameToKey.set(nk, key)
-              } else {
-                const existingKeyForName = nk ? nameToKey.get(nk) : undefined
-                key = existingKeyForName || (nk ? `name:${nk}` : `cid:${c.clientId}`)
-                if (nk && !nameToKey.has(nk)) nameToKey.set(nk, key)
-                const prev = byKey.get(key)
-                // Prefer existing entries that already have a userId.
-                if (prev && prev.userId) continue
-                byKey.set(key, prev ? { ...c, ...prev } : c)
-              }
-            }
-            return Array.from(byKey.values())
-          }
-
-          setConnectedClients(dedupePresence(members))
+          setConnectedClients(members.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
           channel.presence.subscribe(async (presenceMsg: any) => {
             try {
               const list = await channel.presence.get()
-              setConnectedClients(dedupePresence(list))
+              setConnectedClients(list.map((m: any) => ({ clientId: m.clientId, name: m.data?.name, isAdmin: Boolean(m.data?.isAdmin) })))
               // When someone new enters, proactively push current snapshot and states from any client with data.
               if (presenceMsg?.action === 'enter' && !isBroadcastPausedRef.current) {
                 const rec = latestSnapshotRef.current ?? (() => {
@@ -4874,12 +4458,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName, userId])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName])
 
   const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
 
   const isCurrentLineEmptyNow = () => {
-    if (useStepComposer) {
+    if (useAdminStepComposer && isAdmin) {
       return !(adminDraftLatex || '').trim()
     }
     return !((latexOutput || '').trim())
@@ -4896,13 +4480,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
 
-    stepComposerPreviewEpochRef.current += 1
-    if (pendingExportRef.current) {
-      clearTimeout(pendingExportRef.current)
-      pendingExportRef.current = null
-    }
-
-    if (useStepComposer) {
+    if (useAdminStepComposer) {
       setAdminSteps([])
       setAdminDraftLatex('')
       setAdminSendingStep(false)
@@ -4923,12 +4501,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setLatexOutput('')
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
-    stepComposerPreviewEpochRef.current += 1
-    if (pendingExportRef.current) {
-      clearTimeout(pendingExportRef.current)
-      pendingExportRef.current = null
-    }
-    if (useStepComposer) {
+    if (useAdminStepComposer && isAdmin) {
       setAdminDraftLatex('')
       clearTopPanelSelection()
     }
@@ -4964,11 +4537,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       editorInstanceRef.current.undo()
     } catch {}
-    // Students need immediate propagation so the teacher sees undo/redo reliably.
-    broadcastSnapshot(!isAdmin)
+    broadcastSnapshot(false)
 
     // Step-boundary undo: once empty, go to the line above.
-    if (!useStepComposer) return
+    if (!useAdminStepComposer || !isAdmin) return
     const emptyCanvas = isEditorEmptyNow()
     if (!emptyCanvas) return
     setAdminDraftLatex('')
@@ -4990,11 +4562,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       editorInstanceRef.current.redo()
     } catch {}
-    // Students need immediate propagation so the teacher sees undo/redo reliably.
-    broadcastSnapshot(!isAdmin)
+    broadcastSnapshot(false)
 
     // Step-boundary redo: when empty, redo to the next line we previously stepped from.
-    if (!useStepComposer) return
+    if (!useAdminStepComposer || !isAdmin) return
     const emptyCanvas = isEditorEmptyNow()
     if (!emptyCanvas) return
     setAdminDraftLatex('')
@@ -5172,11 +4743,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         locked: !isAll,
         controllerId,
         controllerName,
-        controllerUserId: isAll ? undefined : targetRecord?.userId,
         ts,
       })
       lastControlBroadcastTsRef.current = ts
-      updateControlState({ controllerId, controllerName, controllerUserId: isAll ? undefined : targetRecord?.userId, ts })
+      updateControlState({ controllerId, controllerName, ts })
     } catch (err) {
       console.warn('Failed to grant selected client editing rights', err)
     }
@@ -5203,11 +4773,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [isAdmin, updateControlState, userDisplayName])
 
+  useEffect(() => {
+    if (!isAdmin) return
+    if (status !== 'ready') return
+    if (!channelRef.current) return
+    if (controlState?.controllerId === clientId) return
+    if (controlState?.controllerId === ALL_STUDENTS_ID) return
+    lockStudentEditing()
+  }, [isAdmin, status, controlState?.controllerId, clientId, lockStudentEditing])
+
   const forcePublishLatex = async () => {
     if (!isAdmin) return
     const channel = channelRef.current
     if (!channel) return
-    if (lockedOutRef.current) return
     const latex = (latexOutput || '').trim()
     if (!latex) return
     const ts = Date.now()
@@ -5471,30 +5049,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {}
   }
 
-  const hasWriteAccess = forceEditableForAssignment || Boolean(
-    (controlState && (
-      controlState.controllerId === clientId ||
-      controlState.controllerId === ALL_STUDENTS_ID ||
-      (controlState.controllerUserId && controlState.controllerUserId === userId)
-    )) ||
-    (Boolean(isAdmin) && (!controlState?.controllerId && !controlState?.controllerUserId))
+  const hasWriteAccess = Boolean(isAdmin) || forceEditableForAssignment || Boolean(
+    controlState && (controlState.controllerId === clientId || controlState.controllerId === ALL_STUDENTS_ID)
   )
-  // Explicit control flags used throughout the component.
-  // `isAdmin` already exists as the role flag; `isController` means "this client currently has write access".
-  const isController = hasWriteAccess
   const isViewOnly = !hasWriteAccess
-
-  useEffect(() => {
-    if (isViewOnly) {
-      setIsEraserMode(false)
-    }
-  }, [isViewOnly])
   const controlOwnerLabel = (() => {
     if (controlState) {
       if (controlState.controllerId === ALL_STUDENTS_ID) {
         return 'Everyone'
       }
-      if (controlState.controllerId === clientId || (controlState.controllerUserId && controlState.controllerUserId === userId)) {
+      if (controlState.controllerId === clientId) {
         return 'You'
       }
       return controlState.controllerName || 'Teacher'
@@ -5502,7 +5066,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return 'Teacher'
   })()
 
-  const latexRenderOptions = useStepComposer
+  const latexRenderOptions = useAdminStepComposer
     ? { ...latexProjectionOptions, alignAtEquals: true }
     : (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout)
       ? { ...stackedNotesState.options, alignAtEquals: true }
@@ -5514,7 +5078,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           ? stackedNotesState.options
           : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
-    if (useStepComposer) {
+    if (useAdminStepComposer) {
       const lines = adminSteps.map(s => s.latex)
       if (adminEditIndex !== null) {
         if (adminDraftLatex) {
@@ -5526,10 +5090,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const composed = lines.filter(Boolean).join(' \\\\ ').trim()
       // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
-      if (composed) return composed
-      // Student controller handoff: keep showing the existing shared preview until
-      // the local composer state is seeded.
-      return (isAdmin ? (latexDisplayState.latex || '') : (stackedNotesState.latex || latexDisplayState.latex || '')).trim()
+      return composed || (latexDisplayState.latex || '').trim()
     }
     if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
@@ -5548,7 +5109,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, stackedNotesState.latex, studentCommittedLatex, useAdminStepComposer, useStackedStudentLayout])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -5569,7 +5130,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     const hasInk = lastSymbolCountRef.current > 0
-    const hasSteps = useStepComposer && adminSteps.length > 0
+    const hasSteps = useAdminStepComposer && adminSteps.length > 0
     if (hasInk || hasSteps) {
       // Keep current stable preview.
       return
@@ -5579,17 +5140,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       stableAdminStackedLatexRenderSourceRef.current = ''
       setStableAdminStackedLatexRenderSource('')
     }
-  }, [adminSteps.length, isAdmin, latexRenderSource, useStepComposer, useStackedStudentLayout])
+  }, [adminSteps.length, isAdmin, latexRenderSource, useAdminStepComposer, useStackedStudentLayout])
 
   const latexProjectionRenderSource = (isAdmin && useStackedStudentLayout)
     ? stableAdminStackedLatexRenderSource
     : latexRenderSource
 
   useEffect(() => {
-    if (!useStepComposer) return
+    if (!isAdmin) return
+    if (!useAdminStepComposer) return
     if (Date.now() < suppressStackedNotesPreviewUntilTsRef.current) return
     publishStackedNotesPreview(latexRenderSource, latexRenderOptions)
-  }, [latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useStepComposer])
+  }, [isAdmin, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
 
   const latexProjectionMarkup = useMemo(() => {
     if (!latexProjectionRenderSource) return ''
@@ -6428,11 +5990,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setStudentCommittedLatex(nextCombined)
 
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
-        studentQuizPreviewEpochRef.current += 1
-        if (studentQuizPreviewExportRef.current) {
-          clearTimeout(studentQuizPreviewExportRef.current)
-          studentQuizPreviewExportRef.current = null
-        }
         try {
           editor.clear?.()
         } catch {}
@@ -6523,11 +6080,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         quizHasCommittedRef.current = false
         setStudentCommittedLatex('')
         suppressBroadcastUntilTsRef.current = Date.now() + 600
-        studentQuizPreviewEpochRef.current += 1
-        if (studentQuizPreviewExportRef.current) {
-          clearTimeout(studentQuizPreviewExportRef.current)
-          studentQuizPreviewExportRef.current = null
-        }
         try {
           editor.clear?.()
         } catch {}
@@ -6716,7 +6268,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const openPickerOrApplySingle = useCallback(
     (type: MobileModulePickerType) => {
-      if (!canPresent) return
+      if (!isAdmin) return
       if (typeof window === 'undefined') return
       // The icon row that calls this only renders on compact viewports.
       if (!isCompactViewport) return
@@ -6734,7 +6286,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       setMobileModulePicker({ type })
     },
-    [applyLessonScriptPlaybackV2, canPresent, isCompactViewport, isLessonAuthoringMode, lessonScriptPhaseKey, lessonScriptPointIndex, v2ModuleChoices]
+    [applyLessonScriptPlaybackV2, isAdmin, isCompactViewport, isLessonAuthoringMode, lessonScriptPhaseKey, lessonScriptPointIndex, v2ModuleChoices]
   )
 
   const closeMobileModulePicker = useCallback(() => {
@@ -6750,22 +6302,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     if (typeof window === 'undefined') return
     const handler = () => {
-      if (!canPresent) return
+      if (!isAdmin) return
       setMobileLatexTrayOpen(prev => !prev)
     }
     window.addEventListener('philani-latex:toggle-tray', handler as any)
     return () => window.removeEventListener('philani-latex:toggle-tray', handler as any)
-  }, [canPresent])
+  }, [isAdmin])
 
   useEffect(() => {
-    if (!canPresent) {
+    if (!isAdmin) {
       setMobileLatexTrayOpen(false)
       return
     }
     if (!isCompactViewport) {
       setMobileLatexTrayOpen(false)
     }
-  }, [canPresent, isCompactViewport])
+  }, [isAdmin, isCompactViewport])
   const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
@@ -7600,7 +7152,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleUndo)}
-                        disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !useStepComposer)}
+          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && isAdmin))}
         >
           Undo
         </button>
@@ -7608,7 +7160,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleRedo)}
-                        disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !useStepComposer)}
+          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && isAdmin))}
         >
           Redo
         </button>
@@ -8035,9 +7587,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
                   className="h-full bg-white rounded-lg p-3 overflow-auto relative"
-                  ref={useStepComposer ? adminTopPanelRef : undefined}
+                  ref={isAdmin ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
-                    if (useStepComposer && topPanelEditingMode) {
+                    if (isAdmin && topPanelEditingMode && useAdminStepComposer) {
                       // Step-recall mode: tap a step line to restore its ink for editing.
                       const target = e.target as HTMLElement | null
                       const stepEl = target?.closest?.('[data-top-panel-step]') as HTMLElement | null
@@ -8060,18 +7612,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                     // On mobile overlay, tapping the top panel should only reveal the close chrome.
                     revealOverlayChrome()
-
-                    // Desired UX: top-panel tap only reveals chrome + the single current-editor badge.
-                    // The full avatar picker opens only when the badge is tapped.
-
                     if (isAssignmentView && typeof window !== 'undefined') {
                       try {
                         window.dispatchEvent(new CustomEvent('philani:assignment-meta-peek'))
                       } catch {}
                     }
                   }}
-                  onClick={!topPanelEditingMode ? async (e) => {
-                    if (!useStepComposer) return
+                  onClick={isAdmin && !topPanelEditingMode ? async (e) => {
+                    if (!useAdminStepComposer) return
                     if (!adminSteps.length) return
                     const now = Date.now()
                     const box = adminTopPanelRef.current?.getBoundingClientRect()
@@ -8123,59 +7671,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
                   )}
 
-                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && !editorPickerOpen && (
-                    <button
-                      ref={editorBadgeButtonRef}
-                      type="button"
+                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && currentEditorBadge && (
+                    <div
                       className="absolute left-3 bottom-3 flex items-center gap-2 px-2 py-1 rounded-full bg-white/85 backdrop-blur border border-slate-200 shadow-sm"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        if (!isAdmin) return
-                        if (!studentStackRef.current) return
-                        const badgeEl = editorBadgeButtonRef.current
-                        if (!badgeEl) return
-                        const containerBox = studentStackRef.current.getBoundingClientRect()
-                        const badgeBox = badgeEl.getBoundingClientRect()
-                        const anchorX = Math.round(badgeBox.left - containerBox.left)
-                        const anchorY = Math.round((badgeBox.top - containerBox.top) + (badgeBox.height / 2))
-
-                        setEditorPickerAnchor({ x: anchorX, y: anchorY })
-                        setEditorPickerOpen(prev => {
-                          const next = !prev
-                          if (next) {
-                            // Ensure chrome is visible, but keep auto-hide behaviour.
-                            setOverlayChromePeekVisible(true)
-                            try { onOverlayChromeVisibilityChange?.(true) } catch {}
-                            editorPickerScrollingRef.current = false
-                            scheduleOverlayChromeAutoHide()
-                          }
-                          return next
-                        })
-                      }}
-                      aria-label={(() => {
-                        const fallbackName = currentEditorBadge?.name || (isAdmin ? (userDisplayName || 'Teacher') : 'Teacher')
-                        return isAdmin
-                          ? `Current editor: ${fallbackName}. Tap to choose editor.`
-                          : `Current editor: ${fallbackName}`
-                      })()}
-                      title={isAdmin ? 'Choose who can edit' : undefined}
-                      disabled={!isAdmin}
+                      style={{ pointerEvents: 'none' }}
+                      aria-hidden
                     >
                       <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
-                        {(() => {
-                          if (currentEditorBadge?.initials) return currentEditorBadge.initials
-                          const name = (isAdmin ? (userDisplayName || 'Teacher') : 'Teacher').trim()
-                          const parts = name.split(/\s+/).filter(Boolean)
-                          const a = parts[0]?.[0] || 'T'
-                          const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-                          return (a + b).toUpperCase()
-                        })()}
+                        {currentEditorBadge.initials}
                       </div>
                       <div className="text-[11px] text-slate-700 max-w-[180px] truncate">
-                        {(currentEditorBadge?.name || (isAdmin ? (userDisplayName || 'Teacher') : 'Teacher'))}
+                        {currentEditorBadge.name}
                       </div>
-                    </button>
+                    </div>
                   )}
                   {isAdmin ? (
                     topPanelEditingMode ? (
@@ -8278,222 +7786,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   )}
                 </div>
               </div>
-
-              {isAdmin && editorPickerOpen && editorPickerAnchor && isOverlayMode && isCompactViewport && (
-                <div
-                  className="absolute inset-0 z-40"
-                  onPointerDown={(e) => {
-                    // Tap outside closes.
-                    const target = e.target as HTMLElement | null
-                    if (target?.getAttribute?.('data-editor-picker-backdrop') === '1') {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setEditorPickerOpen(false)
-                      setEditorPickerAnchor(null)
-                      editorPickerScrollingRef.current = false
-                      scheduleOverlayChromeAutoHide()
-                    }
-                  }}
-                >
-                  <div className="absolute inset-0" data-editor-picker-backdrop="1" />
-
-                  {(() => {
-                    const container = studentStackRef.current
-                    if (!container) return null
-                    const box = container.getBoundingClientRect()
-                    const height = box.height
-                    const topMargin = 12
-                    const bottomMargin = 12
-                    const avatarSize = 36
-                    const spacing = 8
-                    const rowStep = avatarSize + spacing
-                    const halfStep = Math.max(0, Math.round(rowStep / 2))
-                    const stackedStep = avatarSize + halfStep
-
-                    const normalizeName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
-                    const nameKey = (value: string) => normalizeName(value).toLowerCase()
-
-                    const initialsFor = (name: string) => {
-                      const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
-                      const a = parts[0]?.[0] || 'U'
-                      const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-                      return (a + b).toUpperCase()
-                    }
-
-                    // Dedup users (no duplicates): prefer stable userId, fall back to normalized name.
-                    const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
-                    const adminUserId = (typeof userId === 'string' ? userId : '').trim()
-                    for (const raw of connectedClients) {
-                      const clientId = String((raw as any)?.clientId || '').trim()
-                      if (!clientId) continue
-                      if (clientId === ALL_STUDENTS_ID) continue
-                      const nm = normalizeName((raw as any)?.name || '') || clientId
-                      const uid = (typeof (raw as any)?.userId === 'string') ? String((raw as any).userId).trim() : ''
-                      // Skip admin (rendered separately as the centered avatar).
-                      if (adminUserId && uid && uid === adminUserId) continue
-                      if (clientId === clientIdRef.current) continue
-                      const key = uid ? `uid:${uid}` : `name:${nameKey(nm)}`
-                      if (!key.trim()) continue
-                      if (!uniqueUsers.has(key)) uniqueUsers.set(key, { clientId, name: nm, userId: uid || undefined })
-                    }
-
-                    const adminName = normalizeName(userDisplayName || '') || 'Teacher'
-                    const adminEntry = { clientId: clientIdRef.current, name: adminName, userId: adminUserId || undefined }
-
-                    const others = Array.from(uniqueUsers.values())
-                      .filter(u => u.clientId !== adminEntry.clientId)
-                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-
-                    const anchorX = Math.max(10, Math.round(editorPickerAnchor.x))
-                    const anchorY = Math.max(topMargin + avatarSize / 2, Math.min(height - bottomMargin - avatarSize / 2, Math.round(editorPickerAnchor.y)))
-                    const anchorTop = anchorY - avatarSize / 2
-                    const listTop = anchorTop + avatarSize + halfStep
-                    const listViewportHeight = Math.max(0, Math.round(height - bottomMargin - listTop))
-                    const innerHeight = Math.max(listViewportHeight, (others.length * stackedStep) + avatarSize)
-
-                    const closePicker = () => {
-                      setEditorPickerOpen(false)
-                      setEditorPickerAnchor(null)
-                      editorPickerScrollingRef.current = false
-                      scheduleOverlayChromeAutoHide()
-                    }
-
-                    const grant = async (targetId: string) => {
-                      // Admin takes over ONLY by tapping their own avatar.
-                      if (targetId === adminEntry.clientId) {
-                        await disableStudentPublishingAndTakeControl()
-                        return
-                      }
-                      const channel = channelRef.current
-                      if (!channel) return
-                      const target = others.find(c => c.clientId === targetId)
-                      if (!target) return
-
-                      const ts = Date.now()
-                      // Ensure student publishing is off in single-editor mode.
-                      setIsStudentPublishEnabled(false)
-                      isStudentPublishEnabledRef.current = false
-                      try {
-                        await channel.publish('control', {
-                          clientId: clientIdRef.current,
-                          author: userDisplayName,
-                          locked: true,
-                          controllerId: target.clientId,
-                          controllerName: target.name,
-                          controllerUserId: target.userId,
-                          ts,
-                        })
-                        lastControlBroadcastTsRef.current = ts
-                        updateControlState({ controllerId: target.clientId, controllerName: target.name, controllerUserId: target.userId, ts })
-                      } catch (err) {
-                        console.warn('Failed to grant selected client editing rights', err)
-                      }
-                    }
-
-                    const renderUserRow = (
-                      u: { clientId: string; name: string },
-                      top: number
-                    ) => (
-                      <button
-                        key={u.clientId}
-                        type="button"
-                        className="absolute flex items-center gap-2"
-                        style={{ left: anchorX, top, height: avatarSize }}
-                        onPointerDown={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                        }}
-                        onClick={async (e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          await grant(u.clientId)
-                          closePicker()
-                        }}
-                        title={u.name}
-                        aria-label={u.name}
-                      >
-                        <span
-                          className="rounded-full border border-slate-200 bg-white/90 text-slate-800 shadow-sm flex items-center justify-center"
-                          style={{ width: avatarSize, height: avatarSize }}
-                        >
-                          <span className="text-[12px] font-semibold" aria-hidden="true">{initialsFor(u.name)}</span>
-                        </span>
-                        <span className="text-[12px] text-slate-800 whitespace-nowrap max-w-[220px] truncate">{u.name}</span>
-                      </button>
-                    )
-
-                    const otherElems: any[] = []
-                    for (let i = 0; i < others.length; i += 1) {
-                      const u = others[i]
-                      const y = (i * stackedStep)
-                      otherElems.push(renderUserRow(u, y))
-                    }
-
-                    return (
-                      <>
-                        {/* Scrollable layer for the other users; rendered below the pinned admin avatar. */}
-                        <div
-                          ref={editorPickerScrollRef}
-                          className="absolute overflow-y-auto"
-                          style={{ left: 0, right: 0, top: listTop, height: listViewportHeight }}
-                          onScroll={() => {
-                            if (!editorPickerOpenRef.current) return
-                            editorPickerScrollingRef.current = true
-                            setOverlayChromePeekVisible(true)
-                            try { onOverlayChromeVisibilityChange?.(true) } catch {}
-                            clearOverlayChromeAutoHide()
-                            if (editorPickerScrollIdleTimeoutRef.current) {
-                              clearTimeout(editorPickerScrollIdleTimeoutRef.current)
-                            }
-                            editorPickerScrollIdleTimeoutRef.current = setTimeout(() => {
-                              editorPickerScrollIdleTimeoutRef.current = null
-                              editorPickerScrollingRef.current = false
-                              scheduleOverlayChromeAutoHide()
-                            }, 220)
-                          }}
-                          onPointerDown={(e) => {
-                            e.stopPropagation()
-                          }}
-                        >
-                          <div className="relative" style={{ height: innerHeight }}>
-                            <div
-                              className="absolute"
-                              style={{
-                                left: 0,
-                                top: 0,
-                                width: '100%',
-                                height: innerHeight,
-                              }}
-                            >
-                              {otherElems}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Fixed admin avatar pinned to the anchor position (no special gold styling). */}
-                        <button
-                          type="button"
-                          className="absolute rounded-full border border-slate-200 bg-white/90 text-slate-800 shadow-sm flex items-center justify-center"
-                          style={{ left: anchorX, top: anchorTop, width: avatarSize, height: avatarSize, zIndex: 60 }}
-                          onPointerDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          onClick={(e) => {
-                            // Keep open; selecting others happens below. (Takeover is already true when admin is controller.)
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          title={adminEntry.name}
-                          aria-label={adminEntry.name}
-                        >
-                          <span className="text-[12px] font-semibold" aria-hidden="true">{initialsFor(adminEntry.name)}</span>
-                        </button>
-                      </>
-                    )
-                  })()}
-                </div>
-              )}
             </div>
             <div
               role="separator"
@@ -8562,10 +7854,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !useStepComposer)}
+                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && isAdmin))}
                               onPointerDown={(e) => {
                                 if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
-                                if (!canUndo && !useStepComposer) return
+                                if (!canUndo && !(useAdminStepComposer && isAdmin)) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
                                 pressRepeatPointerIdRef.current = e.pointerId
@@ -8630,10 +7922,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               className="px-2 py-1 text-slate-700 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !useStepComposer)}
+                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && isAdmin))}
                               onPointerDown={(e) => {
                                 if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
-                                if (!canRedo && !useStepComposer) return
+                                if (!canRedo && !(useAdminStepComposer && isAdmin)) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
                                 pressRepeatPointerIdRef.current = e.pointerId
@@ -8800,9 +8092,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
-                {(canPresent || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
+                {(isAdmin || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
                   <div className="flex items-center gap-2">
-                    {canPresent && isCompactViewport && (
+                    {isAdmin && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -8831,7 +8123,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {canPresent && isCompactViewport && (
+                    {isAdmin && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -8883,7 +8175,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {canPresent && isCompactViewport && (
+                    {isAdmin && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -8899,68 +8191,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {isOverlayMode && (
+                    {isAdmin && isOverlayMode && (
                       <button
                         type="button"
-                        className={`px-2 py-1 rounded ${isEraserMode ? 'bg-slate-900/10' : ''} ${isViewOnly ? 'opacity-50' : ''}`}
-                        title={isEraserMode ? (eraserShimReady ? 'Eraser (on)' : 'Eraser (on, initializing)') : (eraserShimReady ? 'Eraser' : 'Eraser (initializing)')}
-                        aria-pressed={isEraserMode}
-                        onClick={(e) => {
-                          if (eraserLongPressTriggeredRef.current) {
-                            eraserLongPressTriggeredRef.current = false
-                            e.preventDefault()
-                            e.stopPropagation()
-                            return
-                          }
-                          if (isViewOnly) return
-                          setIsEraserMode(prev => !prev)
+                        className="px-2 py-1"
+                        title="Canvas controls"
+                        onClick={() => {
+                          openOverlayControls()
                         }}
-                        disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}
-                        onPointerDown={(e) => {
-                          if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
-                          eraserLongPressTriggeredRef.current = false
-                          if (eraserLongPressTimeoutRef.current) {
-                            clearTimeout(eraserLongPressTimeoutRef.current)
-                            eraserLongPressTimeoutRef.current = null
-                          }
-                          if (isAdmin) {
-                            // Admin-only: long press opens the old canvas controls (replaces the gear icon).
-                            eraserLongPressTimeoutRef.current = setTimeout(() => {
-                              eraserLongPressTimeoutRef.current = null
-                              eraserLongPressTriggeredRef.current = true
-                              openOverlayControls()
-                            }, 520)
-                          }
-                          try {
-                            e.currentTarget.setPointerCapture(e.pointerId)
-                          } catch {}
-                        }}
-                        onPointerUp={() => {
-                          if (eraserLongPressTimeoutRef.current) {
-                            clearTimeout(eraserLongPressTimeoutRef.current)
-                            eraserLongPressTimeoutRef.current = null
-                          }
-                        }}
-                        onPointerCancel={() => {
-                          if (eraserLongPressTimeoutRef.current) {
-                            clearTimeout(eraserLongPressTimeoutRef.current)
-                            eraserLongPressTimeoutRef.current = null
-                          }
-                        }}
+                        disabled={status !== 'ready' || Boolean(fatalError)}
                       >
-                        <span className="sr-only">Eraser</span>
+                        <span className="sr-only">Canvas controls</span>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           viewBox="0 0 24 24"
                           width="18"
                           height="18"
                           fill="currentColor"
-                          className={isEraserMode ? 'text-slate-900' : 'text-slate-700'}
+                          className="text-slate-700"
                           aria-hidden="true"
                         >
-                          <path d="M16.24 3.56a2.5 2.5 0 0 1 3.54 0l.66.66a2.5 2.5 0 0 1 0 3.54l-9.2 9.2a2.5 2.5 0 0 1-1.77.73H5.5a1.5 1.5 0 0 1-1.06-.44l-1.1-1.1a1.5 1.5 0 0 1 0-2.12l12.9-12.9z" opacity="0.25" />
-                          <path d="M15.53 4.27 4.04 15.76a.5.5 0 0 0 0 .71l1.1 1.1c.09.1.22.15.35.15h3.97c.2 0 .38-.08.52-.21l9.2-9.2a1.5 1.5 0 0 0 0-2.12l-.66-.66a1.5 1.5 0 0 0-2.12 0z" />
-                          <path d="M4 20h16v2H4v-2z" />
+                          <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.06 7.06 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.65.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.25.1.52.01.65-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" />
                         </svg>
                       </button>
                     )}
@@ -9034,21 +8285,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         const snapshot = captureFullSnapshot()
                         const symbols = snapshot?.symbols ?? null
                         setAdminSteps(prev => {
-                          let next = [...prev]
-
-                          // Student controller handoff: if the composer hasn't been seeded yet
-                          // (effects can lag behind a fast tap), preserve any existing top display
-                          // as committed steps before appending the new line.
-                          if (!isAdmin && isStudentSharedSessionStepComposer && adminEditIndex === null && next.length === 0) {
-                            const seed = (stackedNotesState.latex || latexDisplayState.latex || '').trim()
-                            const parts = seed
-                              ? seed.split(/\\/g).map(s => (s || '').trim()).filter(Boolean)
-                              : []
-                            if (parts.length) {
-                              next = parts.map(latex => ({ latex, symbols: null }))
-                            }
-                          }
-
+                          const next = [...prev]
                           if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
                             next[adminEditIndex] = { latex: step, symbols }
                           } else {
@@ -9059,13 +8296,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminDraftLatex('')
                         setAdminEditIndex(null)
                         setLatexOutput('')
-
-                        // Cancel any pending preview export so stale recognition can’t re-fill the draft.
-                        stepComposerPreviewEpochRef.current += 1
-                        if (pendingExportRef.current) {
-                          clearTimeout(pendingExportRef.current)
-                          pendingExportRef.current = null
-                        }
 
                         // Clear handwriting for next step without broadcasting a global clear.
                         suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -9078,23 +8308,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         setAdminSendingStep(false)
                       }
                       }}
-                      disabled={(() => {
-                        if (status !== 'ready' || Boolean(fatalError)) return true
-                        if (isAdmin) {
-                          return Boolean(adminSendingStep || (!adminDraftLatex && !canClear))
-                        }
-
-                        // Quiz/assignment: commit/submit flow controls availability.
-                        if (quizActive || isAssignmentView) {
-                          return Boolean(quizSubmitting)
-                        }
-
-                        // Normal shared session: mirror admin behaviour (enabled when there's something
-                        // on-canvas to commit) but only for the current editor.
-                        if (lockedOutRef.current) return true
-                        if (!studentCanPublish()) return true
-                        return Boolean(adminSendingStep || (!adminDraftLatex && !canClear))
-                      })()}
+                      disabled={status !== 'ready' || Boolean(fatalError) || (isAdmin ? (adminSendingStep || (!adminDraftLatex && !canClear)) : (quizSubmitting || (!quizActive && !isAssignmentView)))}
                     >
                       <span className="sr-only">Send</span>
                       <svg

@@ -9916,31 +9916,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (e.target === e.currentTarget) setFinishQuestionModalOpen(false)
           }}
         >
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-[min(560px,calc(100vw-24px))] rounded-lg bg-white shadow-lg border border-slate-200 p-4">
-            <div className="text-sm font-semibold text-slate-800">Save As</div>
-            <div className="text-xs text-slate-600 mt-1">
-              Saves the full question (all top steps) into Notes.
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+          <div className="relative w-[min(560px,calc(100vw-24px))] rounded-lg bg-slate-50 shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-900 text-white">
+              <div className="text-sm font-semibold">Save As</div>
+              <div className="text-[11px] text-slate-200 mt-0.5">
+                Saves the full question (all top steps) into Notes.
+              </div>
             </div>
 
             <form
-              className="mt-3"
+              className="p-4"
               onSubmit={(e) => {
                 e.preventDefault()
                 void confirmFinishQuestionSave()
               }}
             >
-              <label className="block text-xs font-medium text-slate-700">Title</label>
-              <input
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                value={finishQuestionTitle}
-                onChange={(e) => setFinishQuestionTitle(e.target.value)}
-                autoFocus
-                placeholder="e.g. Solve for x"
-              />
+              <div className="rounded-md border border-slate-200 bg-white p-3">
+                <label className="block text-xs font-medium text-slate-700">Title</label>
+                <input
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                  value={finishQuestionTitle}
+                  onChange={(e) => setFinishQuestionTitle(e.target.value)}
+                  autoFocus
+                  placeholder="e.g. Solve for x"
+                />
+                {finishQuestionNoteId && (
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    Internal ID saved (hidden): <span className="font-mono">{finishQuestionNoteId}</span>
+                  </div>
+                )}
+              </div>
 
               {latexSaveError && (
-                <div className="mt-2 text-xs text-red-600">{latexSaveError}</div>
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{latexSaveError}</div>
               )}
 
               <div className="mt-4 flex items-center justify-end gap-2">

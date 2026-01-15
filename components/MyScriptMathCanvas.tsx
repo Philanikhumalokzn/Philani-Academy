@@ -1,58 +1,11 @@
-// TypeScript declaration for window.iink
-declare global {
-  interface Window {
-    iink?: {
-      Editor?: {
-        load?: (...args: any[]) => any;
-      };
-    };
-  }
-}
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
-type MyScriptMathCanvasProps = {
-  gradeLabel?: string
-  roomId: string
-  userId: string
-  userDisplayName?: string
-  isAdmin?: boolean
-  forceEditable?: boolean
-  boardId?: string
-  realtimeScopeId?: string
-  autoOpenDiagramTray?: boolean
-  quizMode?: boolean
-  initialQuiz?: {
-    quizId: string
-    quizLabel?: string
-    quizPhaseKey?: string
-    quizPointId?: string
-    quizPointIndex?: number
-    prompt: string
-    durationSec?: number | null
-    endsAt?: number | null
-  }
-  assignmentSubmission?: {
-    sessionId: string
-    assignmentId: string
-    questionId: string
-    kind?: 'response' | 'solution'
-    initialLatex?: string
-  }
-  uiMode?: 'default' | 'overlay'
-  defaultOrientation?: any
-  overlayControlsHandleRef?: any
-  onOverlayChromeVisibilityChange?: (visible: boolean) => void
-  onLatexOutputChange?: (latex: string) => void
-  onRequestVideoOverlay?: () => void
-  lessonAuthoring?: { phaseKey: string; pointId: string }
-}
+// ...other code...
 
-const MyScriptMathCanvas = (props: MyScriptMathCanvasProps) => {
-  const { gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring } = props;
-
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
   // Assignment navigation: manage local assignmentSubmission state and navigation
   const [localAssignmentSubmission, setLocalAssignmentSubmission] = useState(assignmentSubmission);
   // Derive questionIds from assignmentSubmission prop if available (for navigation)
@@ -65,6 +18,9 @@ const MyScriptMathCanvas = (props: MyScriptMathCanvasProps) => {
 
   // Listen for badge navigation events and update localAssignmentSubmission state
   const studentQuizCommitOrSubmitRef = useRef<any>(null);
+  useEffect(() => {
+    studentQuizCommitOrSubmitRef.current = studentQuizCommitOrSubmit;
+  }, [studentQuizCommitOrSubmit]);
 
   useEffect(() => {
     if (!localAssignmentSubmission) return;
@@ -93,9 +49,6 @@ const MyScriptMathCanvas = (props: MyScriptMathCanvasProps) => {
       window.removeEventListener('philani:assignment-submit', handleAssignmentSubmit);
     };
   }, [localAssignmentSubmission, assignmentQuestionIds]);
-
-  // After studentQuizCommitOrSubmit is defined, set the ref
-  // (insert this after studentQuizCommitOrSubmit is defined in the file)
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
 import { toast } from 'react-toastify'
@@ -211,13 +164,13 @@ function loadIinkRuntime(): Promise<void> {
     return Promise.reject(new Error('MyScript iink runtime can only load in a browser context.'))
   }
 
-  const hasValidRuntime = () => Boolean((window as any).iink?.Editor?.load)
+  const hasValidRuntime = () => Boolean(window.iink?.Editor?.load)
 
   if (hasValidRuntime()) {
     return Promise.resolve()
   }
 
-  if ((window as any).iink && !hasValidRuntime()) {
+  if (window.iink && !hasValidRuntime()) {
     try {
       ;(window as any).iink = undefined
     } catch {}
@@ -282,12 +235,12 @@ function loadIinkRuntime(): Promise<void> {
 
     const primaryOk = await tryLoad(SCRIPT_ID, SCRIPT_URL)
 
-    if (!(window as any).iink?.Editor?.load) {
+    if (!window.iink?.Editor?.load) {
       console.warn('Primary MyScript CDN did not expose the expected API, retrying pinned fallback.')
       await tryLoad(`${SCRIPT_ID}-fallback`, SCRIPT_FALLBACK_URL)
     }
 
-    if (!(window as any).iink?.Editor?.load) {
+    if (!window.iink?.Editor?.load) {
       if (lastError instanceof Error) {
         throw lastError
       }
@@ -4192,7 +4145,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     loadIinkRuntime()
       .then(async () => {
         if (cancelled) return
-        if (!(window as any).iink?.Editor?.load) {
+        if (!window.iink?.Editor?.load) {
           throw new Error('MyScript iink runtime did not expose the expected API.')
         }
 
@@ -4281,7 +4234,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           },
         }
 
-        const editor = await (window as any).iink.Editor.load(host, 'MATH', options)
+        const editor = await window.iink.Editor.load(host, 'MATH', options)
         if (cancelled) {
           editor.destroy?.()
           return

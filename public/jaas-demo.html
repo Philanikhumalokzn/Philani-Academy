@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JaaS demo</title>
+    <style>html, body, #jaas-container { height: 100%; margin: 0; }</style>
+    <script type="text/javascript">
+      // Helper to read query params: ?domain=8x8.vc&appId=vpaas-...&room=MyRoom
+      function getQueryParams() {
+        const params = new URLSearchParams(window.location.search);
+        return {
+          domain: params.get('domain'),
+          appId: params.get('appId'),
+          room: params.get('room')
+        };
+      }
+
+      function showMessage(msg) {
+        const container = document.querySelector('#jaas-container');
+        container.innerHTML = '<div style="padding:20px;font-family:Arial;">' + msg + '</div>';
+      }
+
+      window.onload = () => {
+        const { domain, appId, room } = getQueryParams();
+
+        // If domain and appId are provided we construct the external_api script URL dynamically.
+        // Otherwise fall back to the existing hardcoded vpaas magic-cookie script (if desired).
+        if (!domain || !appId) {
+          showMessage('<h3>JaaS demo — missing parameters</h3>' +
+            '<p>Provide <code>?domain=YOUR_DOMAIN&appId=YOUR_APPID&room=ROOM_NAME</code> in the URL.</p>' +
+            '<p>Example: <code>?domain=8x8.vc&appId=vpaas-magic-cookie-...&room=DemoRoom</code></p>');
+          return;
+        }
+
+        const scriptSrc = `https://${domain}/${appId}/external_api.js`;
+        const script = document.createElement('script');
+        script.src = scriptSrc;
+        script.async = true;
+        script.onload = () => {
+          // Compose room name: allow passing a room or default to a generated one
+          const roomName = (appId + '/' + (room || ('DemoRoom-' + Math.random().toString(36).slice(2,8))));
+          try {
+            const api = new JitsiMeetExternalAPI(domain, {
+              roomName: roomName,
+              parentNode: document.querySelector('#jaas-container')
+              // jwt: 'PASTE-A-TOKEN-HERE-IF-YOU-HAVE-ONE'
+            });
+          } catch (err) {
+            showMessage('<h3>Failed to initialize Jitsi</h3><pre>' + (err && err.message) + '</pre>');
+          }
+        };
+        script.onerror = () => {
+          showMessage('<h3>Failed to load external_api.js</h3><p>Checked: ' + scriptSrc + '</p>');
+        };
+        document.head.appendChild(script);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="jaas-container"></div>
+  </body>
+</html>

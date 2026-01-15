@@ -1,0 +1,76 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Next.js build",
+			"type": "shell",
+			"command": "npm run build"
+		},
+		{
+			"label": "Next.js dev",
+			"type": "shell",
+			"command": "npm run dev",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Next.js build (PowerShell)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc-next"
+			]
+		},
+		{
+			"label": "Next.js build (verify)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc-next"
+			]
+		},
+		{
+			"label": "Next.js build (after top payload unification)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc-next"
+			]
+		},
+		{
+			"label": "Next.js build (after payload unification)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false
+		},
+		{
+			"label": "Next.js build (top panel render payload)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false
+		},
+		{
+			"label": "Next.js build (rename topPanelLatexSource)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false
+		},
+		{
+			"label": "Build (diagnostic)",
+			"type": "shell",
+			"command": "npm run build",
+			"isBackground": false
+		},
+		{
+			"label": "Build (retry + Prisma unlock)",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$here=(Get-Location).Path; function Stop-WorkspaceNode { $procs=Get-CimInstance Win32_Process -Filter \\\"Name='node.exe'\\\" | Where-Object { $_.CommandLine -and $_.CommandLine -like (\\\"*\\\" + $here + \\\"*\\\") }; foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} } }; $max=15; for ($i=1; $i -le $max; $i++) { Write-Host (\\\"`n=== BUILD ATTEMPT $i/$max ===\\\"); Stop-WorkspaceNode; Remove-Item -Recurse -Force node_modules\\\\.prisma -ErrorAction SilentlyContinue; npm run build; if ($LASTEXITCODE -eq 0) { Write-Host (\\\"`n=== BUILD_OK (attempt $i) ===\\\"); exit 0 }; Write-Host (\\\"`n=== BUILD_FAIL exit=$LASTEXITCODE ===\\\"); Start-Sleep -Seconds ([Math]::Min(20, 2 + $i)) }; Write-Host (\\\"`n=== BUILD_GAVE_UP ===\\\"); exit 1\"",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

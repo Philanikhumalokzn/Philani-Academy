@@ -334,6 +334,12 @@ body{
 }
 
 .mobile-dashboard-theme .btn{border-radius:999px;}
+.student-mobile-panels{
+  overflow-y:hidden;
+  touch-action:pan-x;
+  overscroll-behavior-x:contain;
+  overscroll-behavior-y:contain;
+}
 .mobile-dashboard-theme .input{border-radius:10px;}
 
 .mobile-dashboard-theme .input{

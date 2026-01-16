@@ -8099,7 +8099,7 @@ export default function Dashboard() {
               <div
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
-                className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
+                className="student-mobile-panels flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
                 <div

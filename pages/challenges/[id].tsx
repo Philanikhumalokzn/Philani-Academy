@@ -398,7 +398,9 @@ export default function ChallengeAttemptPage() {
             )}
           </div>
         </div>
-      {initialQuiz ? (
+      ) : (
+        <>
+          {initialQuiz ? (
         <div
           className="absolute inset-0"
           onClick={e => {
@@ -428,10 +430,10 @@ export default function ChallengeAttemptPage() {
             )
           })()}
         </div>
-      ) : null}
+          ) : null}
 
       {/* Info badge logic adapted from assignments */}
-      {challenge && metaVisible ? (
+          {challenge && metaVisible ? (
         <div className="absolute top-3 left-3 right-3 z-50">
           <div
             className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3"
@@ -469,9 +471,9 @@ export default function ChallengeAttemptPage() {
             </button>
           </div>
         </div>
-      ) : null}
+          ) : null}
       {/* Show info button if badge is hidden */}
-      {challenge && !metaVisible ? (
+          {challenge && !metaVisible ? (
         <button
           type="button"
           className="absolute top-3 left-3 z-50 btn btn-ghost btn-xs"
@@ -481,7 +483,9 @@ export default function ChallengeAttemptPage() {
         >
           <span className="material-icons" style={{ fontSize: 16, verticalAlign: 'middle' }}>info</span>
         </button>
-      ) : null}
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

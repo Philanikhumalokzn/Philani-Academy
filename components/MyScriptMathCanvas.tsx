@@ -3,57 +3,6 @@ import { renderToString } from 'katex'
 import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
-// ...other code...
-
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
-  // Assignment navigation: manage local assignmentSubmission state and navigation
-  const [localAssignmentSubmission, setLocalAssignmentSubmission] = useState(assignmentSubmission);
-  // Derive questionIds from assignmentSubmission prop if available (for navigation)
-  const assignmentQuestionIds = useMemo(() => {
-    if (assignmentSubmission && Array.isArray((assignmentSubmission as any).questions)) {
-      return ((assignmentSubmission as any).questions as any[]).map((q: any) => q.id).filter(Boolean);
-    }
-    return [];
-  }, [assignmentSubmission]);
-
-  // Listen for badge navigation events and update localAssignmentSubmission state
-  const studentQuizCommitOrSubmitRef = useRef<any>(null);
-  useEffect(() => {
-    studentQuizCommitOrSubmitRef.current = studentQuizCommitOrSubmit;
-  }, [studentQuizCommitOrSubmit]);
-
-  useEffect(() => {
-    if (!localAssignmentSubmission) return;
-    function handleAssignmentNavigate(e: any) {
-      const detail = e.detail || {};
-      if (
-        detail.assignmentId === localAssignmentSubmission.assignmentId &&
-        detail.questionId &&
-        assignmentQuestionIds.includes(detail.questionId)
-      ) {
-        setLocalAssignmentSubmission((prev) => prev ? { ...prev, questionId: detail.questionId } : prev);
-      }
-    }
-    function handleAssignmentSubmit(e: any) {
-      const detail = e.detail || {};
-      if (detail.assignmentId === localAssignmentSubmission.assignmentId) {
-        if (typeof studentQuizCommitOrSubmitRef.current === 'function') {
-          void studentQuizCommitOrSubmitRef.current({ forceSubmit: true, skipConfirm: false });
-        }
-      }
-    }
-    window.addEventListener('philani:assignment-navigate', handleAssignmentNavigate);
-    window.addEventListener('philani:assignment-submit', handleAssignmentSubmit);
-    return () => {
-      window.removeEventListener('philani:assignment-navigate', handleAssignmentNavigate);
-      window.removeEventListener('philani:assignment-submit', handleAssignmentSubmit);
-    };
-  }, [localAssignmentSubmission, assignmentQuestionIds]);
-import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
-import { renderToString } from 'katex'
-import { toast } from 'react-toastify'
-import 'react-toastify/dist/ReactToastify.css'
-
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
 
 function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean): boolean {
@@ -148,16 +97,6 @@ const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 const SCRIPT_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.js'
 let scriptPromise: Promise<void> | null = null
-
-declare global {
-  interface Window {
-    iink?: {
-      Editor: {
-        load: (element: HTMLElement, editorType: string, options?: unknown) => Promise<any>
-      }
-    }
-  }
-}
 
 function loadIinkRuntime(): Promise<void> {
   if (typeof window === 'undefined') {
@@ -529,6 +468,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Assignments & timeline challenges are single-user canvases. They must remain editable for the current
   // learner without requiring presenter/controller allowlisting (which is only for live sessions).
   const forceEditableForAssignment = Boolean(forceEditable) || Boolean((!isAdmin || isAssignmentSolutionAuthoring) && isAssignmentView)
+  const [localAssignmentSubmission, setLocalAssignmentSubmission] = useState(assignmentSubmission)
+  const assignmentQuestionIds = useMemo(() => {
+    if (assignmentSubmission && Array.isArray((assignmentSubmission as any).questions)) {
+      return ((assignmentSubmission as any).questions as any[]).map((q: any) => q.id).filter(Boolean)
+    }
+    return []
+  }, [assignmentSubmission])
+  useEffect(() => {
+    setLocalAssignmentSubmission(assignmentSubmission)
+  }, [assignmentSubmission])
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -6852,6 +6801,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setQuizSubmitting(false)
     }
   }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, hasWriteAccess, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, updateControlState, userDisplayName, userId])
+
+  const studentQuizCommitOrSubmitRef = useRef<typeof studentQuizCommitOrSubmit | null>(null)
+  useEffect(() => {
+    studentQuizCommitOrSubmitRef.current = studentQuizCommitOrSubmit
+  }, [studentQuizCommitOrSubmit])
+
+  useEffect(() => {
+    if (!localAssignmentSubmission) return
+    const handleAssignmentNavigate = (e: any) => {
+      const detail = e.detail || {}
+      if (
+        detail.assignmentId === localAssignmentSubmission.assignmentId &&
+        detail.questionId &&
+        assignmentQuestionIds.includes(detail.questionId)
+      ) {
+        setLocalAssignmentSubmission(prev => (prev ? { ...prev, questionId: detail.questionId } : prev))
+      }
+    }
+    const handleAssignmentSubmit = (e: any) => {
+      const detail = e.detail || {}
+      if (detail.assignmentId === localAssignmentSubmission.assignmentId) {
+        if (typeof studentQuizCommitOrSubmitRef.current === 'function') {
+          void studentQuizCommitOrSubmitRef.current({ forceSubmit: true, skipConfirm: false })
+        }
+      }
+    }
+    window.addEventListener('philani:assignment-navigate', handleAssignmentNavigate)
+    window.addEventListener('philani:assignment-submit', handleAssignmentSubmit)
+    return () => {
+      window.removeEventListener('philani:assignment-navigate', handleAssignmentNavigate)
+      window.removeEventListener('philani:assignment-submit', handleAssignmentSubmit)
+    }
+  }, [localAssignmentSubmission, assignmentQuestionIds])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {

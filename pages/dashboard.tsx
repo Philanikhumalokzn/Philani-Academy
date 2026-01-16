@@ -832,6 +832,7 @@ export default function Dashboard() {
   }, [status])
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
+  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | null>(null)
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
   const studentMobilePanelRefs = useRef<{
     timeline: HTMLDivElement | null
@@ -2077,6 +2078,18 @@ export default function Dashboard() {
   const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
     const el = studentMobilePanelsRef.current
     if (!el) return
+    const panel = studentMobilePanelRefs.current[tab]
+    if (panel) {
+      const elRect = el.getBoundingClientRect()
+      const panelRect = panel.getBoundingClientRect()
+      const targetLeft = el.scrollLeft + (panelRect.left - elRect.left)
+      if (typeof el.scrollTo === 'function') {
+        el.scrollTo({ left: targetLeft, behavior: 'smooth' })
+      } else {
+        el.scrollLeft = targetLeft
+      }
+      return
+    }
     const width = el.clientWidth || 0
     if (!width) {
       if (typeof window !== 'undefined') {
@@ -2093,14 +2106,14 @@ export default function Dashboard() {
     }
   }, [studentMobileTabIndex])
 
-  const activateStudentMobileTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
-    setStudentMobileTab(tab)
+  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    setStudentQuickOverlay(tab)
     if (tab === 'timeline') setTimelineOpen(true)
-    scrollStudentPanelsToTab(tab)
-    if (typeof window !== 'undefined') {
-      window.requestAnimationFrame(() => scrollStudentPanelsToTab(tab))
-    }
-  }, [scrollStudentPanelsToTab])
+  }, [])
+
+  const closeStudentQuickOverlay = useCallback(() => {
+    setStudentQuickOverlay(null)
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2558,7 +2571,7 @@ export default function Dashboard() {
           className={btnClass('timeline')}
           aria-label="Timeline"
           title="Timeline"
-          onClick={() => activateStudentMobileTab('timeline')}
+          onClick={() => openStudentQuickOverlay('timeline')}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M12 8v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -2570,7 +2583,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={btnClass('sessions')}
-          onClick={() => activateStudentMobileTab('sessions')}
+          onClick={() => openStudentQuickOverlay('sessions')}
           aria-label="Sessions"
           title="Sessions"
         >
@@ -2584,7 +2597,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={btnClass('groups')}
-          onClick={() => activateStudentMobileTab('groups')}
+          onClick={() => openStudentQuickOverlay('groups')}
           aria-label="Groups"
           title="Groups"
         >
@@ -2600,7 +2613,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={btnClass('discover')}
-          onClick={() => activateStudentMobileTab('discover')}
+          onClick={() => openStudentQuickOverlay('discover')}
           aria-label="Discover"
           title="Discover"
         >
@@ -8191,6 +8204,35 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 overflow-y-auto p-3">
                 {renderSection(dashboardSectionOverlay)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMobile && studentQuickOverlay && (
+        <div
+          className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeStudentQuickOverlay} />
+          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeStudentQuickOverlay}>
+            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold break-words">
+                    {studentQuickOverlay === 'timeline'
+                      ? 'Timeline'
+                      : (DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === studentQuickOverlay)?.label || 'Section'}
+                  </div>
+                </div>
+                <button type="button" className="btn btn-ghost" onClick={closeStudentQuickOverlay} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {studentQuickOverlay === 'timeline' ? renderTimelineCard() : renderSection(studentQuickOverlay)}
               </div>
             </div>
           </div>

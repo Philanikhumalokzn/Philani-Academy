@@ -833,6 +833,12 @@ export default function Dashboard() {
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
+  const studentMobilePanelRefs = useRef<Record<'timeline' | 'sessions' | 'groups' | 'discover', HTMLDivElement | null>>({
+    timeline: null,
+    sessions: null,
+    groups: null,
+    discover: null,
+  })
   const studentMobileScrollRafRef = useRef<number | null>(null)
 
   const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
@@ -2071,6 +2077,11 @@ export default function Dashboard() {
   const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
     const el = studentMobilePanelsRef.current
     if (!el) return
+    const target = studentMobilePanelRefs.current[tab]
+    if (target && typeof target.offsetLeft === 'number') {
+      el.scrollTo({ left: target.offsetLeft, behavior: 'smooth' })
+      return
+    }
     const width = el.clientWidth || 0
     if (!width) return
     const idx = studentMobileTabIndex(tab)
@@ -8069,19 +8080,39 @@ export default function Dashboard() {
                 className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={node => {
+                    studentMobilePanelRefs.current.timeline = node
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderStudentHomeFeed()}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={node => {
+                    studentMobilePanelRefs.current.sessions = node
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderSection('sessions')}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={node => {
+                    studentMobilePanelRefs.current.groups = node
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderSection('groups')}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={node => {
+                    studentMobilePanelRefs.current.discover = node
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderSection('discover')}
                 </div>
               </div>

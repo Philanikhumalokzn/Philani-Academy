@@ -2075,11 +2075,6 @@ export default function Dashboard() {
   }
 
   const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
-    const panel = studentMobilePanelRefs.current[tab]
-    if (panel && typeof panel.scrollIntoView === 'function') {
-      panel.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
-      return
-    }
     const el = studentMobilePanelsRef.current
     if (!el) return
     const width = el.clientWidth || 0

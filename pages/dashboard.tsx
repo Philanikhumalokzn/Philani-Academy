@@ -839,6 +839,7 @@ export default function Dashboard() {
     groups: null,
     discover: null,
   })
+  const [studentQuickActionOverlay, setStudentQuickActionOverlay] = useState<null | 'timeline' | 'sessions' | 'groups' | 'discover'>(null)
   const studentMobileScrollRafRef = useRef<number | null>(null)
 
   const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
@@ -2553,7 +2554,7 @@ export default function Dashboard() {
           title="Timeline"
           onClick={() => {
             setStudentMobileTab('timeline')
-            scrollStudentPanelsToTab('timeline')
+            setStudentQuickActionOverlay('timeline')
           }}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -2568,7 +2569,7 @@ export default function Dashboard() {
           className={btnClass('sessions')}
           onClick={() => {
             setStudentMobileTab('sessions')
-            scrollStudentPanelsToTab('sessions')
+            setStudentQuickActionOverlay('sessions')
           }}
           aria-label="Sessions"
           title="Sessions"
@@ -2585,7 +2586,7 @@ export default function Dashboard() {
           className={btnClass('groups')}
           onClick={() => {
             setStudentMobileTab('groups')
-            scrollStudentPanelsToTab('groups')
+            setStudentQuickActionOverlay('groups')
           }}
           aria-label="Groups"
           title="Groups"
@@ -2604,7 +2605,7 @@ export default function Dashboard() {
           className={btnClass('discover')}
           onClick={() => {
             setStudentMobileTab('discover')
-            scrollStudentPanelsToTab('discover')
+            setStudentQuickActionOverlay('discover')
           }}
           aria-label="Discover"
           title="Discover"
@@ -2840,6 +2841,20 @@ export default function Dashboard() {
         </div>
       </section>
     )
+  }
+
+  const studentQuickActionTitle = (id: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    if (id === 'timeline') return 'Timeline'
+    if (id === 'sessions') return 'Sessions'
+    if (id === 'groups') return 'Groups'
+    return 'Discover'
+  }
+
+  const renderStudentQuickActionBody = (id: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    if (id === 'timeline') return renderStudentHomeFeed()
+    if (id === 'sessions') return renderSessionsSection()
+    if (id === 'groups') return renderSection('groups')
+    return renderSection('discover')
   }
 
   useEffect(() => {
@@ -8214,6 +8229,42 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {renderAccountSnapshotBody()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isAdmin && isMobile && studentQuickActionOverlay && (
+        <div
+          className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+            onClick={() => setStudentQuickActionOverlay(null)}
+          />
+          <div className="absolute inset-x-0 bottom-0" onClick={() => setStudentQuickActionOverlay(null)}>
+            <div
+              className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold break-words">{studentQuickActionTitle(studentQuickActionOverlay)}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setStudentQuickActionOverlay(null)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                {renderStudentQuickActionBody(studentQuickActionOverlay)}
               </div>
             </div>
           </div>

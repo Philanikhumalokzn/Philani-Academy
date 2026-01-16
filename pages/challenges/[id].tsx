@@ -320,7 +320,7 @@ export default function ChallengeAttemptPage() {
                 </button>
               </div>
             </div>
-            
+
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm text-white/80">
                 <strong>Prompt:</strong> {challenge?.prompt || 'N/A'}
@@ -398,90 +398,94 @@ export default function ChallengeAttemptPage() {
             )}
           </div>
         </div>
-      {initialQuiz ? (
-        <div
-          className="absolute inset-0"
-          onClick={e => {
-            // Only show badge if not already visible and tap is not on the info button
-            if (!metaVisible && e.target === e.currentTarget) setMetaVisible(true)
-          }}
-        >
-          {(() => {
-            const realtimeScopeId = `challenge:${id}:u:${effectiveViewerId || 'anon'}`
-            const boardId = `challenge:${id}`
-            const canAdmin = Boolean(challenge?.isOwner || challenge?.isPrivileged)
-            return (
-              <StackedCanvasWindow
-                gradeLabel={challenge?.grade ? String(challenge.grade).replace('GRADE_', 'Grade ') : null}
-                roomId={`challenge-${id}-u-${effectiveViewerId || 'anon'}`}
-                boardId={boardId}
-                realtimeScopeId={realtimeScopeId}
-                userId={effectiveViewerId || 'anon'}
-                userDisplayName={userDisplayName}
-                isAdmin={canAdmin}
-                forceEditable
-                quizMode
-                initialQuiz={initialQuiz}
-                isVisible
-                defaultOrientation="portrait"
-              />
-            )
-          })()}
-        </div>
-      ) : null}
-
-      {/* Info badge logic adapted from assignments */}
-      {challenge && metaVisible ? (
-        <div className="absolute top-3 left-3 right-3 z-50">
-          <div
-            className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3"
-            style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-            role="button"
-            tabIndex={0}
-            onClick={() => setMetaVisible(false)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') setMetaVisible(false)
-            }}
-          >
-            <div className="min-w-0">
-              <div className="text-xs text-white/80 flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-white">{(challenge.title || '').trim() ? challenge.title : 'Challenge'}</span>
-                {challenge.createdBy?.name ? <span className="text-white/70">• {challenge.createdBy.name}</span> : null}
-              </div>
-              {challenge.prompt ? <div className="mt-2 text-sm text-white">{renderTextWithKatex(challenge.prompt)}</div> : null}
-              {challenge.imageUrl ? (
-                <div className="mt-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={challenge.imageUrl} alt="Challenge" className="max-h-[240px] rounded border border-white/10 object-contain" />
-                </div>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="btn btn-ghost shrink-0"
-              tabIndex={-1}
+      ) : (
+        <>
+          {initialQuiz ? (
+            <div
+              className="absolute inset-0"
               onClick={e => {
-                e.stopPropagation();
-                setMetaVisible(false);
+                // Only show badge if not already visible and tap is not on the info button
+                if (!metaVisible && e.target === e.currentTarget) setMetaVisible(true)
               }}
             >
-              Back
+              {(() => {
+                const realtimeScopeId = `challenge:${id}:u:${effectiveViewerId || 'anon'}`
+                const boardId = `challenge:${id}`
+                const canAdmin = Boolean(challenge?.isOwner || challenge?.isPrivileged)
+                return (
+                  <StackedCanvasWindow
+                    gradeLabel={challenge?.grade ? String(challenge.grade).replace('GRADE_', 'Grade ') : null}
+                    roomId={`challenge-${id}-u-${effectiveViewerId || 'anon'}`}
+                    boardId={boardId}
+                    realtimeScopeId={realtimeScopeId}
+                    userId={effectiveViewerId || 'anon'}
+                    userDisplayName={userDisplayName}
+                    isAdmin={canAdmin}
+                    forceEditable
+                    quizMode
+                    initialQuiz={initialQuiz}
+                    isVisible
+                    defaultOrientation="portrait"
+                  />
+                )
+              })()}
+            </div>
+          ) : null}
+
+          {/* Info badge logic adapted from assignments */}
+          {challenge && metaVisible ? (
+            <div className="absolute top-3 left-3 right-3 z-50">
+              <div
+                className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3"
+                style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+                role="button"
+                tabIndex={0}
+                onClick={() => setMetaVisible(false)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') setMetaVisible(false)
+                }}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs text-white/80 flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-white">{(challenge.title || '').trim() ? challenge.title : 'Challenge'}</span>
+                    {challenge.createdBy?.name ? <span className="text-white/70">• {challenge.createdBy.name}</span> : null}
+                  </div>
+                  {challenge.prompt ? <div className="mt-2 text-sm text-white">{renderTextWithKatex(challenge.prompt)}</div> : null}
+                  {challenge.imageUrl ? (
+                    <div className="mt-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={challenge.imageUrl} alt="Challenge" className="max-h-[240px] rounded border border-white/10 object-contain" />
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost shrink-0"
+                  tabIndex={-1}
+                  onClick={e => {
+                    e.stopPropagation()
+                    setMetaVisible(false)
+                  }}
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {/* Show info button if badge is hidden */}
+          {challenge && !metaVisible ? (
+            <button
+              type="button"
+              className="absolute top-3 left-3 z-50 btn btn-ghost btn-xs"
+              style={{ minWidth: 0, padding: '2px 8px', fontSize: 12 }}
+              aria-label="Show info"
+              onClick={() => setMetaVisible(true)}
+            >
+              <span className="material-icons" style={{ fontSize: 16, verticalAlign: 'middle' }}>info</span>
             </button>
-          </div>
-        </div>
-      ) : null}
-      {/* Show info button if badge is hidden */}
-      {challenge && !metaVisible ? (
-        <button
-          type="button"
-          className="absolute top-3 left-3 z-50 btn btn-ghost btn-xs"
-          style={{ minWidth: 0, padding: '2px 8px', fontSize: 12 }}
-          aria-label="Show info"
-          onClick={() => setMetaVisible(true)}
-        >
-          <span className="material-icons" style={{ fontSize: 16, verticalAlign: 'middle' }}>info</span>
-        </button>
-      ) : null}
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

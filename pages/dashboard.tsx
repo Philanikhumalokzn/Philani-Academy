@@ -2072,10 +2072,28 @@ export default function Dashboard() {
     const el = studentMobilePanelsRef.current
     if (!el) return
     const width = el.clientWidth || 0
-    if (!width) return
+    if (!width) {
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => scrollStudentPanelsToTab(tab))
+      }
+      return
+    }
     const idx = studentMobileTabIndex(tab)
-    el.scrollTo({ left: idx * width, behavior: 'smooth' })
-  }, [])
+    const left = idx * width
+    if (typeof el.scrollTo === 'function') {
+      el.scrollTo({ left, behavior: 'smooth' })
+    } else {
+      el.scrollLeft = left
+    }
+  }, [studentMobileTabIndex])
+
+  const activateStudentMobileTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    setStudentMobileTab(tab)
+    scrollStudentPanelsToTab(tab)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => scrollStudentPanelsToTab(tab))
+    }
+  }, [scrollStudentPanelsToTab])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2533,10 +2551,7 @@ export default function Dashboard() {
           className={btnClass('timeline')}
           aria-label="Timeline"
           title="Timeline"
-          onClick={() => {
-            setStudentMobileTab('timeline')
-            scrollStudentPanelsToTab('timeline')
-          }}
+          onClick={() => activateStudentMobileTab('timeline')}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M12 8v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -2548,10 +2563,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={btnClass('sessions')}
-          onClick={() => {
-            setStudentMobileTab('sessions')
-            scrollStudentPanelsToTab('sessions')
-          }}
+          onClick={() => activateStudentMobileTab('sessions')}
           aria-label="Sessions"
           title="Sessions"
         >
@@ -2565,10 +2577,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={btnClass('groups')}
-          onClick={() => {
-            setStudentMobileTab('groups')
-            scrollStudentPanelsToTab('groups')
-          }}
+          onClick={() => activateStudentMobileTab('groups')}
           aria-label="Groups"
           title="Groups"
         >
@@ -2584,10 +2593,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={btnClass('discover')}
-          onClick={() => {
-            setStudentMobileTab('discover')
-            scrollStudentPanelsToTab('discover')
-          }}
+          onClick={() => activateStudentMobileTab('discover')}
           aria-label="Discover"
           title="Discover"
         >

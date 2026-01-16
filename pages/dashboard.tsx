@@ -2078,9 +2078,16 @@ export default function Dashboard() {
     const el = studentMobilePanelsRef.current
     if (!el) return
     const target = studentMobilePanelRefs.current[tab]
-    if (target && typeof target.offsetLeft === 'number') {
-      el.scrollTo({ left: target.offsetLeft, behavior: 'smooth' })
-      return
+    if (target) {
+      try {
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })
+        return
+      } catch {
+        if (typeof target.offsetLeft === 'number') {
+          el.scrollTo({ left: target.offsetLeft, behavior: 'smooth' })
+          return
+        }
+      }
     }
     const width = el.clientWidth || 0
     if (!width) return

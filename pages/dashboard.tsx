@@ -2071,13 +2071,6 @@ export default function Dashboard() {
   const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
     const el = studentMobilePanelsRef.current
     if (!el) return
-
-    const target = el.querySelector(`[data-student-panel="${tab}"]`) as HTMLElement | null
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
-      return
-    }
-
     const width = el.clientWidth || 0
     if (!width) return
     const idx = studentMobileTabIndex(tab)
@@ -8076,19 +8069,19 @@ export default function Dashboard() {
                 className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                <div className="w-full flex-none snap-start p-3" data-student-panel="timeline">
+                <div className="w-full flex-none snap-start p-3">
                   {renderStudentHomeFeed()}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3" data-student-panel="sessions">
+                <div className="w-full flex-none snap-start p-3">
                   {renderSection('sessions')}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3" data-student-panel="groups">
+                <div className="w-full flex-none snap-start p-3">
                   {renderSection('groups')}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3" data-student-panel="discover">
+                <div className="w-full flex-none snap-start p-3">
                   {renderSection('discover')}
                 </div>
               </div>

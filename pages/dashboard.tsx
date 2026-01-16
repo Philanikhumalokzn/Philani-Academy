@@ -833,6 +833,12 @@ export default function Dashboard() {
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
+  const studentMobilePanelRefs = useRef<{
+    timeline: HTMLDivElement | null
+    sessions: HTMLDivElement | null
+    groups: HTMLDivElement | null
+    discover: HTMLDivElement | null
+  }>({ timeline: null, sessions: null, groups: null, discover: null })
   const studentMobileScrollRafRef = useRef<number | null>(null)
 
   const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
@@ -2069,6 +2075,11 @@ export default function Dashboard() {
   }
 
   const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    const panel = studentMobilePanelRefs.current[tab]
+    if (panel && typeof panel.scrollIntoView === 'function') {
+      panel.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+      return
+    }
     const el = studentMobilePanelsRef.current
     if (!el) return
     const width = el.clientWidth || 0
@@ -2089,6 +2100,7 @@ export default function Dashboard() {
 
   const activateStudentMobileTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
     setStudentMobileTab(tab)
+    if (tab === 'timeline') setTimelineOpen(true)
     scrollStudentPanelsToTab(tab)
     if (typeof window !== 'undefined') {
       window.requestAnimationFrame(() => scrollStudentPanelsToTab(tab))
@@ -2829,6 +2841,13 @@ export default function Dashboard() {
       </section>
     )
   }
+
+  const renderStudentTimelinePanel = () => (
+    <div className="space-y-3">
+      {renderTimelineCard()}
+      {renderStudentHomeFeed()}
+    </div>
+  )
 
   useEffect(() => {
     if (availableSections.length === 0) return
@@ -8075,19 +8094,39 @@ export default function Dashboard() {
                 className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                <div className="w-full flex-none snap-start p-3">
-                  {renderStudentHomeFeed()}
+                <div
+                  ref={el => {
+                    studentMobilePanelRefs.current.timeline = el
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
+                  {renderStudentTimelinePanel()}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={el => {
+                    studentMobilePanelRefs.current.sessions = el
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderSection('sessions')}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={el => {
+                    studentMobilePanelRefs.current.groups = el
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderSection('groups')}
                 </div>
 
-                <div className="w-full flex-none snap-start p-3">
+                <div
+                  ref={el => {
+                    studentMobilePanelRefs.current.discover = el
+                  }}
+                  className="w-full flex-none snap-start p-3"
+                >
                   {renderSection('discover')}
                 </div>
               </div>

@@ -411,7 +411,7 @@ export default function ChallengeAttemptPage() {
               {(() => {
                 const realtimeScopeId = `challenge:${id}:u:${effectiveViewerId || 'anon'}`
                 const boardId = `challenge:${id}`
-                const canAdmin = Boolean(challenge?.isOwner || challenge?.isPrivileged)
+                const canAdmin = Boolean(challenge?.isOwner)
                 return (
                   <StackedCanvasWindow
                     gradeLabel={challenge?.grade ? String(challenge.grade).replace('GRADE_', 'Grade ') : null}

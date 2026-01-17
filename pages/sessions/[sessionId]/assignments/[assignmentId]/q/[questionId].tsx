@@ -30,6 +30,8 @@ export default function AssignmentQuestionPage() {
   const [existingResponseLatex, setExistingResponseLatex] = useState<string>('')
   const [submittedAt, setSubmittedAt] = useState<string | null>(null)
   const [metaVisible, setMetaVisible] = useState(false)
+  const [assignmentSubmitting, setAssignmentSubmitting] = useState(false)
+  const [assignmentSubmitError, setAssignmentSubmitError] = useState<string | null>(null)
 
   const renderTextWithKatex = useCallback((text: unknown) => {
     const input = typeof text === 'string' ? text : ''
@@ -219,6 +221,70 @@ export default function AssignmentQuestionPage() {
     }
   }, [assignment, question])
 
+  const orderedQuestions = useMemo(() => {
+    const qs = Array.isArray((assignment as any)?.questions) ? (assignment as any).questions : []
+    return [...qs].sort((a, b) => {
+      const ao = typeof a?.order === 'number' && Number.isFinite(a.order) ? a.order : 9999
+      const bo = typeof b?.order === 'number' && Number.isFinite(b.order) ? b.order : 9999
+      if (ao !== bo) return ao - bo
+      return String(a?.id || '').localeCompare(String(b?.id || ''))
+    })
+  }, [assignment])
+
+  const currentQuestionIndex = useMemo(() => {
+    if (!orderedQuestions.length) return -1
+    return orderedQuestions.findIndex((q: any) => String(q?.id) === String(questionId))
+  }, [orderedQuestions, questionId])
+
+  const prevQuestionId = useMemo(() => {
+    if (currentQuestionIndex <= 0) return null
+    return orderedQuestions[currentQuestionIndex - 1]?.id || null
+  }, [currentQuestionIndex, orderedQuestions])
+
+  const nextQuestionId = useMemo(() => {
+    if (currentQuestionIndex < 0) return null
+    if (currentQuestionIndex >= orderedQuestions.length - 1) return null
+    return orderedQuestions[currentQuestionIndex + 1]?.id || null
+  }, [currentQuestionIndex, orderedQuestions])
+
+  const isLastQuestion = currentQuestionIndex >= 0 && currentQuestionIndex === orderedQuestions.length - 1
+
+  const submitAssignment = useCallback(async () => {
+    if (assignmentSubmitting) return
+    if (!sessionId || !assignmentId) return
+    setAssignmentSubmitError(null)
+
+    if (!isTestStudent) {
+      alert('Submitting will lock this assignment. You will no longer be able to edit your answers after submission.')
+    }
+
+    const ok = window.confirm(
+      isTestStudent
+        ? submittedAt
+          ? 'Resubmit this assignment now? (Test account: editing stays unlocked)'
+          : 'Submit this assignment now? (Test account: editing stays unlocked)'
+        : 'Submit this assignment now?'
+    )
+    if (!ok) return
+
+    setAssignmentSubmitting(true)
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/submit`,
+        { method: 'POST', credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Submit failed (${res.status})`)
+      setSubmittedAt(data?.submittedAt ? String(data.submittedAt) : new Date().toISOString())
+      alert(isTestStudent && submittedAt ? 'Assignment resubmitted.' : 'Assignment submitted.')
+    } catch (err: any) {
+      setAssignmentSubmitError(err?.message || 'Submit failed')
+      alert(err?.message || 'Submit failed')
+    } finally {
+      setAssignmentSubmitting(false)
+    }
+  }, [assignmentId, assignmentSubmitting, isTestStudent, sessionId, submittedAt])
+
   if (status === 'loading') {
     return <div className="p-6">Loading…</div>
   }
@@ -302,6 +368,51 @@ export default function AssignmentQuestionPage() {
               {question?.latex ? (
                 <div className="mt-2 text-sm text-white">{renderTextWithKatex(String(question.latex || ''))}</div>
               ) : null}
+              {assignmentSubmitError ? (
+                <div className="mt-2 text-xs text-red-200">{assignmentSubmitError}</div>
+              ) : null}
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={!prevQuestionId}
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (!prevQuestionId) return
+                    void router.push(`/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/q/${encodeURIComponent(String(prevQuestionId))}`)
+                  }}
+                >
+                  Prev
+                </button>
+                {isLastQuestion ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={assignmentSubmitting}
+                    onClick={e => {
+                      e.stopPropagation()
+                      void submitAssignment()
+                    }}
+                  >
+                    {assignmentSubmitting
+                      ? 'Submitting…'
+                      : (isTestStudent && submittedAt ? 'Resubmit Assignment' : 'Submit Assignment')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!nextQuestionId}
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (!nextQuestionId) return
+                      void router.push(`/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/q/${encodeURIComponent(String(nextQuestionId))}`)
+                    }}
+                  >
+                    Next
+                  </button>
+                )}
+              </div>
             </div>
             <Link href="/dashboard" className="btn btn-ghost shrink-0" onClick={e => e.stopPropagation()}>
               Back

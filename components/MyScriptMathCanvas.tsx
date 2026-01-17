@@ -982,6 +982,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return hasControllerRights()
   }, [forceEditableForAssignment, hasControllerRights, isAdmin, isSelfActivePresenter, isSessionQuizMode])
 
+  const [viewOnlyMode, setViewOnlyMode] = useState(() => !hasBoardWriteRights())
+
   // Used by consumers when the presenter changes pages.
   const requestSyncFromPublisher = useCallback(async () => {
     const channel = channelRef.current
@@ -1787,6 +1789,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       hasExclusiveControlRef.current = false
       const lockedOut = !hasBoardWriteRights()
       lockedOutRef.current = lockedOut
+      setViewOnlyMode(lockedOut)
       if (lockedOut) {
         pendingPublishQueueRef.current = []
       }
@@ -5763,9 +5766,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
-    const next = isViewOnly ? VIEW_ONLY_SPLIT_RATIO : EDITABLE_SPLIT_RATIO
+    const next = viewOnlyMode ? VIEW_ONLY_SPLIT_RATIO : EDITABLE_SPLIT_RATIO
     setStudentSplitRatio(next)
-  }, [EDITABLE_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, isViewOnly, useStackedStudentLayout])
+    studentSplitRatioRef.current = next
+  }, [EDITABLE_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, useStackedStudentLayout, viewOnlyMode])
 
   useEffect(() => {
     if (isAdmin) return

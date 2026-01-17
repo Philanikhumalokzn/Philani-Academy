@@ -2811,6 +2811,11 @@ export default function Dashboard() {
               My posts
             </button>
           </div>
+          {timelineOpen ? (
+            <div className="pt-1">
+              {renderTimelineCard()}
+            </div>
+          ) : null}
           {studentFeedLoading ? (
             <div className="text-sm text-white/70">Loading…</div>
           ) : studentFeedError ? (
@@ -2899,11 +2904,6 @@ export default function Dashboard() {
               })}
             </ul>
           )}
-          {timelineOpen ? (
-            <div className="pt-3">
-              {renderTimelineCard()}
-            </div>
-          ) : null}
         </div>
       </section>
     )
@@ -7644,7 +7644,6 @@ export default function Dashboard() {
                 }}
               >
                 <SectionNav />
-                {renderTimelineCard()}
                 <section className="min-w-0 space-y-6">
                   <OverviewSection />
                 </section>

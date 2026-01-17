@@ -2499,9 +2499,6 @@ export default function Dashboard() {
             >
               Create
             </button>
-            <Link href={timelineHref} className="btn btn-ghost text-xs" aria-disabled={!canLink}>
-              View
-            </Link>
             <button
               type="button"
               className="btn btn-ghost text-xs relative"
@@ -2809,9 +2806,9 @@ export default function Dashboard() {
             <button
               type="button"
               className="btn btn-primary text-xs"
-              onClick={() => setCreateOverlayOpen(true)}
+              onClick={() => setTimelineOpen(v => !v)}
             >
-              Create Quiz
+              My posts
             </button>
           </div>
           {studentFeedLoading ? (
@@ -2902,6 +2899,11 @@ export default function Dashboard() {
               })}
             </ul>
           )}
+          {timelineOpen ? (
+            <div className="pt-3">
+              {renderTimelineCard()}
+            </div>
+          ) : null}
         </div>
       </section>
     )
@@ -2909,7 +2911,6 @@ export default function Dashboard() {
 
   const renderStudentTimelinePanel = () => (
     <div className="space-y-3">
-      {renderTimelineCard()}
       {renderStudentHomeFeed()}
     </div>
   )

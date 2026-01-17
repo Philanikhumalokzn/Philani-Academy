@@ -257,7 +257,11 @@ export default function TextOverlayModule(props: {
   const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin } = props
 
   const [presenterOverride, setPresenterOverride] = useState(false)
-  const canPresent = Boolean(isAdmin) || presenterOverride
+  const isSoloScope = useMemo(() => {
+    const scope = (realtimeScopeId || '').toLowerCase()
+    return scope.startsWith('assignment:') || scope.startsWith('challenge:')
+  }, [realtimeScopeId])
+  const canPresent = Boolean(isAdmin) || presenterOverride || isSoloScope
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent

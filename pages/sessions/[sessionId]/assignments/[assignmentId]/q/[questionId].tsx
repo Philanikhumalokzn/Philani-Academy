@@ -374,7 +374,7 @@ export default function AssignmentQuestionPage() {
               <div className="mt-3 flex items-center justify-between gap-3 w-full">
                 <button
                   type="button"
-                  className="px-2 text-2xl font-bold text-white/90 hover:text-white disabled:opacity-30"
+                  className="px-2 text-4xl font-bold text-white/90 hover:text-white disabled:opacity-30"
                   disabled={!prevQuestionId}
                   aria-label="Previous question"
                   onClick={e => {
@@ -402,7 +402,7 @@ export default function AssignmentQuestionPage() {
                 ) : (
                   <button
                     type="button"
-                    className="px-2 text-2xl font-bold text-white/90 hover:text-white disabled:opacity-30"
+                    className="px-2 text-4xl font-bold text-white/90 hover:text-white disabled:opacity-30"
                     disabled={!nextQuestionId}
                     aria-label="Next question"
                     onClick={e => {
@@ -422,7 +422,7 @@ export default function AssignmentQuestionPage() {
               aria-label="Close"
               onClick={e => {
                 e.stopPropagation()
-                setMetaVisible(false)
+                void router.push(`/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}`)
               }}
             >
               ×

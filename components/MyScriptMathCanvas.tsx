@@ -1098,6 +1098,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     && (isAdmin || (!forceEditableForAssignment && !forceEditable))
   )
 
+  const allowStudentTextTray = !isAdmin && (isAssignmentView || isChallengeBoard)
+  const showTextIcon = useAdminStepComposer || allowStudentTextTray
+
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
   const isBroadcastPausedRef = useRef(false)
@@ -9126,23 +9129,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {useAdminStepComposer && (
+                    {showTextIcon && (
                       <button
                         type="button"
                         className="px-2 py-1"
                         title="Text"
                         onClick={() => {
-                          if (!isAdmin) {
-                            setTopPanelEditingMode(prev => {
-                              const next = !prev
-                              if (!next) {
-                                clearTopPanelSelection()
-                              }
-                              return next
-                            })
-                            return
-                          }
-
+                          const canOpenTray = isAdmin || allowStudentTextTray
                           const now = Date.now()
                           const last = textIconLastTapRef.current
 
@@ -9154,8 +9147,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           if (last && (now - last) < 320) {
                             // Double tap: keep the current behaviour (tray + picker).
                             textIconLastTapRef.current = null
-                            toggleMobileTextTray()
-                            openPickerOrApplySingle('text')
+                            if (canOpenTray) {
+                              toggleMobileTextTray()
+                              if (isAdmin) {
+                                openPickerOrApplySingle('text')
+                              }
+                            }
                             return
                           }
 

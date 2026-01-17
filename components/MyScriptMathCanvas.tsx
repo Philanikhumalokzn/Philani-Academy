@@ -9528,7 +9528,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     Preparing collaborative canvas…
                   </div>
                 )}
-                {isViewOnly && !forceEditableForAssignment && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+                {isViewOnly && !forceEditableForAssignment && !(isSessionQuizMode && quizActive && !isAdmin) && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>
@@ -10436,7 +10436,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {editorReconnecting && (
             <div className="absolute inset-0 z-20 pointer-events-auto bg-transparent" aria-hidden="true" />
           )}
-          {isViewOnly && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+          {isViewOnly && !(isSessionQuizMode && quizActive && !isAdmin) && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
               {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
             </div>

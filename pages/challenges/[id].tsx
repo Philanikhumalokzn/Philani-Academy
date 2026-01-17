@@ -447,7 +447,7 @@ export default function ChallengeAttemptPage() {
           {challenge && metaVisible ? (
             <div className="absolute top-3 left-3 right-3 z-50">
               <div
-                className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3"
+                className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3 relative"
                 style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
                 role="button"
                 tabIndex={0}
@@ -479,6 +479,17 @@ export default function ChallengeAttemptPage() {
                   }}
                 >
                   Back
+                </button>
+                <button
+                  type="button"
+                  className="absolute top-2 right-2 h-8 w-8 rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40"
+                  aria-label="Close"
+                  onClick={e => {
+                    e.stopPropagation()
+                    void router.push('/dashboard')
+                  }}
+                >
+                  ×
                 </button>
               </div>
             </div>

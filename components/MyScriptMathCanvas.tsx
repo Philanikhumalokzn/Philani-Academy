@@ -535,6 +535,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const isStudentView = !isAdmin
   const isQuizMode = Boolean(quizMode)
+  const isChallengeBoard = useMemo(
+    () => typeof boardId === 'string' && boardId.startsWith('challenge:'),
+    [boardId]
+  )
+  const isSessionQuizMode = isQuizMode && !isAssignmentView && !forceEditableForAssignment && !isChallengeBoard
   const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
   // Note: `useAdminStepComposer` is defined later once controller/presenter rights are available.
 
@@ -1043,12 +1048,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // as snapshot publishing when a presenter is active.
   const hasBoardWriteRights = useCallback(() => {
     if (forceEditableForAssignment) return true
+    if (!isAdmin && isSessionQuizMode && quizActiveRef.current) return true
     const activeKey = activePresenterUserKeyRef.current
     if (activeKey) {
       return isSelfActivePresenter()
     }
     return hasControllerRights()
-  }, [forceEditableForAssignment, hasControllerRights, isSelfActivePresenter])
+  }, [forceEditableForAssignment, hasControllerRights, isAdmin, isSelfActivePresenter, isSessionQuizMode])
 
   // Used by consumers when the presenter changes pages.
   const requestSyncFromPublisher = useCallback(async () => {
@@ -5695,6 +5701,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setIsEraserMode(false)
     }
   }, [isViewOnly])
+
+  useEffect(() => {
+    if (isAdmin) return
+    if (!isSessionQuizMode) return
+    updateControlState(controlStateRef.current ?? null)
+  }, [isAdmin, isSessionQuizMode, quizActive, updateControlState])
 
   const controlOwnerLabel = (() => {
     if (controlState) {

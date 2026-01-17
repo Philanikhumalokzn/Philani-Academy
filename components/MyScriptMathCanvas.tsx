@@ -8482,6 +8482,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         window.dispatchEvent(new CustomEvent('philani:assignment-meta-peek'))
                       } catch {}
                     }
+                    if (!isAssignmentView && isChallengeBoard && typeof window !== 'undefined') {
+                      try {
+                        window.dispatchEvent(new CustomEvent('philani:challenge-meta-peek'))
+                      } catch {}
+                    }
                   }}
                   onClick={useAdminStepComposer && !topPanelEditingMode ? async (e) => {
                     if (!useAdminStepComposer) return

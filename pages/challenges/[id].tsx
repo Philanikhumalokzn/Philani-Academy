@@ -137,6 +137,17 @@ export default function ChallengeAttemptPage() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      setMetaVisible(v => !v)
+    }
+    window.addEventListener('philani:challenge-meta-peek', handler as any)
+    return () => {
+      window.removeEventListener('philani:challenge-meta-peek', handler as any)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!id) return
     if (status !== 'authenticated') return
 

@@ -1,11 +1,9 @@
 import '../styles/globals.css'
 import 'katex/dist/katex.min.css'
-import 'react-toastify/dist/ReactToastify.css'
 import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { ToastContainer } from 'react-toastify'
 import NavBar from '../components/NavBar'
 import MobileTopChrome from '../components/MobileTopChrome'
 
@@ -43,7 +41,6 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         {!hideGlobalChrome && <NavBar />}
         {!hideGlobalChrome && <MobileTopChrome />}
         <Component {...pageProps} />
-        <ToastContainer />
       </div>
     </SessionProvider>
   )

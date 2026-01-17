@@ -345,7 +345,6 @@ export default function TextOverlayModule(props: {
     const handler = () => {
       setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
       clearQuizFeedbackAutoHide()
-      setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
       setStudentQuizTextResponse('')
       dispatchStudentQuizTextResponse('')
     }

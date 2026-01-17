@@ -1,7 +1,5 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { renderToString } from 'katex'
-import { toast } from 'react-toastify'
-import 'react-toastify/dist/ReactToastify.css'
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
 
@@ -6723,15 +6721,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       try {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('philani-quiz:submitted'))
-          toast.success('Quiz response submitted!', { position: 'top-center', autoClose: 2500 })
         }
       } catch {}
 
       // Student-only: show instant AI feedback in a local popup textbox.
       try {
         const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
-        // Cost control: AI tools are admin-only, and never used for learner-created challenges.
-        if (isAdmin && !isChallengeBoard) {
+        // Skip AI feedback for learner-created challenges only.
+        if (!isChallengeBoard) {
           const fbRes = await fetch('/api/ai/quiz-feedback', {
             method: 'POST',
             credentials: 'same-origin',

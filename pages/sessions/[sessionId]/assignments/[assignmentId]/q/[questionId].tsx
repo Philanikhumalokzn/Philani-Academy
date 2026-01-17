@@ -422,7 +422,7 @@ export default function AssignmentQuestionPage() {
               aria-label="Close"
               onClick={e => {
                 e.stopPropagation()
-                void router.push(`/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}`)
+                void router.push('/dashboard')
               }}
             >
               ×

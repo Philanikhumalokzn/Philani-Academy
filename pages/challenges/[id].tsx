@@ -471,17 +471,6 @@ export default function ChallengeAttemptPage() {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-ghost shrink-0"
-                  tabIndex={-1}
-                  onClick={e => {
-                    e.stopPropagation()
-                    setMetaVisible(false)
-                  }}
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
                   className="absolute top-2 right-2 h-8 w-8 rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40"
                   aria-label="Close"
                   onClick={e => {

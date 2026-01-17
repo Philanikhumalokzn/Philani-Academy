@@ -1334,8 +1334,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const [lessonScriptPointIndex, setLessonScriptPointIndex] = useState(0)
   const [lessonScriptModuleIndex, setLessonScriptModuleIndex] = useState(-1)
-  const [studentSplitRatio, setStudentSplitRatio] = useState(0.55) // portion for LaTeX panel when stacked
-  const studentSplitRatioRef = useRef(0.55)
+  const VIEW_ONLY_SPLIT_RATIO = 0.8
+  const EDITABLE_SPLIT_RATIO = 0.55
+  const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
+  const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
 
   type NotesSaveRecord = {
@@ -5758,6 +5760,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setIsEraserMode(false)
     }
   }, [isViewOnly])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    const next = isViewOnly ? VIEW_ONLY_SPLIT_RATIO : EDITABLE_SPLIT_RATIO
+    setStudentSplitRatio(next)
+  }, [EDITABLE_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, isViewOnly, useStackedStudentLayout])
 
   useEffect(() => {
     if (isAdmin) return

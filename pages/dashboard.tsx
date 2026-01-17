@@ -786,6 +786,7 @@ export default function Dashboard() {
   const [timelineChallengesError, setTimelineChallengesError] = useState<string | null>(null)
   const [timelineUserId, setTimelineUserId] = useState<string | null>(null)
   const timelineFetchedOnceRef = useRef(false)
+  const [readTimelinePostIds, setReadTimelinePostIds] = useState<string[]>([])
   
   const [viewerId, setViewerId] = useState<string | null>(null)
   const [challengeGradingOverlayOpen, setChallengeGradingOverlayOpen] = useState(false)
@@ -1043,6 +1044,11 @@ export default function Dashboard() {
   const announcementReadStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     return `pa:readAnnouncements:${userKey}`
+  }, [session])
+
+  const timelineReadStorageKey = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:readTimelinePosts:${userKey}`
   }, [session])
 
   useEffect(() => {
@@ -1462,6 +1468,41 @@ export default function Dashboard() {
       window.localStorage.setItem(announcementReadStorageKey, JSON.stringify(nextArr))
     } catch {}
   }, [announcementReadStorageKey, readAnnouncementSet])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(timelineReadStorageKey)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed)) setReadTimelinePostIds(parsed.map(String))
+    } catch {
+      setReadTimelinePostIds([])
+    }
+  }, [timelineReadStorageKey])
+
+  const readTimelinePostSet = useMemo(() => new Set(readTimelinePostIds), [readTimelinePostIds])
+  const unreadTimelineCount = useMemo(() => {
+    if (!timelineChallenges || timelineChallenges.length === 0) return 0
+    let count = 0
+    for (const c of timelineChallenges) {
+      if (c?.id && !readTimelinePostSet.has(String(c.id))) count += 1
+    }
+    return count
+  }, [timelineChallenges, readTimelinePostSet])
+
+  const markTimelinePostsRead = useCallback((ids: string[]) => {
+    if (typeof window === 'undefined') return
+    if (!ids.length) return
+    setReadTimelinePostIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) next.add(String(id))
+      const nextArr = Array.from(next)
+      try {
+        window.localStorage.setItem(timelineReadStorageKey, JSON.stringify(nextArr))
+      } catch {}
+      return nextArr
+    })
+  }, [timelineReadStorageKey])
 
   const mobileHeroBgStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
@@ -2433,6 +2474,14 @@ export default function Dashboard() {
     })()
   }, [timelineOpen])
 
+  useEffect(() => {
+    if (!timelineOpen) return
+    if (timelineChallengesLoading || timelineChallengesError) return
+    if (!timelineChallenges || timelineChallenges.length === 0) return
+    const ids = timelineChallenges.map((c: any) => String(c?.id || '')).filter(Boolean)
+    markTimelinePostsRead(ids)
+  }, [timelineOpen, timelineChallengesLoading, timelineChallengesError, timelineChallenges, markTimelinePostsRead])
+
   const renderTimelineCard = () => {
     const canLink = Boolean(status === 'authenticated' && timelineUserId)
     const timelineHref = canLink ? `/u/${encodeURIComponent(String(timelineUserId))}` : '/profile'
@@ -2441,7 +2490,7 @@ export default function Dashboard() {
     return (
       <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="font-semibold text-white">Timeline</div>
+          <div />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -2455,10 +2504,18 @@ export default function Dashboard() {
             </Link>
             <button
               type="button"
-              className="btn btn-ghost text-xs"
+              className="btn btn-ghost text-xs relative"
               onClick={() => setTimelineOpen(v => !v)}
             >
-              {timelineOpen ? 'Hide' : 'Open'}
+              {timelineOpen ? 'Hide' : 'Posts'}
+              {unreadTimelineCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
+                  aria-label={`${unreadTimelineCount} unread posts`}
+                >
+                  {unreadTimelineCount > 99 ? '99+' : unreadTimelineCount}
+                </span>
+              )}
             </button>
           </div>
         </div>

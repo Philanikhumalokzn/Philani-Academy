@@ -348,7 +348,7 @@ export default function AssignmentQuestionPage() {
       {metaVisible ? (
         <div className="absolute top-3 left-3 right-3 z-50">
           <div
-            className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
+            className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3 relative"
             style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
             role="button"
             tabIndex={0}
@@ -371,18 +371,19 @@ export default function AssignmentQuestionPage() {
               {assignmentSubmitError ? (
                 <div className="mt-2 text-xs text-red-200">{assignmentSubmitError}</div>
               ) : null}
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <div className="mt-3 flex items-center justify-between gap-3 w-full">
                 <button
                   type="button"
                   className="btn btn-ghost"
                   disabled={!prevQuestionId}
+                  aria-label="Previous question"
                   onClick={e => {
                     e.stopPropagation()
                     if (!prevQuestionId) return
                     void router.push(`/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/q/${encodeURIComponent(String(prevQuestionId))}`)
                   }}
                 >
-                  Prev
+                  ←
                 </button>
                 {isLastQuestion ? (
                   <button
@@ -403,20 +404,29 @@ export default function AssignmentQuestionPage() {
                     type="button"
                     className="btn btn-primary"
                     disabled={!nextQuestionId}
+                    aria-label="Next question"
                     onClick={e => {
                       e.stopPropagation()
                       if (!nextQuestionId) return
                       void router.push(`/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}/q/${encodeURIComponent(String(nextQuestionId))}`)
                     }}
                   >
-                    Next
+                    →
                   </button>
                 )}
               </div>
             </div>
-            <Link href="/dashboard" className="btn btn-ghost shrink-0" onClick={e => e.stopPropagation()}>
-              Back
-            </Link>
+            <button
+              type="button"
+              className="absolute top-2 right-2 h-8 w-8 rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40"
+              aria-label="Close"
+              onClick={e => {
+                e.stopPropagation()
+                setMetaVisible(false)
+              }}
+            >
+              ×
+            </button>
           </div>
         </div>
       ) : null}

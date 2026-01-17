@@ -6662,6 +6662,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const snap = captureFullSnapshot()
       const symbolCount = countSymbols(snap?.symbols)
       const hasInk = symbolCount > 0
+      const studentTextSnapshot = (studentQuizTextResponseRef.current || '').trim()
 
       const getStepLatex = async () => {
         let step = ''
@@ -6732,12 +6733,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       // Assignment pages use a strict 2-stage flow: if there's nothing on the canvas to commit
       // AND no prior committed work, treat this as a no-op.
-      if (isAssignment && !hasInk && !quizHasCommittedRef.current) {
+      if (isAssignment && !hasInk && !quizHasCommittedRef.current && !studentTextSnapshot) {
         return
       }
       if (!combined) {
         // Server requires non-empty LaTeX.
-        combined = '\\text{(no\\ response)}'
+        combined = studentTextSnapshot ? '\\text{(typed\\ response)}' : '\\text{(no\\ response)}'
         quizCombinedLatexRef.current = combined
       }
 
@@ -6807,7 +6808,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
 
       // Default quiz behavior: persist under the session responses (dashboard Quizzes folder).
-      const studentTextSnapshot = (studentQuizTextResponseRef.current || '').trim()
       const res = await fetch(`/api/sessions/${encodeURIComponent(boardId)}/responses`, {
         method: 'POST',
         credentials: 'same-origin',

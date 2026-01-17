@@ -1850,6 +1850,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
 
+        // Recompute permissions now that presenter changed.
+        updateControlState(controlStateRef.current)
+
         // Admin relinquishes snapshot publishing immediately.
         pendingPublishQueueRef.current = []
         await channel.publish('control', {
@@ -1868,6 +1871,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setActivePresenterUserKey(null)
           activePresenterUserKeyRef.current = ''
           activePresenterClientIdsRef.current = new Set()
+          updateControlState(controlStateRef.current)
           await channel.publish('control', {
             clientId: clientIdRef.current,
             author: userDisplayName,

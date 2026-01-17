@@ -271,6 +271,28 @@ export default function Dashboard() {
       }
     })
   }, [renderInlineEmphasis])
+
+  const formatSessionDate = useCallback((value: unknown) => {
+    if (!value) return ''
+    const dt = value instanceof Date ? value : new Date(String(value))
+    if (Number.isNaN(dt.getTime())) return ''
+    const dow = dt.toLocaleDateString(undefined, { weekday: 'short' })
+    const main = dt.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+    return `(${dow}) ${main}`
+  }, [])
+
+  const formatSessionRange = useCallback((start: unknown, end?: unknown) => {
+    const startLabel = formatSessionDate(start)
+    const endLabel = formatSessionDate(end ?? start)
+    if (startLabel && endLabel) return `${startLabel} → ${endLabel}`
+    return startLabel || endLabel
+  }, [formatSessionDate])
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
@@ -2739,13 +2761,14 @@ export default function Dashboard() {
               ) : null}
 
               <div className="p-3 space-y-2">
-                <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
-                {resolvedCurrentLesson.startsAt ? (
-                  <div className="text-xs text-white/60">
-                    {new Date(resolvedCurrentLesson.startsAt).toLocaleString()} →{' '}
-                    {new Date((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt).toLocaleString()}
-                  </div>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
+                  {resolvedCurrentLesson.startsAt ? (
+                    <div className="text-xs text-white/60">
+                      {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -4845,12 +4868,14 @@ export default function Dashboard() {
             <div className="p-3 border rounded space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium leading-snug break-words">{resolvedCurrentLesson.title}</div>
-                  {resolvedCurrentLesson.startsAt ? (
-                    <div className="text-xs muted">
-                      {new Date(resolvedCurrentLesson.startsAt).toLocaleString()} → {new Date((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt).toLocaleString()}
-                    </div>
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium leading-snug break-words">{resolvedCurrentLesson.title}</div>
+                    {resolvedCurrentLesson.startsAt ? (
+                      <div className="text-xs muted">
+                        {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
+                      </div>
+                    ) : null}
+                  </div>
                   {liveOverrideSessionId ? (
                     null
                   ) : null}
@@ -4891,9 +4916,11 @@ export default function Dashboard() {
                 <li key={s.id} className="p-3 border rounded">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-medium leading-snug break-words">{s.title}</div>
-                      <div className="text-xs muted">
-                        {new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-medium leading-snug break-words">{s.title}</div>
+                        <div className="text-xs muted">
+                          {formatSessionRange(s.startsAt, s.endsAt || s.startsAt)}
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-4">
@@ -5296,9 +5323,9 @@ export default function Dashboard() {
                                     }}
                                     disabled={liveSelectionBusy}
                                   />
-                                  <span className="min-w-0">
+                                    <span className="min-w-0">
                                     <span className="font-medium break-words">{s.title}</span>
-                                    <span className="block text-xs muted">{new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}</span>
+                                    <span className="text-xs muted">{formatSessionRange(s.startsAt, s.endsAt || s.startsAt)}</span>
                                   </span>
                                 </label>
                               ))}
@@ -5381,7 +5408,7 @@ export default function Dashboard() {
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <div className="font-medium leading-snug break-words">{s.title}</div>
-                        <div className="text-xs muted">{new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt || s.startsAt).toLocaleString()}</div>
+                        <div className="text-xs muted">{formatSessionRange(s.startsAt, s.endsAt || s.startsAt)}</div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
@@ -5422,8 +5449,10 @@ export default function Dashboard() {
                   ) : (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="font-medium">{s.title}</div>
-                        <div className="text-sm muted">{new Date(s.startsAt).toLocaleString()}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-medium">{s.title}</div>
+                          <div className="text-sm muted">{formatSessionDate(s.startsAt)}</div>
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {canCreateSession && (
@@ -5516,12 +5545,14 @@ export default function Dashboard() {
                                   setSessionDetailsTab('assignments')
                                 }}
                               >
-                                <div className="font-medium break-words">{s?.title || 'Session'}</div>
-                                {s?.startsAt && (
-                                  <div className="text-sm muted">
-                                    {new Date(s.startsAt).toLocaleString()} → {new Date((s as any).endsAt || s.startsAt).toLocaleString()}
-                                  </div>
-                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="font-medium break-words">{s?.title || 'Session'}</div>
+                                  {s?.startsAt && (
+                                    <div className="text-sm muted">
+                                      {formatSessionRange(s.startsAt, (s as any).endsAt || s.startsAt)}
+                                    </div>
+                                  )}
+                                </div>
                               </button>
                             </li>
                           )
@@ -5543,11 +5574,11 @@ export default function Dashboard() {
                           </button>
                         ) : null}
                       </div>
-                      <div className="min-w-0 flex-1 text-center">
+                      <div className="min-w-0 flex-1 flex flex-wrap items-center justify-center gap-3 text-center">
                         <div className="font-semibold break-words">{sessionDetailsSession?.title || 'Session details'}</div>
                         {sessionDetailsSession?.startsAt && (
-                          <div className="text-sm muted">
-                            {new Date(sessionDetailsSession.startsAt).toLocaleString()} → {new Date((sessionDetailsSession as any).endsAt || sessionDetailsSession.startsAt).toLocaleString()}
+                          <div className="text-xs muted">
+                            {formatSessionRange(sessionDetailsSession.startsAt, (sessionDetailsSession as any).endsAt || sessionDetailsSession.startsAt)}
                           </div>
                         )}
                       </div>

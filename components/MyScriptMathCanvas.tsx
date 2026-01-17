@@ -846,88 +846,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     quizActiveRef.current = enabled
   }, [])
 
-  useEffect(() => {
-    if (!initialQuiz) return
-    if (isAdmin) return
-    if (!isQuizMode) return
-    if (!initialQuiz.quizId || !initialQuiz.prompt) return
-    if (initialQuizAppliedRef.current === initialQuiz.quizId) return
-    initialQuizAppliedRef.current = initialQuiz.quizId
-
-    quizIdRef.current = String(initialQuiz.quizId)
-    quizPromptRef.current = String(initialQuiz.prompt)
-    quizLabelRef.current = typeof initialQuiz.quizLabel === 'string' ? initialQuiz.quizLabel : ''
-    quizPhaseKeyRef.current = typeof initialQuiz.quizPhaseKey === 'string' ? initialQuiz.quizPhaseKey : ''
-    quizPointIdRef.current = typeof initialQuiz.quizPointId === 'string' ? initialQuiz.quizPointId : ''
-    quizPointIndexRef.current = typeof initialQuiz.quizPointIndex === 'number' && Number.isFinite(initialQuiz.quizPointIndex)
-      ? Math.trunc(initialQuiz.quizPointIndex)
-      : -1
-
-    const endsAt = typeof initialQuiz.endsAt === 'number' && Number.isFinite(initialQuiz.endsAt) && initialQuiz.endsAt > 0
-      ? Math.trunc(initialQuiz.endsAt)
-      : null
-    const durationSec = typeof initialQuiz.durationSec === 'number' && Number.isFinite(initialQuiz.durationSec) && initialQuiz.durationSec > 0
-      ? Math.trunc(initialQuiz.durationSec)
-      : null
-    quizEndsAtRef.current = endsAt
-    quizDurationSecRef.current = durationSec
-    quizAutoSubmitTriggeredRef.current = false
-
-    if (quizCountdownIntervalRef.current) {
-      clearInterval(quizCountdownIntervalRef.current)
-      quizCountdownIntervalRef.current = null
-    }
-
-    if (endsAt) {
-      const tick = () => {
-        const remainingSec = Math.ceil((endsAt - Date.now()) / 1000)
-        setQuizTimeLeftSec(Math.max(0, remainingSec))
-      }
-      tick()
-      quizCountdownIntervalRef.current = setInterval(tick, 250)
-    } else {
-      setQuizTimeLeftSec(null)
-    }
-
-    playSnapSound()
-
-    const editor = editorInstanceRef.current
-    const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
-    quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
-    quizCombinedLatexRef.current = ''
-    quizHasCommittedRef.current = false
-    setStudentCommittedLatex('')
-
-    // Assignment editing: if we already have a saved response for this question,
-    // preload it into the committed preview so the learner can edit/resubmit.
-    const initialAssignmentLatex = (assignmentSubmission?.initialLatex && typeof assignmentSubmission.initialLatex === 'string')
-      ? assignmentSubmission.initialLatex.trim()
-      : ''
-    if (initialAssignmentLatex) {
-      quizCombinedLatexRef.current = initialAssignmentLatex
-      quizHasCommittedRef.current = true
-      setStudentCommittedLatex(initialAssignmentLatex)
-      const parsed = parseStepLines(initialAssignmentLatex)
-      setStudentSteps(parsed.map(latex => ({ latex, symbols: null })))
-      setStudentEditIndex(null)
-      clearTopPanelSelection()
-    } else {
-      setStudentSteps([])
-      setStudentEditIndex(null)
-      clearTopPanelSelection()
-    }
-    setQuizActiveState(true)
-    suppressBroadcastUntilTsRef.current = Date.now() + 600
-    try {
-      editor?.clear?.()
-    } catch {}
-    lastSymbolCountRef.current = 0
-    lastBroadcastBaseCountRef.current = 0
-    setLatexOutput('')
-    // NOTE: `captureFullSnapshot` is defined later in this component; do not reference it in deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [assignmentSubmission?.initialLatex, clearTopPanelSelection, initialQuiz, isAdmin, isQuizMode, parseStepLines, playSnapSound, setQuizActiveState])
-
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1254,12 +1172,90 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setTopPanelSelectedStep(null)
   }, [])
 
-  const parseStepLines = useCallback((latex: string) => {
-    return String(latex || '')
-      .split(/\\/g)
-      .map(s => s.trim())
-      .filter(Boolean)
-  }, [])
+  useEffect(() => {
+    if (!initialQuiz) return
+    if (isAdmin) return
+    if (!isQuizMode) return
+    if (!initialQuiz.quizId || !initialQuiz.prompt) return
+    if (initialQuizAppliedRef.current === initialQuiz.quizId) return
+    initialQuizAppliedRef.current = initialQuiz.quizId
+
+    quizIdRef.current = String(initialQuiz.quizId)
+    quizPromptRef.current = String(initialQuiz.prompt)
+    quizLabelRef.current = typeof initialQuiz.quizLabel === 'string' ? initialQuiz.quizLabel : ''
+    quizPhaseKeyRef.current = typeof initialQuiz.quizPhaseKey === 'string' ? initialQuiz.quizPhaseKey : ''
+    quizPointIdRef.current = typeof initialQuiz.quizPointId === 'string' ? initialQuiz.quizPointId : ''
+    quizPointIndexRef.current = typeof initialQuiz.quizPointIndex === 'number' && Number.isFinite(initialQuiz.quizPointIndex)
+      ? Math.trunc(initialQuiz.quizPointIndex)
+      : -1
+
+    const endsAt = typeof initialQuiz.endsAt === 'number' && Number.isFinite(initialQuiz.endsAt) && initialQuiz.endsAt > 0
+      ? Math.trunc(initialQuiz.endsAt)
+      : null
+    const durationSec = typeof initialQuiz.durationSec === 'number' && Number.isFinite(initialQuiz.durationSec) && initialQuiz.durationSec > 0
+      ? Math.trunc(initialQuiz.durationSec)
+      : null
+    quizEndsAtRef.current = endsAt
+    quizDurationSecRef.current = durationSec
+    quizAutoSubmitTriggeredRef.current = false
+
+    if (quizCountdownIntervalRef.current) {
+      clearInterval(quizCountdownIntervalRef.current)
+      quizCountdownIntervalRef.current = null
+    }
+
+    if (endsAt) {
+      const tick = () => {
+        const remainingSec = Math.ceil((endsAt - Date.now()) / 1000)
+        setQuizTimeLeftSec(Math.max(0, remainingSec))
+      }
+      tick()
+      quizCountdownIntervalRef.current = setInterval(tick, 250)
+    } else {
+      setQuizTimeLeftSec(null)
+    }
+
+    playSnapSound()
+
+    const editor = editorInstanceRef.current
+    const baseline = latestSnapshotRef.current?.snapshot ?? captureFullSnapshot()
+    quizBaselineSnapshotRef.current = baseline ? { ...baseline, baseSymbolCount: -1 } : null
+    quizCombinedLatexRef.current = ''
+    quizHasCommittedRef.current = false
+    setStudentCommittedLatex('')
+
+    // Assignment editing: if we already have a saved response for this question,
+    // preload it into the committed preview so the learner can edit/resubmit.
+    const initialAssignmentLatex = (assignmentSubmission?.initialLatex && typeof assignmentSubmission.initialLatex === 'string')
+      ? assignmentSubmission.initialLatex.trim()
+      : ''
+    if (initialAssignmentLatex) {
+      quizCombinedLatexRef.current = initialAssignmentLatex
+      quizHasCommittedRef.current = true
+      setStudentCommittedLatex(initialAssignmentLatex)
+      const parsed = String(initialAssignmentLatex || '')
+        .split(/\\/g)
+        .map(s => s.trim())
+        .filter(Boolean)
+      setStudentSteps(parsed.map(latex => ({ latex, symbols: null })))
+      setStudentEditIndex(null)
+      setTopPanelSelectedStep(null)
+    } else {
+      setStudentSteps([])
+      setStudentEditIndex(null)
+      setTopPanelSelectedStep(null)
+    }
+    setQuizActiveState(true)
+    suppressBroadcastUntilTsRef.current = Date.now() + 600
+    try {
+      editor?.clear?.()
+    } catch {}
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+    setLatexOutput('')
+    // NOTE: `captureFullSnapshot` is defined later in this component; do not reference it in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignmentSubmission?.initialLatex, initialQuiz, isAdmin, isQuizMode, playSnapSound, setQuizActiveState])
 
   const loadAdminStepForEditing = useCallback(async (index: number) => {
     if (!useAdminStepComposer) return

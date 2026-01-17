@@ -907,6 +907,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       quizCombinedLatexRef.current = initialAssignmentLatex
       quizHasCommittedRef.current = true
       setStudentCommittedLatex(initialAssignmentLatex)
+      const parsed = parseStepLines(initialAssignmentLatex)
+      setStudentSteps(parsed.map(latex => ({ latex, symbols: null })))
+      setStudentEditIndex(null)
+      clearTopPanelSelection()
+    } else {
+      setStudentSteps([])
+      setStudentEditIndex(null)
+      clearTopPanelSelection()
     }
     setQuizActiveState(true)
     suppressBroadcastUntilTsRef.current = Date.now() + 600
@@ -918,7 +926,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setLatexOutput('')
     // NOTE: `captureFullSnapshot` is defined later in this component; do not reference it in deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignmentSubmission?.initialLatex, initialQuiz, isAdmin, isQuizMode, playSnapSound, setQuizActiveState])
+    }, [assignmentSubmission?.initialLatex, clearTopPanelSelection, initialQuiz, isAdmin, isQuizMode, parseStepLines, playSnapSound, setQuizActiveState])
 
   // Stacked layout controls live in the separator row (no tap-to-reveal).
 
@@ -1099,7 +1107,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 
   const allowStudentTextTray = !isAdmin && (isAssignmentView || isChallengeBoard)
-  const showTextIcon = useAdminStepComposer || allowStudentTextTray
+  const useStudentStepComposer = !isAdmin && useStackedStudentLayout && (isAssignmentView || isChallengeBoard)
+  const showTextIcon = useAdminStepComposer || useStudentStepComposer || allowStudentTextTray
 
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
   const [isBroadcastPaused, setIsBroadcastPaused] = useState(false)
@@ -1213,6 +1222,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
 
+  type StudentStep = { latex: string; symbols: any[] | null }
+  const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
+  const [studentEditIndex, setStudentEditIndex] = useState<number | null>(null)
+
   const [topPanelEditingMode, setTopPanelEditingMode] = useState(false)
   const topPanelEditingModeRef = useRef(false)
   useEffect(() => {
@@ -1239,6 +1252,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const clearTopPanelSelection = useCallback(() => {
     setTopPanelSelectedStep(null)
+  }, [])
+
+  const parseStepLines = useCallback((latex: string) => {
+    return String(latex || '')
+      .split(/\\/g)
+      .map(s => s.trim())
+      .filter(Boolean)
   }, [])
 
   const loadAdminStepForEditing = useCallback(async (index: number) => {
@@ -1271,6 +1291,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setAdminEditIndex(index)
     setAdminDraftLatex(adminSteps[index]?.latex || '')
   }, [adminSteps, useAdminStepComposer])
+
+  const loadStudentStepForEditing = useCallback(async (index: number) => {
+    if (index < 0 || index >= studentSteps.length) return
+
+    const editor = editorInstanceRef.current
+    if (!editor) return
+    if (lockedOutRef.current) return
+
+    setTopPanelSelectedStep(index)
+
+    suppressBroadcastUntilTsRef.current = Date.now() + 1200
+    try {
+      editor.clear?.()
+    } catch {}
+
+    const stepSymbols = studentSteps[index]?.symbols
+    if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
+      try {
+        await nextAnimationFrame()
+        await editor.importPointEvents(stepSymbols)
+      } catch (err) {
+        console.warn('Failed to load step ink for editing', err)
+      }
+    }
+
+    setStudentEditIndex(index)
+    setLatexOutput(studentSteps[index]?.latex || '')
+  }, [studentSteps])
+
+  const loadTopPanelStepForEditing = useCallback(async (index: number) => {
+    if (useAdminStepComposer) {
+      await loadAdminStepForEditing(index)
+      return
+    }
+    if (useStudentStepComposer) {
+      await loadStudentStepForEditing(index)
+    }
+  }, [loadAdminStepForEditing, loadStudentStepForEditing, useAdminStepComposer, useStudentStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -5750,6 +5808,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
       return composed || (latexDisplayState.latex || '').trim()
     }
+    if (useStudentStepComposer) {
+      const lines = studentSteps.map(s => s.latex)
+      const draft = (latexOutput || '').trim()
+      if (studentEditIndex !== null) {
+        if (draft) {
+          lines[studentEditIndex] = draft
+        }
+      } else if (draft) {
+        lines.push(draft)
+      }
+      return lines.filter(Boolean).join(' \\\\ ').trim()
+    }
     if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
       const live = (latexOutput || '').trim()
@@ -5767,7 +5837,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, quizActive, stackedNotesState.latex, studentCommittedLatex, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, quizActive, stackedNotesState.latex, studentCommittedLatex, studentEditIndex, studentSteps, useAdminStepComposer, useStackedStudentLayout, useStudentStepComposer])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -5874,15 +5944,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     })
   }, [adminDraftLatex, adminEditIndex, adminSteps, topPanelEditingMode, useAdminStepComposer])
 
+  const studentTopPanelStepItems = useMemo(() => {
+    if (!useStudentStepComposer) return [] as Array<{ index: number; latex: string }>
+    if (!topPanelEditingMode) return [] as Array<{ index: number; latex: string }>
+    return studentSteps.map((s, index) => {
+      const latex = (studentEditIndex === index ? (latexOutput || '') : (s?.latex || '')).trimEnd()
+      return { index, latex }
+    })
+  }, [latexOutput, studentEditIndex, studentSteps, topPanelEditingMode, useStudentStepComposer])
+
   const topPanelStepsPayload: TopPanelStepsPayload | null = useMemo(() => {
-    if (!useAdminStepComposer) return null
     if (!topPanelEditingMode) return null
-    return {
-      steps: adminTopPanelStepItems,
-      selectedIndex: topPanelSelectedStep,
-      options: topPanelPayload.options,
+    if (useAdminStepComposer) {
+      return {
+        steps: adminTopPanelStepItems,
+        selectedIndex: topPanelSelectedStep,
+        options: topPanelPayload.options,
+      }
     }
-  }, [adminTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer])
+    if (useStudentStepComposer) {
+      return {
+        steps: studentTopPanelStepItems,
+        selectedIndex: topPanelSelectedStep,
+        options: topPanelPayload.options,
+      }
+    }
+    return null
+  }, [adminTopPanelStepItems, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
 
   const renderLatexStepInline = useCallback((latex: string) => {
     if (!latex) return ''
@@ -6596,16 +6684,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return step
       }
 
+      const applyStudentStepCommit = (step: string, symbols: any[] | null) => {
+        let nextCombined = ''
+        setStudentSteps(prev => {
+          const next = [...prev]
+          if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
+            next[studentEditIndex] = { latex: step, symbols }
+          } else {
+            next.push({ latex: step, symbols })
+          }
+          nextCombined = next.map(s => s.latex).filter(Boolean).join(' \\\\ ')
+          return next
+        })
+        quizCombinedLatexRef.current = nextCombined
+        quizHasCommittedRef.current = true
+        setStudentCommittedLatex(nextCombined)
+        setStudentEditIndex(null)
+        clearTopPanelSelection()
+      }
+
       if (hasInk && !forceSubmit) {
         // First-stage send: commit this line into combined latex and clear bottom canvas.
         const step = await getStepLatex()
         if (!step) return
-
-        const existing = quizCombinedLatexRef.current
-        const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
-        quizCombinedLatexRef.current = nextCombined
-        quizHasCommittedRef.current = true
-        setStudentCommittedLatex(nextCombined)
+        applyStudentStepCommit(step, snap?.symbols ?? null)
 
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
         try {
@@ -6621,11 +6723,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (hasInk && forceSubmit) {
         const step = await getStepLatex()
         if (step) {
-          const existing = quizCombinedLatexRef.current
-          const nextCombined = [existing, step].map(s => (s || '').trim()).filter(Boolean).join(' \\\\ ')
-          quizCombinedLatexRef.current = nextCombined
-          quizHasCommittedRef.current = true
-          setStudentCommittedLatex(nextCombined)
+          applyStudentStepCommit(step, snap?.symbols ?? null)
         }
       }
 
@@ -6793,6 +6891,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       quizCombinedLatexRef.current = ''
       quizHasCommittedRef.current = false
       setStudentCommittedLatex('')
+      setStudentSteps([])
+      setStudentEditIndex(null)
+      clearTopPanelSelection()
       setQuizActiveState(false)
       clearQuizCountdown()
 
@@ -6812,7 +6913,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, hasWriteAccess, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, updateControlState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, hasWriteAccess, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, updateControlState, userDisplayName, userId])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
@@ -8457,7 +8558,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   className="h-full bg-white rounded-lg p-3 overflow-auto relative"
                   ref={useAdminStepComposer ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
-                    if (useAdminStepComposer && topPanelEditingMode) {
+                    if ((useAdminStepComposer || useStudentStepComposer) && topPanelEditingMode) {
                       // Step-recall mode: tap a step line to restore its ink for editing.
                       const target = e.target as HTMLElement | null
                       const stepEl = target?.closest?.('[data-top-panel-step]') as HTMLElement | null
@@ -8467,7 +8568,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       if (Number.isFinite(idx)) {
                         e.stopPropagation()
                         e.preventDefault()
-                        void loadAdminStepForEditing(idx)
+                        void loadTopPanelStepForEditing(idx)
                         return
                       }
 
@@ -8491,9 +8592,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       } catch {}
                     }
                   }}
-                  onClick={useAdminStepComposer && !topPanelEditingMode ? async (e) => {
-                    if (!useAdminStepComposer) return
-                    if (!adminSteps.length) return
+                  onClick={(useAdminStepComposer || useStudentStepComposer) && !topPanelEditingMode ? async (e) => {
+                    if (!useAdminStepComposer && !useStudentStepComposer) return
+                    if (!topPanelStepsPayload?.steps?.length) return
                     const now = Date.now()
                     const box = adminTopPanelRef.current?.getBoundingClientRect()
                     if (!box) return
@@ -8507,9 +8608,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     // Double-tap: pick the row and load it for editing.
                     const localY = y - box.top
                     const approxRowHeight = 34
-                    const index = Math.max(0, Math.min(adminSteps.length - 1, Math.floor(localY / approxRowHeight)))
+                    const index = Math.max(0, Math.min(topPanelStepsPayload.steps.length - 1, Math.floor(localY / approxRowHeight)))
 
-                    await loadAdminStepForEditing(index)
+                    await loadTopPanelStepForEditing(index)
                   } : undefined}
                 >
                   {hasWriteAccess && !isAssignmentSolutionAuthoring && (
@@ -8707,7 +8808,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   onClick={(ev) => {
                                     ev.preventDefault()
                                     ev.stopPropagation()
-                                    void loadAdminStepForEditing(index)
+                                    void loadTopPanelStepForEditing(index)
                                   }}
                                 >
                                   {html ? (

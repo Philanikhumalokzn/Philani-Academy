@@ -2396,7 +2396,9 @@ export default function Dashboard() {
 
       const all = Array.isArray(responsesData?.responses) ? responsesData.responses : []
       const me = String(viewerId || currentUserId || '')
-      const mine = me ? all.filter((r: any) => String(r?.userId || '') === me) : []
+      // The API already scopes responses to the current user. If we can't resolve a user id
+      // in the client session/profile yet, don't filter them out.
+      const mine = me ? all.filter((r: any) => String(r?.userId || '') === me) : all
       mine.sort((a: any, b: any) => {
         const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
         const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0

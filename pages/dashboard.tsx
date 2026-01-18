@@ -2649,7 +2649,7 @@ export default function Dashboard() {
     const preview = timelineChallenges.slice(0, 3)
 
     return (
-      <section className="dashboard-shell space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div />
           <div className="flex items-center gap-2">
@@ -2780,7 +2780,7 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className="dashboard-shell flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
+      <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
         <button
           type="button"
           className={btnClass('timeline')}
@@ -2877,7 +2877,7 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-3">
-        <div className="dashboard-shell rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Current lesson</div>
             <button
@@ -2962,7 +2962,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="dashboard-shell rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
             <button
@@ -7627,8 +7627,8 @@ export default function Dashboard() {
       <div
         className={
           isMobile
-            ? 'relative z-10 w-full px-2 min-h-[100dvh] flex flex-col dashboard-flat'
-            : 'max-w-5xl mx-auto px-4 lg:px-8 py-8 space-y-6 dashboard-flat'
+            ? 'relative z-10 w-full px-2 min-h-[100dvh] flex flex-col'
+            : 'max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6'
         }
       >
         {isMobile ? (
@@ -8038,14 +8038,14 @@ export default function Dashboard() {
               <div
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
-                className="dashboard-shell flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
+                className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
                 <div
                   ref={el => {
                     studentMobilePanelRefs.current.timeline = el
                   }}
-                  className="w-full flex-none snap-start py-3"
+                  className="w-full flex-none snap-start p-3"
                 >
                   {renderStudentTimelinePanel()}
                 </div>
@@ -8054,7 +8054,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.sessions = el
                   }}
-                  className="w-full flex-none snap-start py-3"
+                  className="w-full flex-none snap-start p-3"
                 >
                   {renderSection('sessions')}
                 </div>
@@ -8063,7 +8063,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.groups = el
                   }}
-                  className="w-full flex-none snap-start py-3"
+                  className="w-full flex-none snap-start p-3"
                 >
                   {renderSection('groups')}
                 </div>
@@ -8072,7 +8072,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.discover = el
                   }}
-                  className="w-full flex-none snap-start py-3"
+                  className="w-full flex-none snap-start p-3"
                 >
                   {renderSection('discover')}
                 </div>
@@ -8605,8 +8605,8 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-4">
-                  <div className="space-y-3">
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-semibold text-sm">Student Responses</div>
                       <button
@@ -8650,7 +8650,7 @@ export default function Dashboard() {
                     )}
 
                     {selectedSubmissionUserId && selectedSubmissionDetail ? (
-                      <div className="space-y-2">
+                      <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-semibold text-sm">Student Responses</div>
                           <button
@@ -8673,9 +8673,8 @@ export default function Dashboard() {
                           <div className="space-y-2">
                             {Array.isArray(selectedSubmissionDetail?.responses) &&
                             selectedSubmissionDetail.responses.length > 0 ? (
-                              <div className="divide-y divide-white/10">
-                                {selectedSubmissionDetail.responses.map((resp: any, idx: number) => (
-                                  <div key={resp.id || idx} className="py-3 space-y-2">
+                              selectedSubmissionDetail.responses.map((resp: any, idx: number) => (
+                                <div key={resp.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                   <div className="text-xs text-white/60">
                                     {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
                                   </div>
@@ -8812,9 +8811,8 @@ export default function Dashboard() {
                                   {resp.feedback && (
                                     <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
                                   )}
-                                  </div>
-                                ))}
-                              </div>
+                                </div>
+                              ))
                             ) : (
                               <div className="text-sm muted">No responses found.</div>
                             )}
@@ -9036,7 +9034,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
                   {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
                   {challengeResponseLoading ? (
                     <div className="text-sm muted">Loading your feedback…</div>
@@ -9073,15 +9071,19 @@ export default function Dashboard() {
                       })()}
 
                       {challengeResponseChallenge?.prompt ? (
-                        <div className="text-sm whitespace-pre-wrap break-words">
-                          {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
+                        <div className="border border-white/10 rounded bg-white/5 p-3">
+                          <div className="text-sm whitespace-pre-wrap break-words">
+                            {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
+                          </div>
                         </div>
                       ) : null}
 
                       {challengeMyResponses.length === 0 ? (
-                        <div className="text-sm muted">No submission found yet.</div>
+                        <div className="border border-white/10 rounded bg-white/5 p-3">
+                          <div className="text-sm muted">No submission found yet.</div>
+                        </div>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <div className="font-semibold text-sm">Your submission</div>
                             <button
@@ -9099,27 +9101,29 @@ export default function Dashboard() {
                             {challengeMyResponses.length > 1 ? ` • ${challengeMyResponses.length} attempts` : ''}
                           </div>
 
-                          <div className="divide-y divide-white/10">
+                          <div className="space-y-2">
                             {challengeMyResponses.map((resp: any, idx: number) => {
                               const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
                               const latex = String(resp?.latex || '')
                               const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                               return (
-                                <div key={resp?.id || idx} className="py-3 space-y-2">
+                                <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                   {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
-                                  <div className="text-xs muted">Your answer</div>
-                                  {latex.trim() ? (
-                                    html ? (
-                                      <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                  <div className="p-2 rounded border border-white/10 bg-white/5">
+                                    <div className="text-xs muted mb-1">Your answer</div>
+                                    {latex.trim() ? (
+                                      html ? (
+                                        <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                      ) : (
+                                        <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
+                                      )
                                     ) : (
-                                      <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
-                                    )
-                                  ) : (
-                                    <div className="text-sm muted">(empty)</div>
-                                  )}
+                                      <div className="text-sm muted">(empty)</div>
+                                    )}
+                                  </div>
 
                                   {String(resp?.studentText || '').trim() ? (
-                                    <div>
+                                    <div className="p-2 rounded border border-white/10 bg-white/5">
                                       <div className="text-xs muted mb-1">Typed text</div>
                                       <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
                                     </div>

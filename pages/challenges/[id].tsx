@@ -436,6 +436,7 @@ export default function ChallengeAttemptPage() {
                     const [grading, setGrading] = useState<{ [step: number]: string }>({});
                     const [feedback, setFeedback] = useState('');
                     const [stepFeedback, setStepFeedback] = useState<{ [step: number]: string }>({});
+                    const [stepMarks, setStepMarks] = useState<{ [step: number]: number }>({});
                     const [saving, setSaving] = useState(false);
                     const steps = splitLatexIntoSteps(resp?.latex || '')
                     const stepCount = Math.max(1, steps.length || 0)
@@ -454,7 +455,10 @@ export default function ChallengeAttemptPage() {
                       try {
                         const gradingSteps = stepIndices.map(idx => {
                           const grade = grading[idx] || null
-                          const awardedMarks = grade === 'tick' ? 1 : 0
+                          const rawMarks = Number(stepMarks[idx])
+                          const awardedMarks = Number.isFinite(rawMarks)
+                            ? Math.max(0, Math.trunc(rawMarks))
+                            : (grade === 'tick' ? 1 : 0)
                           const isCorrect = grade === 'tick' || grade === 'dot-green'
                           const isSignificant = grade === 'cross'
                             ? true
@@ -647,7 +651,10 @@ export default function ChallengeAttemptPage() {
                                     ) : null}
                                     <div className="flex flex-wrap gap-4">
                                       <label>
-                                        <input type="radio" name={`grade-step-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'tick' }))} />
+                                        <input type="radio" name={`grade-step-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => {
+                                          setGrading(g => ({ ...g, [stepIdx]: 'tick' }))
+                                          setStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
+                                        }} />
                                         <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
                                       </label>
                                       <label>
@@ -662,6 +669,28 @@ export default function ChallengeAttemptPage() {
                                         <input type="radio" name={`grade-step-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
                                         <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
                                       </label>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <label className="text-xs font-medium">Marks:</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={20}
+                                        step={1}
+                                        className="w-16 border rounded p-1 text-xs"
+                                        value={Number.isFinite(Number(stepMarks[stepIdx])) ? stepMarks[stepIdx] : ''}
+                                        onChange={(e) => {
+                                          const next = Number(e.target.value)
+                                          if (!Number.isFinite(next)) {
+                                            setStepMarks(m => {
+                                              const { [stepIdx]: _, ...rest } = m
+                                              return rest
+                                            })
+                                            return
+                                          }
+                                          setStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
+                                        }}
+                                      />
                                     </div>
                                     <div className="mt-2">
                                       <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>

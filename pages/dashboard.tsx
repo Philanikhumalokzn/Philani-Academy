@@ -877,6 +877,7 @@ export default function Dashboard() {
   const [challengeGradingByStep, setChallengeGradingByStep] = useState<Record<number, string>>({})
   const [challengeGradingFeedback, setChallengeGradingFeedback] = useState('')
   const [challengeGradingStepFeedback, setChallengeGradingStepFeedback] = useState<Record<number, string>>({})
+  const [challengeGradingStepMarks, setChallengeGradingStepMarks] = useState<Record<number, number>>({})
   const [challengeGradingSaving, setChallengeGradingSaving] = useState(false)
 
   const [challengeResponseOverlayOpen, setChallengeResponseOverlayOpen] = useState(false)
@@ -2410,6 +2411,7 @@ export default function Dashboard() {
   const openChallengeGrading = useCallback((resp: any) => {
     const grading: Record<number, string> = {}
     const stepFeedback: Record<number, string> = {}
+    const stepMarks: Record<number, number> = {}
     if (Array.isArray(resp?.gradingJson)) {
       resp.gradingJson.forEach((g: any) => {
         const step = typeof g?.step === 'number' ? g.step : null
@@ -2431,12 +2433,14 @@ export default function Dashboard() {
               ? 'cross'
               : 'dot-red'
         grading[step] = grade
+        if (Number.isFinite(awardedMarks)) stepMarks[step] = Math.max(0, Math.trunc(awardedMarks))
         const fb = String(g?.feedback ?? '').trim()
         if (fb) stepFeedback[step] = fb
       })
     }
     setChallengeGradingByStep(grading)
     setChallengeGradingStepFeedback(stepFeedback)
+    setChallengeGradingStepMarks(stepMarks)
     setChallengeGradingFeedback(typeof resp?.feedback === 'string' ? resp.feedback : '')
     setChallengeGradingResponseId(resp?.id ? String(resp.id) : null)
   }, [])
@@ -2446,6 +2450,7 @@ export default function Dashboard() {
     setChallengeGradingByStep({})
     setChallengeGradingFeedback('')
     setChallengeGradingStepFeedback({})
+    setChallengeGradingStepMarks({})
     setChallengeGradingSaving(false)
   }, [])
 
@@ -2459,7 +2464,10 @@ export default function Dashboard() {
       const gradingSteps = Array.from({ length: stepCount }, (_, idx) => {
         const grade = challengeGradingByStep[idx] || null
         const fb = String(challengeGradingStepFeedback[idx] || '').trim()
-        const awardedMarks = grade === 'tick' ? 1 : 0
+        const rawMarks = Number(challengeGradingStepMarks[idx])
+        const awardedMarks = Number.isFinite(rawMarks)
+          ? Math.max(0, Math.trunc(rawMarks))
+          : (grade === 'tick' ? 1 : 0)
         const isCorrect = grade === 'tick' || grade === 'dot-green'
         const isSignificant = grade === 'cross'
           ? true
@@ -8841,7 +8849,10 @@ export default function Dashboard() {
                                       name={`challenge-grade-step-${stepIdx}`}
                                       value="tick"
                                       checked={challengeGradingByStep[stepIdx] === 'tick'}
-                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'tick' }))}
+                                      onChange={() => {
+                                        setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'tick' }))
+                                        setChallengeGradingStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
+                                      }}
                                     />
                                     <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
                                   </label>
@@ -8875,6 +8886,28 @@ export default function Dashboard() {
                                     />
                                     <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
                                   </label>
+                                </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <label className="text-xs font-medium">Marks:</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={20}
+                                    step={1}
+                                    className="w-16 border rounded p-1 text-xs"
+                                    value={Number.isFinite(Number(challengeGradingStepMarks[stepIdx])) ? challengeGradingStepMarks[stepIdx] : ''}
+                                    onChange={(e) => {
+                                      const next = Number(e.target.value)
+                                      if (!Number.isFinite(next)) {
+                                        setChallengeGradingStepMarks(m => {
+                                          const { [stepIdx]: _, ...rest } = m
+                                          return rest
+                                        })
+                                        return
+                                      }
+                                      setChallengeGradingStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
+                                    }}
+                                  />
                                 </div>
                                 <div className="mt-2">
                                   <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>

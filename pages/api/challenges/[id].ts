@@ -162,6 +162,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         userId: true,
         latex: true,
         studentText: true,
+        gradingJson: true,
+        feedback: true,
         createdAt: true,
         prompt: true,
         quizLabel: true,
@@ -207,6 +209,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         createdAt: new Date(r.createdAt).toISOString(),
         latex: r.latex,
         studentText: r.studentText,
+        gradingJson: r.gradingJson,
+        feedback: r.feedback,
         prompt: r.prompt,
         quizLabel: r.quizLabel,
       }))

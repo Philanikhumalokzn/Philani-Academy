@@ -407,7 +407,7 @@ export default function ChallengeAttemptPage() {
                         });
                         setShowGradePopup(false);
                         setSaving(false);
-                        // Optionally refresh responses here
+                        await refreshChallenge();
                       } catch (e) {
                         setSaving(false);
                         alert('Failed to save grading');
@@ -554,6 +554,16 @@ export default function ChallengeAttemptPage() {
                         <div className="mt-1 text-white/80">{resp.studentText}</div>
                       </div>
                     ) : null}
+                    {resp.gradingJson && Array.isArray(resp.gradingJson) && resp.gradingJson.length > 0 && (
+                      <div className="mt-2 text-green-300 text-xs">Mark: {(() => {
+                        const values = resp.gradingJson.map((g: any) => g.grade);
+                        const score = values.filter((v: string) => v === 'tick' || v === 'dot-green').length;
+                        return `${score} / ${values.length}`;
+                      })()}</div>
+                    )}
+                    {resp.feedback && (
+                      <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
+                    )}
                   </div>
                 ))}
               </div>

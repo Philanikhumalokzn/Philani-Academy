@@ -66,6 +66,7 @@
   --primary: #133366;
   --accent: #6aa5ff;
   --text: #e9f1ff;
+  --card-radius: 24px;
 }
 
 html,body,#__next{
@@ -100,7 +101,7 @@ body{
   background: linear-gradient(150deg, rgba(10,16,32,0.95), rgba(5,9,22,0.9));
   color: var(--text);
   box-shadow: 0 20px 50px rgba(0,0,0,0.45);
-  border-radius:14px;
+  border-radius:var(--card-radius);
   padding:1.25rem;
   border:1px solid var(--card-border);
 }
@@ -109,7 +110,7 @@ body{
 
 .hero{
   background: linear-gradient(120deg, rgba(0,0,0,0.95), rgba(6,31,82,0.85));
-  border-radius:14px;
+  border-radius:var(--card-radius);
   padding:2rem;
   display:flex;
   gap:1rem;
@@ -192,7 +193,7 @@ body{
 .card{
   background:var(--card);
   color:#f8fafc;
-  border-radius:14px;
+  border-radius:var(--card-radius);
   padding:1.25rem;
   border:1px solid var(--card-border);
   box-shadow:0 25px 45px rgba(0,0,0,0.35);
@@ -210,9 +211,11 @@ body{
 .card .dashboard-card,
 .dashboard-card .card,
 .dashboard-card .dashboard-card{
-  padding:1.15rem;
-  border-radius:14px;
-  box-shadow:0 16px 36px rgba(0,0,0,0.3);
+  padding:1.05rem;
+  border-radius:var(--card-radius);
+  box-shadow:0 14px 32px rgba(0,0,0,0.28);
+  margin-left:-0.25rem;
+  margin-right:-0.25rem;
 }
 
 @media (max-width: 768px) {
@@ -220,8 +223,15 @@ body{
   .card .dashboard-card,
   .dashboard-card .card,
   .dashboard-card .dashboard-card{
-    padding:1.05rem;
-    border-radius:14px;
+    padding:0.95rem;
+    border-radius:var(--card-radius);
+    margin-left:-0.2rem;
+    margin-right:-0.2rem;
+  }
+
+  .mobile-dashboard-theme .card,
+  .mobile-dashboard-theme .dashboard-card{
+    border-radius:var(--card-radius);
   }
 }
 

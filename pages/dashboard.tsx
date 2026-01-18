@@ -8673,8 +8673,9 @@ export default function Dashboard() {
                           <div className="space-y-2">
                             {Array.isArray(selectedSubmissionDetail?.responses) &&
                             selectedSubmissionDetail.responses.length > 0 ? (
-                              selectedSubmissionDetail.responses.map((resp: any, idx: number) => (
-                                <div key={resp.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                              <div className="divide-y divide-white/10">
+                                {selectedSubmissionDetail.responses.map((resp: any, idx: number) => (
+                                  <div key={resp.id || idx} className="py-3 space-y-2">
                                   <div className="text-xs text-white/60">
                                     {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
                                   </div>
@@ -8811,8 +8812,9 @@ export default function Dashboard() {
                                   {resp.feedback && (
                                     <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
                                   )}
-                                </div>
-                              ))
+                                  </div>
+                                ))}
+                              </div>
                             ) : (
                               <div className="text-sm muted">No responses found.</div>
                             )}

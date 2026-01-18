@@ -431,7 +431,8 @@ export default function ChallengeAttemptPage() {
                   </div>
                 )}
                 {Array.isArray(challenge?.attempts) && challenge.attempts.length > 0 ? (
-                  challenge.attempts.map((resp: any, idx: number) => {
+                  <div className="divide-y divide-white/10">
+                  {challenge.attempts.map((resp: any, idx: number) => {
                     const [showGradePopup, setShowGradePopup] = useState(false);
                     const [grading, setGrading] = useState<{ [step: number]: string }>({});
                     const [feedback, setFeedback] = useState('');
@@ -497,7 +498,7 @@ export default function ChallengeAttemptPage() {
                     };
 
                     return (
-                      <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                      <div key={resp.id || idx} className="py-3 space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-sm font-medium text-white">{resp.name}</div>
                           <div className="text-xs text-white/60">
@@ -728,7 +729,8 @@ export default function ChallengeAttemptPage() {
                         )}
                       </div>
                     );
-                  })
+                  })}
+                  </div>
                 ) : (
                   <div className="text-sm text-white/70">No responses yet.</div>
                 )}
@@ -737,8 +739,9 @@ export default function ChallengeAttemptPage() {
               // Student view: show their own responses
               <div className="space-y-3">
                 <h2 className="text-lg font-semibold">Your Submissions ({myResponses.length})</h2>
+                <div className="divide-y divide-white/10">
                 {myResponses.map((resp: any, idx: number) => (
-                  <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                  <div key={resp.id || idx} className="py-3 space-y-2">
                     <div className="text-xs text-white/60">
                       Submitted: {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
                     </div>
@@ -866,6 +869,7 @@ export default function ChallengeAttemptPage() {
                     )}
                   </div>
                 ))}
+                </div>
               </div>
             ) : (
               <div className="text-sm text-white/70">No responses found.</div>

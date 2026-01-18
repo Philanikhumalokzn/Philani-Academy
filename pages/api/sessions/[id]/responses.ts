@@ -66,6 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // The schema contains `LearnerResponse`, but TS may not see `prisma.learnerResponse` yet.
   const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
 
+
   if (req.method === 'GET') {
     // Learners only fetch their own responses.
     const records = await learnerResponse.findMany({
@@ -74,6 +75,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       take: 200,
     })
     return res.status(200).json({ responses: records })
+  }
+
+  // PATCH: Challenge owner can update gradingJson and feedback for a learner's response
+  if (req.method === 'PATCH' && isChallengeSession) {
+    // Only the challenge owner can grade
+    if (!challengeId) return res.status(400).json({ message: 'Invalid challenge session id' })
+    const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
+    const challenge = await userChallenge.findUnique({
+      where: { id: challengeId },
+      select: { id: true, createdById: true },
+    })
+    if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
+    if (String(challenge.createdById) !== String(userId)) {
+      return res.status(403).json({ message: 'Only the challenge creator can grade responses' })
+    }
+    const { responseId, gradingJson, feedback } = req.body || {}
+    if (!responseId) return res.status(400).json({ message: 'Missing responseId' })
+    try {
+      const updated = await learnerResponse.update({
+        where: { id: responseId },
+        data: {
+          gradingJson: gradingJson ?? undefined,
+          feedback: typeof feedback === 'string' ? feedback : undefined,
+        },
+      })
+      return res.status(200).json(updated)
+    } catch (err: any) {
+      return res.status(500).json({ message: err?.message || 'Failed to update grading' })
+    }
   }
 
   if (req.method === 'POST') {

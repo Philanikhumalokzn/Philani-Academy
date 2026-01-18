@@ -503,6 +503,9 @@ model LearnerResponse {
   prompt     String?
   latex      String
   studentText String?
+
+  gradingJson Json?
+  feedback    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

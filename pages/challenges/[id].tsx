@@ -372,45 +372,146 @@ export default function ChallengeAttemptPage() {
                   </div>
                 )}
                 {Array.isArray(challenge?.attempts) && challenge.attempts.length > 0 ? (
-                  challenge.attempts.map((resp: any, idx: number) => (
-                    <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-white">{resp.name}</div>
-                        <div className="text-xs text-white/60">
-                          {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+                  challenge.attempts.map((resp: any, idx: number) => {
+                    const [showGradePopup, setShowGradePopup] = useState(false);
+                    const [grading, setGrading] = useState<{ [step: number]: string }>({});
+                    const [feedback, setFeedback] = useState('');
+                    const [saving, setSaving] = useState(false);
+                    // For now, treat the whole response as one step; later, split by steps if available
+                    const stepIndices = [0];
+
+                    // Calculate mark (simple: tick/dot-green = 1, cross/dot-red = 0)
+                    const calcMark = () => {
+                      const values = Object.values(grading);
+                      if (!values.length) return null;
+                      const score = values.filter(v => v === 'tick' || v === 'dot-green').length;
+                      return `${score} / ${values.length}`;
+                    };
+
+                    const handleSaveGrading = async () => {
+                      setSaving(true);
+                      try {
+                        const gradingJson = stepIndices.map(idx => ({
+                          step: idx,
+                          grade: grading[idx] || null
+                        }));
+                        await fetch(`/api/sessions/challenge:${id}/responses`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'same-origin',
+                          body: JSON.stringify({
+                            responseId: resp.id,
+                            gradingJson,
+                            feedback,
+                          }),
+                        });
+                        setShowGradePopup(false);
+                        setSaving(false);
+                        // Optionally refresh responses here
+                      } catch (e) {
+                        setSaving(false);
+                        alert('Failed to save grading');
+                      }
+                    };
+
+                    return (
+                      <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium text-white">{resp.name}</div>
+                          <div className="text-xs text-white/60">
+                            {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-sm">
-                        <strong>Response:</strong>
-                        {(() => {
-                          const latex = String(resp.latex || '')
-                          const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
-                          if (!latex.trim()) {
-                            return (
-                              <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words">
-                                (empty)
+                        <div className="text-sm">
+                          <strong>Response:</strong>
+                          {(() => {
+                            const latex = String(resp.latex || '')
+                            const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                            if (!latex.trim()) {
+                              return (
+                                <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words">
+                                  (empty)
+                                </div>
+                              )
+                            }
+                            return html ? (
+                              <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px]">
+                                <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                              </div>
+                            ) : (
+                              <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
+                                {renderTextWithKatex(latex)}
                               </div>
                             )
-                          }
-                          return html ? (
-                            <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px]">
-                              <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                            </div>
-                          ) : (
-                            <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
-                              {renderTextWithKatex(latex)}
-                            </div>
-                          )
-                        })()}
-                      </div>
-                      {resp.studentText ? (
-                        <div className="text-sm">
-                          <strong>Typed text:</strong>
-                          <div className="mt-1 text-white/80">{resp.studentText}</div>
+                          })()}
                         </div>
-                      ) : null}
-                    </div>
-                  ))
+                        {resp.studentText ? (
+                          <div className="text-sm">
+                            <strong>Typed text:</strong>
+                            <div className="mt-1 text-white/80">{resp.studentText}</div>
+                          </div>
+                        ) : null}
+                        <div className="mt-2">
+                          <button className="btn btn-secondary btn-xs" onClick={() => setShowGradePopup(true)}>
+                            Grade
+                          </button>
+                        </div>
+                        {/* Display mark and feedback if graded */}
+                        {resp.gradingJson && Array.isArray(resp.gradingJson) && resp.gradingJson.length > 0 && (
+                          <div className="mt-2 text-green-300 text-xs">Mark: {(() => {
+                            const values = resp.gradingJson.map((g: any) => g.grade);
+                            const score = values.filter((v: string) => v === 'tick' || v === 'dot-green').length;
+                            return `${score} / ${values.length}`;
+                          })()}</div>
+                        )}
+                        {resp.feedback && (
+                          <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
+                        )}
+                        {showGradePopup && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                            <div className="bg-white text-black rounded-lg p-6 min-w-[300px] max-w-[90vw]">
+                              <div className="font-semibold mb-2">Grade Response</div>
+                              {stepIndices.map((stepIdx) => (
+                                <div key={stepIdx} className="mb-3">
+                                  <div className="mb-1">Step {stepIdx + 1}</div>
+                                  <div className="flex gap-4">
+                                    <label>
+                                      <input type="radio" name={`grade-step-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'tick' }))} />
+                                      <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
+                                    </label>
+                                    <label>
+                                      <input type="radio" name={`grade-step-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
+                                      <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
+                                    </label>
+                                    <label>
+                                      <input type="radio" name={`grade-step-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
+                                      <span role="img" aria-label="Red X" className="ml-1">❌</span>
+                                    </label>
+                                    <label>
+                                      <input type="radio" name={`grade-step-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
+                                      <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
+                                    </label>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="mb-2">
+                                <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
+                                <textarea className="w-full border rounded p-1 text-xs" rows={2} value={feedback} onChange={e => setFeedback(e.target.value)} />
+                              </div>
+                              <div className="flex gap-2 mt-4">
+                                <button className="btn btn-primary btn-xs" onClick={handleSaveGrading} disabled={saving}>
+                                  {saving ? 'Saving...' : 'Save'}
+                                </button>
+                                <button className="btn btn-ghost btn-xs" onClick={() => setShowGradePopup(false)}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="text-sm text-white/70">No responses yet.</div>
                 )}

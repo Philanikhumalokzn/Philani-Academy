@@ -2296,41 +2296,17 @@ export default function Dashboard() {
     setChallengeSubmissionsLoading(true)
     setChallengeSubmissionsError(null)
     try {
-      const sessionKey = `challenge:${challengeId}`
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, { credentials: 'same-origin' })
+      const res = await fetch(`/api/challenges/${encodeURIComponent(challengeId)}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setChallengeSubmissionsError(data?.message || `Failed to load submissions (${res.status})`)
         setChallengeSubmissions([])
         return
       }
-      
-      // Group responses by user
-      const responses = Array.isArray(data?.responses) ? data.responses : []
-      const byUser = new Map<string, { userId: string; name: string; lastSubmittedAt: Date; submissions: number }>()
-      for (const r of responses) {
-        const uid = String(r.userId)
-        const existing = byUser.get(uid)
-        const displayName = String(r.userEmail || 'User')
-        const submittedAt = new Date(r.createdAt)
-        if (!existing) {
-          byUser.set(uid, { userId: uid, name: displayName, lastSubmittedAt: submittedAt, submissions: 1 })
-        } else {
-          existing.submissions += 1
-          if (submittedAt > existing.lastSubmittedAt) existing.lastSubmittedAt = submittedAt
-        }
-      }
-      
-      const submissions = Array.from(byUser.values())
-        .sort((a, b) => b.lastSubmittedAt.getTime() - a.lastSubmittedAt.getTime())
-        .map(s => ({
-          userId: s.userId,
-          name: s.name,
-          lastSubmittedAt: s.lastSubmittedAt.toISOString(),
-          submissions: s.submissions,
-        }))
-      
+
+      const submissions = Array.isArray(data?.takers) ? data.takers : []
       setChallengeSubmissions(submissions)
+      setSelectedChallengeData(data)
     } catch (err: any) {
       setChallengeSubmissionsError(err?.message || 'Failed to load submissions')
       setChallengeSubmissions([])
@@ -2344,22 +2320,18 @@ export default function Dashboard() {
     setSelectedSubmissionLoading(true)
     setSelectedSubmissionError(null)
     try {
-      const sessionKey = `challenge:${challengeId}`
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, { credentials: 'same-origin' })
+      const res = await fetch(`/api/challenges/${encodeURIComponent(challengeId)}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setSelectedSubmissionError(data?.message || `Failed to load submission (${res.status})`)
         setSelectedSubmissionDetail(null)
         return
       }
-      
-      const responses = Array.isArray(data?.responses) ? data.responses : []
+
+      const responses = Array.isArray(data?.attempts) ? data.attempts : []
       const userResponses = responses.filter((r: any) => String(r.userId) === String(userId))
-      
-      setSelectedSubmissionDetail({
-        userId,
-        responses: userResponses,
-      })
+
+      setSelectedSubmissionDetail({ userId, responses: userResponses })
     } catch (err: any) {
       setSelectedSubmissionError(err?.message || 'Failed to load submission')
       setSelectedSubmissionDetail(null)
@@ -2394,11 +2366,8 @@ export default function Dashboard() {
         return
       }
 
-      const all = Array.isArray(responsesData?.responses) ? responsesData.responses : []
-      const me = String(viewerId || currentUserId || '')
-      // The API already scopes responses to the current user. If we can't resolve a user id
-      // in the client session/profile yet, don't filter them out.
-      const mine = me ? all.filter((r: any) => String(r?.userId || '') === me) : all
+      // The responses API is already scoped to the current user.
+      const mine = Array.isArray(responsesData?.responses) ? responsesData.responses : []
       mine.sort((a: any, b: any) => {
         const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
         const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0

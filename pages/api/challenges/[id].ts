@@ -146,7 +146,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     },
   })
 
-  if (isOwner || isPrivileged) {
+  const canViewAttempts = isOwner || isPrivileged || Boolean(challenge.solutionsVisible)
+
+  if (canViewAttempts) {
     const records = await learnerResponse.findMany({
       where: {
         sessionKey,
@@ -194,22 +196,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         submissions: t.submissions,
       }))
 
-    if (challenge.solutionsVisible) {
-      attempts = records
-        .slice()
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .map(r => ({
-          id: r.id,
-          userId: r.userId,
-          name: String(r.user?.name || r.user?.email || 'User'),
-          avatar: (r.user?.avatar as string | null) || null,
-          createdAt: new Date(r.createdAt).toISOString(),
-          latex: r.latex,
-          studentText: r.studentText,
-          prompt: r.prompt,
-          quizLabel: r.quizLabel,
-        }))
-    }
+    attempts = records
+      .slice()
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(r => ({
+        id: r.id,
+        userId: r.userId,
+        name: String(r.user?.name || r.user?.email || 'User'),
+        avatar: (r.user?.avatar as string | null) || null,
+        createdAt: new Date(r.createdAt).toISOString(),
+        latex: r.latex,
+        studentText: r.studentText,
+        prompt: r.prompt,
+        quizLabel: r.quizLabel,
+      }))
   }
 
   return res.status(200).json({

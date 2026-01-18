@@ -351,9 +351,14 @@ export default function ChallengeAttemptPage() {
                 </h2>
                 {!challenge?.solutionsVisible ? (
                   <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-                    ⚠️ Responses are only visible after you reveal solutions. Close attempts first, then reveal solutions.
+                    🔒 Responses are private to you and each learner until you reveal solutions.
                   </div>
-                ) : Array.isArray(challenge?.attempts) && challenge.attempts.length > 0 ? (
+                ) : (
+                  <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-200">
+                    ✅ Solutions revealed — responses are now visible to all viewers.
+                  </div>
+                )}
+                {Array.isArray(challenge?.attempts) && challenge.attempts.length > 0 ? (
                   challenge.attempts.map((resp: any, idx: number) => (
                     <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
                       <div className="flex items-center justify-between gap-3">

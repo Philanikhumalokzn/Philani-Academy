@@ -2649,7 +2649,7 @@ export default function Dashboard() {
     const preview = timelineChallenges.slice(0, 3)
 
     return (
-      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <section className="dashboard-shell space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div />
           <div className="flex items-center gap-2">
@@ -2877,7 +2877,7 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-3">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="dashboard-shell rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Current lesson</div>
             <button
@@ -2962,7 +2962,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="dashboard-shell rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
             <button
@@ -8038,7 +8038,7 @@ export default function Dashboard() {
               <div
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
-                className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
+                className="dashboard-shell flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
                 <div

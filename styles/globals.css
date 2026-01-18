@@ -365,6 +365,13 @@ body{
   color:rgba(248,250,252,0.6);
 }
 
+.mobile-dashboard-theme .dashboard-shell{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  border-radius:0;
+}
+
 .deep-page{
   background:var(--bg-gradient);
   color:#f8fafc;

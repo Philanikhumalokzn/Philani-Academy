@@ -4,112 +4,23 @@ import dynamic from 'next/dynamic'
 import katex from 'katex'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
+import BrandLogo from '../components/BrandLogo'
+import UserLink from '../components/UserLink'
+import DiagramOverlayModule from '../components/DiagramOverlayModule'
+import TextOverlayModule from '../components/TextOverlayModule'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
-                                {/* Grading UI for challenge creator */}
-                                {challengeResponseChallenge?.isOwner && (
-                                  <div className="mt-4 p-4 border border-blue-400/30 bg-blue-400/10 rounded">
-                                    <div className="font-semibold mb-2">Grade Response</div>
-                                    {challengeMyResponses.map((resp: any, idx: number) => {
-                                      const [grading, setGrading] = useState<{ [step: number]: string }>(() => {
-                                        // Prepopulate with existing grading if available
-                                        if (resp.gradingJson && Array.isArray(resp.gradingJson)) {
-                                          const obj: { [step: number]: string } = {}
-                                          resp.gradingJson.forEach((g: any) => { if (g && typeof g.step === 'number') obj[g.step] = g.grade })
-                                          return obj
-                                        }
-                                        return {}
-                                      });
-                                      const [feedback, setFeedback] = useState(resp.feedback || '');
-                                      const [saving, setSaving] = useState(false);
-                                      const stepIndices = [0]; // For now, one step
 
-                                      const handleSaveGrading = async () => {
-                                        setSaving(true);
-                                        try {
-                                          const gradingJson = stepIndices.map(idx => ({
-                                            step: idx,
-                                            grade: grading[idx] || null
-                                          }));
-                                          await fetch(`/api/sessions/challenge:${challengeResponseChallenge.id}/responses`, {
-                                            method: 'PATCH',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            credentials: 'same-origin',
-                                            body: JSON.stringify({
-                                              responseId: resp.id,
-                                              gradingJson,
-                                              feedback,
-                                            }),
-                                          });
-                                          setSaving(false);
-                                          // Optionally refresh responses here
-                                        } catch (e) {
-                                          setSaving(false);
-                                          alert('Failed to save grading');
-                                        }
-                                      };
+const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 
-                                      return (
-                                        <div key={resp.id || idx} className="mb-4">
-                                          {stepIndices.map((stepIdx) => (
-                                            <div key={stepIdx} className="mb-3">
-                                              <div className="mb-1">Step {stepIdx + 1}</div>
-                                              <div className="flex gap-4">
-                                                <label>
-                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'tick' }))} />
-                                                  <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
-                                                </label>
-                                                <label>
-                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
-                                                  <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
-                                                </label>
-                                                <label>
-                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
-                                                  <span role="img" aria-label="Red X" className="ml-1">❌</span>
-                                                </label>
-                                                <label>
-                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
-                                                  <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
-                                                </label>
-                                              </div>
-                                            </div>
-                                          ))}
-                                          <div className="mb-2">
-                                            <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
-                                            <textarea className="w-full border rounded p-1 text-xs" rows={2} value={feedback} onChange={e => setFeedback(e.target.value)} />
-                                          </div>
-                                          <div className="flex gap-2 mt-4">
-                                            <button className="btn btn-primary btn-xs" onClick={handleSaveGrading} disabled={saving}>
-                                              {saving ? 'Saving...' : 'Save'}
-                                            </button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="text-sm muted">No responses found.</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="text-xs muted">
-                      Note: Quiz grading now allows manual grading for creators. AI-powered grading similar to assignments may be added in a future update.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </OverlayPortal>
-        )
-}
+const MOBILE_HERO_BG_MIN_WIDTH = 1200
+const MOBILE_HERO_BG_MIN_HEIGHT = 600
+const MOBILE_HERO_BG_MAX_WIDTH = 2000
+const WINDOW_PADDING_X = 24
+const WINDOW_PADDING_Y = 24
 
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
@@ -184,6 +95,17 @@ type LiveWindowConfig = {
   z: number
   mode: 'windowed' | 'fullscreen'
   windowedSnapshot: WindowSnapshot | null
+}
+
+const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted || typeof document === 'undefined') return null
+  return createPortal(children, document.body)
 }
 
 export default function Dashboard() {
@@ -903,6 +825,10 @@ export default function Dashboard() {
   const [selectedSubmissionDetail, setSelectedSubmissionDetail] = useState<any | null>(null)
   const [selectedSubmissionLoading, setSelectedSubmissionLoading] = useState(false)
   const [selectedSubmissionError, setSelectedSubmissionError] = useState<string | null>(null)
+  const [challengeGradingResponseId, setChallengeGradingResponseId] = useState<string | null>(null)
+  const [challengeGradingByStep, setChallengeGradingByStep] = useState<Record<number, string>>({})
+  const [challengeGradingFeedback, setChallengeGradingFeedback] = useState('')
+  const [challengeGradingSaving, setChallengeGradingSaving] = useState(false)
 
   const [challengeResponseOverlayOpen, setChallengeResponseOverlayOpen] = useState(false)
   const [selectedChallengeResponseId, setSelectedChallengeResponseId] = useState<string | null>(null)
@@ -1642,7 +1568,13 @@ export default function Dashboard() {
     const w = img.naturalWidth || 0
     const h = img.naturalHeight || 0
     if (w < MOBILE_HERO_BG_MIN_WIDTH || h < MOBILE_HERO_BG_MIN_HEIGHT) {
-      alert(`Image is too small. Minimum is ${MOBILE_HERO_BG_MIN_WIDTH}×${MOBILE_HERO_BG_MIN_HEIGHT}.`)
+      alert(
+        'Image is too small. Minimum is ' +
+          MOBILE_HERO_BG_MIN_WIDTH +
+          ' x ' +
+          MOBILE_HERO_BG_MIN_HEIGHT +
+          '.'
+      )
       return
     }
     if (w < h) {
@@ -2419,6 +2351,65 @@ export default function Dashboard() {
       setSelectedSubmissionLoading(false)
     }
   }, [])
+
+  const activeChallengeGradingResponse = useMemo(() => {
+    if (!challengeGradingResponseId) return null
+    const responses = Array.isArray(selectedSubmissionDetail?.responses) ? selectedSubmissionDetail.responses : []
+    return responses.find((r: any) => String(r?.id) === String(challengeGradingResponseId)) || null
+  }, [challengeGradingResponseId, selectedSubmissionDetail])
+
+  const openChallengeGrading = useCallback((resp: any) => {
+    const grading: Record<number, string> = {}
+    if (Array.isArray(resp?.gradingJson)) {
+      resp.gradingJson.forEach((g: any) => {
+        const step = typeof g?.step === 'number' ? g.step : null
+        const grade = typeof g?.grade === 'string' ? g.grade : null
+        if (step !== null && grade) grading[step] = grade
+      })
+    }
+    setChallengeGradingByStep(grading)
+    setChallengeGradingFeedback(typeof resp?.feedback === 'string' ? resp.feedback : '')
+    setChallengeGradingResponseId(resp?.id ? String(resp.id) : null)
+  }, [])
+
+  const closeChallengeGrading = useCallback(() => {
+    setChallengeGradingResponseId(null)
+    setChallengeGradingByStep({})
+    setChallengeGradingFeedback('')
+    setChallengeGradingSaving(false)
+  }, [])
+
+  const saveChallengeGrading = useCallback(async () => {
+    if (!selectedChallengeId || !challengeGradingResponseId) return
+    setChallengeGradingSaving(true)
+    try {
+      const stepIndices = [0]
+      const gradingJson = stepIndices.map((idx) => ({
+        step: idx,
+        grade: challengeGradingByStep[idx] || null,
+      }))
+
+      await fetch(`/api/sessions/challenge:${encodeURIComponent(selectedChallengeId)}/responses`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          responseId: challengeGradingResponseId,
+          gradingJson,
+          feedback: challengeGradingFeedback,
+        }),
+      })
+
+      if (selectedSubmissionUserId) {
+        await fetchSubmissionDetail(selectedChallengeId, selectedSubmissionUserId)
+      }
+      closeChallengeGrading()
+    } catch (err: any) {
+      alert(err?.message || 'Failed to save grading')
+    } finally {
+      setChallengeGradingSaving(false)
+    }
+  }, [challengeGradingByStep, challengeGradingFeedback, challengeGradingResponseId, selectedChallengeId, selectedSubmissionUserId, fetchSubmissionDetail, closeChallengeGrading])
 
   const fetchMyChallengeResponse = useCallback(async (challengeId: string) => {
     if (!challengeId) return
@@ -8619,6 +8610,28 @@ export default function Dashboard() {
                                       <div className="mt-1 text-white/80">{resp.studentText}</div>
                                     </div>
                                   ) : null}
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-xs"
+                                      onClick={() => openChallengeGrading(resp)}
+                                    >
+                                      Grade
+                                    </button>
+                                  </div>
+                                  {resp.gradingJson && Array.isArray(resp.gradingJson) && resp.gradingJson.length > 0 && (
+                                    <div className="mt-2 text-green-300 text-xs">
+                                      Mark:{' '}
+                                      {(() => {
+                                        const values = resp.gradingJson.map((g: any) => g.grade)
+                                        const score = values.filter((v: string) => v === 'tick' || v === 'dot-green').length
+                                        return `${score} / ${values.length}`
+                                      })()}
+                                    </div>
+                                  )}
+                                  {resp.feedback && (
+                                    <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
+                                  )}
                                 </div>
                               ))
                             ) : (
@@ -8630,8 +8643,84 @@ export default function Dashboard() {
                     ) : null}
                   </div>
 
+                  {challengeGradingResponseId && activeChallengeGradingResponse && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+                      <div className="bg-white text-black rounded-lg p-6 min-w-[300px] max-w-[90vw]">
+                        <div className="font-semibold mb-2">Grade Response</div>
+                        {[0].map((stepIdx) => (
+                          <div key={stepIdx} className="mb-3">
+                            <div className="mb-1">Step {stepIdx + 1}</div>
+                            <div className="flex gap-4">
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`challenge-grade-step-${stepIdx}`}
+                                  value="tick"
+                                  checked={challengeGradingByStep[stepIdx] === 'tick'}
+                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'tick' }))}
+                                />
+                                <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
+                              </label>
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`challenge-grade-step-${stepIdx}`}
+                                  value="dot-green"
+                                  checked={challengeGradingByStep[stepIdx] === 'dot-green'}
+                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-green' }))}
+                                />
+                                <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
+                              </label>
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`challenge-grade-step-${stepIdx}`}
+                                  value="cross"
+                                  checked={challengeGradingByStep[stepIdx] === 'cross'}
+                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'cross' }))}
+                                />
+                                <span role="img" aria-label="Red X" className="ml-1">❌</span>
+                              </label>
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`challenge-grade-step-${stepIdx}`}
+                                  value="dot-red"
+                                  checked={challengeGradingByStep[stepIdx] === 'dot-red'}
+                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-red' }))}
+                                />
+                                <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
+                              </label>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="mb-2">
+                          <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
+                          <textarea
+                            className="w-full border rounded p-1 text-xs"
+                            rows={2}
+                            value={challengeGradingFeedback}
+                            onChange={(e) => setChallengeGradingFeedback(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          <button
+                            className="btn btn-primary btn-xs"
+                            onClick={saveChallengeGrading}
+                            disabled={challengeGradingSaving}
+                          >
+                            {challengeGradingSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={closeChallengeGrading}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="text-xs muted">
-                    Note: Quiz grading currently shows raw responses. AI-powered grading similar to assignments will be added in a future update.
+                    Note: Manual grading is available here; automated grading may be added in a future update.
                   </div>
                 </div>
               </div>

@@ -6650,6 +6650,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (isAdmin && !isSolution) return
 
     const isAssignment = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId && assignmentSubmission?.sessionId)
+    const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
     if (!quizActiveRef.current && !isAssignment) return
     if (quizSubmitting) return
     if (!boardId) {
@@ -6729,7 +6730,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         lastSymbolCountRef.current = 0
         lastBroadcastBaseCountRef.current = 0
         setLatexOutput('')
-        return
+        if (!isChallengeBoard && !isAssignment) return
       }
 
       // Force-submit mode (timer): include current ink as the last step if present.
@@ -6746,6 +6747,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // Assignment pages use a strict 2-stage flow: if there's nothing on the canvas to commit
       // AND no prior committed work, treat this as a no-op.
       if (isAssignment && !hasInk && !quizHasCommittedRef.current && !studentTextSnapshot) {
+        return
+      }
+      if (isChallengeBoard && !hasInk && !quizHasCommittedRef.current && !studentTextSnapshot) {
+        alert('Add work or a typed response before submitting.')
         return
       }
       if (!combined) {

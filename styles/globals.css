@@ -211,11 +211,11 @@ body{
 .card .dashboard-card,
 .dashboard-card .card,
 .dashboard-card .dashboard-card{
-  padding:1.05rem;
+  padding:1.2rem;
   border-radius:var(--card-radius);
-  box-shadow:0 14px 32px rgba(0,0,0,0.28);
-  margin-left:-0.25rem;
-  margin-right:-0.25rem;
+  box-shadow:0 12px 28px rgba(0,0,0,0.26);
+  margin-left:-0.05rem;
+  margin-right:-0.05rem;
 }
 
 @media (max-width: 768px) {
@@ -223,10 +223,10 @@ body{
   .card .dashboard-card,
   .dashboard-card .card,
   .dashboard-card .dashboard-card{
-    padding:0.95rem;
+    padding:1.15rem;
     border-radius:var(--card-radius);
-    margin-left:-0.2rem;
-    margin-right:-0.2rem;
+    margin-left:-0.05rem;
+    margin-right:-0.05rem;
   }
 
   .mobile-dashboard-theme .card,

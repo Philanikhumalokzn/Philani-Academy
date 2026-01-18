@@ -8825,16 +8825,8 @@ export default function Dashboard() {
                   {challengeGradingResponseId && activeChallengeGradingResponse && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-3">
                       <div className="bg-white/90 text-black rounded-2xl shadow-xl w-full max-w-5xl">
-                        <div className="px-6 py-4 border-b border-black/10 flex items-center justify-between gap-3">
+                        <div className="px-6 py-4 border-b border-black/10">
                           <div className="font-semibold">Grade Response</div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-xs"
-                            aria-label="Close"
-                            onClick={closeChallengeGrading}
-                          >
-                            ×
-                          </button>
                         </div>
                         <div className="p-6 max-h-[80vh] overflow-y-auto">
                           {(() => {

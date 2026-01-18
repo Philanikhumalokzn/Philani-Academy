@@ -2649,7 +2649,7 @@ export default function Dashboard() {
     const preview = timelineChallenges.slice(0, 3)
 
     return (
-      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div />
           <div className="flex items-center gap-2">
@@ -2687,7 +2687,7 @@ export default function Dashboard() {
         ) : preview.length === 0 ? (
           <div className="text-sm text-white/70">No quizzes yet.</div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-white/10">
             {preview.map((c: any) => {
               const title = (c?.title || '').trim() || 'Quiz'
               const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
@@ -2701,7 +2701,7 @@ export default function Dashboard() {
               const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
               
               return (
-                <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <li key={String(c?.id || title)} className="py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium text-white break-words">{title}</div>
@@ -2893,7 +2893,7 @@ export default function Dashboard() {
           {!resolvedCurrentLesson ? (
             <div className="text-sm text-white/70">No current lesson right now.</div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+            <div className="overflow-hidden">
               {lessonThumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
@@ -2940,7 +2940,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div className="p-3 border-t border-white/10">
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-white">Past lessons</div>
               <button
@@ -2985,7 +2985,7 @@ export default function Dashboard() {
           ) : studentFeedPosts.length === 0 ? (
             <div className="text-sm text-white/70">No posts yet.</div>
           ) : (
-            <ul className="space-y-2">
+            <ul className="divide-y divide-white/10">
               {studentFeedPosts.slice(0, 15).map((p: any) => {
                 const title = (p?.title || '').trim() || 'Quiz'
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
@@ -3001,7 +3001,7 @@ export default function Dashboard() {
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
                 
                 return (
-                  <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <li key={String(p?.id || title)} className="py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium text-white break-words">{title}</div>
@@ -5144,7 +5144,7 @@ export default function Dashboard() {
                             <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
                             <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
 
-                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                            <div className="p-3 space-y-2">
                               <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-semibold">Lesson thumbnail — optional</p>
                                 <div className="flex items-center gap-2">
@@ -5195,7 +5195,7 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
+                            <div className="p-3 space-y-3">
                               <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
                               <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
 
@@ -5214,7 +5214,7 @@ export default function Dashboard() {
                                   ) : null}
 
                                   {(lessonScriptDraft[phase.key] || []).map((point, pointIndex) => (
-                                    <div key={point.id} className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                                    <div key={point.id} className="p-2 space-y-2">
                                       <div className="flex items-center justify-between gap-2">
                                         <p className="text-xs font-semibold">Point {pointIndex + 1}</p>
                                         <button
@@ -5255,7 +5255,7 @@ export default function Dashboard() {
                                         }}
                                       />
 
-                                      <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                                      <div className="p-2 space-y-2">
                                         <div className="flex items-center justify-between gap-2">
                                           <div className="text-xs font-semibold">Diagram module</div>
                                           <div className="flex items-center gap-2">
@@ -5293,7 +5293,7 @@ export default function Dashboard() {
                                         </div>
                                       </div>
 
-                                      <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
+                                      <div className="p-2 space-y-2">
                                         <div className="flex items-center justify-between gap-2">
                                           <div className="text-xs font-semibold">LaTeX module</div>
                                           <div className="flex items-center gap-2">
@@ -5730,7 +5730,7 @@ export default function Dashboard() {
 
                     <div className="flex-1 overflow-y-auto p-3">
                       {canManageSessionThumbnails && sessionDetailsSessionId && sessionDetailsSession ? (
-                        <div className="mb-3 rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
+                        <div className="mb-3 p-3 space-y-2">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold">Lesson thumbnail</div>
                             <div className="flex items-center gap-2">
@@ -7311,16 +7311,16 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="card p-3 space-y-2">
+                      <div className="p-3 space-y-2">
                         <div className="text-sm font-semibold text-white">Join requests</div>
                         {notificationsLoading ? (
                           <div className="text-sm muted">Loading…</div>
                         ) : pendingForGroup.length === 0 ? (
                           <div className="text-sm muted">No pending requests.</div>
                         ) : (
-                          <div className="grid gap-2">
+                          <div className="divide-y divide-white/10">
                             {pendingForGroup.map((r: any) => (
-                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                              <div key={r.id} className="py-3">
                                 <div className="text-sm text-white/90">
                                   <UserLink
                                     userId={r.requestedBy?.id}

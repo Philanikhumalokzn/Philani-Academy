@@ -9,26 +9,106 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
+                                {/* Grading UI for challenge creator */}
+                                {challengeResponseChallenge?.isOwner && (
+                                  <div className="mt-4 p-4 border border-blue-400/30 bg-blue-400/10 rounded">
+                                    <div className="font-semibold mb-2">Grade Response</div>
+                                    {challengeMyResponses.map((resp: any, idx: number) => {
+                                      const [grading, setGrading] = useState<{ [step: number]: string }>(() => {
+                                        // Prepopulate with existing grading if available
+                                        if (resp.gradingJson && Array.isArray(resp.gradingJson)) {
+                                          const obj: { [step: number]: string } = {}
+                                          resp.gradingJson.forEach((g: any) => { if (g && typeof g.step === 'number') obj[g.step] = g.grade })
+                                          return obj
+                                        }
+                                        return {}
+                                      });
+                                      const [feedback, setFeedback] = useState(resp.feedback || '');
+                                      const [saving, setSaving] = useState(false);
+                                      const stepIndices = [0]; // For now, one step
 
-import BrandLogo from '../components/BrandLogo'
-import UserLink from '../components/UserLink'
+                                      const handleSaveGrading = async () => {
+                                        setSaving(true);
+                                        try {
+                                          const gradingJson = stepIndices.map(idx => ({
+                                            step: idx,
+                                            grade: grading[idx] || null
+                                          }));
+                                          await fetch(`/api/sessions/challenge:${challengeResponseChallenge.id}/responses`, {
+                                            method: 'PATCH',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            credentials: 'same-origin',
+                                            body: JSON.stringify({
+                                              responseId: resp.id,
+                                              gradingJson,
+                                              feedback,
+                                            }),
+                                          });
+                                          setSaving(false);
+                                          // Optionally refresh responses here
+                                        } catch (e) {
+                                          setSaving(false);
+                                          alert('Failed to save grading');
+                                        }
+                                      };
 
-const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
-const DiagramOverlayModule = dynamic(() => import('../components/DiagramOverlayModule'), { ssr: false })
-const TextOverlayModule = dynamic(() => import('../components/TextOverlayModule'), { ssr: false })
-const WINDOW_PADDING_X = 0
-const WINDOW_PADDING_Y = 12
-const MOBILE_HERO_BG_MIN_WIDTH = 1280
-const MOBILE_HERO_BG_MIN_HEIGHT = 720
-const MOBILE_HERO_BG_MAX_WIDTH = 1920
+                                      return (
+                                        <div key={resp.id || idx} className="mb-4">
+                                          {stepIndices.map((stepIdx) => (
+                                            <div key={stepIdx} className="mb-3">
+                                              <div className="mb-1">Step {stepIdx + 1}</div>
+                                              <div className="flex gap-4">
+                                                <label>
+                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'tick' }))} />
+                                                  <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
+                                                </label>
+                                                <label>
+                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
+                                                  <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
+                                                </label>
+                                                <label>
+                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
+                                                  <span role="img" aria-label="Red X" className="ml-1">❌</span>
+                                                </label>
+                                                <label>
+                                                  <input type="radio" name={`grade-step-${resp.id}-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
+                                                  <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
+                                                </label>
+                                              </div>
+                                            </div>
+                                          ))}
+                                          <div className="mb-2">
+                                            <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
+                                            <textarea className="w-full border rounded p-1 text-xs" rows={2} value={feedback} onChange={e => setFeedback(e.target.value)} />
+                                          </div>
+                                          <div className="flex gap-2 mt-4">
+                                            <button className="btn btn-primary btn-xs" onClick={handleSaveGrading} disabled={saving}>
+                                              {saving ? 'Saving...' : 'Save'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-sm muted">No responses found.</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
-function OverlayPortal(props: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-  if (!mounted) return null
-  return createPortal(props.children, document.body)
+                    <div className="text-xs muted">
+                      Note: Quiz grading now allows manual grading for creators. AI-powered grading similar to assignments may be added in a future update.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayPortal>
+        )
 }
 
 const DASHBOARD_SECTIONS = [

@@ -2893,13 +2893,13 @@ export default function Dashboard() {
           {!resolvedCurrentLesson ? (
             <div className="text-sm text-white/70">No current lesson right now.</div>
           ) : (
-            <div className="overflow-hidden">
+            <div className="space-y-3">
               {lessonThumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
+                <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover rounded-2xl" />
               ) : null}
 
-              <div className="p-3 space-y-2">
+              <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
                   {resolvedCurrentLesson.startsAt ? (
@@ -2940,7 +2940,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="p-3 border-t border-white/10">
+          <div className="pt-3 border-t border-white/10">
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-white">Past lessons</div>
               <button

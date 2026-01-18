@@ -199,6 +199,21 @@ body{
   backdrop-filter:blur(14px);
 }
 
+/* Overlay subsections: keep a flat, full-width stack (no pyramid shrink). */
+.overlay-subsection{
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:16px;
+  padding:1rem;
+  width:100%;
+  box-shadow:none;
+}
+
+.philani-overlay-panel .overlay-subsection{
+  margin-left:-0.75rem;
+  margin-right:-0.75rem;
+}
+
 .dashboard-card{
   background:linear-gradient(160deg, rgba(9,18,60,0.92), rgba(2,6,24,0.88));
   border:1px solid rgba(124,172,255,0.18);

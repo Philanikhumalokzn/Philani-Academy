@@ -6743,13 +6743,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       // Second-stage send: if blank, prompt to submit (only after at least one commit).
       let combined = quizCombinedLatexRef.current.trim()
+      if (isChallengeBoard && !combined) {
+        // Fallback: derive from the top panel sources (student steps + live draft).
+        const stepLines = studentSteps.map(s => s.latex)
+        const draft = (latexOutput || '').trim()
+        if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < stepLines.length) {
+          if (draft) {
+            stepLines[studentEditIndex] = draft
+          }
+        } else if (draft) {
+          stepLines.push(draft)
+        }
+        const merged = stepLines.filter(Boolean).join(' \\ ').trim()
+        if (merged) {
+          combined = merged
+          quizCombinedLatexRef.current = merged
+          quizHasCommittedRef.current = true
+        }
+      }
 
       // Assignment pages use a strict 2-stage flow: if there's nothing on the canvas to commit
       // AND no prior committed work, treat this as a no-op.
       if (isAssignment && !hasInk && !quizHasCommittedRef.current && !studentTextSnapshot) {
         return
       }
-      if (isChallengeBoard && !hasInk && !quizHasCommittedRef.current && !studentTextSnapshot) {
+      if (isChallengeBoard && !combined && !hasInk && !quizHasCommittedRef.current && !studentTextSnapshot) {
         alert('Add work or a typed response before submitting.')
         return
       }
@@ -6930,7 +6948,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, hasWriteAccess, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, updateControlState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, hasWriteAccess, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {

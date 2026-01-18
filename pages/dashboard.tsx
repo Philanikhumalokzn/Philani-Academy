@@ -8512,9 +8512,26 @@ export default function Dashboard() {
                                   </div>
                                   <div className="text-sm">
                                     <strong>Response:</strong>
-                                    <pre className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
-                                      {resp.latex || '(empty)'}
-                                    </pre>
+                                    {(() => {
+                                      const latex = String(resp.latex || '')
+                                      const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                                      if (!latex.trim()) {
+                                        return (
+                                          <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words">
+                                            (empty)
+                                          </div>
+                                        )
+                                      }
+                                      return html ? (
+                                        <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px]">
+                                          <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                        </div>
+                                      ) : (
+                                        <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
+                                          {renderTextWithKatex(latex)}
+                                        </div>
+                                      )
+                                    })()}
                                   </div>
                                   {resp.studentText ? (
                                     <div className="text-sm">

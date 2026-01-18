@@ -2876,8 +2876,8 @@ export default function Dashboard() {
     const lessonThumb = typeof (resolvedCurrentLesson as any)?.thumbnailUrl === 'string' ? (resolvedCurrentLesson as any).thumbnailUrl : ''
 
     return (
-      <section className="space-y-3">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+      <section className="space-y-4">
+        <div className="space-y-3 pb-4 border-b border-white/10">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Current lesson</div>
             <button
@@ -2962,7 +2962,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
             <button

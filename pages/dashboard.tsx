@@ -2649,7 +2649,7 @@ export default function Dashboard() {
     const preview = timelineChallenges.slice(0, 3)
 
     return (
-      <section className="space-y-3">
+      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div />
           <div className="flex items-center gap-2">
@@ -2687,7 +2687,7 @@ export default function Dashboard() {
         ) : preview.length === 0 ? (
           <div className="text-sm text-white/70">No quizzes yet.</div>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="space-y-2">
             {preview.map((c: any) => {
               const title = (c?.title || '').trim() || 'Quiz'
               const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
@@ -2701,7 +2701,7 @@ export default function Dashboard() {
               const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
               
               return (
-                <li key={String(c?.id || title)} className="py-3">
+                <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium text-white break-words">{title}</div>
@@ -2893,13 +2893,13 @@ export default function Dashboard() {
           {!resolvedCurrentLesson ? (
             <div className="text-sm text-white/70">No current lesson right now.</div>
           ) : (
-            <div className="space-y-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
               {lessonThumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover rounded-2xl" />
+                <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
               ) : null}
 
-              <div className="space-y-2">
+              <div className="p-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
                   {resolvedCurrentLesson.startsAt ? (
@@ -2940,7 +2940,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="pt-3 border-t border-white/10">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-white">Past lessons</div>
               <button
@@ -2985,7 +2985,7 @@ export default function Dashboard() {
           ) : studentFeedPosts.length === 0 ? (
             <div className="text-sm text-white/70">No posts yet.</div>
           ) : (
-            <ul className="divide-y divide-white/10">
+            <ul className="space-y-2">
               {studentFeedPosts.slice(0, 15).map((p: any) => {
                 const title = (p?.title || '').trim() || 'Quiz'
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
@@ -3001,7 +3001,7 @@ export default function Dashboard() {
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
                 
                 return (
-                  <li key={String(p?.id || title)} className="py-3">
+                  <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium text-white break-words">{title}</div>
@@ -5144,7 +5144,7 @@ export default function Dashboard() {
                             <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
                             <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
 
-                            <div className="p-3 space-y-2">
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
                               <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-semibold">Lesson thumbnail — optional</p>
                                 <div className="flex items-center gap-2">
@@ -5195,7 +5195,7 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            <div className="p-3 space-y-3">
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
                               <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
                               <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
 
@@ -5214,7 +5214,7 @@ export default function Dashboard() {
                                   ) : null}
 
                                   {(lessonScriptDraft[phase.key] || []).map((point, pointIndex) => (
-                                    <div key={point.id} className="p-2 space-y-2">
+                                    <div key={point.id} className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
                                       <div className="flex items-center justify-between gap-2">
                                         <p className="text-xs font-semibold">Point {pointIndex + 1}</p>
                                         <button
@@ -5255,7 +5255,7 @@ export default function Dashboard() {
                                         }}
                                       />
 
-                                      <div className="p-2 space-y-2">
+                                      <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
                                         <div className="flex items-center justify-between gap-2">
                                           <div className="text-xs font-semibold">Diagram module</div>
                                           <div className="flex items-center gap-2">
@@ -5293,7 +5293,7 @@ export default function Dashboard() {
                                         </div>
                                       </div>
 
-                                      <div className="p-2 space-y-2">
+                                      <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-2">
                                         <div className="flex items-center justify-between gap-2">
                                           <div className="text-xs font-semibold">LaTeX module</div>
                                           <div className="flex items-center gap-2">
@@ -5492,7 +5492,7 @@ export default function Dashboard() {
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold">Scheduled lesson — {activeGradeLabel}</h2>
           {isAdmin && (
-            <div className="p-3 space-y-2">
+            <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
               <div className="font-medium">Subscription gating</div>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -5512,7 +5512,7 @@ export default function Dashboard() {
             </div>
           )}
           {isSubscriptionBlocked && (
-            <div className="p-3">
+            <div className="p-3 border border-white/10 rounded bg-white/5">
               <div className="font-medium">Subscription required</div>
               <div className="text-sm muted">Subscribe to join sessions and access assignments.</div>
               <div className="mt-2">
@@ -5730,7 +5730,7 @@ export default function Dashboard() {
 
                     <div className="flex-1 overflow-y-auto p-3">
                       {canManageSessionThumbnails && sessionDetailsSessionId && sessionDetailsSession ? (
-                        <div className="mb-3 p-3 space-y-2">
+                        <div className="mb-3 rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold">Lesson thumbnail</div>
                             <div className="flex items-center gap-2">
@@ -6091,7 +6091,7 @@ export default function Dashboard() {
                         })()}
 
                         {isLearner && expandedSessionId && selectedAssignment?.id ? (
-                          <div className="p-3 space-y-2">
+                          <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold text-sm">Your submission</div>
                               <button
@@ -6129,7 +6129,7 @@ export default function Dashboard() {
                         ) : null}
 
                         {isTeacherOrAdminUser && expandedSessionId && selectedAssignment?.id ? (
-                          <div className="p-3 space-y-3">
+                          <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold text-sm">Learner submissions</div>
                               <button
@@ -6147,7 +6147,7 @@ export default function Dashboard() {
                             {adminAssignmentSubmissions.length === 0 ? (
                               <div className="text-sm muted">No submissions yet.</div>
                             ) : (
-                              <ul className="divide-y divide-white/10">
+                              <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
                                 {adminAssignmentSubmissions.map((row: any) => (
                                   <li key={String(row?.userId)} className="p-3 flex items-start justify-between gap-3">
                                     <button
@@ -6188,7 +6188,7 @@ export default function Dashboard() {
                             )}
 
                             {adminSelectedSubmissionUserId ? (
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="font-semibold text-sm">Selected submission</div>
                                   <div className="flex items-center gap-2">
@@ -6503,13 +6503,13 @@ export default function Dashboard() {
 
                       return (
                         <>
-                          <div className="p-3">
+                          <div className="border border-white/10 rounded bg-white/5 p-3">
                             <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(String(q?.latex || ''))}</div>
                           </div>
 
                           {!isLearner && expandedSessionId && selectedAssignment?.id ? (
                             <>
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Assignment grading prompt</div>
                                 {assignmentMasterGradingPromptEditing ? (
                                   <textarea
@@ -6522,7 +6522,7 @@ export default function Dashboard() {
                                   />
                                 ) : (
                                   <div
-                                    className="p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => setAssignmentMasterGradingPromptEditing(true)}
@@ -6547,7 +6547,7 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Solution</div>
                                 {(() => {
                                   const sol = assignmentSolutionsByQuestionId?.[qid]
@@ -6581,7 +6581,7 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Gemini marking plan</div>
                                 {assignmentSolutionMarkingPlanEditingByQuestionId?.[qid] ? (
                                   <textarea
@@ -6597,7 +6597,7 @@ export default function Dashboard() {
                                   />
                                 ) : (
                                   <div
-                                    className="p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => setAssignmentSolutionMarkingPlanEditingByQuestionId(prev => ({ ...prev, [qid]: true }))}
@@ -6633,7 +6633,7 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Gemini worked solution</div>
                                 {assignmentSolutionWorkedSolutionEditingByQuestionId?.[qid] ? (
                                   <textarea
@@ -6649,7 +6649,7 @@ export default function Dashboard() {
                                   />
                                 ) : (
                                   <div
-                                    className="p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => setAssignmentSolutionWorkedSolutionEditingByQuestionId(prev => ({ ...prev, [qid]: true }))}
@@ -6685,7 +6685,7 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Grading prompt (this question)</div>
                                 {assignmentGradingPromptEditingByQuestionId?.[qid] ? (
                                   <textarea
@@ -6701,7 +6701,7 @@ export default function Dashboard() {
                                   />
                                 ) : (
                                   <div
-                                    className="p-3 text-sm whitespace-pre-wrap break-words cursor-text"
+                                    className="border border-white/10 rounded bg-white/5 p-3 text-sm whitespace-pre-wrap break-words cursor-text"
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => setAssignmentGradingPromptEditingByQuestionId(prev => ({ ...prev, [qid]: true }))}
@@ -6733,7 +6733,7 @@ export default function Dashboard() {
 
                           {isLearner ? (
                             <div className="space-y-3">
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Work on canvas</div>
                                 {expandedSessionId && selectedAssignment?.id ? (
                                   assignmentSubmittedAt && !isTestStudent ? (
@@ -6752,7 +6752,7 @@ export default function Dashboard() {
                               </div>
 
                               {assignmentSubmittedAt ? (
-                                <div className="p-3 space-y-2">
+                                <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                   <div className="font-semibold text-sm">Grade</div>
                                   {assignmentGradeLoading ? (
                                     <div className="text-sm muted">Loading grade…</div>
@@ -6778,7 +6778,7 @@ export default function Dashboard() {
                                 </div>
                               ) : null}
 
-                              <div className="p-3 space-y-2">
+                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                 <div className="font-semibold text-sm">Your response</div>
                               {(() => {
                                 const latex = String(assignmentResponsesByQuestionId?.[qid]?.latex || '')
@@ -7311,16 +7311,16 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="p-3 space-y-2">
+                      <div className="card p-3 space-y-2">
                         <div className="text-sm font-semibold text-white">Join requests</div>
                         {notificationsLoading ? (
                           <div className="text-sm muted">Loading…</div>
                         ) : pendingForGroup.length === 0 ? (
                           <div className="text-sm muted">No pending requests.</div>
                         ) : (
-                          <div className="divide-y divide-white/10">
+                          <div className="grid gap-2">
                             {pendingForGroup.map((r: any) => (
-                              <div key={r.id} className="py-3">
+                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                 <div className="text-sm text-white/90">
                                   <UserLink
                                     userId={r.requestedBy?.id}

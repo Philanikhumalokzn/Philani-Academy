@@ -205,6 +205,26 @@ body{
   box-shadow:0 25px 60px rgba(3,8,32,0.6);
 }
 
+/* Reduce nested card inset to be very subtle */
+.card .card,
+.card .dashboard-card,
+.dashboard-card .card,
+.dashboard-card .dashboard-card{
+  padding:1rem;
+  border-radius:18px;
+  box-shadow:0 18px 40px rgba(0,0,0,0.32);
+}
+
+@media (max-width: 768px) {
+  .card .card,
+  .card .dashboard-card,
+  .dashboard-card .card,
+  .dashboard-card .dashboard-card{
+    padding:0.85rem;
+    border-radius:16px;
+  }
+}
+
 .dashboard-flat .card{
   background:transparent;
   border:0;

@@ -6731,6 +6731,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         lastBroadcastBaseCountRef.current = 0
         setLatexOutput('')
         if (!isChallengeBoard && !isAssignment) return
+        if (isAssignment) return
       }
 
       // Force-submit mode (timer): include current ink as the last step if present.

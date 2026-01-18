@@ -6756,7 +6756,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         } else if (draft) {
           stepLines.push(draft)
         }
-        const merged = stepLines.filter(Boolean).join(' \\\\ ').trim()
+        const merged = stepLines.filter(Boolean).join(' \\ ').trim()
         if (merged) {
           combined = merged
           quizCombinedLatexRef.current = merged

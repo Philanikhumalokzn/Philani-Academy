@@ -191,6 +191,54 @@ export default function Dashboard() {
     return steps.slice(0, 30)
   }, [])
 
+  const normalizeChallengeGrade = useCallback((gradingJson: any, stepCount: number) => {
+    if (!gradingJson) return null
+
+    const mapGrade = (grade: string) => {
+      const g = String(grade || '')
+      if (g === 'tick') return { awardedMarks: 1, isCorrect: true, isSignificant: true }
+      if (g === 'dot-green') return { awardedMarks: 0, isCorrect: true, isSignificant: false }
+      if (g === 'cross') return { awardedMarks: 0, isCorrect: false, isSignificant: true }
+      if (g === 'dot-red') return { awardedMarks: 0, isCorrect: false, isSignificant: false }
+      return { awardedMarks: 0, isCorrect: false, isSignificant: true }
+    }
+
+    if (Array.isArray(gradingJson?.steps)) {
+      const steps = gradingJson.steps.map((s: any, idx: number) => {
+        const stepNum = Number(s?.step)
+        const step = Number.isFinite(stepNum) && stepNum > 0 ? Math.trunc(stepNum) : idx + 1
+        const awardedMarks = Number(s?.awardedMarks ?? 0)
+        const safeAwarded = Number.isFinite(awardedMarks) ? Math.max(0, Math.trunc(awardedMarks)) : 0
+        const isCorrect = (typeof s?.isCorrect === 'boolean') ? Boolean(s.isCorrect) : (safeAwarded > 0)
+        const isSignificant = (typeof s?.isSignificant === 'boolean') ? Boolean(s.isSignificant) : (!isCorrect)
+        const feedback = String(s?.feedback ?? '').trim()
+        return { step, awardedMarks: safeAwarded, isCorrect, isSignificant, feedback }
+      })
+      const earnedMarks = Number.isFinite(Number(gradingJson.earnedMarks))
+        ? Math.max(0, Math.trunc(Number(gradingJson.earnedMarks)))
+        : steps.reduce((sum: number, s: any) => sum + Math.max(0, Number(s.awardedMarks || 0)), 0)
+      const totalMarks = Number.isFinite(Number(gradingJson.totalMarks))
+        ? Math.max(1, Math.trunc(Number(gradingJson.totalMarks)))
+        : Math.max(1, stepCount || steps.length || 1)
+      return { steps, earnedMarks, totalMarks }
+    }
+
+    if (Array.isArray(gradingJson)) {
+      const steps = gradingJson.map((g: any, idx: number) => {
+        const stepNum = Number(g?.step)
+        const step = Number.isFinite(stepNum) && stepNum > 0 ? Math.trunc(stepNum) : idx + 1
+        const mapped = mapGrade(String(g?.grade || ''))
+        const feedback = String(g?.feedback ?? '').trim()
+        return { step, feedback, ...mapped }
+      })
+      const earnedMarks = steps.reduce((sum: number, s: any) => sum + Math.max(0, Number(s.awardedMarks || 0)), 0)
+      const totalMarks = Math.max(1, stepCount || steps.length || 1)
+      return { steps, earnedMarks, totalMarks }
+    }
+
+    return null
+  }, [])
+
   const renderTextWithKatex = useCallback((text: unknown) => {
     const input = typeof text === 'string' ? text : ''
     if (!input) return input
@@ -828,6 +876,7 @@ export default function Dashboard() {
   const [challengeGradingResponseId, setChallengeGradingResponseId] = useState<string | null>(null)
   const [challengeGradingByStep, setChallengeGradingByStep] = useState<Record<number, string>>({})
   const [challengeGradingFeedback, setChallengeGradingFeedback] = useState('')
+  const [challengeGradingStepFeedback, setChallengeGradingStepFeedback] = useState<Record<number, string>>({})
   const [challengeGradingSaving, setChallengeGradingSaving] = useState(false)
 
   const [challengeResponseOverlayOpen, setChallengeResponseOverlayOpen] = useState(false)
@@ -2360,14 +2409,34 @@ export default function Dashboard() {
 
   const openChallengeGrading = useCallback((resp: any) => {
     const grading: Record<number, string> = {}
+    const stepFeedback: Record<number, string> = {}
     if (Array.isArray(resp?.gradingJson)) {
       resp.gradingJson.forEach((g: any) => {
         const step = typeof g?.step === 'number' ? g.step : null
         const grade = typeof g?.grade === 'string' ? g.grade : null
         if (step !== null && grade) grading[step] = grade
       })
+    } else if (Array.isArray(resp?.gradingJson?.steps)) {
+      resp.gradingJson.steps.forEach((g: any, idx: number) => {
+        const stepNum = Number(g?.step)
+        const step = Number.isFinite(stepNum) && stepNum > 0 ? Math.trunc(stepNum) - 1 : idx
+        const awardedMarks = Number(g?.awardedMarks ?? 0)
+        const isCorrect = (typeof g?.isCorrect === 'boolean') ? Boolean(g.isCorrect) : (awardedMarks > 0)
+        const isSignificant = (typeof g?.isSignificant === 'boolean') ? Boolean(g.isSignificant) : (!isCorrect)
+        const grade = awardedMarks > 0
+          ? 'tick'
+          : isCorrect
+            ? 'dot-green'
+            : isSignificant
+              ? 'cross'
+              : 'dot-red'
+        grading[step] = grade
+        const fb = String(g?.feedback ?? '').trim()
+        if (fb) stepFeedback[step] = fb
+      })
     }
     setChallengeGradingByStep(grading)
+    setChallengeGradingStepFeedback(stepFeedback)
     setChallengeGradingFeedback(typeof resp?.feedback === 'string' ? resp.feedback : '')
     setChallengeGradingResponseId(resp?.id ? String(resp.id) : null)
   }, [])
@@ -2376,6 +2445,7 @@ export default function Dashboard() {
     setChallengeGradingResponseId(null)
     setChallengeGradingByStep({})
     setChallengeGradingFeedback('')
+    setChallengeGradingStepFeedback({})
     setChallengeGradingSaving(false)
   }, [])
 
@@ -2383,11 +2453,30 @@ export default function Dashboard() {
     if (!selectedChallengeId || !challengeGradingResponseId) return
     setChallengeGradingSaving(true)
     try {
-      const stepIndices = [0]
-      const gradingJson = stepIndices.map((idx) => ({
-        step: idx,
-        grade: challengeGradingByStep[idx] || null,
-      }))
+      const activeResp = activeChallengeGradingResponse
+      const steps = splitLatexIntoSteps(activeResp?.latex || '')
+      const stepCount = Math.max(1, steps.length || 0)
+      const gradingSteps = Array.from({ length: stepCount }, (_, idx) => {
+        const grade = challengeGradingByStep[idx] || null
+        const fb = String(challengeGradingStepFeedback[idx] || '').trim()
+        const awardedMarks = grade === 'tick' ? 1 : 0
+        const isCorrect = grade === 'tick' || grade === 'dot-green'
+        const isSignificant = grade === 'cross'
+          ? true
+          : grade === 'dot-red'
+            ? false
+            : !isCorrect
+        return {
+          step: idx + 1,
+          awardedMarks,
+          isCorrect,
+          isSignificant,
+          feedback: fb || undefined,
+        }
+      })
+      const earnedMarks = gradingSteps.reduce((sum, s) => sum + Math.max(0, Number(s.awardedMarks || 0)), 0)
+      const totalMarks = Math.max(1, stepCount)
+      const gradingJson = { totalMarks, earnedMarks, steps: gradingSteps }
 
       await fetch(`/api/sessions/challenge:${encodeURIComponent(selectedChallengeId)}/responses`, {
         method: 'PATCH',
@@ -2409,7 +2498,7 @@ export default function Dashboard() {
     } finally {
       setChallengeGradingSaving(false)
     }
-  }, [challengeGradingByStep, challengeGradingFeedback, challengeGradingResponseId, selectedChallengeId, selectedSubmissionUserId, fetchSubmissionDetail, closeChallengeGrading])
+  }, [activeChallengeGradingResponse, challengeGradingByStep, challengeGradingFeedback, challengeGradingResponseId, challengeGradingStepFeedback, selectedChallengeId, selectedSubmissionUserId, fetchSubmissionDetail, closeChallengeGrading, splitLatexIntoSteps])
 
   const fetchMyChallengeResponse = useCallback(async (challengeId: string) => {
     if (!challengeId) return
@@ -8585,6 +8674,15 @@ export default function Dashboard() {
                                     <strong>Response:</strong>
                                     {(() => {
                                       const latex = String(resp.latex || '')
+                                      const steps = splitLatexIntoSteps(latex)
+                                      const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
+                                      const stepGradeByIndex = new Map<number, any>()
+                                      if (grade?.steps) {
+                                        grade.steps.forEach((s: any) => {
+                                          const stepNum = Number(s?.step)
+                                          if (Number.isFinite(stepNum) && stepNum > 0) stepGradeByIndex.set(Math.trunc(stepNum) - 1, s)
+                                        })
+                                      }
                                       const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                                       if (!latex.trim()) {
                                         return (
@@ -8593,6 +8691,79 @@ export default function Dashboard() {
                                           </div>
                                         )
                                       }
+                                      if (steps.length) {
+                                        return (
+                                          <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px] space-y-2">
+                                            {steps.map((stepLatex: string, stepIdx: number) => {
+                                              const g = stepGradeByIndex.get(stepIdx)
+                                              const awardedMarks = Number(g?.awardedMarks ?? 0)
+                                              const awardedInt = Number.isFinite(awardedMarks) ? Math.max(0, Math.trunc(awardedMarks)) : 0
+                                              const isCorrect = (typeof g?.isCorrect === 'boolean') ? Boolean(g.isCorrect) : (awardedInt > 0)
+                                              const isSignificant = (typeof g?.isSignificant === 'boolean') ? Boolean(g.isSignificant) : (!isCorrect)
+                                              const feedbackText = String(g?.feedback ?? '').trim()
+                                              const stepHtml = renderKatexDisplayHtml(stepLatex)
+                                              const line = stepHtml
+                                                ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: stepHtml }} />
+                                                : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
+
+                                              return (
+                                                <div key={`challenge-step-${resp.id || idx}-${stepIdx}`} className="flex items-start gap-3">
+                                                  <div className="min-w-0 flex-1">{line}</div>
+                                                  {g ? (
+                                                    <div className="shrink-0 flex items-start gap-2">
+                                                      {awardedInt > 0 ? (
+                                                        <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
+                                                          {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                            <svg key={`tick-${resp.id || idx}-${stepIdx}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                              <path
+                                                                d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                                                fill="currentColor"
+                                                              />
+                                                            </svg>
+                                                          ))}
+                                                          {awardedInt > 12 ? (
+                                                            <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                          ) : null}
+                                                        </span>
+                                                      ) : isCorrect ? (
+                                                        <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                          <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                            <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                          </svg>
+                                                        </span>
+                                                      ) : (
+                                                        isSignificant ? (
+                                                          <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                            <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                              <path
+                                                                d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
+                                                                fill="currentColor"
+                                                              />
+                                                            </svg>
+                                                          </span>
+                                                        ) : (
+                                                          <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                            <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                              <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                            </svg>
+                                                          </span>
+                                                        )
+                                                      )}
+
+                                                      {feedbackText ? (
+                                                        <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                                                          {feedbackText.slice(0, 160)}
+                                                        </div>
+                                                      ) : null}
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        )
+                                      }
+
                                       return html ? (
                                         <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px]">
                                           <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
@@ -8619,16 +8790,16 @@ export default function Dashboard() {
                                       Grade
                                     </button>
                                   </div>
-                                  {resp.gradingJson && Array.isArray(resp.gradingJson) && resp.gradingJson.length > 0 && (
-                                    <div className="mt-2 text-green-300 text-xs">
-                                      Mark:{' '}
-                                      {(() => {
-                                        const values = resp.gradingJson.map((g: any) => g.grade)
-                                        const score = values.filter((v: string) => v === 'tick' || v === 'dot-green').length
-                                        return `${score} / ${values.length}`
-                                      })()}
-                                    </div>
-                                  )}
+                                  {(() => {
+                                    const steps = splitLatexIntoSteps(resp.latex)
+                                    const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
+                                    if (!grade) return null
+                                    return (
+                                      <div className="mt-2 text-green-300 text-xs">
+                                        Mark: {grade.earnedMarks}/{grade.totalMarks}
+                                      </div>
+                                    )
+                                  })()}
                                   {resp.feedback && (
                                     <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
                                   )}
@@ -8647,53 +8818,77 @@ export default function Dashboard() {
                     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
                       <div className="bg-white text-black rounded-lg p-6 min-w-[300px] max-w-[90vw]">
                         <div className="font-semibold mb-2">Grade Response</div>
-                        {[0].map((stepIdx) => (
-                          <div key={stepIdx} className="mb-3">
-                            <div className="mb-1">Step {stepIdx + 1}</div>
-                            <div className="flex gap-4">
-                              <label>
-                                <input
-                                  type="radio"
-                                  name={`challenge-grade-step-${stepIdx}`}
-                                  value="tick"
-                                  checked={challengeGradingByStep[stepIdx] === 'tick'}
-                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'tick' }))}
-                                />
-                                <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
-                              </label>
-                              <label>
-                                <input
-                                  type="radio"
-                                  name={`challenge-grade-step-${stepIdx}`}
-                                  value="dot-green"
-                                  checked={challengeGradingByStep[stepIdx] === 'dot-green'}
-                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-green' }))}
-                                />
-                                <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
-                              </label>
-                              <label>
-                                <input
-                                  type="radio"
-                                  name={`challenge-grade-step-${stepIdx}`}
-                                  value="cross"
-                                  checked={challengeGradingByStep[stepIdx] === 'cross'}
-                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'cross' }))}
-                                />
-                                <span role="img" aria-label="Red X" className="ml-1">❌</span>
-                              </label>
-                              <label>
-                                <input
-                                  type="radio"
-                                  name={`challenge-grade-step-${stepIdx}`}
-                                  value="dot-red"
-                                  checked={challengeGradingByStep[stepIdx] === 'dot-red'}
-                                  onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-red' }))}
-                                />
-                                <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
-                              </label>
-                            </div>
-                          </div>
-                        ))}
+                        {(() => {
+                          const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
+                          const stepCount = Math.max(1, steps.length || 0)
+                          return Array.from({ length: stepCount }, (_, stepIdx) => {
+                            const stepLatex = steps[stepIdx] || ''
+                            const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
+                            return (
+                              <div key={stepIdx} className="mb-3">
+                                <div className="mb-1 text-sm font-medium">Step {stepIdx + 1}</div>
+                                {stepLatex ? (
+                                  stepHtml ? (
+                                    <div className="mb-2 p-2 rounded border border-black/10" dangerouslySetInnerHTML={{ __html: stepHtml }} />
+                                  ) : (
+                                    <div className="mb-2 p-2 rounded border border-black/10 text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
+                                  )
+                                ) : null}
+                                <div className="flex flex-wrap gap-4">
+                                  <label>
+                                    <input
+                                      type="radio"
+                                      name={`challenge-grade-step-${stepIdx}`}
+                                      value="tick"
+                                      checked={challengeGradingByStep[stepIdx] === 'tick'}
+                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'tick' }))}
+                                    />
+                                    <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
+                                  </label>
+                                  <label>
+                                    <input
+                                      type="radio"
+                                      name={`challenge-grade-step-${stepIdx}`}
+                                      value="dot-green"
+                                      checked={challengeGradingByStep[stepIdx] === 'dot-green'}
+                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-green' }))}
+                                    />
+                                    <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
+                                  </label>
+                                  <label>
+                                    <input
+                                      type="radio"
+                                      name={`challenge-grade-step-${stepIdx}`}
+                                      value="cross"
+                                      checked={challengeGradingByStep[stepIdx] === 'cross'}
+                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'cross' }))}
+                                    />
+                                    <span role="img" aria-label="Red X" className="ml-1">❌</span>
+                                  </label>
+                                  <label>
+                                    <input
+                                      type="radio"
+                                      name={`challenge-grade-step-${stepIdx}`}
+                                      value="dot-red"
+                                      checked={challengeGradingByStep[stepIdx] === 'dot-red'}
+                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-red' }))}
+                                    />
+                                    <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
+                                  </label>
+                                </div>
+                                <div className="mt-2">
+                                  <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>
+                                  <textarea
+                                    className="w-full border rounded p-1 text-xs"
+                                    rows={2}
+                                    value={challengeGradingStepFeedback[stepIdx] || ''}
+                                    onChange={(e) => setChallengeGradingStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })
+                        })()}
                         <div className="mb-2">
                           <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
                           <textarea

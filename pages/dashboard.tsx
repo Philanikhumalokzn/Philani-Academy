@@ -8605,8 +8605,8 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
+                <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-semibold text-sm">Student Responses</div>
                       <button
@@ -8650,7 +8650,7 @@ export default function Dashboard() {
                     )}
 
                     {selectedSubmissionUserId && selectedSubmissionDetail ? (
-                      <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                      <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-semibold text-sm">Student Responses</div>
                           <button
@@ -9036,7 +9036,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                <div className="flex-1 overflow-y-auto p-3 space-y-4">
                   {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
                   {challengeResponseLoading ? (
                     <div className="text-sm muted">Loading your feedback…</div>
@@ -9073,19 +9073,15 @@ export default function Dashboard() {
                       })()}
 
                       {challengeResponseChallenge?.prompt ? (
-                        <div className="border border-white/10 rounded bg-white/5 p-3">
-                          <div className="text-sm whitespace-pre-wrap break-words">
-                            {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
-                          </div>
+                        <div className="text-sm whitespace-pre-wrap break-words">
+                          {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
                         </div>
                       ) : null}
 
                       {challengeMyResponses.length === 0 ? (
-                        <div className="border border-white/10 rounded bg-white/5 p-3">
-                          <div className="text-sm muted">No submission found yet.</div>
-                        </div>
+                        <div className="text-sm muted">No submission found yet.</div>
                       ) : (
-                        <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                        <div className="space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <div className="font-semibold text-sm">Your submission</div>
                             <button
@@ -9103,29 +9099,27 @@ export default function Dashboard() {
                             {challengeMyResponses.length > 1 ? ` • ${challengeMyResponses.length} attempts` : ''}
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="divide-y divide-white/10">
                             {challengeMyResponses.map((resp: any, idx: number) => {
                               const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
                               const latex = String(resp?.latex || '')
                               const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                               return (
-                                <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                                <div key={resp?.id || idx} className="py-3 space-y-2">
                                   {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
-                                  <div className="p-2 rounded border border-white/10 bg-white/5">
-                                    <div className="text-xs muted mb-1">Your answer</div>
-                                    {latex.trim() ? (
-                                      html ? (
-                                        <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                                      ) : (
-                                        <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
-                                      )
+                                  <div className="text-xs muted">Your answer</div>
+                                  {latex.trim() ? (
+                                    html ? (
+                                      <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
                                     ) : (
-                                      <div className="text-sm muted">(empty)</div>
-                                    )}
-                                  </div>
+                                      <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
+                                    )
+                                  ) : (
+                                    <div className="text-sm muted">(empty)</div>
+                                  )}
 
                                   {String(resp?.studentText || '').trim() ? (
-                                    <div className="p-2 rounded border border-white/10 bg-white/5">
+                                    <div>
                                       <div className="text-xs muted mb-1">Typed text</div>
                                       <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
                                     </div>

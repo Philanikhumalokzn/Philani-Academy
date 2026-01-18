@@ -2780,7 +2780,7 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
+      <section className="dashboard-shell flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
         <button
           type="button"
           className={btnClass('timeline')}
@@ -8045,7 +8045,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.timeline = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start py-3"
                 >
                   {renderStudentTimelinePanel()}
                 </div>
@@ -8054,7 +8054,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.sessions = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start py-3"
                 >
                   {renderSection('sessions')}
                 </div>
@@ -8063,7 +8063,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.groups = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start py-3"
                 >
                   {renderSection('groups')}
                 </div>
@@ -8072,7 +8072,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.discover = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start py-3"
                 >
                   {renderSection('discover')}
                 </div>

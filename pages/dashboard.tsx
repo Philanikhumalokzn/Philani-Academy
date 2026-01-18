@@ -7628,7 +7628,7 @@ export default function Dashboard() {
         className={
           isMobile
             ? 'relative z-10 w-full px-2 min-h-[100dvh] flex flex-col'
-            : 'max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6'
+            : 'max-w-5xl mx-auto px-4 lg:px-8 py-8 space-y-6 dashboard-flat'
         }
       >
         {isMobile ? (

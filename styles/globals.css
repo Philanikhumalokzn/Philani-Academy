@@ -205,6 +205,19 @@ body{
   box-shadow:0 25px 60px rgba(3,8,32,0.6);
 }
 
+.dashboard-flat .card{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+
+.dashboard-flat .dashboard-card{
+  background:transparent;
+  border-color:transparent;
+  box-shadow:none;
+}
+
 .dashboard-card h2,
 .dashboard-card .font-semibold{color:#fff;}
 .dashboard-card dt{color:#c7d7ff;}

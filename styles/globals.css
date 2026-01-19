@@ -194,7 +194,7 @@ body{
   background:var(--card);
   color:#f8fafc;
   border-radius:var(--card-radius);
-  padding:1.25rem;
+  padding:0;
   border:1px solid var(--card-border);
   box-shadow:0 25px 45px rgba(0,0,0,0.35);
   backdrop-filter:blur(14px);
@@ -223,7 +223,7 @@ body{
 .card .dashboard-card,
 .dashboard-card .card,
 .dashboard-card .dashboard-card{
-  padding:1.2rem;
+  padding:0;
   border-radius:var(--card-radius);
   box-shadow:0 12px 28px rgba(0,0,0,0.26);
   margin-left:-0.05rem;
@@ -235,7 +235,7 @@ body{
   .card .dashboard-card,
   .dashboard-card .card,
   .dashboard-card .dashboard-card{
-    padding:1.15rem;
+    padding:0;
     border-radius:var(--card-radius);
     margin-left:-0.05rem;
     margin-right:-0.05rem;

@@ -279,6 +279,14 @@ body{
     margin-left:0 !important;
     margin-right:0 !important;
   }
+
+  .mobile-dashboard-theme .mobile-card-full{
+    width:100% !important;
+    max-width:100% !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    align-self:stretch !important;
+  }
 }
 
 .dashboard-flat .card{

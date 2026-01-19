@@ -66,7 +66,7 @@
   --primary: #133366;
   --accent: #6aa5ff;
   --text: #e9f1ff;
-  --card-radius: 0px;
+  --card-radius: 12px;
 }
 
 html,body,#__next{
@@ -200,7 +200,7 @@ body{
   backdrop-filter:blur(14px);
 }
 
-/* Force zero radius globally for rounded utility classes */
+/* Normalize rounded utilities to the global card radius */
 .rounded,
 .rounded-sm,
 .rounded-md,
@@ -209,7 +209,7 @@ body{
 .rounded-2xl,
 .rounded-3xl,
 .rounded-full{
-  border-radius:0 !important;
+  border-radius:var(--card-radius) !important;
 }
 
 .dashboard-card{

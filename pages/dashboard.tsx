@@ -8045,7 +8045,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.timeline = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start"
                 >
                   {renderStudentTimelinePanel()}
                 </div>
@@ -8054,7 +8054,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.sessions = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start"
                 >
                   {renderSection('sessions')}
                 </div>
@@ -8063,7 +8063,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.groups = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start"
                 >
                   {renderSection('groups')}
                 </div>
@@ -8072,7 +8072,7 @@ export default function Dashboard() {
                   ref={el => {
                     studentMobilePanelRefs.current.discover = el
                   }}
-                  className="w-full flex-none snap-start p-3"
+                  className="w-full flex-none snap-start"
                 >
                   {renderSection('discover')}
                 </div>

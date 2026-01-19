@@ -2649,7 +2649,7 @@ export default function Dashboard() {
     const preview = timelineChallenges.slice(0, 3)
 
     return (
-      <section className="mobile-card-full space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div />
           <div className="flex items-center gap-2">
@@ -2780,7 +2780,7 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className="mobile-card-full flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
+      <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
         <button
           type="button"
           className={btnClass('timeline')}
@@ -2877,7 +2877,7 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-3">
-        <div className="mobile-card-full rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Current lesson</div>
             <button
@@ -2962,7 +2962,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mobile-card-full rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
             <button

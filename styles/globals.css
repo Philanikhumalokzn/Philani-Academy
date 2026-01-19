@@ -87,6 +87,13 @@ body{
     padding:0.55rem 0.95rem;
     font-size:0.9rem;
   }
+
+  .mobile-row-width{
+    width:calc(100% - 1rem) !important;
+    margin-left:0.5rem !important;
+    margin-right:0.5rem !important;
+    box-sizing:border-box !important;
+  }
 }
 
 /* Common containers */

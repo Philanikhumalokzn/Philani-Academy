@@ -87,6 +87,26 @@ body{
     padding:0.55rem 0.95rem;
     font-size:0.9rem;
   }
+
+  .mobile-dashboard-theme .mobile-stack-card{
+    padding:0.9rem !important;
+    border-radius:var(--card-radius) !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    width:100% !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+  }
+
+  .mobile-dashboard-theme .mobile-stack-card-inner{
+    padding:0.8rem !important;
+    border-radius:var(--card-radius) !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    width:100% !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+  }
 }
 
 /* Common containers */

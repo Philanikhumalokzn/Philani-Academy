@@ -66,7 +66,7 @@
   --primary: #133366;
   --accent: #6aa5ff;
   --text: #e9f1ff;
-  --card-radius: 24px;
+  --card-radius: 0px;
 }
 
 html,body,#__next{
@@ -86,26 +86,6 @@ body{
   .mobile-dashboard-theme .btn{
     padding:0.55rem 0.95rem;
     font-size:0.9rem;
-  }
-
-  .mobile-dashboard-theme .mobile-stack-card{
-    padding:0.9rem !important;
-    border-radius:var(--card-radius) !important;
-    margin-left:0 !important;
-    margin-right:0 !important;
-    width:100% !important;
-    max-width:100% !important;
-    box-sizing:border-box !important;
-  }
-
-  .mobile-dashboard-theme .mobile-stack-card-inner{
-    padding:0.8rem !important;
-    border-radius:var(--card-radius) !important;
-    margin-left:0 !important;
-    margin-right:0 !important;
-    width:100% !important;
-    max-width:100% !important;
-    box-sizing:border-box !important;
   }
 }
 
@@ -218,6 +198,18 @@ body{
   border:1px solid var(--card-border);
   box-shadow:0 25px 45px rgba(0,0,0,0.35);
   backdrop-filter:blur(14px);
+}
+
+/* Force zero radius globally for rounded utility classes */
+.rounded,
+.rounded-sm,
+.rounded-md,
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl,
+.rounded-3xl,
+.rounded-full{
+  border-radius:0 !important;
 }
 
 .dashboard-card{

@@ -2649,7 +2649,7 @@ export default function Dashboard() {
     const preview = timelineChallenges.slice(0, 3)
 
     return (
-      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4 mobile-stack-card">
+      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div />
           <div className="flex items-center gap-2">
@@ -2701,7 +2701,7 @@ export default function Dashboard() {
               const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
               
               return (
-                <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3 mobile-stack-card-inner">
+                <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium text-white break-words">{title}</div>
@@ -2780,7 +2780,7 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3 mobile-stack-card">
+      <section className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
         <button
           type="button"
           className={btnClass('timeline')}
@@ -2877,7 +2877,7 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-3">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3 mobile-stack-card">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Current lesson</div>
             <button
@@ -2893,7 +2893,7 @@ export default function Dashboard() {
           {!resolvedCurrentLesson ? (
             <div className="text-sm text-white/70">No current lesson right now.</div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden mobile-stack-card-inner">
+            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
               {lessonThumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
@@ -2940,7 +2940,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 mobile-stack-card-inner">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold text-white">Past lessons</div>
               <button
@@ -2962,7 +2962,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3 mobile-stack-card">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
             <button
@@ -3001,7 +3001,7 @@ export default function Dashboard() {
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
                 
                 return (
-                  <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3 mobile-stack-card-inner">
+                  <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium text-white break-words">{title}</div>

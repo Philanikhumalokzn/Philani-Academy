@@ -8823,20 +8823,17 @@ export default function Dashboard() {
                   </div>
 
                   {challengeGradingResponseId && activeChallengeGradingResponse && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-3">
-                      <div className="bg-white/90 text-black rounded-2xl shadow-xl w-full max-w-5xl">
-                        <div className="px-6 py-4 border-b border-black/10">
-                          <div className="font-semibold">Grade Response</div>
-                        </div>
-                        <div className="p-6 max-h-[80vh] overflow-y-auto">
-                          {(() => {
-                            const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
-                            const stepCount = Math.max(1, steps.length || 0)
-                            return Array.from({ length: stepCount }, (_, stepIdx) => {
-                              const stepLatex = steps[stepIdx] || ''
-                              const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
-                              return (
-                                <div key={stepIdx} className="mb-3">
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+                      <div className="bg-white text-black rounded-lg p-6 min-w-[300px] max-w-[90vw]">
+                        <div className="font-semibold mb-2">Grade Response</div>
+                        {(() => {
+                          const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
+                          const stepCount = Math.max(1, steps.length || 0)
+                          return Array.from({ length: stepCount }, (_, stepIdx) => {
+                            const stepLatex = steps[stepIdx] || ''
+                            const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
+                            return (
+                              <div key={stepIdx} className="mb-3">
                                 <div className="mb-1 text-sm font-medium">Step {stepIdx + 1}</div>
                                 {stepLatex ? (
                                   stepHtml ? (
@@ -8912,40 +8909,39 @@ export default function Dashboard() {
                                     }}
                                   />
                                 </div>
-                                  <div className="mt-2">
-                                    <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>
-                                    <textarea
-                                      className="w-full border rounded p-1 text-xs"
-                                      rows={2}
-                                      value={challengeGradingStepFeedback[stepIdx] || ''}
-                                      onChange={(e) => setChallengeGradingStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
-                                    />
-                                  </div>
+                                <div className="mt-2">
+                                  <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>
+                                  <textarea
+                                    className="w-full border rounded p-1 text-xs"
+                                    rows={2}
+                                    value={challengeGradingStepFeedback[stepIdx] || ''}
+                                    onChange={(e) => setChallengeGradingStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
+                                  />
                                 </div>
-                              )
-                            })
-                          })()}
-                          <div className="mb-2">
-                            <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
-                            <textarea
-                              className="w-full border rounded p-1 text-xs"
-                              rows={2}
-                              value={challengeGradingFeedback}
-                              onChange={(e) => setChallengeGradingFeedback(e.target.value)}
-                            />
-                          </div>
-                          <div className="flex gap-2 mt-4">
-                            <button
-                              className="btn btn-primary btn-xs"
-                              onClick={saveChallengeGrading}
-                              disabled={challengeGradingSaving}
-                            >
-                              {challengeGradingSaving ? 'Saving...' : 'Save'}
-                            </button>
-                            <button className="btn btn-ghost btn-xs" onClick={closeChallengeGrading}>
-                              Cancel
-                            </button>
-                          </div>
+                              </div>
+                            )
+                          })
+                        })()}
+                        <div className="mb-2">
+                          <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
+                          <textarea
+                            className="w-full border rounded p-1 text-xs"
+                            rows={2}
+                            value={challengeGradingFeedback}
+                            onChange={(e) => setChallengeGradingFeedback(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          <button
+                            className="btn btn-primary btn-xs"
+                            onClick={saveChallengeGrading}
+                            disabled={challengeGradingSaving}
+                          >
+                            {challengeGradingSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={closeChallengeGrading}>
+                            Cancel
+                          </button>
                         </div>
                       </div>
                     </div>

@@ -2780,7 +2780,7 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className="mobile-hero-width flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
+      <section className="w-full flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
         <button
           type="button"
           className={btnClass('timeline')}
@@ -8038,7 +8038,7 @@ export default function Dashboard() {
               <div
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
-                className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
+                className="w-full flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
                 <div

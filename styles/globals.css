@@ -207,9 +207,12 @@ body{
 .rounded-lg,
 .rounded-xl,
 .rounded-2xl,
-.rounded-3xl,
-.rounded-full{
+.rounded-3xl{
   border-radius:var(--card-radius) !important;
+}
+
+.rounded-full{
+  border-radius:9999px !important;
 }
 
 .dashboard-card{

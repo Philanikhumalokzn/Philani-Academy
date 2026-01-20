@@ -7143,8 +7143,8 @@ export default function Dashboard() {
         return renderSessionsSection()
       case 'groups':
         return (
-          <div className="space-y-3">
-            <section className="space-y-2">
+          <div className="space-y-4 p-3">
+            <section className="card p-3 space-y-2">
               <div className="text-sm font-semibold text-white">Create a group</div>
               <div className="grid gap-2">
                 <input
@@ -7181,7 +7181,7 @@ export default function Dashboard() {
               </div>
             </section>
 
-            <section className="space-y-2">
+            <section className="card p-3 space-y-2">
               <div className="text-sm font-semibold text-white">Join with code</div>
               <div className="flex items-center gap-2">
                 <input
@@ -7197,7 +7197,7 @@ export default function Dashboard() {
               </div>
             </section>
 
-            <section className="space-y-2">
+            <section className="card p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-white">Your groups</div>
                 <button type="button" className="btn btn-ghost" onClick={() => void loadMyGroups()}>
@@ -7238,7 +7238,7 @@ export default function Dashboard() {
             </section>
 
             {selectedGroupId && (
-              <section className="space-y-2">
+              <section className="card p-3 space-y-2">
                 {(() => {
                   const myId = (session as any)?.user?.id as string | undefined
                   const membership = myGroups.find((g) => g.group.id === selectedGroupId)

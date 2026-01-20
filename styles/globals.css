@@ -67,6 +67,7 @@
   --accent: #6aa5ff;
   --text: #e9f1ff;
   --card-radius: 12px;
+  --card-padding: 1rem;
 }
 
 html,body,#__next{
@@ -83,6 +84,9 @@ body{
 
 @media (max-width: 768px) {
   body{overflow-x:hidden;}
+  :root{
+    --card-padding: 0.85rem;
+  }
   .mobile-dashboard-theme .btn{
     padding:0.55rem 0.95rem;
     font-size:0.9rem;
@@ -201,7 +205,7 @@ body{
   background:var(--card);
   color:#f8fafc;
   border-radius:var(--card-radius);
-  padding:0;
+  padding:var(--card-padding);
   border:1px solid var(--card-border);
   box-shadow:0 25px 45px rgba(0,0,0,0.35);
   backdrop-filter:blur(14px);
@@ -233,11 +237,11 @@ body{
 .card .dashboard-card,
 .dashboard-card .card,
 .dashboard-card .dashboard-card{
-  padding:0;
+  padding:var(--card-padding);
   border-radius:var(--card-radius);
   box-shadow:0 12px 28px rgba(0,0,0,0.26);
-  margin-left:-0.05rem;
-  margin-right:-0.05rem;
+  margin-left:calc(-1 * var(--card-padding));
+  margin-right:calc(-1 * var(--card-padding));
 }
 
 @media (max-width: 768px) {
@@ -245,10 +249,10 @@ body{
   .card .dashboard-card,
   .dashboard-card .card,
   .dashboard-card .dashboard-card{
-    padding:0;
+    padding:var(--card-padding);
     border-radius:var(--card-radius);
-    margin-left:-0.05rem;
-    margin-right:-0.05rem;
+    margin-left:calc(-1 * var(--card-padding));
+    margin-right:calc(-1 * var(--card-padding));
   }
 
   .mobile-dashboard-theme .card,

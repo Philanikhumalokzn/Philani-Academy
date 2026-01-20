@@ -2878,11 +2878,12 @@ export default function Dashboard() {
     return (
       <section className="space-y-3">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-semibold text-white">Current lesson</div>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <div />
+            <div className="font-semibold text-white text-center">Current lesson</div>
             <button
               type="button"
-              className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
+              className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50 justify-self-end"
               onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
               disabled={sessionsLoading || !selectedGrade}
             >
@@ -4731,9 +4732,9 @@ export default function Dashboard() {
           <dd>{status === 'authenticated' ? accountGradeLabel : 'N/A'}</dd>
         </div>
       </dl>
-      <div className="flex flex-col sm:flex-row gap-2">
-        <Link href="/profile" className="btn btn-ghost w-full sm:w-auto">Update profile</Link>
-        <Link href="/subscribe" className="btn btn-primary w-full sm:w-auto">Manage subscription</Link>
+      <div className="flex flex-col sm:flex-row items-start gap-2">
+        <Link href="/profile" className="btn btn-ghost">Update profile</Link>
+        <Link href="/subscribe" className="btn btn-primary">Manage subscription</Link>
       </div>
     </>
   )
@@ -4998,7 +4999,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">Current lesson — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold text-center">Current lesson — {activeGradeLabel}</h2>
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>
           ) : sortedSessions.length === 0 ? (
@@ -5490,7 +5491,7 @@ export default function Dashboard() {
         )}
 
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">Scheduled lesson — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold text-center">Scheduled lesson — {activeGradeLabel}</h2>
           {isAdmin && (
             <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
               <div className="font-medium">Subscription gating</div>
@@ -5529,7 +5530,7 @@ export default function Dashboard() {
               {pastSessionIds.length > 0 && (
                 <button
                   type="button"
-                  className="btn btn-ghost w-full justify-center"
+                  className="btn btn-ghost justify-center"
                   onClick={() => openPastSessionsList(pastSessionIds)}
                   disabled={isSubscriptionBlocked}
                 >
@@ -5553,7 +5554,7 @@ export default function Dashboard() {
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          className={`btn w-full justify-center ${canCreateSession ? '' : 'btn-primary'}`}
+                          className={`btn justify-center justify-self-start ${canCreateSession ? '' : 'btn-primary'}`}
                           onClick={() => openLiveForSession(s.id)}
                           disabled={isSubscriptionBlocked}
                         >
@@ -5561,7 +5562,7 @@ export default function Dashboard() {
                         </button>
                         <button
                           type="button"
-                          className="btn w-full justify-center"
+                          className="btn justify-center justify-self-start"
                           onClick={() => showCanvasWindow(s.id)}
                           disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                         >
@@ -5571,13 +5572,13 @@ export default function Dashboard() {
                           href={s.joinUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className={`w-full justify-center text-sm font-semibold text-white/70 hover:text-white ${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                          className={`justify-self-start text-sm font-semibold text-white/70 hover:text-white ${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
                         >
                           Link
                         </a>
                         <button
                           type="button"
-                          className="w-full justify-center text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                          className="justify-self-start text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
                           onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
                           disabled={isSubscriptionBlocked}
                         >
@@ -6426,7 +6427,7 @@ export default function Dashboard() {
                             {assignmentSubmitError ? <div className="text-sm text-red-600">{assignmentSubmitError}</div> : null}
                             <button
                               type="button"
-                              className="btn btn-primary w-full"
+                              className="btn btn-primary"
                               disabled={assignmentSubmitting}
                               onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
                             >

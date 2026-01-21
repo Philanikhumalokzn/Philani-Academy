@@ -10,6 +10,8 @@ type DiagramAnnotations = { space?: 'image'; strokes: DiagramStroke[]; arrows?: 
 type DiagramTool = 'select' | 'pen' | 'arrow' | 'eraser'
 type DiagramSelection = { kind: 'stroke' | 'arrow'; id: string } | null
 
+type CropRect = { x0: number; y0: number; x1: number; y1: number }
+
 type DiagramRecord = {
   id: string
   title: string
@@ -56,16 +58,19 @@ export default function DiagramOverlayModule(props: {
   userId: string
   userDisplayName?: string
   isAdmin: boolean
+  imageUrl?: string
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpen?: boolean
   autoPromptUpload?: boolean
   onRequestClose?: () => void
   closeSignal?: number
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+
+  const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
   const [presenterOverride, setPresenterOverride] = useState(false)
-  const canPresent = Boolean(isAdmin) || presenterOverride
+  const canPresent = localOnly ? true : (Boolean(isAdmin) || presenterOverride)
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -147,6 +152,14 @@ export default function DiagramOverlayModule(props: {
   useEffect(() => {
     diagramsRef.current = diagrams
   }, [diagrams])
+
+  useEffect(() => {
+    if (!localOnly) return
+    const url = imageUrl!.trim()
+    const id = 'local'
+    setDiagrams([{ id, title: 'Screenshot', imageUrl: url, order: 0, annotations: { space: IMAGE_SPACE, strokes: [], arrows: [] } }])
+    setDiagramState({ activeDiagramId: id, isOpen: true })
+  }, [imageUrl, localOnly])
 
   const [diagramState, setDiagramState] = useState<DiagramState>({ activeDiagramId: null, isOpen: false })
   const diagramStateRef = useRef<DiagramState>({ activeDiagramId: null, isOpen: false })
@@ -400,8 +413,9 @@ export default function DiagramOverlayModule(props: {
 
   useEffect(() => {
     if (!userId) return
+    if (localOnly) return
     void loadFromServer()
-  }, [loadFromServer, userId])
+  }, [loadFromServer, localOnly, userId])
 
   const publish = useCallback(async (message: DiagramRealtimeMessage) => {
     const ch = channelRef.current
@@ -419,6 +433,7 @@ export default function DiagramOverlayModule(props: {
 
   const persistState = useCallback(async (next: DiagramState) => {
     if (!isAdmin) return
+    if (localOnly) return
     try {
       await fetch('/api/diagrams/state', {
         method: 'PUT',
@@ -429,7 +444,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [channelName, isAdmin])
+  }, [channelName, isAdmin, localOnly])
 
   const setOverlayState = useCallback(async (next: DiagramState) => {
     setDiagramState(next)
@@ -641,6 +656,7 @@ export default function DiagramOverlayModule(props: {
 
   const persistAnnotations = useCallback(async (diagramId: string, annotations: DiagramAnnotations | null) => {
     if (!isAdmin) return
+    if (localOnly) return
     try {
       await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
         method: 'PATCH',
@@ -651,11 +667,12 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [isAdmin])
+  }, [isAdmin, localOnly])
 
   // Ably connection (independent from canvas)
   useEffect(() => {
     if (!userId) return
+    if (localOnly) return
 
     let disposed = false
     let channel: any = null
@@ -783,7 +800,7 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, publish, userDisplayName, userId])
+  }, [channelName, isAdmin, loadFromServer, localOnly, publish, userDisplayName, userId])
 
   // Rendering
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -796,6 +813,19 @@ export default function DiagramOverlayModule(props: {
   const migratedDiagramIdsRef = useRef<Set<string>>(new Set())
 
   const [tool, setTool] = useState<DiagramTool>('pen')
+  const [cropMode, setCropMode] = useState(false)
+  const [cropRect, setCropRect] = useState<CropRect | null>(null)
+  const cropRectRef = useRef<CropRect | null>(null)
+  useEffect(() => {
+    cropRectRef.current = cropRect
+  }, [cropRect])
+
+  const cropDragRef = useRef<null | {
+    mode: 'new' | 'move' | 'resize'
+    handle?: 'nw' | 'ne' | 'sw' | 'se'
+    startPoint: DiagramStrokePoint
+    startRect: CropRect
+  }>(null)
   const [selection, setSelection] = useState<DiagramSelection>(null)
   const selectionRef = useRef<DiagramSelection>(null)
   useEffect(() => {
@@ -908,6 +938,67 @@ export default function DiagramOverlayModule(props: {
   }, [getContainRect])
 
   const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
+
+  const normalizeCropRect = useCallback((r: CropRect | null) => {
+    if (!r) return null
+    const minX = clamp01(Math.min(r.x0, r.x1))
+    const minY = clamp01(Math.min(r.y0, r.y1))
+    const maxX = clamp01(Math.max(r.x0, r.x1))
+    const maxY = clamp01(Math.max(r.y0, r.y1))
+    return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY }
+  }, [])
+
+  const hitTestCropHandle = useCallback((p: DiagramStrokePoint, rect: NonNullable<ReturnType<typeof normalizeCropRect>>, imgW: number, imgH: number) => {
+    const rPx = 10
+    const rx = rPx / Math.max(1, imgW)
+    const ry = rPx / Math.max(1, imgH)
+    const corners = {
+      nw: { x: rect.minX, y: rect.minY },
+      ne: { x: rect.maxX, y: rect.minY },
+      sw: { x: rect.minX, y: rect.maxY },
+      se: { x: rect.maxX, y: rect.maxY },
+    } as const
+    for (const key of Object.keys(corners) as Array<keyof typeof corners>) {
+      const c = corners[key]
+      if (Math.abs(p.x - c.x) <= rx && Math.abs(p.y - c.y) <= ry) return key
+    }
+    return null
+  }, [normalizeCropRect])
+
+  const isPointInCropRect = useCallback((p: DiagramStrokePoint, rect: NonNullable<ReturnType<typeof normalizeCropRect>>) => {
+    return p.x >= rect.minX && p.x <= rect.maxX && p.y >= rect.minY && p.y <= rect.maxY
+  }, [])
+
+  const transformAnnotationsForCrop = useCallback((ann: DiagramAnnotations | null | undefined, rect: NonNullable<ReturnType<typeof normalizeCropRect>>) => {
+    const base = ann ? normalizeAnnotations(ann) : { space: IMAGE_SPACE, strokes: [], arrows: [] }
+    const w = Math.max(1e-6, rect.w)
+    const h = Math.max(1e-6, rect.h)
+    const map = (p: DiagramStrokePoint) => ({
+      x: clamp01((p.x - rect.minX) / w),
+      y: clamp01((p.y - rect.minY) / h),
+    })
+
+    const nextStrokes = (base.strokes || [])
+      .map(s => {
+        const pts = (s.points || []).filter(p => isPointInCropRect(p, rect)).map(map)
+        if (pts.length < 2) return null
+        return { ...s, points: pts }
+      })
+      .filter(Boolean) as DiagramStroke[]
+
+    const nextArrows = (base.arrows || [])
+      .map(a => {
+        const clampPoint = (p: DiagramStrokePoint) => ({
+          x: Math.min(rect.maxX, Math.max(rect.minX, p.x)),
+          y: Math.min(rect.maxY, Math.max(rect.minY, p.y)),
+        })
+        const start = map(clampPoint(a.start))
+        const end = map(clampPoint(a.end))
+        return { ...a, start, end }
+      })
+
+    return { space: IMAGE_SPACE, strokes: nextStrokes, arrows: nextArrows }
+  }, [isPointInCropRect, normalizeAnnotations])
 
   const pointDistanceSq = (a: DiagramStrokePoint, b: DiagramStrokePoint) => {
     const dx = a.x - b.x
@@ -1416,11 +1507,99 @@ export default function DiagramOverlayModule(props: {
         ctx.restore()
       }
     }
-  }, [activeDiagram, annotationsForRender, getContainRect, mapImageToCanvasPx, normalizeAnnotations])
+
+    if (cropMode) {
+      const rect = normalizeCropRect(cropRectRef.current)
+      if (rect && rect.w > 0.001 && rect.h > 0.001) {
+        const imgRect = getContainRect(w, h)
+        const p0 = mapImageToCanvasPx({ x: rect.minX, y: rect.minY }, w, h)
+        const p1 = mapImageToCanvasPx({ x: rect.maxX, y: rect.maxY }, w, h)
+        const x = p0.x
+        const y = p0.y
+        const ww = Math.max(1, p1.x - p0.x)
+        const hh = Math.max(1, p1.y - p0.y)
+
+        ctx.save()
+        ctx.fillStyle = 'rgba(2,6,23,0.45)'
+        // dim outside the crop rect (within contain rect)
+        ctx.beginPath()
+        ctx.rect(imgRect.x, imgRect.y, imgRect.w, imgRect.h)
+        ctx.rect(x, y, ww, hh)
+        ctx.fill('evenodd')
+
+        ctx.strokeStyle = 'rgba(34,197,94,0.95)'
+        ctx.lineWidth = 2
+        ctx.setLineDash([])
+        ctx.strokeRect(x, y, ww, hh)
+
+        const corners = {
+          nw: { x: rect.minX, y: rect.minY },
+          ne: { x: rect.maxX, y: rect.minY },
+          sw: { x: rect.minX, y: rect.maxY },
+          se: { x: rect.maxX, y: rect.maxY },
+        } as const
+        const r = 6
+        for (const key of Object.keys(corners) as Array<keyof typeof corners>) {
+          const c = corners[key]
+          const cp = mapImageToCanvasPx(c, w, h)
+          if (cp.x < imgRect.x - 4 || cp.y < imgRect.y - 4 || cp.x > imgRect.x + imgRect.w + 4 || cp.y > imgRect.y + imgRect.h + 4) continue
+          ctx.fillStyle = '#ffffff'
+          ctx.strokeStyle = 'rgba(34,197,94,0.95)'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(cp.x, cp.y, r, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.stroke()
+        }
+        ctx.restore()
+      }
+    }
+  }, [activeDiagram, annotationsForRender, cropMode, getContainRect, mapImageToCanvasPx, normalizeAnnotations, normalizeCropRect])
 
   useEffect(() => {
     redraw()
   }, [redraw, diagrams, diagramState.activeDiagramId, diagramState.isOpen])
+
+  const applyCropToActiveDiagram = useCallback(() => {
+    if (!canPresentRef.current) return
+    if (!activeDiagram?.id) return
+    if (!localOnly) return
+    const rect = normalizeCropRect(cropRectRef.current)
+    if (!rect) return
+    if (rect.w < 0.01 || rect.h < 0.01) return
+
+    const img = imageRef.current
+    if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return
+
+    const sx = Math.floor(rect.minX * img.naturalWidth)
+    const sy = Math.floor(rect.minY * img.naturalHeight)
+    const sw = Math.max(1, Math.floor(rect.w * img.naturalWidth))
+    const sh = Math.max(1, Math.floor(rect.h * img.naturalHeight))
+
+    try {
+      const off = document.createElement('canvas')
+      off.width = sw
+      off.height = sh
+      const ctx = off.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+      const nextUrl = off.toDataURL('image/png')
+
+      setDiagrams(prev => prev.map(d => {
+        if (d.id !== activeDiagram.id) return d
+        const nextAnn = transformAnnotationsForCrop(d.annotations, rect)
+        return { ...d, imageUrl: nextUrl, annotations: nextAnn }
+      }))
+
+      setSelection(null)
+      setContextMenu(null)
+      setCropRect(null)
+      setCropMode(false)
+      redraw()
+    } catch {
+      // ignore
+    }
+  }, [activeDiagram?.id, localOnly, normalizeCropRect, redraw, transformAnnotationsForCrop])
 
   useEffect(() => {
     const host = containerRef.current
@@ -1517,6 +1696,39 @@ export default function DiagramOverlayModule(props: {
     const p = toPoint(e)
     if (!p) return
 
+    if (cropMode) {
+      setSelection(null)
+      previewRef.current = null
+      dragRef.current = null
+      drawingRef.current = false
+      currentStrokeRef.current = null
+      currentArrowRef.current = null
+
+      const host = containerRef.current
+      if (!host) return
+      const rectPx = host.getBoundingClientRect()
+      const imgRect = getContainRect(Math.max(1, rectPx.width), Math.max(1, rectPx.height))
+
+      const normalized = normalizeCropRect(cropRectRef.current)
+      if (!normalized || !isPointInCropRect(p, normalized)) {
+        const next: CropRect = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }
+        cropDragRef.current = { mode: 'new', startPoint: p, startRect: next }
+        setCropRect(next)
+      } else {
+        const handle = hitTestCropHandle(p, normalized, imgRect.w, imgRect.h)
+        if (handle) {
+          cropDragRef.current = { mode: 'resize', handle, startPoint: p, startRect: cropRectRef.current! }
+        } else {
+          cropDragRef.current = { mode: 'move', startPoint: p, startRect: cropRectRef.current! }
+        }
+      }
+      redraw()
+      try {
+        ;(e.target as any).setPointerCapture?.(e.pointerId)
+      } catch {}
+      return
+    }
+
     // Selection tool
     if (tool === 'select') {
       const hit = hitTestAnnotation(diagramId, p)
@@ -1609,6 +1821,60 @@ export default function DiagramOverlayModule(props: {
     const p = toPoint(e)
     if (!p) return
 
+    if (cropMode) {
+      const drag = cropDragRef.current
+      if (!drag) return
+      if (drag.mode === 'new') {
+        const next = { ...drag.startRect, x1: p.x, y1: p.y }
+        setCropRect(next)
+        redraw()
+        return
+      }
+      const base = drag.startRect
+      const dx = p.x - drag.startPoint.x
+      const dy = p.y - drag.startPoint.y
+      if (drag.mode === 'move') {
+        const raw = { x0: base.x0 + dx, y0: base.y0 + dy, x1: base.x1 + dx, y1: base.y1 + dy }
+        const normalized = normalizeCropRect(raw)
+        if (!normalized) return
+        // keep size, clamp within [0,1]
+        const w = normalized.w
+        const h = normalized.h
+        const minX = clamp01(Math.min(1 - w, Math.max(0, normalized.minX)))
+        const minY = clamp01(Math.min(1 - h, Math.max(0, normalized.minY)))
+        const next: CropRect = { x0: minX, y0: minY, x1: minX + w, y1: minY + h }
+        setCropRect(next)
+        redraw()
+        return
+      }
+
+      if (drag.mode === 'resize' && drag.handle) {
+        const normalized = normalizeCropRect(base)
+        if (!normalized) return
+        let minX = normalized.minX
+        let minY = normalized.minY
+        let maxX = normalized.maxX
+        let maxY = normalized.maxY
+        if (drag.handle === 'nw') {
+          minX = clamp01(Math.min(maxX - 0.001, base.x0 + dx))
+          minY = clamp01(Math.min(maxY - 0.001, base.y0 + dy))
+        } else if (drag.handle === 'ne') {
+          maxX = clamp01(Math.max(minX + 0.001, base.x1 + dx))
+          minY = clamp01(Math.min(maxY - 0.001, base.y0 + dy))
+        } else if (drag.handle === 'sw') {
+          minX = clamp01(Math.min(maxX - 0.001, base.x0 + dx))
+          maxY = clamp01(Math.max(minY + 0.001, base.y1 + dy))
+        } else if (drag.handle === 'se') {
+          maxX = clamp01(Math.max(minX + 0.001, base.x1 + dx))
+          maxY = clamp01(Math.max(minY + 0.001, base.y1 + dy))
+        }
+        setCropRect({ x0: minX, y0: minY, x1: maxX, y1: maxY })
+        redraw()
+        return
+      }
+      return
+    }
+
     const drag = dragRef.current
     if (drag && drag.diagramId === diagramId) {
       const dx = p.x - drag.startPoint.x
@@ -1658,6 +1924,16 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+
+    if (cropMode) {
+      cropDragRef.current = null
+      const normalized = normalizeCropRect(cropRectRef.current)
+      if (!normalized || normalized.w < 0.002 || normalized.h < 0.002) {
+        setCropRect(null)
+      }
+      redraw()
+      return
+    }
 
     const drag = dragRef.current
     if (drag && drag.diagramId === diagramId) {
@@ -1780,6 +2056,22 @@ export default function DiagramOverlayModule(props: {
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: [], arrows: [] })
   }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+
+  useEffect(() => {
+    if (!cropMode) {
+      cropDragRef.current = null
+      setCropRect(null)
+      return
+    }
+    // entering crop mode: get out of any in-progress drawing/dragging
+    drawingRef.current = false
+    dragRef.current = null
+    currentStrokeRef.current = null
+    currentArrowRef.current = null
+    setSelection(null)
+    setContextMenu(null)
+    redraw()
+  }, [cropMode, redraw])
 
   // Best-effort migration: legacy strokes were stored in container-normalized space (0..1 of host).
   // Convert to image-relative space so portrait/landscape clients render identically.
@@ -2022,6 +2314,13 @@ export default function DiagramOverlayModule(props: {
     return isSelectionLockedInAnnotations(ann, selection)
   })()
 
+  const canApplyCrop = (() => {
+    if (!cropMode) return false
+    if (!localOnly) return false
+    const r = normalizeCropRect(cropRect)
+    return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
+  })()
+
   return (
     <>
       {mobileDiagramTray}
@@ -2126,6 +2425,53 @@ export default function DiagramOverlayModule(props: {
                     <path d="M3 3l7 18 2-8 8-2L3 3z" />
                   </svg>
                 </button>
+                <button
+                  type="button"
+                  className={cropMode
+                    ? 'p-2 rounded-md border border-green-400 bg-green-100 text-green-900'
+                    : 'p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }
+                  onClick={() => setCropMode(c => !c)}
+                  aria-label="Crop"
+                  title="Crop image"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M8 3v13a2 2 0 0 0 2 2h13" />
+                  </svg>
+                </button>
+                {cropMode && (
+                  <>
+                    <button
+                      type="button"
+                      className="px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      onClick={() => applyCropToActiveDiagram()}
+                      disabled={!canApplyCrop}
+                      aria-label="Apply crop"
+                      title={localOnly ? 'Apply crop' : 'Crop apply is available in screenshot editor mode'}
+                    >
+                      Apply
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                      onClick={() => setCropRect(null)}
+                      aria-label="Reset crop"
+                      title="Reset crop"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 hover:bg-slate-50"
+                      onClick={() => setCropMode(false)}
+                      aria-label="Exit crop"
+                      title="Exit crop"
+                    >
+                      Exit
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   className={tool === 'pen'
@@ -2470,11 +2816,13 @@ export default function DiagramOverlayModule(props: {
           <canvas
             ref={canvasRef}
             className={canPresent
-              ? tool === 'select'
-                ? 'absolute inset-0 cursor-default'
-                : tool === 'eraser'
-                  ? 'absolute inset-0 cursor-cell'
-                  : 'absolute inset-0 cursor-crosshair'
+              ? cropMode
+                ? 'absolute inset-0 cursor-crosshair'
+                : tool === 'select'
+                  ? 'absolute inset-0 cursor-default'
+                  : tool === 'eraser'
+                    ? 'absolute inset-0 cursor-cell'
+                    : 'absolute inset-0 cursor-crosshair'
               : 'absolute inset-0 pointer-events-none'
             }
             onPointerDown={onPointerDown}
@@ -2483,6 +2831,7 @@ export default function DiagramOverlayModule(props: {
             onPointerCancel={onPointerUp}
             onContextMenu={(e) => {
               if (!canPresentRef.current) return
+              if (cropMode) return
               if (!activeDiagram?.id) return
               e.preventDefault()
               e.stopPropagation()

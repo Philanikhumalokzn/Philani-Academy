@@ -8139,7 +8139,7 @@ export default function Dashboard() {
           aria-modal="true"
         >
           <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeDashboardOverlay} />
-          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeDashboardOverlay}>
+          <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeDashboardOverlay}>
             <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-3 border-b flex items-start justify-between gap-3">
                 <div className="min-w-0">

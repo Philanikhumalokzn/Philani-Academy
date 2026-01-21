@@ -6286,10 +6286,9 @@ export default function Dashboard() {
                                                     {renderTextWithKatex(String(q?.latex || ''))}
                                                   </div>
 
-                                                  <div className="pt-2">
-                                                    <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                      <div className="text-xs text-white/70 mb-1">Student response</div>
-                                                      {respLatex.trim() ? (
+                                                  <div className="pt-2 space-y-1">
+                                                    <div className="text-xs text-white/70">Student response</div>
+                                                    {respLatex.trim() ? (
                                                         (() => {
                                                           const steps = splitLatexIntoSteps(respLatex)
                                                           if (Array.isArray(stepFeedback) && stepFeedback.length && steps.length) {
@@ -6384,7 +6383,6 @@ export default function Dashboard() {
                                                       ) : (
                                                         <div className="text-sm text-white/60">(empty)</div>
                                                       )}
-                                                    </div>
                                                   </div>
                                                 </details>
                                               )
@@ -8762,14 +8760,14 @@ export default function Dashboard() {
                                       const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                                       if (!latex.trim()) {
                                         return (
-                                          <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words">
+                                          <div className="mt-2 text-white/80 whitespace-pre-wrap break-words">
                                             (empty)
                                           </div>
                                         )
                                       }
                                       if (steps.length) {
                                         return (
-                                          <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px] space-y-2">
+                                          <div className="mt-2 space-y-2">
                                             {steps.map((stepLatex: string, stepIdx: number) => {
                                               const g = stepGradeByIndex.get(stepIdx)
                                               const awardedMarks = Number(g?.awardedMarks ?? 0)
@@ -8841,11 +8839,9 @@ export default function Dashboard() {
                                       }
 
                                       return html ? (
-                                        <div className="mt-2 p-3 rounded bg-black/20 text-white/90 overflow-auto max-h-[300px]">
-                                          <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                                        </div>
+                                        <div className="mt-2 leading-relaxed text-white/90" dangerouslySetInnerHTML={{ __html: html }} />
                                       ) : (
-                                        <div className="mt-2 p-3 rounded bg-black/20 text-white/90 whitespace-pre-wrap break-words overflow-auto max-h-[300px]">
+                                        <div className="mt-2 text-white/90 whitespace-pre-wrap break-words">
                                           {renderTextWithKatex(latex)}
                                         </div>
                                       )
@@ -9165,7 +9161,7 @@ export default function Dashboard() {
                               return (
                                 <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                   {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
-                                  <div className="p-2 rounded border border-white/10 bg-white/5">
+                                  <div>
                                     <div className="text-xs muted mb-1">Your answer</div>
                                     {latex.trim() ? (
                                       html ? (
@@ -9179,7 +9175,7 @@ export default function Dashboard() {
                                   </div>
 
                                   {String(resp?.studentText || '').trim() ? (
-                                    <div className="p-2 rounded border border-white/10 bg-white/5">
+                                    <div>
                                       <div className="text-xs muted mb-1">Typed text</div>
                                       <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
                                     </div>

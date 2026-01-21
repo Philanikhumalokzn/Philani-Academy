@@ -6377,7 +6377,14 @@ export default function Dashboard() {
                                                           }
 
                                                           const html = renderKatexDisplayHtml(respLatex)
-                                                          if (html) return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                                          if (html) {
+                                                            return (
+                                                              <div
+                                                                className="text-sm leading-relaxed [&_.katex]:text-sm [&_.katex-display]:text-sm"
+                                                                dangerouslySetInnerHTML={{ __html: html }}
+                                                              />
+                                                            )
+                                                          }
                                                           return <div className="text-xs font-mono whitespace-pre-wrap break-words">{respLatex}</div>
                                                         })()
                                                       ) : (

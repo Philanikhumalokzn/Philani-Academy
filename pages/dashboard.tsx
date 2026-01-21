@@ -2559,6 +2559,11 @@ export default function Dashboard() {
   }, [challengeGradingOverlayOpen, selectedChallengeId, fetchChallengeSubmissions])
 
   useEffect(() => {
+    if (!challengeGradingOverlayOpen || !selectedChallengeId || !selectedSubmissionUserId) return
+    void fetchSubmissionDetail(selectedChallengeId, selectedSubmissionUserId)
+  }, [challengeGradingOverlayOpen, selectedChallengeId, selectedSubmissionUserId, fetchSubmissionDetail])
+
+  useEffect(() => {
     const manageChallenge = typeof router.query.manageChallenge === 'string' ? router.query.manageChallenge : ''
     if (!manageChallenge) return
     if (selectedChallengeId === manageChallenge && challengeGradingOverlayOpen) return
@@ -2570,6 +2575,22 @@ export default function Dashboard() {
     delete nextQuery.manageChallenge
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen])
+
+  useEffect(() => {
+    const viewUserChallenge = typeof router.query.viewUserChallenge === 'string' ? router.query.viewUserChallenge : ''
+    const targetUserId = typeof router.query.userId === 'string' ? router.query.userId : ''
+    if (!viewUserChallenge || !targetUserId) return
+    if (selectedChallengeId === viewUserChallenge && selectedSubmissionUserId === targetUserId && challengeGradingOverlayOpen) return
+
+    setSelectedChallengeId(viewUserChallenge)
+    setSelectedSubmissionUserId(targetUserId)
+    setChallengeGradingOverlayOpen(true)
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.viewUserChallenge
+    delete nextQuery.userId
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [router, router.query, selectedChallengeId, selectedSubmissionUserId, challengeGradingOverlayOpen])
 
   useEffect(() => {
     const viewChallengeResponse = typeof router.query.viewChallengeResponse === 'string' ? router.query.viewChallengeResponse : ''
@@ -8620,8 +8641,20 @@ export default function Dashboard() {
               >
                 <div className="p-3 border-b flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-semibold break-words">Quiz Management</div>
-                    <div className="text-sm muted">View student responses</div>
+                    <div className="font-semibold break-words">
+                      {selectedSubmissionUserId ? (
+                        (() => {
+                          const userSubmission = challengeSubmissions.find((s: any) => String(s?.userId) === String(selectedSubmissionUserId))
+                          const userName = userSubmission?.name || 'Student'
+                          return `${userName}'s Response`
+                        })()
+                      ) : (
+                        'Quiz Management'
+                      )}
+                    </div>
+                    <div className="text-sm muted">
+                      {selectedSubmissionUserId ? 'View and grade response' : 'View student responses'}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -8638,53 +8671,56 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold text-sm">Student Responses</div>
-                      <button
-                        type="button"
-                        className="btn btn-ghost text-xs"
-                        disabled={challengeSubmissionsLoading}
-                        onClick={() => fetchChallengeSubmissions(selectedChallengeId)}
-                      >
-                        {challengeSubmissionsLoading ? 'Refreshing…' : 'Refresh'}
-                      </button>
-                    </div>
+                  {!selectedSubmissionUserId && (
+                    <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold text-sm">Student Responses</div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost text-xs"
+                          disabled={challengeSubmissionsLoading}
+                          onClick={() => fetchChallengeSubmissions(selectedChallengeId)}
+                        >
+                          {challengeSubmissionsLoading ? 'Refreshing…' : 'Refresh'}
+                        </button>
+                      </div>
 
-                    {challengeSubmissionsError ? (
-                      <div className="text-sm text-red-600">{challengeSubmissionsError}</div>
-                    ) : challengeSubmissions.length === 0 ? (
-                      <div className="text-sm muted">No submissions yet.</div>
-                    ) : (
-                      <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
-                        {challengeSubmissions.map((row: any) => (
-                          <li key={String(row?.userId)} className="p-3 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-medium break-words">{row?.name || 'User'}</div>
-                              <div className="text-xs muted">
-                                {row?.lastSubmittedAt ? new Date(row.lastSubmittedAt).toLocaleString() : ''}
-                                {row?.submissions ? ` • ${row.submissions} submission${row.submissions > 1 ? 's' : ''}` : ''}
+                      {challengeSubmissionsError ? (
+                        <div className="text-sm text-red-600">{challengeSubmissionsError}</div>
+                      ) : challengeSubmissions.length === 0 ? (
+                        <div className="text-sm muted">No submissions yet.</div>
+                      ) : (
+                        <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
+                          {challengeSubmissions.map((row: any) => (
+                            <li key={String(row?.userId)} className="p-3 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-medium break-words">{row?.name || 'User'}</div>
+                                <div className="text-xs muted">
+                                  {row?.lastSubmittedAt ? new Date(row.lastSubmittedAt).toLocaleString() : ''}
+                                  {row?.submissions ? ` • ${row.submissions} submission${row.submissions > 1 ? 's' : ''}` : ''}
+                                </div>
                               </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn btn-ghost text-xs shrink-0"
-                              onClick={() => {
-                                setSelectedSubmissionUserId(String(row?.userId || ''))
-                                fetchSubmissionDetail(selectedChallengeId, String(row?.userId || ''))
-                              }}
-                            >
-                              View
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs shrink-0"
+                                onClick={() => {
+                                  setSelectedSubmissionUserId(String(row?.userId || ''))
+                                  fetchSubmissionDetail(selectedChallengeId, String(row?.userId || ''))
+                                }}
+                              >
+                                View
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
 
                     {selectedSubmissionUserId && selectedSubmissionDetail ? (
-                      <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                      <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-semibold text-sm">Student Responses</div>
+                          <div className="font-semibold text-sm">Submissions</div>
                           <button
                             type="button"
                             className="btn btn-ghost text-xs"
@@ -8693,7 +8729,7 @@ export default function Dashboard() {
                               setSelectedSubmissionDetail(null)
                             }}
                           >
-                            Clear
+                            Back to List
                           </button>
                         </div>
 
@@ -8852,7 +8888,7 @@ export default function Dashboard() {
                         )}
                       </div>
                     ) : null}
-                  </div>
+                  
 
                   {challengeGradingResponseId && activeChallengeGradingResponse && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">

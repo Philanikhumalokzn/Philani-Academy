@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿  const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false);
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
@@ -539,6 +540,7 @@ export default function Dashboard() {
       const url = typeof data?.url === 'string' ? data.url.trim() : ''
       if (!url) throw new Error('Upload succeeded but returned no URL')
       setChallengeImageUrl(url)
+        setChallengeImageEditOpen(true);
 
       if (challengeParseOnUpload) {
         const parsed = data?.parsed
@@ -8196,6 +8198,30 @@ export default function Dashboard() {
                   <div className="grid gap-2 sm:grid-cols-3">
                     <div className="space-y-1">
                       <div className="text-xs muted">Type</div>
+      )}
+
+      {challengeImageEditOpen && challengeImageUrl && (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-50 transition-opacity duration-200 opacity-100" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setChallengeImageEditOpen(false)} />
+            <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setChallengeImageEditOpen(false)}>
+              <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <DiagramOverlayModule
+                  userId={String((session as any)?.user?.id || '')}
+                  userDisplayName={session?.user?.name || session?.user?.email || ''}
+                  isAdmin={false}
+                  boardId={null}
+                  gradeLabel={selectedGrade ? gradeToLabel(selectedGrade) : null}
+                  realtimeScopeId={null}
+                  autoOpen={true}
+                  imageUrl={challengeImageUrl}
+                  onClose={() => setChallengeImageEditOpen(false)}
+                />
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
                       <select className="input" value={createKind} onChange={(e) => setCreateKind(e.target.value as any)}>
                         <option value="quiz">Quiz</option>
                       </select>

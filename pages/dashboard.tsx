@@ -5117,7 +5117,7 @@ export default function Dashboard() {
               <OverlayPortal>
                 <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
                   <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateLessonOverlayOpen(false)} />
-                  <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateLessonOverlayOpen(false)}>
+                  <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateLessonOverlayOpen(false)}>
                     <div
                       className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
                       onClick={(e) => e.stopPropagation()}
@@ -5387,7 +5387,7 @@ export default function Dashboard() {
               <OverlayPortal>
                 <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
                   <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setLiveLessonSelectorOverlayOpen(false)} />
-                  <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setLiveLessonSelectorOverlayOpen(false)}>
+                  <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setLiveLessonSelectorOverlayOpen(false)}>
                     <div
                       className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
                       onClick={(e) => e.stopPropagation()}
@@ -5658,7 +5658,7 @@ export default function Dashboard() {
               aria-modal="true"
             >
               <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeSessionDetails} />
-              <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeSessionDetails}>
+              <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeSessionDetails}>
                 <div
                   className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
                   onClick={(e) => e.stopPropagation()}
@@ -5998,7 +5998,7 @@ export default function Dashboard() {
                 }}
               />
               <div
-                className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+                className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
                 onClick={() => {
                   setAssignmentQuestionOverlayOpen(false)
                   setSelectedAssignmentQuestionId(null)
@@ -6464,7 +6464,7 @@ export default function Dashboard() {
                 }}
               />
               <div
-                className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+                className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
                 onClick={() => {
                   setAssignmentQuestionOverlayOpen(false)
                   setSelectedAssignmentQuestionId(null)
@@ -8163,7 +8163,7 @@ export default function Dashboard() {
         <OverlayPortal>
           <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
             <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateOverlayOpen(false)} />
-            <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateOverlayOpen(false)}>
+            <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateOverlayOpen(false)}>
               <div
                 className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
                 onClick={(e) => e.stopPropagation()}
@@ -8312,7 +8312,7 @@ export default function Dashboard() {
               onClick={() => setTimelineOpen(false)}
             />
             <div
-              className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+              className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
               onClick={() => setTimelineOpen(false)}
             >
               <div
@@ -8359,7 +8359,7 @@ export default function Dashboard() {
           aria-modal="true"
         >
           <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeStudentQuickOverlay} />
-          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={closeStudentQuickOverlay}>
+          <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeStudentQuickOverlay}>
             <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-3 border-b flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -8388,7 +8388,7 @@ export default function Dashboard() {
           aria-modal="true"
         >
           <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setAccountSnapshotOverlayOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setAccountSnapshotOverlayOpen(false)}>
+          <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setAccountSnapshotOverlayOpen(false)}>
             <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="p-3 border-b flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -8632,7 +8632,7 @@ export default function Dashboard() {
               }}
             />
             <div
-              className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+              className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
               onClick={() => {
                 setChallengeGradingOverlayOpen(false)
                 setSelectedChallengeId(null)
@@ -9042,7 +9042,7 @@ export default function Dashboard() {
               }}
             />
             <div
-              className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+              className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
               onClick={() => {
                 setChallengeResponseOverlayOpen(false)
                 setSelectedChallengeResponseId(null)

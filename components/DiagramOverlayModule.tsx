@@ -28,6 +28,7 @@ type DiagramState = {
 type DiagramRealtimeMessage =
   | { kind: 'state'; activeDiagramId: string | null; isOpen: boolean; ts?: number; sender?: string }
   | { kind: 'add'; diagram: DiagramRecord; ts?: number; sender?: string }
+  | { kind: 'upsert'; diagram: DiagramRecord; ts?: number; sender?: string }
   | { kind: 'remove'; diagramId: string; ts?: number; sender?: string }
   | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
   | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
@@ -726,6 +727,19 @@ export default function DiagramOverlayModule(props: {
             setDiagrams(prev => {
               if (prev.some(d => d.id === diag.id)) return prev
               const next = [...prev, { ...diag, annotations: diag.annotations ? normalizeAnnotations(diag.annotations) : null }]
+              next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+              return next
+            })
+            return
+          }
+
+          if (data.kind === 'upsert') {
+            const diag = data.diagram
+            if (!diag || typeof (diag as any).id !== 'string') return
+            setDiagrams(prev => {
+              const normalized = { ...diag, annotations: diag.annotations ? normalizeAnnotations(diag.annotations) : null }
+              const exists = prev.some(d => d.id === diag.id)
+              const next = exists ? prev.map(d => (d.id === diag.id ? { ...d, ...normalized } : d)) : [...prev, normalized]
               next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
               return next
             })
@@ -1560,10 +1574,9 @@ export default function DiagramOverlayModule(props: {
     redraw()
   }, [redraw, diagrams, diagramState.activeDiagramId, diagramState.isOpen])
 
-  const applyCropToActiveDiagram = useCallback(() => {
+  const applyCropToActiveDiagram = useCallback(async () => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
-    if (!localOnly) return
     const rect = normalizeCropRect(cropRectRef.current)
     if (!rect) return
     if (rect.w < 0.01 || rect.h < 0.01) return
@@ -1583,13 +1596,58 @@ export default function DiagramOverlayModule(props: {
       const ctx = off.getContext('2d')
       if (!ctx) return
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
-      const nextUrl = off.toDataURL('image/png')
 
-      setDiagrams(prev => prev.map(d => {
-        if (d.id !== activeDiagram.id) return d
-        const nextAnn = transformAnnotationsForCrop(d.annotations, rect)
-        return { ...d, imageUrl: nextUrl, annotations: nextAnn }
-      }))
+      const nextAnn = transformAnnotationsForCrop(activeDiagram.annotations, rect)
+
+      if (localOnly) {
+        const nextUrl = off.toDataURL('image/png')
+        setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, imageUrl: nextUrl, annotations: nextAnn } : d)))
+      } else {
+        if (!isAdmin) return
+        if (!channelName) return
+
+        setUploadError(null)
+        setUploading(true)
+        try {
+          const blob = await new Promise<Blob>((resolve, reject) => {
+            off.toBlob((b) => (b ? resolve(b) : reject(new Error('Crop export failed'))), 'image/png')
+          })
+          const file = new File([blob], `crop_${activeDiagram.id}.png`, { type: 'image/png' })
+          const form = new FormData()
+          form.append('file', file)
+          form.append('sessionKey', channelName)
+
+          const uploadRes = await fetch('/api/diagrams/upload', {
+            method: 'POST',
+            body: form,
+            credentials: 'same-origin',
+          })
+          if (!uploadRes.ok) {
+            const msg = await uploadRes.text().catch(() => '')
+            throw new Error(msg || `Upload failed (${uploadRes.status})`)
+          }
+          const uploadJson = (await uploadRes.json().catch(() => null)) as { url?: string } | null
+          const url = uploadJson?.url
+          if (!url) throw new Error('Upload succeeded but returned no URL')
+
+          setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, imageUrl: url, annotations: nextAnn } : d)))
+          await fetch(`/api/diagrams/${encodeURIComponent(activeDiagram.id)}`, {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl: url, annotations: nextAnn }),
+          })
+
+          const current = diagramsRef.current.find(d => d.id === activeDiagram.id)
+          if (current) {
+            await publish({ kind: 'upsert', diagram: { ...current, imageUrl: url, annotations: nextAnn } })
+          }
+        } catch (err) {
+          setUploadError(err instanceof Error ? err.message : 'Crop failed')
+        } finally {
+          setUploading(false)
+        }
+      }
 
       setSelection(null)
       setContextMenu(null)
@@ -1599,7 +1657,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [activeDiagram?.id, localOnly, normalizeCropRect, redraw, transformAnnotationsForCrop])
+  }, [activeDiagram, channelName, isAdmin, localOnly, normalizeCropRect, publish, redraw, transformAnnotationsForCrop])
 
   useEffect(() => {
     const host = containerRef.current
@@ -2316,7 +2374,8 @@ export default function DiagramOverlayModule(props: {
 
   const canApplyCrop = (() => {
     if (!cropMode) return false
-    if (!localOnly) return false
+    if (!(localOnly || isAdmin)) return false
+    if (uploading) return false
     const r = normalizeCropRect(cropRect)
     return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
   })()
@@ -2445,10 +2504,10 @@ export default function DiagramOverlayModule(props: {
                     <button
                       type="button"
                       className="px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                      onClick={() => applyCropToActiveDiagram()}
+                      onClick={() => void applyCropToActiveDiagram()}
                       disabled={!canApplyCrop}
                       aria-label="Apply crop"
-                      title={localOnly ? 'Apply crop' : 'Crop apply is available in screenshot editor mode'}
+                      title={localOnly ? 'Apply crop' : 'Apply crop (uploads and updates diagram for everyone)'}
                     >
                       Apply
                     </button>

@@ -31,6 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const updates: any = {}
     if (typeof req.body?.title === 'string') updates.title = req.body.title
+    if (typeof req.body?.imageUrl === 'string') updates.imageUrl = req.body.imageUrl
     if (typeof req.body?.order === 'number' && Number.isFinite(req.body.order)) updates.order = req.body.order
     if (typeof req.body?.annotations !== 'undefined') updates.annotations = req.body.annotations
 

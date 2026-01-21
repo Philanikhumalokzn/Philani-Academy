@@ -2643,129 +2643,117 @@ export default function Dashboard() {
     markTimelinePostsRead(ids)
   }, [timelineOpen, timelineChallengesLoading, timelineChallengesError, timelineChallenges, markTimelinePostsRead])
 
-  const renderTimelineCard = () => {
-    const canLink = Boolean(status === 'authenticated' && timelineUserId)
-    const timelineHref = canLink ? `/u/${encodeURIComponent(String(timelineUserId))}` : '/profile'
-    const preview = timelineChallenges.slice(0, 3)
+  const renderTimelineItems = (items: any[]) => (
+    <ul className="space-y-2">
+      {items.map((c: any) => {
+        const title = (c?.title || '').trim() || 'Quiz'
+        const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
+        const myAttemptCount = typeof c?.myAttemptCount === 'number' ? c.myAttemptCount : 0
+        const maxAttempts = typeof c?.maxAttempts === 'number' ? c.maxAttempts : null
+        const attemptsOpen = c?.attemptsOpen !== false
 
-    return (
-      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div />
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-primary text-xs"
-              onClick={() => setCreateOverlayOpen(true)}
-            >
-              Create
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost text-xs relative"
-              onClick={() => setTimelineOpen(v => !v)}
-            >
-              {timelineOpen ? 'Hide' : 'Posts'}
-              {unreadTimelineCount > 0 && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                  aria-label={`${unreadTimelineCount} unread posts`}
-                >
-                  {unreadTimelineCount > 99 ? '99+' : unreadTimelineCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+        const isOwner = viewerId && c?.createdById && String(c.createdById) === String(viewerId)
+        const hasAttempted = myAttemptCount > 0
+        const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+        const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
 
-        {!timelineOpen ? (
-          <div className="text-sm text-white/70">Your posted quizzes live on your timeline.</div>
-        ) : timelineChallengesLoading ? (
-          <div className="text-sm text-white/70">Loading…</div>
-        ) : timelineChallengesError ? (
-          <div className="text-sm text-red-400">{timelineChallengesError}</div>
-        ) : preview.length === 0 ? (
-          <div className="text-sm text-white/70">No quizzes yet.</div>
-        ) : (
-          <ul className="space-y-2">
-            {preview.map((c: any) => {
-              const title = (c?.title || '').trim() || 'Quiz'
-              const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
-              const myAttemptCount = typeof c?.myAttemptCount === 'number' ? c.myAttemptCount : 0
-              const maxAttempts = typeof c?.maxAttempts === 'number' ? c.maxAttempts : null
-              const attemptsOpen = c?.attemptsOpen !== false
-              
-              const isOwner = viewerId && c?.createdById && String(c.createdById) === String(viewerId)
-              const hasAttempted = myAttemptCount > 0
-              const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
-              const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
-              
-              return (
-                <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium text-white break-words">{title}</div>
-                      {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
-                    </div>
-                    {c?.id ? (
-                      isOwner ? (
-                        <button
-                          type="button"
-                          className="btn btn-primary shrink-0"
-                          onClick={() => {
-                            setSelectedChallengeId(String(c.id))
-                            setChallengeGradingOverlayOpen(true)
-                          }}
-                        >
-                          Manage
-                        </button>
-                      ) : (
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          {canAttempt ? (
-                            <Link href={href} className="btn btn-primary shrink-0">
-                              Attempt
-                            </Link>
-                          ) : hasAttempted ? (
-                            <button
-                              type="button"
-                              className="btn btn-primary shrink-0"
-                              onClick={() => {
-                                setSelectedChallengeResponseId(String(c.id))
-                                setChallengeResponseOverlayOpen(true)
-                              }}
-                            >
-                              My response
-                            </button>
-                          ) : (
-                            <button type="button" className="btn btn-ghost shrink-0" disabled>
-                              Closed
-                            </button>
-                          )}
+        return (
+          <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-medium text-white break-words">{title}</div>
+                {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+              </div>
+              {c?.id ? (
+                isOwner ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary shrink-0"
+                    onClick={() => {
+                      setSelectedChallengeId(String(c.id))
+                      setChallengeGradingOverlayOpen(true)
+                    }}
+                  >
+                    Manage
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    {canAttempt ? (
+                      <Link href={href} className="btn btn-primary shrink-0">
+                        Attempt
+                      </Link>
+                    ) : hasAttempted ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary shrink-0"
+                        onClick={() => {
+                          setSelectedChallengeResponseId(String(c.id))
+                          setChallengeResponseOverlayOpen(true)
+                        }}
+                      >
+                        My response
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-ghost shrink-0" disabled>
+                        Closed
+                      </button>
+                    )}
 
-                          {hasAttempted && canAttempt ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost text-xs shrink-0"
-                              onClick={() => {
-                                setSelectedChallengeResponseId(String(c.id))
-                                setChallengeResponseOverlayOpen(true)
-                              }}
-                            >
-                              My response
-                            </button>
-                          ) : null}
-                        </div>
-                      )
+                    {hasAttempted && canAttempt ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost text-xs shrink-0"
+                        onClick={() => {
+                          setSelectedChallengeResponseId(String(c.id))
+                          setChallengeResponseOverlayOpen(true)
+                        }}
+                      >
+                        My response
+                      </button>
                     ) : null}
                   </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
-    )
-  }
+                )
+              ) : null}
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
+
+  const renderTimelineCard = () => (
+    <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-primary text-xs"
+            onClick={() => setCreateOverlayOpen(true)}
+          >
+            Create
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost text-xs relative"
+            onClick={() => setTimelineOpen(true)}
+          >
+            My posts
+            {unreadTimelineCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
+                aria-label={`${unreadTimelineCount} unread posts`}
+              >
+                {unreadTimelineCount > 99 ? '99+' : unreadTimelineCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="text-sm text-white/70">Your posted quizzes live on your timeline.</div>
+    </section>
+  )
 
   const renderStudentQuickActionsRow = () => {
     const baseBtn =
@@ -2969,16 +2957,11 @@ export default function Dashboard() {
             <button
               type="button"
               className="btn btn-primary text-xs"
-              onClick={() => setTimelineOpen(v => !v)}
+              onClick={() => setTimelineOpen(true)}
             >
               My posts
             </button>
           </div>
-          {timelineOpen ? (
-            <div className="pt-1">
-              {renderTimelineCard()}
-            </div>
-          ) : null}
           {studentFeedLoading ? (
             <div className="text-sm text-white/70">Loading…</div>
           ) : studentFeedError ? (
@@ -8288,6 +8271,54 @@ export default function Dashboard() {
                       {challengePosting ? 'Posting…' : 'Post'}
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {timelineOpen && (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true">
+            <div
+              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+              onClick={() => setTimelineOpen(false)}
+            />
+            <div
+              className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8"
+              onClick={() => setTimelineOpen(false)}
+            >
+              <div
+                className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 border-b flex items-start justify-between gap-3">
+                  <div className="w-24 shrink-0" />
+                  <div className="min-w-0 flex-1 text-center">
+                    <div className="font-semibold break-words">My posts</div>
+                  </div>
+                  <div className="w-24 shrink-0 flex justify-end">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => setTimelineOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {timelineChallengesError ? (
+                    <div className="text-sm text-red-400">{timelineChallengesError}</div>
+                  ) : timelineChallengesLoading ? (
+                    <div className="text-sm text-white/70">Loading…</div>
+                  ) : timelineChallenges.length === 0 ? (
+                    <div className="text-sm text-white/70">No quizzes yet.</div>
+                  ) : (
+                    renderTimelineItems(timelineChallenges)
+                  )}
                 </div>
               </div>
             </div>

@@ -8595,7 +8595,7 @@ export default function Dashboard() {
 
       {challengeGradingOverlayOpen && selectedChallengeId && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
             <div
               className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
               onClick={() => {

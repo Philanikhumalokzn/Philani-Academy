@@ -232,6 +232,21 @@ body{
   box-shadow:0 25px 60px rgba(3,8,32,0.6);
 }
 
+/* Flatten nested panels that use bg-white/5 to avoid overly tight content */
+.bg-white\/5 .bg-white\/5{
+  background:transparent;
+  border-color:rgba(255,255,255,0.12);
+  box-shadow:none;
+  padding:0.5rem;
+}
+
+.bg-white\/5 .bg-white\/5 .bg-white\/5{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  padding:0;
+}
+
 /* Reduce nested card inset to be very subtle */
 .card .card,
 .card .dashboard-card,

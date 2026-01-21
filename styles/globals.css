@@ -244,6 +244,24 @@ body{
   margin-right:calc(-1 * var(--card-padding));
 }
 
+/* Flatten 3+ level nested cards to avoid cramped content */
+.card .card .card,
+.card .card .dashboard-card,
+.card .dashboard-card .card,
+.card .dashboard-card .dashboard-card,
+.dashboard-card .card .card,
+.dashboard-card .card .dashboard-card,
+.dashboard-card .dashboard-card .card,
+.dashboard-card .dashboard-card .dashboard-card{
+  padding:0;
+  margin-left:0;
+  margin-right:0;
+  box-shadow:none;
+  border:0;
+  background:transparent;
+  border-radius:0;
+}
+
 @media (max-width: 768px) {
   .card .card,
   .card .dashboard-card,
@@ -253,6 +271,23 @@ body{
     border-radius:var(--card-radius);
     margin-left:calc(-1 * var(--card-padding));
     margin-right:calc(-1 * var(--card-padding));
+  }
+
+  .card .card .card,
+  .card .card .dashboard-card,
+  .card .dashboard-card .card,
+  .card .dashboard-card .dashboard-card,
+  .dashboard-card .card .card,
+  .dashboard-card .card .dashboard-card,
+  .dashboard-card .dashboard-card .card,
+  .dashboard-card .dashboard-card .dashboard-card{
+    padding:0;
+    margin-left:0;
+    margin-right:0;
+    box-shadow:none;
+    border:0;
+    background:transparent;
+    border-radius:0;
   }
 
   .mobile-dashboard-theme .card,

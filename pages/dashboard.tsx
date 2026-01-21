@@ -2975,13 +2975,22 @@ export default function Dashboard() {
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
-            <button
-              type="button"
-              className="btn btn-primary text-xs"
-              onClick={() => setTimelineOpen(true)}
-            >
-              My posts
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn btn-primary text-xs"
+                onClick={() => setCreateOverlayOpen(true)}
+              >
+                Post
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost text-xs"
+                onClick={() => setTimelineOpen(true)}
+              >
+                My posts
+              </button>
+            </div>
           </div>
           {studentFeedLoading ? (
             <div className="text-sm text-white/70">Loading…</div>

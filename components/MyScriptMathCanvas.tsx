@@ -1855,6 +1855,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Admin relinquishes snapshot publishing immediately.
         pendingPublishQueueRef.current = []
+        if (pendingBroadcastRef.current) {
+          clearTimeout(pendingBroadcastRef.current)
+          pendingBroadcastRef.current = null
+        }
         await channel.publish('control', {
           clientId: clientIdRef.current,
           author: userDisplayName,
@@ -4662,6 +4666,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             // If we're not the active presenter, immediately stop any queued publishes.
             if (nextKey && !(selfUserKey && nextKey === selfUserKey) && !activePresenterClientIdsRef.current.has(clientIdRef.current || '')) {
               pendingPublishQueueRef.current = []
+              if (pendingBroadcastRef.current) {
+                clearTimeout(pendingBroadcastRef.current)
+                pendingBroadcastRef.current = null
+              }
               return
             }
 

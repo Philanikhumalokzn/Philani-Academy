@@ -7465,7 +7465,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   ])
 
   useEffect(() => {
-    if (hasWriteAccess) return
+    if (isAdmin) return
     if (!quizActive) return
     if (quizSubmitting) return
     if (quizTimeLeftSec == null) return
@@ -7475,7 +7475,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     void (async () => {
       await studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
     })()
-  }, [hasWriteAccess, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
+  }, [isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
 
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return

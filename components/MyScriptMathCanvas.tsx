@@ -1,5 +1,104 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
+import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
+
+function renderTextWithInlineKatex(inputRaw: string) {
+  const input = typeof inputRaw === 'string' ? inputRaw : ''
+  if (!input) return [input]
+
+  // Supports:
+  // - $$...$$ (display)
+  // - $...$ (inline)
+  // - \[...\] (display)
+  // - \(...\) (inline)
+  const nodes: Array<string | { kind: 'katex'; display: boolean; expr: string }> = []
+  let i = 0
+  let segments = 0
+  const MAX_MATH_SEGMENTS = 24
+  const MAX_MATH_CHARS = 2000
+
+  const pushText = (s: string) => {
+    if (!s) return
+    const last = nodes[nodes.length - 1]
+    if (typeof last === 'string') nodes[nodes.length - 1] = last + s
+    else nodes.push(s)
+  }
+
+  const tryReadDelimited = (open: string, close: string, display: boolean) => {
+    if (!input.startsWith(open, i)) return false
+    const start = i + open.length
+    const end = input.indexOf(close, start)
+    if (end < 0) return false
+    const expr = input.slice(start, end)
+    i = end + close.length
+
+    if (segments >= MAX_MATH_SEGMENTS) {
+      pushText(open + expr + close)
+      return true
+    }
+    const trimmed = expr.trim()
+    if (!trimmed) {
+      pushText(open + expr + close)
+      return true
+    }
+    if (trimmed.length > MAX_MATH_CHARS) {
+      pushText(open + trimmed.slice(0, MAX_MATH_CHARS) + close)
+      return true
+    }
+    segments += 1
+    nodes.push({ kind: 'katex', display, expr: trimmed })
+    return true
+  }
+
+  while (i < input.length) {
+    if (tryReadDelimited('$$', '$$', true)) continue
+    if (tryReadDelimited('\\[', '\\]', true)) continue
+    if (tryReadDelimited('\\(', '\\)', false)) continue
+
+    // Inline $...$ (ignore escaped \$)
+    if (input[i] === '$' && (i === 0 || input[i - 1] !== '\\')) {
+      if (input[i + 1] === '$') {
+        pushText('$')
+        i += 1
+        continue
+      }
+      const start = i + 1
+      let end = start
+      while (end < input.length) {
+        if (input[end] === '$' && input[end - 1] !== '\\') break
+        end += 1
+      }
+      if (end < input.length && input[end] === '$') {
+        const expr = input.slice(start, end)
+        i = end + 1
+        if (segments >= MAX_MATH_SEGMENTS) {
+          pushText(`$${expr}$`)
+          continue
+        }
+        const trimmed = expr.trim()
+        if (!trimmed) {
+          pushText(`$${expr}$`)
+          continue
+        }
+        if (trimmed.length > MAX_MATH_CHARS) {
+          pushText(`$${trimmed.slice(0, MAX_MATH_CHARS)}$`)
+          continue
+        }
+        segments += 1
+        nodes.push({ kind: 'katex', display: false, expr: trimmed })
+        continue
+      }
+      pushText('$')
+      i += 1
+      continue
+    }
+
+    pushText(input[i])
+    i += 1
+  }
+
+  return nodes
+}
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
 
@@ -563,6 +662,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const quizCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
   const initialQuizAppliedRef = useRef<string | null>(null)
+
+  // Teacher-only: single unified quiz setup overlay (replaces native prompt chain).
+  const [quizSetupOpen, setQuizSetupOpen] = useState(false)
+  const [quizSetupLoading, setQuizSetupLoading] = useState(false)
+  const [quizSetupError, setQuizSetupError] = useState<string | null>(null)
+  const [quizSetupLabel, setQuizSetupLabel] = useState('')
+  const [quizSetupPrompt, setQuizSetupPrompt] = useState('')
+  const [quizSetupMinutes, setQuizSetupMinutes] = useState(5)
+  const [quizSetupSeconds, setQuizSetupSeconds] = useState(0)
+
+  const clampQuizDurationSec = useCallback((seconds: number) => {
+    const s = Number.isFinite(seconds) ? Math.trunc(seconds) : 0
+    return Math.max(30, Math.min(1800, s))
+  }, [])
 
   // Student: snapshot the pre-quiz lock/control state so we can restore it after the quiz.
   // This must represent the state BEFORE the teacher unlocks for the quiz.
@@ -6379,7 +6492,211 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [horizontalPanThumbRatio, manualScrollGain, verticalPanThumbRatio])
 
-  const publishQuizState = useCallback(async (enabled: boolean) => {
+  const suggestQuizPromptAndLabel = useCallback(async (previousPrompt?: string) => {
+    const phaseKey = lessonScriptPhaseKey
+    const pointIndex = lessonScriptPointIndex
+    const pointId = lessonScriptV2ActivePoint?.id || ''
+    const pointTitle = lessonScriptV2ActivePoint?.title || ''
+    const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
+
+    let promptText = (typeof previousPrompt === 'string' ? previousPrompt : quizPromptRef.current || '').trim()
+    let quizLabel = (quizLabelRef.current || '').trim()
+    if (isChallengeBoard) {
+      return { promptText: promptText || 'Enter quiz instructions manually.', quizLabel }
+    }
+
+    try {
+      const teacherLatexContext = (useAdminStepComposer
+        ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
+        : latexDisplayStateRef.current?.enabled
+          ? (latexDisplayStateRef.current?.latex || '')
+          : (latexOutput || '')
+      ).trim()
+
+      const [textCtx, diagramCtx] = await Promise.all([
+        requestWindowContext<any>({ requestEvent: 'philani-text:request-context', responseEvent: 'philani-text:context', timeoutMs: 220 }),
+        requestWindowContext<any>({ requestEvent: 'philani-diagrams:request-context', responseEvent: 'philani-diagrams:context', timeoutMs: 220 }),
+      ])
+
+      const textBoxes: Array<{ id: string; text: string }> = Array.isArray(textCtx?.boxes)
+        ? textCtx.boxes
+            .map((b: any) => ({ id: typeof b?.id === 'string' ? b.id : '', text: typeof b?.text === 'string' ? b.text : '' }))
+            .filter((b: any) => b.id && b.text)
+        : []
+
+      const textTimeline = Array.isArray(textCtx?.timeline)
+        ? textCtx.timeline
+            .map((e: any) => ({
+              ts: typeof e?.ts === 'number' ? e.ts : NaN,
+              kind: typeof e?.kind === 'string' ? e.kind : '',
+              action: typeof e?.action === 'string' ? e.action : '',
+              boxId: typeof e?.boxId === 'string' ? e.boxId : undefined,
+              visible: typeof e?.visible === 'boolean' ? e.visible : undefined,
+              textSnippet: typeof e?.textSnippet === 'string' ? e.textSnippet : undefined,
+            }))
+            .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
+        : []
+
+      const activeDiagram = diagramCtx?.activeDiagram
+      const diagramSummary = (() => {
+        if (!activeDiagram || typeof activeDiagram !== 'object') return ''
+        const title = typeof activeDiagram.title === 'string' ? activeDiagram.title.trim() : ''
+        const url = typeof activeDiagram.imageUrl === 'string' ? activeDiagram.imageUrl.trim() : ''
+        const ann = activeDiagram.annotations
+        const strokes = Array.isArray(ann?.strokes) ? ann.strokes.length : 0
+        const arrows = Array.isArray(ann?.arrows) ? ann.arrows.length : 0
+        const bits = []
+        bits.push(`- Active diagram: ${title || '(untitled)'}`)
+        if (url) bits.push(`  imageUrl: ${url}`)
+        if (strokes || arrows) bits.push(`  annotations: strokes=${strokes}, arrows=${arrows}`)
+        return bits.join('\n')
+      })()
+
+      const diagramTimeline = Array.isArray(diagramCtx?.timeline)
+        ? diagramCtx.timeline
+            .map((e: any) => ({
+              ts: typeof e?.ts === 'number' ? e.ts : NaN,
+              kind: typeof e?.kind === 'string' ? e.kind : '',
+              action: typeof e?.action === 'string' ? e.action : '',
+              diagramId: typeof e?.diagramId === 'string' ? e.diagramId : undefined,
+              title: typeof e?.title === 'string' ? e.title : undefined,
+              imageUrl: typeof e?.imageUrl === 'string' ? e.imageUrl : undefined,
+              strokes: typeof e?.strokes === 'number' ? e.strokes : undefined,
+              arrows: typeof e?.arrows === 'number' ? e.arrows : undefined,
+            }))
+            .filter((e: any) => Number.isFinite(e.ts) && e.kind && e.action)
+        : []
+
+      const lessonContextText = buildLessonContextText({
+        gradeLabel: gradeLabel || null,
+        phaseKey: phaseKey || '',
+        pointTitle: pointTitle || '',
+        pointIndex: Number.isFinite(pointIndex) ? (pointIndex as any) : null,
+        teacherLatexContext,
+        adminStepsLatex: adminSteps.map(s => (s?.latex || '')).filter(Boolean),
+        adminDraftLatex,
+        textBoxes,
+        textTimeline,
+        diagramSummary,
+        diagramTimeline,
+      })
+
+      const aiRes = await fetch('/api/ai/quiz-prompt', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'x-debug-echo': '1' },
+        body: JSON.stringify({
+          gradeLabel: gradeLabel || undefined,
+          teacherLatex: teacherLatexContext || undefined,
+          lessonContextText: lessonContextText || undefined,
+          previousPrompt: promptText || undefined,
+          sessionId: boardId || undefined,
+          phaseKey: phaseKey || undefined,
+          pointId: pointId || undefined,
+          pointIndex: Number.isFinite(pointIndex) ? pointIndex : undefined,
+          pointTitle: pointTitle || undefined,
+        }),
+      })
+
+      if (aiRes.ok) {
+        const data = await aiRes.json().catch(() => null)
+        const echoed = typeof data?.debug?.lessonContextText === 'string' ? data.debug.lessonContextText : ''
+        if (echoed) console.log('[quiz-prompt debug echo] lessonContextText (what Gemini received):\n' + echoed)
+        const suggested = typeof data?.prompt === 'string' ? data.prompt.trim() : ''
+        if (suggested) promptText = suggested
+        const suggestedLabel = typeof data?.label === 'string' ? data.label.trim() : ''
+        if (suggestedLabel) quizLabel = suggestedLabel
+      } else {
+        const rawBody = await aiRes.text().catch(() => '')
+        console.warn('quiz-prompt API failed', aiRes.status, rawBody)
+        let detail = ''
+        try {
+          const parsed = JSON.parse(rawBody || '{}')
+          const msg = typeof parsed?.message === 'string' ? parsed.message.trim() : ''
+          const err = typeof parsed?.error === 'string' ? parsed.error.trim() : ''
+          detail = (msg || err) ? [msg, err].filter(Boolean).join(' — ') : ''
+        } catch {
+          detail = rawBody.trim()
+        }
+        if (!promptText) {
+          const hint = detail ? ` (${detail})` : ''
+          promptText = `Gemini prompt suggestion failed${hint}. Enter quiz instructions manually.`
+        }
+      }
+    } catch (err) {
+      console.warn('quiz-prompt API error', err)
+      if (!promptText) promptText = 'Gemini prompt suggestion failed. Enter quiz instructions manually.'
+    }
+
+    return { promptText: promptText || 'Enter quiz instructions manually.', quizLabel }
+  }, [adminDraftLatex, adminSteps, boardId, buildLessonContextText, gradeLabel, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, requestWindowContext, useAdminStepComposer])
+
+  const suggestQuizTimerDurationSec = useCallback(async (promptText: string) => {
+    const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
+    if (isChallengeBoard) return 300
+    try {
+      const timerRes = await fetch('/api/ai/quiz-timer', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gradeLabel: gradeLabel || undefined,
+          prompt: promptText,
+        }),
+      })
+      if (timerRes.ok) {
+        const data = await timerRes.json().catch(() => null)
+        const maybe = typeof data?.durationSec === 'number' ? Math.trunc(data.durationSec) : 0
+        if (Number.isFinite(maybe) && maybe > 0) return maybe
+      } else {
+        const rawBody = await timerRes.text().catch(() => '')
+        console.warn('quiz-timer API failed', timerRes.status, rawBody)
+      }
+    } catch (err) {
+      console.warn('quiz-timer API error', err)
+    }
+    return 300
+  }, [boardId, gradeLabel])
+
+  const openQuizSetupOverlay = useCallback(async () => {
+    if (!isAdmin) return
+    setQuizSetupOpen(true)
+    setQuizSetupLoading(true)
+    setQuizSetupError(null)
+
+    try {
+      const prev = (quizPromptRef.current || '').trim()
+      const suggested = await suggestQuizPromptAndLabel(prev)
+      const promptText = (suggested?.promptText || '').trim()
+      const quizLabel = (suggested?.quizLabel || '').trim()
+
+      setQuizSetupPrompt(promptText)
+      setQuizSetupLabel(quizLabel)
+
+      const duration = clampQuizDurationSec(await suggestQuizTimerDurationSec(promptText || prev || 'Quiz'))
+      const min = Math.max(0, Math.floor(duration / 60))
+      const sec = Math.max(0, Math.min(59, Math.round(duration - min * 60)))
+      setQuizSetupMinutes(min)
+      setQuizSetupSeconds(sec)
+    } catch {
+      setQuizSetupError('Failed to load Gemini quiz suggestion. You can still type it manually.')
+      setQuizSetupPrompt((quizPromptRef.current || '').trim() || 'Enter quiz instructions manually.')
+    } finally {
+      setQuizSetupLoading(false)
+    }
+  }, [clampQuizDurationSec, isAdmin, suggestQuizPromptAndLabel, suggestQuizTimerDurationSec])
+
+  useEffect(() => {
+    if (!quizSetupOpen) return
+    if (typeof window === 'undefined') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setQuizSetupOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [quizSetupOpen])
+
+  const publishQuizState = useCallback(async (enabled: boolean, opts?: { promptText?: string; quizLabel?: string; durationSec?: number }) => {
     if (!hasControllerRights()) return
     const channel = channelRef.current
     if (!channel) return
@@ -6389,6 +6706,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       let quizLabel = quizLabelRef.current
       let durationSec: number | undefined
       let endsAt: number | undefined
+
+      if (enabled) {
+        const forcedPrompt = typeof opts?.promptText === 'string' ? opts.promptText.trim() : ''
+        const forcedLabel = typeof opts?.quizLabel === 'string' ? opts.quizLabel.trim() : ''
+        const forcedDuration = typeof opts?.durationSec === 'number' && Number.isFinite(opts.durationSec) ? Math.trunc(opts.durationSec) : 0
+
+        const hasForcedPrompt = Boolean(forcedPrompt)
+        const hasForcedLabel = Boolean(forcedLabel)
+        const hasForcedDuration = forcedDuration > 0
+
+        if (hasForcedPrompt) promptText = forcedPrompt
+        if (hasForcedLabel) quizLabel = forcedLabel
+        if (hasForcedDuration) {
+          durationSec = forcedDuration
+          endsAt = Date.now() + forcedDuration * 1000
+        }
+      }
 
       // Snapshot current state BEFORE we unlock students for the quiz.
       // - Students use this to restore their board state after feedback.
@@ -6407,8 +6741,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       if (enabled) {
         // Attempt to suggest a prompt from the teacher's current context.
-        // This keeps UX unchanged: we still show a simple prompt dialog, but prefill it.
-        if (!isChallengeBoard) {
+        // This keeps UX functional even if the setup overlay didn't provide a prompt.
+        if (!isChallengeBoard && !(typeof opts?.promptText === 'string' && opts.promptText.trim())) {
           try {
             const teacherLatexContext = (useAdminStepComposer
               ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
@@ -6513,7 +6847,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 promptText = suggested
               }
               const suggestedLabel = typeof data?.label === 'string' ? data.label.trim() : ''
-              if (suggestedLabel) {
+              if (suggestedLabel && !(typeof opts?.quizLabel === 'string' && opts.quizLabel.trim())) {
                 quizLabel = suggestedLabel
               }
             } else {
@@ -6546,22 +6880,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
         }
 
-        // Teacher enters the quiz prompt at the moment quiz mode starts.
-        if (typeof window !== 'undefined') {
-          const entered = window.prompt('Quiz question / instructions (shown to students):', promptText || '')
-          if (entered === null) {
-            return
-          }
-          const trimmed = entered.trim()
-          if (!trimmed) {
-            return
-          }
-          promptText = trimmed
-        }
+        // Require a non-empty prompt (either from setup overlay or fallback suggestion).
+        const required = (promptText || '').trim()
+        if (!required) return
+        promptText = required
 
         // Ask Gemini for a sensible quiz timer based on the final prompt (admin-only).
         // Never call AI tools for learner-created challenges.
-        if (!isChallengeBoard) {
+        if (!isChallengeBoard && (!durationSec || !endsAt)) {
           try {
             const timerRes = await fetch('/api/ai/quiz-timer', {
               method: 'POST',
@@ -6594,55 +6920,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           endsAt = Date.now() + durationSec * 1000
         }
 
-        // Admin moderation: allow teacher to override the suggested timer before broadcasting.
-        // Keep UX simple (native prompts) but provide separate minute + second fields.
-        if (typeof window !== 'undefined') {
-          try {
-            const suggestedMin = Math.max(0, Math.floor(durationSec / 60))
-            const suggestedSec = Math.max(0, Math.min(59, Math.round(durationSec - suggestedMin * 60)))
-
-            const enteredMin = window.prompt(
-              `Time limit minutes (suggested ${suggestedMin}):`,
-              String(suggestedMin)
-            )
-            if (enteredMin === null) return
-
-            const enteredSec = window.prompt(
-              `Time limit seconds (0–59) (suggested ${suggestedSec}):`,
-              String(suggestedSec)
-            )
-            if (enteredSec === null) return
-
-            const rawMin = (enteredMin || '').trim()
-            const rawSec = (enteredSec || '').trim()
-
-            // If teacher keeps both fields empty, keep Gemini (or fallback) suggestion.
-            if (!rawMin && !rawSec) {
-              // keep durationSec/endsAt as-is
-            } else {
-              // Minutes: allow comma decimals like 0,5 (common locale input).
-              const minFloat = rawMin
-                ? Number.parseFloat(rawMin.replace(',', '.'))
-                : 0
-
-              const minSec = (Number.isFinite(minFloat) && minFloat > 0)
-                ? Math.round(minFloat * 60)
-                : 0
-
-              const secInt = rawSec
-                ? Number.parseInt(rawSec.replace(',', '.'), 10)
-                : 0
-
-              const safeSec = Number.isFinite(secInt) && secInt > 0
-                ? Math.max(0, Math.min(59, secInt))
-                : 0
-
-              const nextSec = minSec + safeSec
-              const clampedSec = Math.max(30, Math.min(1800, nextSec))
-              durationSec = clampedSec
-              endsAt = Date.now() + clampedSec * 1000
-            }
-          } catch {}
+        // Timer overrides are handled by the quiz setup overlay.
+        // Keep any pre-set durationSec/endsAt (from opts) or the Gemini/fallback above.
+        if (!durationSec || !endsAt) {
+          // Safety: ensure endsAt is consistent with durationSec.
+          durationSec = durationSec || 300
+          endsAt = Date.now() + durationSec * 1000
         }
 
         // Create a new quiz instance id each time quiz mode starts.
@@ -6719,6 +7002,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to publish quiz state', err)
     }
   }, [adminDraftLatex, adminSteps, boardId, gradeLabel, hasControllerRights, isAdmin, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, useAdminStepComposer, userDisplayName])
+
+  const startQuizFromOverlay = useCallback(async () => {
+    const prompt = (quizSetupPrompt || '').trim()
+    if (!prompt) {
+      setQuizSetupError('Please enter a quiz question/instructions.')
+      return
+    }
+    const label = (quizSetupLabel || '').trim()
+    const min = Number.isFinite(quizSetupMinutes) ? Math.max(0, Math.trunc(quizSetupMinutes)) : 0
+    const sec = Number.isFinite(quizSetupSeconds) ? Math.max(0, Math.min(59, Math.trunc(quizSetupSeconds))) : 0
+    const durationSec = clampQuizDurationSec(min * 60 + sec)
+
+    await runCanvasAction(async () => {
+      await publishQuizState(true, { promptText: prompt, quizLabel: label, durationSec })
+      setQuizActiveState(true)
+    })
+
+    setQuizSetupOpen(false)
+  }, [clampQuizDurationSec, publishQuizState, quizSetupLabel, quizSetupMinutes, quizSetupPrompt, quizSetupSeconds, runCanvasAction, setQuizActiveState])
 
   const studentQuizCommitOrSubmit = useCallback(async (opts?: { forceSubmit?: boolean; skipConfirm?: boolean }) => {
     const isSolution = assignmentSubmission?.kind === 'solution'
@@ -8324,9 +8626,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             className={`btn ${quizActive ? 'btn-secondary' : ''}`}
             type="button"
             onClick={() => runCanvasAction(async () => {
-              await publishQuizState(!quizActiveRef.current)
-              // Keep local admin indicator in sync.
-              setQuizActiveState(!quizActiveRef.current)
+              if (quizActiveRef.current) {
+                await publishQuizState(false)
+                // Keep local admin indicator in sync.
+                setQuizActiveState(false)
+              } else {
+                await openQuizSetupOverlay()
+              }
             })}
             disabled={status !== 'ready' || Boolean(fatalError)}
           >
@@ -8756,9 +9062,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         e.preventDefault()
                         e.stopPropagation()
                         void runCanvasAction(async () => {
-                          await publishQuizState(!quizActiveRef.current)
-                          // Keep local admin indicator in sync.
-                          setQuizActiveState(!quizActiveRef.current)
+                          if (quizActiveRef.current) {
+                            await publishQuizState(false)
+                            // Keep local admin indicator in sync.
+                            setQuizActiveState(false)
+                          } else {
+                            await openQuizSetupOverlay()
+                          }
                         })
                       }}
                       onPointerDown={e => {
@@ -11103,6 +11413,178 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </div>
           </div>
         </div>
+      )}
+
+      {quizSetupOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[10050] flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Start quiz"
+        >
+          <div
+            className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+            aria-hidden="true"
+            onMouseDown={() => setQuizSetupOpen(false)}
+          />
+
+          <div
+            className="card philani-overlay-panel philani-overlay-enter relative w-[min(1150px,calc(100vw-24px))] h-full max-h-[92vh] overflow-hidden flex flex-col"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Start Quiz</div>
+                <div className="text-[11px] opacity-80">
+                  Edit the prompt, choose a timer, and start.
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => { void openQuizSetupOverlay() }}
+                  disabled={quizSetupLoading}
+                  title="Ask Gemini for a fresh quiz suggestion"
+                >
+                  {quizSetupLoading ? 'Suggesting…' : 'Re-suggest'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setQuizSetupOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {quizSetupError && (
+              <div className="mx-4 mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {quizSetupError}
+              </div>
+            )}
+
+            <div className="p-4 flex-1 overflow-hidden">
+              <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="h-full flex flex-col overflow-hidden">
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <label className="block text-xs font-medium opacity-80">Quiz label (optional)</label>
+                    <input
+                      className="mt-1 w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
+                      value={quizSetupLabel}
+                      onChange={(e) => setQuizSetupLabel(e.target.value)}
+                      placeholder="e.g. Quick Check"
+                      disabled={quizSetupLoading}
+                    />
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium opacity-80">Minutes</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          className="mt-1 w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
+                          value={quizSetupMinutes}
+                          onChange={(e) => setQuizSetupMinutes(Math.max(0, Math.trunc(Number(e.target.value) || 0)))}
+                          disabled={quizSetupLoading}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium opacity-80">Seconds</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          step={1}
+                          className="mt-1 w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
+                          value={quizSetupSeconds}
+                          onChange={(e) => {
+                            const v = Math.trunc(Number(e.target.value) || 0)
+                            setQuizSetupSeconds(Math.max(0, Math.min(59, v)))
+                          }}
+                          disabled={quizSetupLoading}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex-1 overflow-hidden rounded-lg border border-white/10 bg-white/5 p-3 flex flex-col">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="block text-xs font-medium opacity-80">Quiz prompt</label>
+                      <div className="text-[11px] opacity-70">Use $...$ / $$...$$ for math</div>
+                    </div>
+                    <textarea
+                      className="mt-2 flex-1 w-full resize-none rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
+                      value={quizSetupPrompt}
+                      onChange={(e) => setQuizSetupPrompt(e.target.value)}
+                      placeholder="Type quiz instructions/question here…"
+                      autoFocus
+                      disabled={quizSetupLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="h-full overflow-hidden rounded-lg border border-white/10 bg-white/5 p-3 flex flex-col">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-medium opacity-80">Preview</div>
+                    <div className="text-[11px] opacity-70">Rendered with KaTeX</div>
+                  </div>
+                  <div className="mt-2 flex-1 overflow-auto rounded-md border border-white/10 bg-black/10 p-3">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                      {renderTextWithInlineKatex(quizSetupPrompt || '').map((node, idx) => {
+                        if (typeof node === 'string') {
+                          return <span key={idx}>{node}</span>
+                        }
+                        const html = (() => {
+                          try {
+                            return renderToString(node.expr, { displayMode: node.display, throwOnError: false })
+                          } catch {
+                            return ''
+                          }
+                        })()
+                        if (!html) return <span key={idx}>{node.display ? `\n$$${node.expr}$$\n` : `$${node.expr}$`}</span>
+                        return (
+                          <span
+                            key={idx}
+                            className={node.display ? 'block my-2' : 'inline'}
+                            dangerouslySetInnerHTML={{ __html: html }}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-3">
+              <div className="text-[11px] opacity-70">
+                Duration: {Math.max(0, Math.trunc(Number(quizSetupMinutes) || 0))}:{String(Math.max(0, Math.min(59, Math.trunc(Number(quizSetupSeconds) || 0)))).padStart(2, '0')}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setQuizSetupOpen(false)}
+                  disabled={quizSetupLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => { void startQuizFromOverlay() }}
+                  disabled={quizSetupLoading || !(quizSetupPrompt || '').trim()}
+                >
+                  Start Quiz
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
 

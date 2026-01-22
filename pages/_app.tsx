@@ -1,5 +1,6 @@
 import '../styles/globals.css'
 import 'katex/dist/katex.min.css'
+import 'react-image-crop/dist/ReactCrop.css'
 import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'

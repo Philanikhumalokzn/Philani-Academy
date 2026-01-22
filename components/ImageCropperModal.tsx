@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import Cropper from 'react-easy-crop'
-import type { CropAreaPixels } from '../lib/imageEdit'
-import { cropAndRotateImageToFile } from '../lib/imageEdit'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
+import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 
 export default function ImageCropperModal(props: {
   open: boolean
@@ -14,22 +13,26 @@ export default function ImageCropperModal(props: {
 }) {
   const { open, file, title, onCancel, onUseOriginal, onConfirm, confirmLabel } = props
 
-  const [crop, setCrop] = useState({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1)
-  const [rotation, setRotation] = useState(0)
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<CropAreaPixels | null>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+
+  const [workingFile, setWorkingFile] = useState<File | null>(null)
+
+  const [crop, setCrop] = useState<Crop>({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+  const [completedCropPx, setCompletedCropPx] = useState<PixelCrop | null>(null)
+
+  const [rotating, setRotating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const objectUrl = useMemo(() => {
     if (!open) return null
-    if (!file) return null
+    if (!workingFile) return null
     try {
-      return URL.createObjectURL(file)
+      return URL.createObjectURL(workingFile)
     } catch {
       return null
     }
-  }, [file, open])
+  }, [open, workingFile])
 
   useEffect(() => {
     if (!objectUrl) return
@@ -44,51 +47,70 @@ export default function ImageCropperModal(props: {
 
   useEffect(() => {
     if (!open) return
-    setCrop({ x: 0, y: 0 })
-    setZoom(1)
-    setRotation(0)
-    setCroppedAreaPixels(null)
+    setWorkingFile(file)
+    setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+    setCompletedCropPx(null)
+    setRotating(false)
     setSaving(false)
     setError(null)
   }, [open, file])
 
-  const onCropComplete = useCallback((_croppedArea: any, croppedAreaPixels: any) => {
-    if (!croppedAreaPixels) return
-    setCroppedAreaPixels({
-      x: Number(croppedAreaPixels.x) || 0,
-      y: Number(croppedAreaPixels.y) || 0,
-      width: Number(croppedAreaPixels.width) || 0,
-      height: Number(croppedAreaPixels.height) || 0,
-    })
-  }, [])
+  const rotateBy = useCallback(async (deltaDeg: number) => {
+    if (!workingFile) return
+    setRotating(true)
+    setError(null)
+    try {
+      const rotated = await rotateImageFile({ file: workingFile, rotation: deltaDeg })
+      setWorkingFile(rotated)
+      setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+      setCompletedCropPx(null)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to rotate image')
+    } finally {
+      setRotating(false)
+    }
+  }, [workingFile])
 
   const doConfirm = useCallback(async () => {
-    if (!file) return
+    if (!workingFile) return
     if (!objectUrl) return
+
+    const img = imgRef.current
+    if (!img) return
 
     setSaving(true)
     setError(null)
     try {
-      const cropArea = croppedAreaPixels
+      const cropArea = completedCropPx
       if (!cropArea || cropArea.width <= 0 || cropArea.height <= 0) {
         // Fallback: if something went wrong, just upload original.
-        onUseOriginal(file)
+        onUseOriginal(file || workingFile)
         return
+      }
+
+      const scaleX = img.naturalWidth / img.width
+      const scaleY = img.naturalHeight / img.height
+
+      const naturalCrop = {
+        x: Math.max(0, Math.round(cropArea.x * scaleX)),
+        y: Math.max(0, Math.round(cropArea.y * scaleY)),
+        width: Math.max(1, Math.round(cropArea.width * scaleX)),
+        height: Math.max(1, Math.round(cropArea.height * scaleY)),
       }
 
       const editedFile = await cropAndRotateImageToFile({
         imageUrl: objectUrl,
-        crop: cropArea,
-        rotation,
-        mimeType: file.type,
-        filenameHint: file.name,
+        crop: naturalCrop,
+        rotation: 0,
+        mimeType: workingFile.type,
+        filenameHint: workingFile.name,
       })
       onConfirm(editedFile)
     } catch (e: any) {
       setError(e?.message || 'Failed to process image')
       setSaving(false)
     }
-  }, [croppedAreaPixels, file, objectUrl, onConfirm, onUseOriginal, rotation])
+  }, [completedCropPx, file, objectUrl, onConfirm, onUseOriginal, workingFile])
 
   const doUseOriginal = useCallback(() => {
     if (!file) return
@@ -118,61 +140,60 @@ export default function ImageCropperModal(props: {
 
             <div className="relative w-full h-[50vh] rounded overflow-hidden border border-white/10 bg-black">
               {objectUrl ? (
-                <Cropper
-                  image={objectUrl}
-                  crop={crop}
-                  zoom={zoom}
-                  rotation={rotation}
-                  onCropChange={setCrop}
-                  onZoomChange={setZoom}
-                  onRotationChange={setRotation}
-                  onCropComplete={onCropComplete}
-                  objectFit="contain"
-                  showGrid
-                />
+                <div className="absolute inset-0">
+                  <ReactCrop
+                    crop={crop}
+                    onChange={(_, percentCrop) => setCrop(percentCrop)}
+                    onComplete={(px) => setCompletedCropPx(px)}
+                    keepSelection
+                    ruleOfThirds
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      ref={imgRef}
+                      alt="Crop preview"
+                      src={objectUrl}
+                      style={{ maxHeight: '50vh', width: '100%', objectFit: 'contain' }}
+                      onLoad={() => {
+                        setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+                        setCompletedCropPx(null)
+                      }}
+                    />
+                  </ReactCrop>
+                </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-sm text-white/70">No image</div>
               )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <div className="text-xs muted mb-1">Zoom</div>
-                <input
-                  type="range"
-                  min={1}
-                  max={4}
-                  step={0.01}
-                  value={zoom}
-                  onChange={(e) => setZoom(Number(e.target.value))}
-                  disabled={saving}
-                  className="w-full"
-                />
+              <div className="space-y-2">
+                <div className="text-xs muted">Crop</div>
+                <div className="text-sm text-white/80">Drag to move. Drag handles to resize.</div>
+                <button
+                  type="button"
+                  className="btn btn-ghost w-fit"
+                  onClick={() => {
+                    setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+                    setCompletedCropPx(null)
+                  }}
+                  disabled={saving || rotating}
+                >
+                  Reset crop
+                </button>
               </div>
 
-              <div>
-                <div className="text-xs muted mb-1">Rotation</div>
-                <input
-                  type="range"
-                  min={-180}
-                  max={180}
-                  step={1}
-                  value={rotation}
-                  onChange={(e) => setRotation(Number(e.target.value))}
-                  disabled={saving}
-                  className="w-full"
-                />
-                <div className="mt-2 flex gap-2">
-                  <button type="button" className="btn btn-ghost" onClick={() => setRotation((r) => r - 90)} disabled={saving}>
-                    -90°
+              <div className="space-y-2">
+                <div className="text-xs muted">Rotate</div>
+                <div className="flex gap-2 flex-wrap">
+                  <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(-90)} disabled={saving || rotating || !workingFile}>
+                    Rotate -90°
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => setRotation((r) => r + 90)} disabled={saving}>
-                    +90°
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => setRotation(0)} disabled={saving}>
-                    Reset
+                  <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(90)} disabled={saving || rotating || !workingFile}>
+                    Rotate +90°
                   </button>
                 </div>
+                {rotating ? <div className="text-xs text-white/70">Rotating…</div> : null}
               </div>
             </div>
 

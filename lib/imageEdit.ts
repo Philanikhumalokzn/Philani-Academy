@@ -31,6 +31,57 @@ const sanitizeBaseFilename = (name: string) => {
   return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'image'
 }
 
+export async function rotateImageFile(opts: { file: File; rotation: number }) {
+  const { file, rotation } = opts
+  const objectUrl = URL.createObjectURL(file)
+  try {
+    const image = await createImage(objectUrl)
+
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas not supported')
+
+    const rot = ((Number(rotation) || 0) % 360 + 360) % 360
+    const rotRad = getRadianAngle(rot)
+
+    const { width: bBoxWidth, height: bBoxHeight } = rotateSize(image.width, image.height, rot)
+    canvas.width = Math.round(bBoxWidth)
+    canvas.height = Math.round(bBoxHeight)
+
+    ctx.translate(canvas.width / 2, canvas.height / 2)
+    ctx.rotate(rotRad)
+    ctx.translate(-image.width / 2, -image.height / 2)
+    ctx.drawImage(image, 0, 0)
+
+    const safeMime = ['image/png', 'image/jpeg', 'image/webp'].includes(String(file.type || '')) ? String(file.type) : 'image/png'
+    const blob: Blob = await new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob(
+          (b) => {
+            if (!b) return reject(new Error('Failed to create image blob'))
+            resolve(b)
+          },
+          safeMime,
+          safeMime === 'image/jpeg' ? 0.92 : undefined
+        )
+      } catch (e) {
+        reject(e)
+      }
+    })
+
+    const base = sanitizeBaseFilename(file.name)
+    const ext = extensionForMime(blob.type || safeMime)
+    const filename = `${base}_rot${rot}${ext}`
+    return new File([blob], filename, { type: blob.type || safeMime })
+  } finally {
+    try {
+      URL.revokeObjectURL(objectUrl)
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export async function cropAndRotateImageToFile(opts: {
   imageUrl: string
   crop: CropAreaPixels

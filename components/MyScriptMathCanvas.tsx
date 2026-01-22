@@ -1930,6 +1930,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [hasBoardWriteRights]
   )
 
+  // Permission checks rely on `clientIdRef.current`. If controller/presenter rights arrive before
+  // the Ably clientId is populated (or if it changes on reconnect), the UI can get stuck in
+  // view-only mode. Recompute lock state whenever `clientId` changes.
+  useEffect(() => {
+    updateControlState(controlStateRef.current)
+  }, [clientId, updateControlState])
+
   const setControllerRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
     if (!isAdmin) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
@@ -2191,11 +2198,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [connectedClients, isAdmin, normalizeName, reclaimAdminControl, setPresenterRightsForClients]
   )
 
+  const autoSaveCurrentQuestionAsNotesRef = useRef<null | (() => void)>(null)
+
   const handleRosterAttendeeAvatarClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault()
       e.stopPropagation()
       if (!isAdmin) return
+
+      // Best-effort: silently capture the current question into Notes before switching presenter.
+      try {
+        autoSaveCurrentQuestionAsNotesRef.current?.()
+      } catch {}
 
       const el = e.currentTarget
       const clickedClientId = String(el?.dataset?.clientId || '').trim()
@@ -8379,6 +8393,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [canPersistLatex, isAdmin, isLessonAuthoring, latexOutput, saveLatexIntoLessonDraft, sessionKey]
   )
 
+  // Auto-save shared class notes on presenter/controller switches.
+  // This captures the current notes at the moment control changes, so the admin
+  // doesn't have to manually click the floppy-disk save.
+  const prevPresenterKeyForAutoSaveRef = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (isLessonAuthoring) return
+    if (!isAdmin) return
+    if (!canPersistLatex || !sessionKey) return
+
+    const nextKey = activePresenterUserKey ? String(activePresenterUserKey) : ''
+    const prevKey = prevPresenterKeyForAutoSaveRef.current
+    // Skip initial mount.
+    if (prevKey === undefined) {
+      prevPresenterKeyForAutoSaveRef.current = nextKey
+      return
+    }
+
+    if (prevKey !== nextKey) {
+      void saveLatexSnapshot({ shared: true, auto: true })
+    }
+    prevPresenterKeyForAutoSaveRef.current = nextKey
+  }, [activePresenterUserKey, canPersistLatex, isAdmin, isLessonAuthoring, saveLatexSnapshot, sessionKey])
+
   const saveQuestionAsNotes = useCallback(
     async (options: { title: string; noteId: string }) => {
       if (isLessonAuthoring) {
@@ -8446,6 +8483,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     },
     [adminSteps, canPersistLatex, isAdmin, isLessonAuthoring, normalizeStepLatex, sessionKey]
   )
+
+  // Silent "Finish Question" save (no modal) used when the admin is switching presenter context.
+  // Mirrors the paper-plane empty-canvas flow by saving the full question (top steps) into Notes.
+  const lastAutoQuestionNotesHashRef = useRef<string | null>(null)
+  const autoSaveCurrentQuestionAsNotes = useCallback(async () => {
+    if (isLessonAuthoring) return
+    if (!isAdmin) return
+    if (!canPersistLatex || !sessionKey) return
+
+    // Only auto-finish when the bottom canvas is empty.
+    let emptyCanvas = false
+    let emptyLine = false
+    try {
+      emptyCanvas = isEditorEmptyNow()
+      emptyLine = isCurrentLineEmptyNow()
+    } catch {
+      return
+    }
+    if (!emptyCanvas || !emptyLine) return
+
+    const normalized = adminSteps
+      .filter(s => s && typeof s === 'object')
+      .map(s => normalizeStepLatex((s as any)?.latex || ''))
+      .filter(Boolean)
+
+    if (!normalized.length) return
+    const hash = normalized.join('\n')
+    if (lastAutoQuestionNotesHashRef.current === hash) return
+    lastAutoQuestionNotesHashRef.current = hash
+
+    const noteId = createSessionNoteId()
+    const inferredTitle = prettyPrintTitleFromLatex(adminSteps[0]?.latex || '')
+    const title = (inferredTitle || '').trim() || 'Untitled question'
+    await saveQuestionAsNotes({ title, noteId })
+  }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
+
+  useEffect(() => {
+    autoSaveCurrentQuestionAsNotesRef.current = () => {
+      void autoSaveCurrentQuestionAsNotes()
+    }
+    return () => {
+      autoSaveCurrentQuestionAsNotesRef.current = null
+    }
+  }, [autoSaveCurrentQuestionAsNotes])
 
   useEffect(() => {
     if (!finishQuestionModalOpen) return
@@ -9209,6 +9290,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               // Otherwise, it toggles the roster open.
                               if (overlayRosterVisible) {
                                 if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
+                                  // Best-effort: silently capture the current question into Notes before reclaiming control.
+                                  try {
+                                    autoSaveCurrentQuestionAsNotesRef.current?.()
+                                  } catch {}
                                   handOverPresentation(null)
                                   return
                                 }

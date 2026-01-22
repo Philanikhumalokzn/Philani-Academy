@@ -8903,13 +8903,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     )
                   ) : useStackedStudentLayout ? (
                     <div className="h-full flex flex-col">
+                      {quizActive && !isAssignmentView && quizTimeLeftSec != null ? (
+                        <div className="mb-2 flex items-center justify-end text-xs text-slate-500">
+                          Time left: {formatCountdown(quizTimeLeftSec)}
+                        </div>
+                      ) : null}
+
                       {!hasWriteAccess && quizActive && !isAssignmentView ? (
                         <>
-                          {quizTimeLeftSec != null && (
-                            <div className="mb-2 flex items-center justify-end text-xs text-slate-500">
-                              Time left: {formatCountdown(quizTimeLeftSec)}
-                            </div>
-                          )}
                           {topPanelRenderPayload.markup ? (
                             <div
                               className="text-slate-700 font-semibold leading-relaxed"

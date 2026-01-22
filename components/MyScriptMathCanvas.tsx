@@ -11302,7 +11302,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className="rounded-md border border-slate-200 bg-white p-3">
                 <label className="block text-xs font-medium text-slate-700">Title</label>
                 <input
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/20"
                   value={finishQuestionTitle}
                   onChange={(e) => setFinishQuestionTitle(e.target.value)}
                   autoFocus

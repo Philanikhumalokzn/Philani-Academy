@@ -53,6 +53,7 @@ const QUIZ_BOX_ID = 'quiz-prompt'
 const QUIZ_FEEDBACK_BOX_ID = 'quiz-feedback'
 const QUIZ_RESPONSE_EVENT = 'philani-quiz:text-response'
 const QUIZ_SUBMITTED_EVENT = 'philani-quiz:submitted'
+const QUIZ_TIMER_EVENT = 'philani-quiz:timer'
 
 const MIN_BOX_PX_W = 140
 const MIN_BOX_PX_H = 56
@@ -339,6 +340,75 @@ export default function TextOverlayModule(props: {
       window.dispatchEvent(new CustomEvent(QUIZ_RESPONSE_EVENT, { detail: { text: normalized } }))
     } catch {}
   }, [])
+
+  const quizTimerIntervalRef = useRef<number | null>(null)
+  const quizEndsAtRef = useRef<number | null>(null)
+  const [quizTimeLeftSec, setQuizTimeLeftSec] = useState<number | null>(null)
+
+  const clearQuizTimer = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (quizTimerIntervalRef.current != null) {
+      window.clearInterval(quizTimerIntervalRef.current)
+      quizTimerIntervalRef.current = null
+    }
+    quizEndsAtRef.current = null
+    setQuizTimeLeftSec(null)
+  }, [])
+
+  const formatCountdown = useCallback((seconds: number | null) => {
+    if (seconds == null || !Number.isFinite(seconds)) return ''
+    const s = Math.max(0, Math.trunc(seconds))
+    const mm = Math.floor(s / 60)
+    const ss = s % 60
+    return `${mm}:${String(ss).padStart(2, '0')}`
+  }, [])
+
+  // Learners: show quiz countdown inside the quiz prompt popup.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const detail = (event as any)?.detail as any
+      const active = Boolean(detail?.active)
+      if (!active) {
+        clearQuizTimer()
+        return
+      }
+
+      const endsAt = (typeof detail?.endsAt === 'number' && Number.isFinite(detail.endsAt) && detail.endsAt > 0)
+        ? Math.trunc(detail.endsAt)
+        : null
+
+      if (!endsAt) {
+        clearQuizTimer()
+        return
+      }
+
+      quizEndsAtRef.current = endsAt
+      if (quizTimerIntervalRef.current != null) {
+        window.clearInterval(quizTimerIntervalRef.current)
+        quizTimerIntervalRef.current = null
+      }
+
+      const tick = () => {
+        const end = quizEndsAtRef.current
+        if (!end) {
+          setQuizTimeLeftSec(null)
+          return
+        }
+        const remainingSec = Math.ceil((end - Date.now()) / 1000)
+        setQuizTimeLeftSec(Math.max(0, remainingSec))
+      }
+
+      tick()
+      quizTimerIntervalRef.current = window.setInterval(tick, 500)
+    }
+
+    window.addEventListener(QUIZ_TIMER_EVENT, handler as any)
+    return () => {
+      window.removeEventListener(QUIZ_TIMER_EVENT, handler as any)
+      clearQuizTimer()
+    }
+  }, [clearQuizTimer])
 
   // Student-only: when a quiz is submitted, hide quiz-specific popups locally.
   // This preserves all teacher-authored lesson/context text boxes.
@@ -1305,6 +1375,12 @@ export default function TextOverlayModule(props: {
                   </button>
                 )}
                 <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
+
+                {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
+                  <div className="mt-2 flex items-center justify-end text-xs text-white/80" style={{ pointerEvents: 'none' }}>
+                    Time left: {formatCountdown(quizTimeLeftSec)}
+                  </div>
+                )}
 
                 {!isAdmin && isQuizBox && (
                   <div className="mt-3">

@@ -594,6 +594,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     quizDurationSecRef.current = null
     quizAutoSubmitTriggeredRef.current = false
     setQuizTimeLeftSec(null)
+
+    // Notify the quiz popup (TextOverlayModule) to hide any timer UI.
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('philani-quiz:timer', { detail: { active: false } }))
+      }
+    } catch {}
   }, [])
 
   const formatCountdown = useCallback((seconds: number | null) => {
@@ -1216,6 +1223,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } else {
       setQuizTimeLeftSec(null)
     }
+
+    // Notify the quiz popup (TextOverlayModule) so learners can see a timer on the prompt.
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('philani-quiz:timer', { detail: { active: true, endsAt, durationSec } }))
+      }
+    } catch {}
 
     playSnapSound()
 
@@ -4781,6 +4795,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   setQuizTimeLeftSec(null)
                 }
 
+                // Notify the quiz popup (TextOverlayModule) so learners see the countdown on the prompt.
+                try {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('philani-quiz:timer', { detail: { active: true, endsAt, durationSec } }))
+                  }
+                } catch {}
+
                 // Best-effort sound cue; browser may block autoplay.
                 playSnapSound()
 
@@ -4803,6 +4824,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               if (phase === 'inactive') {
                 setQuizActiveState(false)
                 clearQuizCountdown()
+
+                // Ensure quiz popup timer clears immediately.
+                try {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('philani-quiz:timer', { detail: { active: false } }))
+                  }
+                } catch {}
                 quizCombinedLatexRef.current = ''
                 quizHasCommittedRef.current = false
                 setStudentCommittedLatex('')
@@ -5254,6 +5282,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     })
                   } catch (err) {
                     console.warn('Failed to rebroadcast latex display state', err)
+                  }
+                }
+                // Ensure late-joining students receive the current quiz state (so the timer appears).
+                if (isAdmin && quizActiveRef.current) {
+                  try {
+                    const quizId = (quizIdRef.current || '').trim()
+                    const prompt = (quizPromptRef.current || '').trim()
+                    if (quizId && prompt) {
+                      await channel.publish('control', {
+                        clientId: clientIdRef.current,
+                        author: userDisplayName,
+                        action: 'quiz',
+                        phase: 'active',
+                        enabled: true,
+                        preQuizControl: adminPreQuizControlStateRef.current ?? undefined,
+                        quizId,
+                        quizLabel: quizLabelRef.current || undefined,
+                        quizPhaseKey: quizPhaseKeyRef.current || undefined,
+                        quizPointId: quizPointIdRef.current || undefined,
+                        quizPointIndex: (Number.isFinite(quizPointIndexRef.current) && quizPointIndexRef.current >= 0) ? quizPointIndexRef.current : undefined,
+                        prompt,
+                        durationSec: (typeof quizDurationSecRef.current === 'number' && Number.isFinite(quizDurationSecRef.current) && quizDurationSecRef.current > 0)
+                          ? Math.trunc(quizDurationSecRef.current)
+                          : undefined,
+                        endsAt: (typeof quizEndsAtRef.current === 'number' && Number.isFinite(quizEndsAtRef.current) && quizEndsAtRef.current > 0)
+                          ? Math.trunc(quizEndsAtRef.current)
+                          : undefined,
+                        ts: Date.now(),
+                      } satisfies QuizControlMessage)
+                    }
+                  } catch (err) {
+                    console.warn('Failed to rebroadcast quiz state', err)
                   }
                 }
                 if (isAdmin && hasExclusiveControlRef.current) {
@@ -6639,6 +6699,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         endsAt: enabled ? endsAt : undefined,
         ts: Date.now(),
       } satisfies QuizControlMessage)
+
+      // Persist current quiz timing on the teacher client so we can rebroadcast it to late joiners.
+      if (enabled) {
+        quizEndsAtRef.current = (typeof endsAt === 'number' && Number.isFinite(endsAt) && endsAt > 0) ? Math.trunc(endsAt) : null
+        quizDurationSecRef.current = (typeof durationSec === 'number' && Number.isFinite(durationSec) && durationSec > 0) ? Math.trunc(durationSec) : null
+      } else {
+        quizEndsAtRef.current = null
+        quizDurationSecRef.current = null
+      }
 
       // Stopping/aborting quiz: restore class state to what it was before the quiz started.
       if (!enabled) {

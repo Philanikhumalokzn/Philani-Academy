@@ -1930,13 +1930,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [hasBoardWriteRights]
   )
 
-  // Permission checks rely on `clientIdRef.current`. If controller/presenter rights arrive before
-  // the Ably clientId is populated (or if it changes on reconnect), the UI can get stuck in
-  // view-only mode. Recompute lock state whenever `clientId` changes.
-  useEffect(() => {
-    updateControlState(controlStateRef.current)
-  }, [clientId, updateControlState])
-
   const setControllerRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
     if (!isAdmin) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
@@ -9290,10 +9283,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               // Otherwise, it toggles the roster open.
                               if (overlayRosterVisible) {
                                 if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
-                                  // Best-effort: silently capture the current question into Notes before reclaiming control.
-                                  try {
-                                    autoSaveCurrentQuestionAsNotesRef.current?.()
-                                  } catch {}
                                   handOverPresentation(null)
                                   return
                                 }

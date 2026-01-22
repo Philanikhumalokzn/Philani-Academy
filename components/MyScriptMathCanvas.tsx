@@ -9283,6 +9283,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               // Otherwise, it toggles the roster open.
                               if (overlayRosterVisible) {
                                 if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
+                                  // Best-effort: silently capture the current question into Notes before reclaiming control.
+                                  try {
+                                    autoSaveCurrentQuestionAsNotesRef.current?.()
+                                  } catch {}
                                   handOverPresentation(null)
                                   return
                                 }

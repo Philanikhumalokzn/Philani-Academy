@@ -8379,6 +8379,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [canPersistLatex, isAdmin, isLessonAuthoring, latexOutput, saveLatexIntoLessonDraft, sessionKey]
   )
 
+  // Auto-save shared class notes on presenter/controller switches.
+  // This captures the current notes at the moment control changes, so the admin
+  // doesn't have to manually click the floppy-disk save.
+  const prevPresenterKeyForAutoSaveRef = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (isLessonAuthoring) return
+    if (!isAdmin) return
+    if (!canPersistLatex || !sessionKey) return
+
+    const nextKey = activePresenterUserKey ? String(activePresenterUserKey) : ''
+    const prevKey = prevPresenterKeyForAutoSaveRef.current
+    // Skip initial mount.
+    if (prevKey === undefined) {
+      prevPresenterKeyForAutoSaveRef.current = nextKey
+      return
+    }
+
+    if (prevKey !== nextKey) {
+      void saveLatexSnapshot({ shared: true, auto: true })
+    }
+    prevPresenterKeyForAutoSaveRef.current = nextKey
+  }, [activePresenterUserKey, canPersistLatex, isAdmin, isLessonAuthoring, saveLatexSnapshot, sessionKey])
+
   const saveQuestionAsNotes = useCallback(
     async (options: { title: string; noteId: string }) => {
       if (isLessonAuthoring) {

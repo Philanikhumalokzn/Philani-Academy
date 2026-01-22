@@ -2191,11 +2191,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [connectedClients, isAdmin, normalizeName, reclaimAdminControl, setPresenterRightsForClients]
   )
 
+  const autoSaveCurrentQuestionAsNotesRef = useRef<null | (() => void)>(null)
+
   const handleRosterAttendeeAvatarClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault()
       e.stopPropagation()
       if (!isAdmin) return
+
+      // Best-effort: silently capture the current question into Notes before switching presenter.
+      try {
+        autoSaveCurrentQuestionAsNotesRef.current?.()
+      } catch {}
 
       const el = e.currentTarget
       const clickedClientId = String(el?.dataset?.clientId || '').trim()
@@ -8469,6 +8476,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     },
     [adminSteps, canPersistLatex, isAdmin, isLessonAuthoring, normalizeStepLatex, sessionKey]
   )
+
+  // Silent "Finish Question" save (no modal) used when the admin is switching presenter context.
+  // Mirrors the paper-plane empty-canvas flow by saving the full question (top steps) into Notes.
+  const lastAutoQuestionNotesHashRef = useRef<string | null>(null)
+  const autoSaveCurrentQuestionAsNotes = useCallback(async () => {
+    if (isLessonAuthoring) return
+    if (!isAdmin) return
+    if (!canPersistLatex || !sessionKey) return
+
+    // Only auto-finish when the bottom canvas is empty.
+    let emptyCanvas = false
+    let emptyLine = false
+    try {
+      emptyCanvas = isEditorEmptyNow()
+      emptyLine = isCurrentLineEmptyNow()
+    } catch {
+      return
+    }
+    if (!emptyCanvas || !emptyLine) return
+
+    const normalized = adminSteps
+      .filter(s => s && typeof s === 'object')
+      .map(s => normalizeStepLatex((s as any)?.latex || ''))
+      .filter(Boolean)
+
+    if (!normalized.length) return
+    const hash = normalized.join('\n')
+    if (lastAutoQuestionNotesHashRef.current === hash) return
+    lastAutoQuestionNotesHashRef.current = hash
+
+    const noteId = createSessionNoteId()
+    const inferredTitle = prettyPrintTitleFromLatex(adminSteps[0]?.latex || '')
+    const title = (inferredTitle || '').trim() || 'Untitled question'
+    await saveQuestionAsNotes({ title, noteId })
+  }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
+
+  useEffect(() => {
+    autoSaveCurrentQuestionAsNotesRef.current = () => {
+      void autoSaveCurrentQuestionAsNotes()
+    }
+    return () => {
+      autoSaveCurrentQuestionAsNotesRef.current = null
+    }
+  }, [autoSaveCurrentQuestionAsNotes])
 
   useEffect(() => {
     if (!finishQuestionModalOpen) return

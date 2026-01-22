@@ -8497,20 +8497,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const requireEmptyBottom = options?.requireEmptyBottom !== false
 
-    // By default, only auto-finish when the bottom canvas is empty.
-    // On admin reclaim we bypass this gating since the teacher may be viewing the student's board state.
-    if (requireEmptyBottom) {
-      let emptyCanvas = false
-      let emptyLine = false
-      try {
-        emptyCanvas = isEditorEmptyNow()
-        emptyLine = isCurrentLineEmptyNow()
-      } catch {
-        return
-      }
-      if (!emptyCanvas || !emptyLine) return
-    }
-
     const stepsFromAdmin = adminSteps
       .filter(s => s && typeof s === 'object')
       .map(s => ({ latex: normalizeStepLatex((s as any)?.latex || ''), symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [] }))
@@ -8523,6 +8509,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const stepsForSave = stepsFromAdmin.length
       ? stepsFromAdmin
       : (snapshotLatex ? [{ latex: snapshotLatex, symbols: Array.isArray(snapshotSymbols) ? snapshotSymbols : [] }] : [])
+
+    // Only enforce the "empty bottom canvas" rule when we're saving teacher-authored steps.
+    // When saving the current presenter's published snapshot (learner work), the canvas is *expected*
+    // to be non-empty, so blocking on emptiness would skip saves during learner→learner switches.
+    if (stepsFromAdmin.length && requireEmptyBottom) {
+      let emptyCanvas = false
+      let emptyLine = false
+      try {
+        emptyCanvas = isEditorEmptyNow()
+        emptyLine = isCurrentLineEmptyNow()
+      } catch {
+        return
+      }
+      if (!emptyCanvas || !emptyLine) return
+    }
 
     if (!stepsForSave.length) return
     const hash = stepsForSave.map(s => normalizeStepLatex(s.latex || '')).filter(Boolean).join('\n')

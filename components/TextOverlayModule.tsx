@@ -1299,7 +1299,7 @@ export default function TextOverlayModule(props: {
                 left: isQuizFeedbackBox ? '50%' : `${effective.x * 100}%`,
                 top: `${effective.y * 100}%`,
                 width: isQuizFeedbackBox ? 'fit-content' : `${effective.w * 100}%`,
-                minWidth: isQuizFeedbackBox ? undefined : MIN_BOX_PX_W,
+                minWidth: isQuizFeedbackBox ? undefined : (isMinimized ? 120 : MIN_BOX_PX_W),
                 maxWidth: '92vw',
                 height: shouldAutoFitHeight ? 'fit-content' : `${effective.h * 100}%`,
                 minHeight: shouldAutoFitHeight ? undefined : MIN_BOX_PX_H,
@@ -1316,7 +1316,7 @@ export default function TextOverlayModule(props: {
               onContextMenu={event => onBoxContextMenu(box, event)}
             >
               <div
-                className={`relative rounded-2xl border p-3 ${(!isAdmin && isQuizPopupBox) ? (isClosing ? 'philani-quiz-pop-out' : 'philani-quiz-pop') : ''}`}
+                className={`relative border ${isMinimized ? 'rounded-full px-3 py-2' : 'rounded-2xl p-3'} ${(!isAdmin && isQuizPopupBox) ? (isClosing ? 'philani-quiz-pop-out' : 'philani-quiz-pop') : ''}`}
                 style={{
                   background: 'rgba(0,0,0,0.65)',
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
@@ -1357,9 +1357,9 @@ export default function TextOverlayModule(props: {
 
                             const nextPrevW = (typeof current.w === 'number' && Number.isFinite(current.w)) ? current.w : effective.w
                             const nextPrevH = (typeof current.h === 'number' && Number.isFinite(current.h)) ? current.h : effective.h
-                            // Default minimized size (fractions of stage).
-                            const minW = 0.38
-                            const minH = 0.12
+                            // Default minimized size (fractions of stage). Keep it small so it doesn't obstruct writing.
+                            const minW = 0.24
+                            const minH = 0.08
                             return {
                               ...current,
                               minimized: true,
@@ -1428,14 +1428,12 @@ export default function TextOverlayModule(props: {
                 )}
 
                 {isMinimized ? (
-                  <div className="pr-14">
-                    <div className="text-sm font-semibold">Quiz</div>
+                  <div className="flex items-center gap-2 pr-14" style={{ pointerEvents: 'none' }}>
+                    <div className="text-xs font-semibold text-white/90">Quiz</div>
                     {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
-                      <div className="mt-1 text-xs text-white/80" style={{ pointerEvents: 'none' }}>
-                        Time left: {formatCountdown(quizTimeLeftSec)}
-                      </div>
+                      <div className="text-xs text-white/75">⏱ {formatCountdown(quizTimeLeftSec)}</div>
                     )}
-                    <div className="mt-1 text-xs text-white/60">Drag to move • Tap ▢ to expand</div>
+                    <div className="ml-auto text-xs text-white/35">⋮⋮</div>
                   </div>
                 ) : (
                   <>

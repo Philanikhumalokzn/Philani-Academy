@@ -8497,6 +8497,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const requireEmptyBottom = options?.requireEmptyBottom !== false
 
+    const remotePresenterActive = Boolean(activePresenterUserKeyRef.current) && !isSelfActivePresenter()
+
     const stepsFromAdmin = adminSteps
       .filter(s => s && typeof s === 'object')
       .map(s => ({ latex: normalizeStepLatex((s as any)?.latex || ''), symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [] }))
@@ -8506,14 +8508,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const snapshotLatex = normalizeStepLatex(typeof snapshotLatexRaw === 'string' ? snapshotLatexRaw : '')
     const snapshotSymbols = latestSnapshotRef.current?.snapshot?.symbols
 
-    const stepsForSave = stepsFromAdmin.length
-      ? stepsFromAdmin
-      : (snapshotLatex ? [{ latex: snapshotLatex, symbols: Array.isArray(snapshotSymbols) ? snapshotSymbols : [] }] : [])
+    const displayedLatex = normalizeStepLatex(typeof latexOutput === 'string' ? latexOutput : '')
+    const remoteLatex = displayedLatex || snapshotLatex
+    const remoteSymbols = Array.isArray(snapshotSymbols) ? snapshotSymbols : []
+
+    const stepsForSave = remotePresenterActive
+      ? ((remoteLatex || remoteSymbols.length)
+        ? [{ latex: remoteLatex, symbols: remoteSymbols }]
+        : [])
+      : (stepsFromAdmin.length
+        ? stepsFromAdmin
+        : ((remoteLatex || remoteSymbols.length)
+          ? [{ latex: remoteLatex, symbols: remoteSymbols }]
+          : []))
 
     // Only enforce the "empty bottom canvas" rule when we're saving teacher-authored steps.
     // When saving the current presenter's published snapshot (learner work), the canvas is *expected*
     // to be non-empty, so blocking on emptiness would skip saves during learner→learner switches.
-    if (stepsFromAdmin.length && requireEmptyBottom) {
+    if (!remotePresenterActive && stepsFromAdmin.length && requireEmptyBottom) {
       let emptyCanvas = false
       let emptyLine = false
       try {
@@ -8526,7 +8538,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     if (!stepsForSave.length) return
-    const hash = stepsForSave.map(s => normalizeStepLatex(s.latex || '')).filter(Boolean).join('\n')
+    const normalizedLatexParts = stepsForSave.map(s => normalizeStepLatex(s.latex || '')).filter(Boolean)
+    const hash = normalizedLatexParts.length
+      ? normalizedLatexParts.join('\n')
+      : `symbols:${stepsForSave.reduce((acc, step) => acc + (Array.isArray((step as any).symbols) ? (step as any).symbols.length : 0), 0)}`
     if (lastAutoQuestionNotesHashRef.current === hash) return
     lastAutoQuestionNotesHashRef.current = hash
 
@@ -8534,7 +8549,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const inferredTitle = prettyPrintTitleFromLatex(stepsForSave[0]?.latex || '')
     const title = (inferredTitle || '').trim() || 'Untitled question'
     await saveQuestionAsNotes({ title, noteId, stepsOverride: stepsForSave })
-  }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
+  }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {
     autoSaveCurrentQuestionAsNotesRef.current = async (options?: { requireEmptyBottom?: boolean }) => {

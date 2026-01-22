@@ -84,10 +84,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'POST') {
       const { latex, title, shared, noteId, payload } = req.body || {}
-    if (!latex || typeof latex !== 'string') {
+    const latexString = typeof latex === 'string' ? latex : ''
+
+    const payloadHasContent = (() => {
+      if (!payload || typeof payload !== 'object') return false
+      const steps = Array.isArray((payload as any).steps) ? (payload as any).steps : []
+      if (!steps.length) return false
+      for (const step of steps) {
+        if (!step || typeof step !== 'object') continue
+        const stepLatex = typeof (step as any).latex === 'string' ? (step as any).latex : ''
+        const symbols = Array.isArray((step as any).symbols) ? (step as any).symbols : []
+        if (stepLatex.trim()) return true
+        if (symbols.length) return true
+      }
+      return false
+    })()
+
+    if (!latexString.trim() && !payloadHasContent) {
       return res.status(400).json({ message: 'Latex content is required' })
     }
-    if (latex.length > MAX_LATEX_LENGTH) {
+    if (latexString.length > MAX_LATEX_LENGTH) {
       return res.status(400).json({ message: 'Latex content is too large' })
     }
 
@@ -101,14 +117,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const relativePath = path.posix.join('sessions', safeSession, 'latex', scopeFolder, filename)
 
     try {
-      const stored = await saveToStorage(relativePath, latex)
+      const stored = await saveToStorage(relativePath, latexString)
       const record = await prisma.latexSave.create({
         data: {
           sessionKey,
           userId: willShare ? null : userId,
           userEmail,
           title: saveTitle,
-          latex,
+          latex: latexString,
           shared: willShare,
             noteId: typeof noteId === 'string' && noteId.trim() ? noteId.trim() : null,
             payload: payload ?? null,

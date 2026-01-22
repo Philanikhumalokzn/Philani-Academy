@@ -323,8 +323,8 @@ export default function TextOverlayModule(props: {
 
   // Student-local overrides for the quiz prompt box.
   // Students should be able to move/resize/close the prompt without affecting others.
-  const [localQuizOverride, setLocalQuizOverride] = useState<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
-  const localQuizOverrideRef = useRef<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean }>(null)
+  const [localQuizOverride, setLocalQuizOverride] = useState<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean; minimized?: boolean; prevW?: number; prevH?: number }>(null)
+  const localQuizOverrideRef = useRef<null | { x?: number; y?: number; w?: number; h?: number; hidden?: boolean; minimized?: boolean; prevW?: number; prevH?: number }>(null)
   useEffect(() => {
     localQuizOverrideRef.current = localQuizOverride
   }, [localQuizOverride])
@@ -1276,7 +1276,9 @@ export default function TextOverlayModule(props: {
           const isQuizFeedbackBox = box.id === QUIZ_FEEDBACK_BOX_ID
           const isQuizPopupBox = isQuizBox || isQuizFeedbackBox
           const isClosing = Boolean(closingPopupIds[box.id])
-          const allowCanvasInkThrough = !isAdmin && isQuizPopupBox
+          // For learners we want to support drag-anywhere on the quiz prompt.
+          // This requires pointer events on the popup (so we can't fully allow ink-through underneath).
+          const allowCanvasInkThrough = !isAdmin && isQuizPopupBox && !isQuizBox
           const effective = (!isAdmin && isQuizBox && localQuizOverrideRef.current)
             ? {
                 ...box,
@@ -1286,7 +1288,8 @@ export default function TextOverlayModule(props: {
                 h: typeof localQuizOverrideRef.current.h === 'number' ? localQuizOverrideRef.current.h : box.h,
               }
             : box
-          const shouldAutoFitHeight = isQuizFeedbackBox || (!isAdmin && isQuizBox)
+          const isMinimized = Boolean(!isAdmin && isQuizBox && localQuizOverrideRef.current?.minimized)
+          const shouldAutoFitHeight = isQuizFeedbackBox || (!isAdmin && isQuizBox) || isMinimized
           return (
             <div
               key={box.id}
@@ -1328,80 +1331,144 @@ export default function TextOverlayModule(props: {
                 }}
               >
                 {(isQuizBox || isQuizFeedbackBox) && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-2 px-2 py-1 text-xs text-white/80 hover:text-white"
-                    style={{ pointerEvents: 'auto' }}
-                    onClick={async e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (isAdmin) {
-                        await toggleBoxVisibilityById(box.id)
-                        return
-                      }
-                      if (isQuizBox) {
-                        setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
+                  <div className="absolute right-2 top-2 flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
+                    {!isAdmin && isQuizBox && (
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-xs text-white/80 hover:text-white"
+                        onClick={e => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setLocalQuizOverride(prev => {
+                            const current = prev || {}
+                            const currentlyMinimized = Boolean(current.minimized)
+                            if (currentlyMinimized) {
+                              const restoredW = (typeof current.prevW === 'number' && Number.isFinite(current.prevW)) ? current.prevW : current.w
+                              const restoredH = (typeof current.prevH === 'number' && Number.isFinite(current.prevH)) ? current.prevH : current.h
+                              return {
+                                ...current,
+                                minimized: false,
+                                prevW: undefined,
+                                prevH: undefined,
+                                w: restoredW,
+                                h: restoredH,
+                              }
+                            }
+
+                            const nextPrevW = (typeof current.w === 'number' && Number.isFinite(current.w)) ? current.w : effective.w
+                            const nextPrevH = (typeof current.h === 'number' && Number.isFinite(current.h)) ? current.h : effective.h
+                            // Default minimized size (fractions of stage).
+                            const minW = 0.38
+                            const minH = 0.12
+                            return {
+                              ...current,
+                              minimized: true,
+                              prevW: nextPrevW,
+                              prevH: nextPrevH,
+                              w: minW,
+                              h: minH,
+                            }
+                          })
+                        }}
+                        onPointerDown={e => {
+                          e.stopPropagation()
+                        }}
+                        aria-label={isMinimized ? 'Restore quiz prompt' : 'Minimize quiz prompt'}
+                        title={isMinimized ? 'Restore' : 'Minimize'}
+                      >
+                        {isMinimized ? '▢' : '–'}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs text-white/80 hover:text-white"
+                      onClick={async e => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (isAdmin) {
+                          await toggleBoxVisibilityById(box.id)
+                          return
+                        }
+                        if (isQuizBox) {
+                          setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
+                          window.setTimeout(() => {
+                            setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                            setClosingPopupIds(prev => {
+                              if (!prev[QUIZ_BOX_ID]) return prev
+                              const next = { ...prev }
+                              delete next[QUIZ_BOX_ID]
+                              return next
+                            })
+                          }, 230)
+                          return
+                        }
+                        clearQuizFeedbackAutoHide()
+                        setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
                         window.setTimeout(() => {
-                          setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                          setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
                           setClosingPopupIds(prev => {
-                            if (!prev[QUIZ_BOX_ID]) return prev
+                            if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
                             const next = { ...prev }
-                            delete next[QUIZ_BOX_ID]
+                            delete next[QUIZ_FEEDBACK_BOX_ID]
                             return next
                           })
                         }, 230)
-                        return
-                      }
-                      clearQuizFeedbackAutoHide()
-                      setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
-                      window.setTimeout(() => {
-                        setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
-                        setClosingPopupIds(prev => {
-                          if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
-                          const next = { ...prev }
-                          delete next[QUIZ_FEEDBACK_BOX_ID]
-                          return next
-                        })
-                      }, 230)
-                    }}
-                    onPointerDown={e => {
-                      // Prevent the drag handler from swallowing a click on mobile.
-                      e.stopPropagation()
-                    }}
-                    aria-label="Close"
-                    title="Close"
-                  >
-                    ×
-                  </button>
-                )}
-                <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
-
-                {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
-                  <div className="mt-2 flex items-center justify-end text-xs text-white/80" style={{ pointerEvents: 'none' }}>
-                    Time left: {formatCountdown(quizTimeLeftSec)}
-                  </div>
-                )}
-
-                {!isAdmin && isQuizBox && (
-                  <div className="mt-3">
-                    <div className="mb-1 text-xs text-white/80">Your typed answer (optional)</div>
-                    <textarea
-                      className="w-full rounded-xl border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none"
-                      style={{ minHeight: 88, resize: 'vertical', userSelect: 'text', touchAction: 'auto', pointerEvents: 'auto' }}
-                      value={studentQuizTextResponse}
-                      onChange={e => {
-                        const next = e.target.value
-                        setStudentQuizTextResponse(next)
-                        dispatchStudentQuizTextResponse(next)
                       }}
-                      placeholder="Type your answer here…"
                       onPointerDown={e => {
-                        // Let students type without dragging the popup.
+                        // Prevent the drag handler from swallowing a click on mobile.
                         e.stopPropagation()
                       }}
-                      onClick={e => e.stopPropagation()}
-                    />
+                      aria-label="Close"
+                      title="Close"
+                    >
+                      ×
+                    </button>
                   </div>
+                )}
+
+                {isMinimized ? (
+                  <div className="pr-14">
+                    <div className="text-sm font-semibold">Quiz</div>
+                    {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
+                      <div className="mt-1 text-xs text-white/80" style={{ pointerEvents: 'none' }}>
+                        Time left: {formatCountdown(quizTimeLeftSec)}
+                      </div>
+                    )}
+                    <div className="mt-1 text-xs text-white/60">Drag to move • Tap ▢ to expand</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
+
+                    {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
+                      <div className="mt-2 flex items-center justify-end text-xs text-white/80" style={{ pointerEvents: 'none' }}>
+                        Time left: {formatCountdown(quizTimeLeftSec)}
+                      </div>
+                    )}
+
+                    {!isAdmin && isQuizBox && (
+                      <div className="mt-3">
+                        <div className="mb-1 text-xs text-white/80">Your typed answer (optional)</div>
+                        <textarea
+                          className="w-full rounded-xl border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none"
+                          style={{ minHeight: 88, resize: 'vertical', userSelect: 'text', touchAction: 'auto', pointerEvents: 'auto' }}
+                          value={studentQuizTextResponse}
+                          onChange={e => {
+                            const next = e.target.value
+                            setStudentQuizTextResponse(next)
+                            dispatchStudentQuizTextResponse(next)
+                          }}
+                          placeholder="Type your answer here…"
+                          onPointerDown={e => {
+                            // Let students type without dragging the popup.
+                            e.stopPropagation()
+                          }}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {isQuizBox && (

@@ -8935,128 +8935,149 @@ export default function Dashboard() {
                   
 
                   {challengeGradingResponseId && activeChallengeGradingResponse && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
-                      <div className="bg-white text-black rounded-lg p-6 min-w-[300px] max-w-[90vw]">
-                        <div className="font-semibold mb-2">Grade Response</div>
-                        {(() => {
-                          const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
-                          const stepCount = Math.max(1, steps.length || 0)
-                          return Array.from({ length: stepCount }, (_, stepIdx) => {
-                            const stepLatex = steps[stepIdx] || ''
-                            const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
-                            return (
-                              <div key={stepIdx} className="mb-3">
-                                <div className="mb-1 text-sm font-medium">Step {stepIdx + 1}</div>
-                                {stepLatex ? (
-                                  stepHtml ? (
-                                    <div className="mb-2 p-2 rounded border border-black/10" dangerouslySetInnerHTML={{ __html: stepHtml }} />
-                                  ) : (
-                                    <div className="mb-2 p-2 rounded border border-black/10 text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
-                                  )
-                                ) : null}
-                                <div className="flex flex-wrap gap-4">
-                                  <label>
-                                    <input
-                                      type="radio"
-                                      name={`challenge-grade-step-${stepIdx}`}
-                                      value="tick"
-                                      checked={challengeGradingByStep[stepIdx] === 'tick'}
-                                      onChange={() => {
-                                        setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'tick' }))
-                                        setChallengeGradingStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
-                                      }}
-                                    />
-                                    <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
-                                  </label>
-                                  <label>
-                                    <input
-                                      type="radio"
-                                      name={`challenge-grade-step-${stepIdx}`}
-                                      value="dot-green"
-                                      checked={challengeGradingByStep[stepIdx] === 'dot-green'}
-                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-green' }))}
-                                    />
-                                    <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
-                                  </label>
-                                  <label>
-                                    <input
-                                      type="radio"
-                                      name={`challenge-grade-step-${stepIdx}`}
-                                      value="cross"
-                                      checked={challengeGradingByStep[stepIdx] === 'cross'}
-                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'cross' }))}
-                                    />
-                                    <span role="img" aria-label="Red X" className="ml-1">❌</span>
-                                  </label>
-                                  <label>
-                                    <input
-                                      type="radio"
-                                      name={`challenge-grade-step-${stepIdx}`}
-                                      value="dot-red"
-                                      checked={challengeGradingByStep[stepIdx] === 'dot-red'}
-                                      onChange={() => setChallengeGradingByStep(g => ({ ...g, [stepIdx]: 'dot-red' }))}
-                                    />
-                                    <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
-                                  </label>
-                                </div>
-                                <div className="mt-2 flex items-center gap-2">
-                                  <label className="text-xs font-medium">Marks:</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={20}
-                                    step={1}
-                                    className="w-16 border rounded p-1 text-xs"
-                                    value={Number.isFinite(Number(challengeGradingStepMarks[stepIdx])) ? challengeGradingStepMarks[stepIdx] : ''}
-                                    onChange={(e) => {
-                                      const next = Number(e.target.value)
-                                      if (!Number.isFinite(next)) {
-                                        setChallengeGradingStepMarks(m => {
-                                          const { [stepIdx]: _, ...rest } = m
-                                          return rest
-                                        })
-                                        return
-                                      }
-                                      setChallengeGradingStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
-                                    }}
-                                  />
-                                </div>
-                                <div className="mt-2">
-                                  <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>
-                                  <textarea
-                                    className="w-full border rounded p-1 text-xs"
-                                    rows={2}
-                                    value={challengeGradingStepFeedback[stepIdx] || ''}
-                                    onChange={(e) => setChallengeGradingStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
-                                  />
-                                </div>
-                              </div>
-                            )
-                          })
-                        })()}
-                        <div className="mb-2">
-                          <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
-                          <textarea
-                            className="w-full border rounded p-1 text-xs"
-                            rows={2}
-                            value={challengeGradingFeedback}
-                            onChange={(e) => setChallengeGradingFeedback(e.target.value)}
-                          />
-                        </div>
-                        <div className="flex gap-2 mt-4">
-                          <button
-                            className="btn btn-primary btn-xs"
-                            onClick={saveChallengeGrading}
-                            disabled={challengeGradingSaving}
+                    <OverlayPortal>
+                      <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Grade response">
+                        <div
+                          className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+                          onClick={closeChallengeGrading}
+                        />
+
+                        <div className="absolute inset-0 p-2 sm:p-6" onClick={closeChallengeGrading}>
+                          <div
+                            className="card philani-overlay-panel philani-overlay-enter h-full w-full overflow-hidden flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {challengeGradingSaving ? 'Saving...' : 'Save'}
-                          </button>
-                          <button className="btn btn-ghost btn-xs" onClick={closeChallengeGrading}>
-                            Cancel
-                          </button>
+                            <div className="p-3 border-b border-white/10 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-semibold break-words">Grade Response</div>
+                                <div className="text-xs text-white/60 break-words">Step-by-step marking and feedback</div>
+                              </div>
+                              <button type="button" className="btn btn-ghost" onClick={closeChallengeGrading}>
+                                Close
+                              </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-3">
+                              {(() => {
+                                const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
+                                const stepCount = Math.max(1, steps.length || 0)
+                                return (
+                                  <div className="space-y-3">
+                                    {Array.from({ length: stepCount }, (_, stepIdx) => {
+                                      const stepLatex = steps[stepIdx] || ''
+                                      const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
+                                      const selected = challengeGradingByStep[stepIdx] || null
+                                      const selectGrade = (grade: string) => {
+                                        setChallengeGradingByStep((g) => ({ ...g, [stepIdx]: grade }))
+                                        if (grade === 'tick') {
+                                          setChallengeGradingStepMarks((m) => ({
+                                            ...m,
+                                            [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1,
+                                          }))
+                                        }
+                                      }
+
+                                      const pill = (isActive: boolean) =>
+                                        `btn btn-xs ${isActive ? 'btn-primary' : 'btn-ghost'} !px-2 !py-1`
+
+                                      return (
+                                        <div key={stepIdx} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="text-sm font-semibold">Step {stepIdx + 1}</div>
+                                          </div>
+
+                                          {stepLatex ? (
+                                            stepHtml ? (
+                                              <div
+                                                className="mt-2 rounded border border-white/10 bg-black/20 p-2"
+                                                dangerouslySetInnerHTML={{ __html: stepHtml }}
+                                              />
+                                            ) : (
+                                              <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-xs font-mono whitespace-pre-wrap break-words">
+                                                {stepLatex}
+                                              </div>
+                                            )
+                                          ) : (
+                                            <div className="mt-2 text-xs text-white/60">(empty step)</div>
+                                          )}
+
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            <button type="button" className={pill(selected === 'tick')} onClick={() => selectGrade('tick')} aria-pressed={selected === 'tick'}>
+                                              Tick
+                                            </button>
+                                            <button type="button" className={pill(selected === 'dot-green')} onClick={() => selectGrade('dot-green')} aria-pressed={selected === 'dot-green'}>
+                                              Green dot
+                                            </button>
+                                            <button type="button" className={pill(selected === 'cross')} onClick={() => selectGrade('cross')} aria-pressed={selected === 'cross'}>
+                                              Cross
+                                            </button>
+                                            <button type="button" className={pill(selected === 'dot-red')} onClick={() => selectGrade('dot-red')} aria-pressed={selected === 'dot-red'}>
+                                              Red dot
+                                            </button>
+                                          </div>
+
+                                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                                            <label className="text-xs font-medium text-white/80">Marks</label>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              max={20}
+                                              step={1}
+                                              className="w-20 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white"
+                                              value={Number.isFinite(Number(challengeGradingStepMarks[stepIdx])) ? challengeGradingStepMarks[stepIdx] : ''}
+                                              onChange={(e) => {
+                                                const next = Number(e.target.value)
+                                                if (!Number.isFinite(next)) {
+                                                  setChallengeGradingStepMarks((m) => {
+                                                    const { [stepIdx]: _, ...rest } = m
+                                                    return rest
+                                                  })
+                                                  return
+                                                }
+                                                setChallengeGradingStepMarks((m) => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
+                                              }}
+                                            />
+                                          </div>
+
+                                          <div className="mt-3">
+                                            <label className="block text-xs font-medium text-white/80 mb-1">Step feedback (optional)</label>
+                                            <textarea
+                                              className="w-full rounded border border-white/10 bg-white/5 p-2 text-xs text-white"
+                                              rows={3}
+                                              value={challengeGradingStepFeedback[stepIdx] || ''}
+                                              onChange={(e) => setChallengeGradingStepFeedback((f) => ({ ...f, [stepIdx]: e.target.value }))}
+                                            />
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+
+                                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                                      <label className="block text-xs font-medium text-white/80 mb-1">Overall feedback (optional)</label>
+                                      <textarea
+                                        className="w-full rounded border border-white/10 bg-white/5 p-2 text-xs text-white"
+                                        rows={4}
+                                        value={challengeGradingFeedback}
+                                        onChange={(e) => setChallengeGradingFeedback(e.target.value)}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                            </div>
+
+                            <div className="p-3 border-t border-white/10 flex items-center justify-end gap-2">
+                              <button type="button" className="btn btn-ghost" onClick={closeChallengeGrading}>
+                                Cancel
+                              </button>
+                              <button type="button" className="btn btn-primary" onClick={saveChallengeGrading} disabled={challengeGradingSaving}>
+                                {challengeGradingSaving ? 'Saving…' : 'Save grading'}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </OverlayPortal>
                   )}
 
                   <div className="text-xs muted">

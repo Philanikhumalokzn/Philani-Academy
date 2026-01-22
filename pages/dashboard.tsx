@@ -8320,7 +8320,7 @@ export default function Dashboard() {
 
       {createOverlayOpen && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
             <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeCreateOverlay} />
             <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeCreateOverlay}>
               <div

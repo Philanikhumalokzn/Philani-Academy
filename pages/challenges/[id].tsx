@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
@@ -26,6 +27,349 @@ type Challenge = {
   takers?: Array<{ userId: string; name: string; avatar: string | null; lastSubmittedAt: string; submissions: number }>
   attempts?: Array<{ id: string; userId: string; name: string; avatar: string | null; createdAt: string; latex: string; studentText?: string | null }>
   createdBy?: { id?: string; name?: string; avatar?: string | null } | null
+}
+
+const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted || typeof document === 'undefined') return null
+  return createPortal(children, document.body)
+}
+
+function OwnerAttemptCard(props: {
+  resp: any
+  idx: number
+  challengeId: string
+  refreshChallenge: () => Promise<void>
+  splitLatexIntoSteps: (latex: unknown) => string[]
+  renderKatexDisplayHtml: (latex: unknown) => string
+  normalizeChallengeGrade: (gradingJson: any, stepCount: number) => any
+  renderTextWithKatex: (text: unknown) => any
+}) {
+  const { resp, idx, challengeId, refreshChallenge, splitLatexIntoSteps, renderKatexDisplayHtml, normalizeChallengeGrade, renderTextWithKatex } = props
+
+  const [showGradePopup, setShowGradePopup] = useState(false)
+  const [grading, setGrading] = useState<{ [step: number]: string }>({})
+  const [feedback, setFeedback] = useState('')
+  const [stepFeedback, setStepFeedback] = useState<{ [step: number]: string }>({})
+  const [stepMarks, setStepMarks] = useState<{ [step: number]: number }>({})
+  const [saving, setSaving] = useState(false)
+
+  const steps = splitLatexIntoSteps(resp?.latex || '')
+  const stepCount = Math.max(1, steps.length || 0)
+  const stepIndices = Array.from({ length: stepCount }, (_, i) => i)
+
+  const handleSaveGrading = useCallback(async () => {
+    setSaving(true)
+    try {
+      const gradingSteps = stepIndices.map((idx) => {
+        const grade = grading[idx] || null
+        const rawMarks = Number(stepMarks[idx])
+        const awardedMarks = Number.isFinite(rawMarks)
+          ? Math.max(0, Math.trunc(rawMarks))
+          : (grade === 'tick' ? 1 : 0)
+        const isCorrect = grade === 'tick' || grade === 'dot-green'
+        const isSignificant = grade === 'cross'
+          ? true
+          : grade === 'dot-red'
+            ? false
+            : !isCorrect
+        const fb = String(stepFeedback[idx] || '').trim()
+        return {
+          step: idx + 1,
+          awardedMarks,
+          isCorrect,
+          isSignificant,
+          feedback: fb || undefined,
+        }
+      })
+
+      const earnedMarks = gradingSteps.reduce((sum, s) => sum + Math.max(0, Number(s.awardedMarks || 0)), 0)
+      const totalMarks = Math.max(1, stepCount)
+      const gradingJson = { totalMarks, earnedMarks, steps: gradingSteps }
+
+      const sessionKey = encodeURIComponent(`challenge:${challengeId}`)
+      await fetch(`/api/sessions/${sessionKey}/responses`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          responseId: resp.id,
+          gradingJson,
+          feedback,
+        }),
+      })
+
+      setShowGradePopup(false)
+      setSaving(false)
+      await refreshChallenge()
+    } catch (e) {
+      setSaving(false)
+      alert('Failed to save grading')
+    }
+  }, [challengeId, feedback, grading, refreshChallenge, resp?.id, stepCount, stepFeedback, stepIndices, stepMarks])
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium text-white">{resp.name}</div>
+        <div className="text-xs text-white/60">
+          {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
+        </div>
+      </div>
+
+      <div className="text-sm">
+        <strong>Response:</strong>
+        {(() => {
+          const latex = String(resp.latex || '')
+          const steps = splitLatexIntoSteps(latex)
+          const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
+          const stepGradeByIndex = new Map<number, any>()
+          if (grade?.steps) {
+            grade.steps.forEach((s: any) => {
+              const stepNum = Number(s?.step)
+              if (Number.isFinite(stepNum) && stepNum > 0) stepGradeByIndex.set(Math.trunc(stepNum) - 1, s)
+            })
+          }
+          const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+          if (!latex.trim()) {
+            return (
+              <div className="mt-2 text-white/80 whitespace-pre-wrap break-words">
+                (empty)
+              </div>
+            )
+          }
+          if (steps.length) {
+            return (
+              <div className="mt-2 space-y-2">
+                {steps.map((stepLatex: string, stepIdx: number) => {
+                  const g = stepGradeByIndex.get(stepIdx)
+                  const awardedMarks = Number(g?.awardedMarks ?? 0)
+                  const awardedInt = Number.isFinite(awardedMarks) ? Math.max(0, Math.trunc(awardedMarks)) : 0
+                  const isCorrect = (typeof g?.isCorrect === 'boolean') ? Boolean(g.isCorrect) : (awardedInt > 0)
+                  const isSignificant = (typeof g?.isSignificant === 'boolean') ? Boolean(g.isSignificant) : (!isCorrect)
+                  const feedbackText = String(g?.feedback ?? '').trim()
+                  const stepHtml = renderKatexDisplayHtml(stepLatex)
+                  const line = stepHtml
+                    ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: stepHtml }} />
+                    : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
+
+                  return (
+                    <div key={`challenge-owner-step-${resp.id || idx}-${stepIdx}`} className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">{line}</div>
+                      {g ? (
+                        <div className="shrink-0 flex items-start gap-2">
+                          {awardedInt > 0 ? (
+                            <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
+                              {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                <svg key={`tick-${resp.id || idx}-${stepIdx}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                  <path
+                                    d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                    fill="currentColor"
+                                  />
+                                </svg>
+                              ))}
+                              {awardedInt > 12 ? (
+                                <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                              ) : null}
+                            </span>
+                          ) : isCorrect ? (
+                            <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                              <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                <circle cx="5" cy="5" r="4" fill="currentColor" />
+                              </svg>
+                            </span>
+                          ) : (
+                            isSignificant ? (
+                              <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                  <path
+                                    d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 0 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
+                                    fill="currentColor"
+                                  />
+                                </svg>
+                              </span>
+                            ) : (
+                              <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                  <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                </svg>
+                              </span>
+                            )
+                          )}
+
+                          {feedbackText ? (
+                            <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                              {feedbackText.slice(0, 160)}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          }
+
+          return html ? (
+            <div className="mt-2 leading-relaxed text-white/90" dangerouslySetInnerHTML={{ __html: html }} />
+          ) : (
+            <div className="mt-2 text-white/90 whitespace-pre-wrap break-words">
+              {renderTextWithKatex(latex)}
+            </div>
+          )
+        })()}
+      </div>
+
+      {resp.studentText ? (
+        <div className="text-sm">
+          <strong>Typed text:</strong>
+          <div className="mt-1 text-white/80">{resp.studentText}</div>
+        </div>
+      ) : null}
+
+      <div className="mt-2">
+        <button className="btn btn-secondary btn-xs" onClick={() => setShowGradePopup(true)}>
+          Grade
+        </button>
+      </div>
+
+      {(() => {
+        const steps = splitLatexIntoSteps(resp.latex)
+        const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
+        if (!grade) return null
+        return (
+          <div className="mt-2 text-green-300 text-xs">Mark: {grade.earnedMarks} / {grade.totalMarks}</div>
+        )
+      })()}
+      {resp.feedback && (
+        <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
+      )}
+
+      {showGradePopup ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
+            <div
+              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+              onClick={saving ? undefined : () => setShowGradePopup(false)}
+            />
+            <div
+              className="absolute inset-0 p-2 sm:p-6"
+              onClick={saving ? undefined : () => setShowGradePopup(false)}
+            >
+              <div
+                className="card philani-overlay-panel philani-overlay-enter h-full w-full overflow-hidden flex flex-col border border-white/10"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold">Grade Response</div>
+                    <div className="text-xs muted">Scroll to see all steps.</div>
+                  </div>
+                  <button type="button" className="btn btn-ghost" onClick={() => setShowGradePopup(false)} disabled={saving} aria-label="Close">✕</button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                  {stepIndices.map((stepIdx) => {
+                    const stepLatex = steps[stepIdx] || ''
+                    const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
+                    return (
+                      <div key={stepIdx} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="mb-2 text-sm font-medium">Step {stepIdx + 1}</div>
+
+                        {stepLatex ? (
+                          stepHtml ? (
+                            <div className="mb-3 rounded border border-white/10 bg-black/20 p-2" dangerouslySetInnerHTML={{ __html: stepHtml }} />
+                          ) : (
+                            <div className="mb-3 rounded border border-white/10 bg-black/20 p-2 text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
+                          )
+                        ) : null}
+
+                        <div className="flex flex-wrap gap-4 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => {
+                              setGrading(g => ({ ...g, [stepIdx]: 'tick' }))
+                              setStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
+                            }} />
+                            <span>✅</span>
+                            <span className="text-white/80">Correct</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
+                            <span>🟢</span>
+                            <span className="text-white/80">Mostly</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
+                            <span>❌</span>
+                            <span className="text-white/80">Incorrect</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
+                            <span>🔴</span>
+                            <span className="text-white/80">Minor error</span>
+                          </label>
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-3 flex-wrap">
+                          <div className="text-xs muted">Marks</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            step={1}
+                            className="input w-24"
+                            value={Number.isFinite(Number(stepMarks[stepIdx])) ? stepMarks[stepIdx] : ''}
+                            onChange={(e) => {
+                              const next = Number(e.target.value)
+                              if (!Number.isFinite(next)) {
+                                setStepMarks(m => {
+                                  const { [stepIdx]: _, ...rest } = m
+                                  return rest
+                                })
+                                return
+                              }
+                              setStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
+                            }}
+                          />
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="text-xs muted mb-1">Step feedback (optional)</div>
+                          <textarea
+                            className="input w-full min-h-[60px]"
+                            value={stepFeedback[stepIdx] || ''}
+                            onChange={e => setStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="text-xs muted mb-1">Overall feedback (optional)</div>
+                    <textarea className="input w-full min-h-[70px]" value={feedback} onChange={e => setFeedback(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="p-3 border-t border-white/10 flex items-center justify-end gap-2">
+                  <button className="btn btn-ghost" onClick={() => setShowGradePopup(false)} disabled={saving}>Cancel</button>
+                  <button className="btn btn-primary" onClick={handleSaveGrading} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+    </div>
+  )
 }
 
 export default function ChallengeAttemptPage() {
@@ -431,290 +775,19 @@ export default function ChallengeAttemptPage() {
                   </div>
                 )}
                 {Array.isArray(challenge?.attempts) && challenge.attempts.length > 0 ? (
-                  challenge.attempts.map((resp: any, idx: number) => {
-                    const [showGradePopup, setShowGradePopup] = useState(false);
-                    const [grading, setGrading] = useState<{ [step: number]: string }>({});
-                    const [feedback, setFeedback] = useState('');
-                    const [stepFeedback, setStepFeedback] = useState<{ [step: number]: string }>({});
-                    const [stepMarks, setStepMarks] = useState<{ [step: number]: number }>({});
-                    const [saving, setSaving] = useState(false);
-                    const steps = splitLatexIntoSteps(resp?.latex || '')
-                    const stepCount = Math.max(1, steps.length || 0)
-                    const stepIndices = Array.from({ length: stepCount }, (_, i) => i)
-
-                    // Calculate mark (simple: tick/dot-green = 1, cross/dot-red = 0)
-                    const calcMark = () => {
-                      const values = Object.values(grading);
-                      if (!values.length) return null;
-                      const score = values.filter(v => v === 'tick' || v === 'dot-green').length;
-                      return `${score} / ${values.length}`;
-                    };
-
-                    const handleSaveGrading = async () => {
-                      setSaving(true);
-                      try {
-                        const gradingSteps = stepIndices.map(idx => {
-                          const grade = grading[idx] || null
-                          const rawMarks = Number(stepMarks[idx])
-                          const awardedMarks = Number.isFinite(rawMarks)
-                            ? Math.max(0, Math.trunc(rawMarks))
-                            : (grade === 'tick' ? 1 : 0)
-                          const isCorrect = grade === 'tick' || grade === 'dot-green'
-                          const isSignificant = grade === 'cross'
-                            ? true
-                            : grade === 'dot-red'
-                              ? false
-                              : !isCorrect
-                          const fb = String(stepFeedback[idx] || '').trim()
-                          return {
-                            step: idx + 1,
-                            awardedMarks,
-                            isCorrect,
-                            isSignificant,
-                            feedback: fb || undefined,
-                          }
-                        })
-                        const earnedMarks = gradingSteps.reduce((sum, s) => sum + Math.max(0, Number(s.awardedMarks || 0)), 0)
-                        const totalMarks = Math.max(1, stepCount)
-                        const gradingJson = { totalMarks, earnedMarks, steps: gradingSteps }
-                        await fetch(`/api/sessions/challenge:${id}/responses`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'same-origin',
-                          body: JSON.stringify({
-                            responseId: resp.id,
-                            gradingJson,
-                            feedback,
-                          }),
-                        });
-                        setShowGradePopup(false);
-                        setSaving(false);
-                        await refreshChallenge();
-                      } catch (e) {
-                        setSaving(false);
-                        alert('Failed to save grading');
-                      }
-                    };
-
-                    return (
-                      <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-medium text-white">{resp.name}</div>
-                          <div className="text-xs text-white/60">
-                            {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}
-                          </div>
-                        </div>
-                        <div className="text-sm">
-                          <strong>Response:</strong>
-                          {(() => {
-                            const latex = String(resp.latex || '')
-                            const steps = splitLatexIntoSteps(latex)
-                            const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
-                            const stepGradeByIndex = new Map<number, any>()
-                            if (grade?.steps) {
-                              grade.steps.forEach((s: any) => {
-                                const stepNum = Number(s?.step)
-                                if (Number.isFinite(stepNum) && stepNum > 0) stepGradeByIndex.set(Math.trunc(stepNum) - 1, s)
-                              })
-                            }
-                            const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
-                            if (!latex.trim()) {
-                              return (
-                                <div className="mt-2 text-white/80 whitespace-pre-wrap break-words">
-                                  (empty)
-                                </div>
-                              )
-                            }
-                            if (steps.length) {
-                              return (
-                                <div className="mt-2 space-y-2">
-                                  {steps.map((stepLatex: string, stepIdx: number) => {
-                                    const g = stepGradeByIndex.get(stepIdx)
-                                    const awardedMarks = Number(g?.awardedMarks ?? 0)
-                                    const awardedInt = Number.isFinite(awardedMarks) ? Math.max(0, Math.trunc(awardedMarks)) : 0
-                                    const isCorrect = (typeof g?.isCorrect === 'boolean') ? Boolean(g.isCorrect) : (awardedInt > 0)
-                                    const isSignificant = (typeof g?.isSignificant === 'boolean') ? Boolean(g.isSignificant) : (!isCorrect)
-                                    const feedbackText = String(g?.feedback ?? '').trim()
-                                    const stepHtml = renderKatexDisplayHtml(stepLatex)
-                                    const line = stepHtml
-                                      ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: stepHtml }} />
-                                      : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
-
-                                    return (
-                                      <div key={`challenge-owner-step-${resp.id || idx}-${stepIdx}`} className="flex items-start gap-3">
-                                        <div className="min-w-0 flex-1">{line}</div>
-                                        {g ? (
-                                          <div className="shrink-0 flex items-start gap-2">
-                                            {awardedInt > 0 ? (
-                                              <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
-                                                {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
-                                                  <svg key={`tick-${resp.id || idx}-${stepIdx}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                    <path
-                                                      d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
-                                                      fill="currentColor"
-                                                    />
-                                                  </svg>
-                                                ))}
-                                                {awardedInt > 12 ? (
-                                                  <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
-                                                ) : null}
-                                              </span>
-                                            ) : isCorrect ? (
-                                              <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
-                                                <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                  <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                </svg>
-                                              </span>
-                                            ) : (
-                                              isSignificant ? (
-                                                <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
-                                                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                    <path
-                                                      d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
-                                                      fill="currentColor"
-                                                    />
-                                                  </svg>
-                                                </span>
-                                              ) : (
-                                                <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
-                                                  <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                    <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                  </svg>
-                                                </span>
-                                              )
-                                            )}
-
-                                            {feedbackText ? (
-                                              <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                {feedbackText.slice(0, 160)}
-                                              </div>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              )
-                            }
-
-                            return html ? (
-                              <div className="mt-2 leading-relaxed text-white/90" dangerouslySetInnerHTML={{ __html: html }} />
-                            ) : (
-                              <div className="mt-2 text-white/90 whitespace-pre-wrap break-words">
-                                {renderTextWithKatex(latex)}
-                              </div>
-                            )
-                          })()}
-                        </div>
-                        {resp.studentText ? (
-                          <div className="text-sm">
-                            <strong>Typed text:</strong>
-                            <div className="mt-1 text-white/80">{resp.studentText}</div>
-                          </div>
-                        ) : null}
-                        <div className="mt-2">
-                          <button className="btn btn-secondary btn-xs" onClick={() => setShowGradePopup(true)}>
-                            Grade
-                          </button>
-                        </div>
-                        {/* Display mark and feedback if graded */}
-                        {(() => {
-                          const steps = splitLatexIntoSteps(resp.latex)
-                          const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
-                          if (!grade) return null
-                          return (
-                            <div className="mt-2 text-green-300 text-xs">Mark: {grade.earnedMarks} / {grade.totalMarks}</div>
-                          )
-                        })()}
-                        {resp.feedback && (
-                          <div className="mt-1 text-blue-200 text-xs">Feedback: {resp.feedback}</div>
-                        )}
-                        {showGradePopup && (
-                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-                            <div className="bg-white text-black rounded-lg p-6 min-w-[300px] max-w-[90vw]">
-                              <div className="font-semibold mb-2">Grade Response</div>
-                              {stepIndices.map((stepIdx) => {
-                                const stepLatex = steps[stepIdx] || ''
-                                const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
-                                return (
-                                  <div key={stepIdx} className="mb-3">
-                                    <div className="mb-1 text-sm font-medium">Step {stepIdx + 1}</div>
-                                    {stepLatex ? (
-                                      stepHtml ? (
-                                        <div className="mb-2 p-2 rounded border border-black/10" dangerouslySetInnerHTML={{ __html: stepHtml }} />
-                                      ) : (
-                                        <div className="mb-2 p-2 rounded border border-black/10 text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
-                                      )
-                                    ) : null}
-                                    <div className="flex flex-wrap gap-4">
-                                      <label>
-                                        <input type="radio" name={`grade-step-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => {
-                                          setGrading(g => ({ ...g, [stepIdx]: 'tick' }))
-                                          setStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
-                                        }} />
-                                        <span role="img" aria-label="Green Tick" className="ml-1">✅</span>
-                                      </label>
-                                      <label>
-                                        <input type="radio" name={`grade-step-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
-                                        <span role="img" aria-label="Green Dot" className="ml-1">🟢</span>
-                                      </label>
-                                      <label>
-                                        <input type="radio" name={`grade-step-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
-                                        <span role="img" aria-label="Red X" className="ml-1">❌</span>
-                                      </label>
-                                      <label>
-                                        <input type="radio" name={`grade-step-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
-                                        <span role="img" aria-label="Red Dot" className="ml-1">🔴</span>
-                                      </label>
-                                    </div>
-                                    <div className="mt-2 flex items-center gap-2">
-                                      <label className="text-xs font-medium">Marks:</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        max={20}
-                                        step={1}
-                                        className="w-16 border rounded p-1 text-xs"
-                                        value={Number.isFinite(Number(stepMarks[stepIdx])) ? stepMarks[stepIdx] : ''}
-                                        onChange={(e) => {
-                                          const next = Number(e.target.value)
-                                          if (!Number.isFinite(next)) {
-                                            setStepMarks(m => {
-                                              const { [stepIdx]: _, ...rest } = m
-                                              return rest
-                                            })
-                                            return
-                                          }
-                                          setStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="mt-2">
-                                      <label className="block text-xs font-medium mb-1">Step feedback (optional):</label>
-                                      <textarea className="w-full border rounded p-1 text-xs" rows={2} value={stepFeedback[stepIdx] || ''} onChange={e => setStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))} />
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                              <div className="mb-2">
-                                <label className="block text-xs font-medium mb-1">Feedback (optional):</label>
-                                <textarea className="w-full border rounded p-1 text-xs" rows={2} value={feedback} onChange={e => setFeedback(e.target.value)} />
-                              </div>
-                              <div className="flex gap-2 mt-4">
-                                <button className="btn btn-primary btn-xs" onClick={handleSaveGrading} disabled={saving}>
-                                  {saving ? 'Saving...' : 'Save'}
-                                </button>
-                                <button className="btn btn-ghost btn-xs" onClick={() => setShowGradePopup(false)}>
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
+                  challenge.attempts.map((resp: any, idx: number) => (
+                    <OwnerAttemptCard
+                      key={resp.id || idx}
+                      resp={resp}
+                      idx={idx}
+                      challengeId={id}
+                      refreshChallenge={refreshChallenge}
+                      splitLatexIntoSteps={splitLatexIntoSteps}
+                      renderKatexDisplayHtml={renderKatexDisplayHtml}
+                      normalizeChallengeGrade={normalizeChallengeGrade}
+                      renderTextWithKatex={renderTextWithKatex}
+                    />
+                  ))
                 ) : (
                   <div className="text-sm text-white/70">No responses yet.</div>
                 )}

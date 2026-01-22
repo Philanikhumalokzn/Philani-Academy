@@ -9002,17 +9002,45 @@ export default function Dashboard() {
                                           )}
 
                                           <div className="mt-3 flex flex-wrap gap-2">
-                                            <button type="button" className={pill(selected === 'tick')} onClick={() => selectGrade('tick')} aria-pressed={selected === 'tick'}>
-                                              Tick
+                                            <button
+                                              type="button"
+                                              className={pill(selected === 'tick')}
+                                              onClick={() => selectGrade('tick')}
+                                              aria-pressed={selected === 'tick'}
+                                              aria-label="Green tick"
+                                              title="Correct"
+                                            >
+                                              <span role="img" aria-hidden="true">✅</span>
                                             </button>
-                                            <button type="button" className={pill(selected === 'dot-green')} onClick={() => selectGrade('dot-green')} aria-pressed={selected === 'dot-green'}>
-                                              Green dot
+                                            <button
+                                              type="button"
+                                              className={pill(selected === 'dot-green')}
+                                              onClick={() => selectGrade('dot-green')}
+                                              aria-pressed={selected === 'dot-green'}
+                                              aria-label="Green dot"
+                                              title="Correct (0 marks)"
+                                            >
+                                              <span role="img" aria-hidden="true">🟢</span>
                                             </button>
-                                            <button type="button" className={pill(selected === 'cross')} onClick={() => selectGrade('cross')} aria-pressed={selected === 'cross'}>
-                                              Cross
+                                            <button
+                                              type="button"
+                                              className={pill(selected === 'cross')}
+                                              onClick={() => selectGrade('cross')}
+                                              aria-pressed={selected === 'cross'}
+                                              aria-label="Red cross"
+                                              title="Incorrect (significant)"
+                                            >
+                                              <span role="img" aria-hidden="true">❌</span>
                                             </button>
-                                            <button type="button" className={pill(selected === 'dot-red')} onClick={() => selectGrade('dot-red')} aria-pressed={selected === 'dot-red'}>
-                                              Red dot
+                                            <button
+                                              type="button"
+                                              className={pill(selected === 'dot-red')}
+                                              onClick={() => selectGrade('dot-red')}
+                                              aria-pressed={selected === 'dot-red'}
+                                              aria-label="Red dot"
+                                              title="Incorrect (insignificant)"
+                                            >
+                                              <span role="img" aria-hidden="true">🔴</span>
                                             </button>
                                           </div>
 

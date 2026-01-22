@@ -15,6 +15,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
+const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
 
 const MOBILE_HERO_BG_MIN_WIDTH = 1200
 const MOBILE_HERO_BG_MIN_HEIGHT = 600
@@ -415,6 +416,9 @@ export default function Dashboard() {
   const [challengePosting, setChallengePosting] = useState(false)
   const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
 
+  const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
+  const [challengeImageEditFile, setChallengeImageEditFile] = useState<File | null>(null)
+
   const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
     const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
     setDiagramUploadTarget({ phaseKey, pointId, boardId })
@@ -518,10 +522,7 @@ export default function Dashboard() {
     }
   }, [])
 
-  const onChallengeFilePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  const uploadChallengeImage = useCallback(async (file: File) => {
     setChallengeUploading(true)
     try {
       const form = new FormData()
@@ -559,12 +560,19 @@ export default function Dashboard() {
           setChallengePromptDraft((prev) => (prev.trim() ? prev : parsedPrompt))
         }
       }
-    } catch (err: any) {
-      alert(err?.message || 'Failed to upload image')
     } finally {
       setChallengeUploading(false)
     }
   }, [challengeParseOnUpload])
+
+  const onChallengeFilePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setChallengeImageEditFile(file)
+    setChallengeImageEditOpen(true)
+  }, [])
 
   const postChallenge = useCallback(async () => {
     if (status !== 'authenticated') return
@@ -614,6 +622,20 @@ export default function Dashboard() {
       setChallengePosting(false)
     }
   }, [challengeAudienceDraft, challengeImageUrl, challengePromptDraft, challengeTitleDraft, createKind, selectedGrade, session, status])
+
+  const closeChallengeImageEdit = useCallback(() => {
+    setChallengeImageEditOpen(false)
+    setChallengeImageEditFile(null)
+  }, [])
+
+  const confirmChallengeImageEdit = useCallback(async (file: File) => {
+    try {
+      closeChallengeImageEdit()
+      await uploadChallengeImage(file)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload image')
+    }
+  }, [closeChallengeImageEdit, uploadChallengeImage])
 
   useEffect(() => {
     loadLessonScriptDraftFromStorage()
@@ -8312,6 +8334,16 @@ export default function Dashboard() {
           </div>
         </OverlayPortal>
       )}
+
+      <ImageCropperModal
+        open={challengeImageEditOpen}
+        file={challengeImageEditFile}
+        title="Edit screenshot"
+        onCancel={closeChallengeImageEdit}
+        onUseOriginal={(file: File) => void confirmChallengeImageEdit(file)}
+        onConfirm={(file: File) => void confirmChallengeImageEdit(file)}
+        confirmLabel="Upload"
+      />
 
       {timelineOpen && (
         <OverlayPortal>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -377,6 +377,86 @@ export default function ChallengeAttemptPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
 
+  const [imageViewerOpen, setImageViewerOpen] = useState(false)
+  const [imageViewerSrc, setImageViewerSrc] = useState<string | null>(null)
+  const [imageViewerScale, setImageViewerScale] = useState(1)
+  const [imageViewerTx, setImageViewerTx] = useState(0)
+  const [imageViewerTy, setImageViewerTy] = useState(0)
+  const imageViewerScaleRef = useRef(1)
+  const imageViewerTxRef = useRef(0)
+  const imageViewerTyRef = useRef(0)
+  const imageViewerRootRef = useRef<HTMLDivElement | null>(null)
+  const imageViewerPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const imageViewerGestureRef = useRef<null | {
+    kind: 'pan' | 'pinch'
+    startX: number
+    startY: number
+    startTx: number
+    startTy: number
+    startScale: number
+    startDistance: number
+    startMidX: number
+    startMidY: number
+    centerX: number
+    centerY: number
+  }>(null)
+  const lastTapRef = useRef<{ ts: number; x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    imageViewerScaleRef.current = imageViewerScale
+  }, [imageViewerScale])
+  useEffect(() => {
+    imageViewerTxRef.current = imageViewerTx
+  }, [imageViewerTx])
+  useEffect(() => {
+    imageViewerTyRef.current = imageViewerTy
+  }, [imageViewerTy])
+
+  const clampScale = useCallback((s: number) => {
+    const v = Number.isFinite(s) ? s : 1
+    return Math.max(1, Math.min(4, v))
+  }, [])
+
+  const clampPan = useCallback((tx: number, ty: number, scale: number) => {
+    const root = imageViewerRootRef.current
+    const rect = root?.getBoundingClientRect()
+    const w = rect?.width || 0
+    const h = rect?.height || 0
+    const extraX = Math.max(0, (scale - 1) * (w / 2)) + 48
+    const extraY = Math.max(0, (scale - 1) * (h / 2)) + 48
+    const nextTx = Math.max(-extraX, Math.min(extraX, Number.isFinite(tx) ? tx : 0))
+    const nextTy = Math.max(-extraY, Math.min(extraY, Number.isFinite(ty) ? ty : 0))
+    return { tx: nextTx, ty: nextTy }
+  }, [])
+
+  const openImageViewer = useCallback((src: string) => {
+    setImageViewerSrc(src)
+    setImageViewerScale(1)
+    setImageViewerTx(0)
+    setImageViewerTy(0)
+    imageViewerScaleRef.current = 1
+    imageViewerTxRef.current = 0
+    imageViewerTyRef.current = 0
+    imageViewerPointersRef.current.clear()
+    imageViewerGestureRef.current = null
+    lastTapRef.current = null
+    setImageViewerOpen(true)
+  }, [])
+
+  const closeImageViewer = useCallback(() => {
+    setImageViewerOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!imageViewerOpen) return
+    if (typeof window === 'undefined') return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeImageViewer()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [closeImageViewer, imageViewerOpen])
+
   const id = typeof router.query.id === 'string' ? router.query.id : ''
 
   const [viewerId, setViewerId] = useState<string>('')
@@ -754,7 +834,15 @@ export default function ChallengeAttemptPage() {
               </div>
               {challenge?.imageUrl ? (
                 <div className="mt-3">
-                  <img src={challenge.imageUrl} alt="Challenge" className="max-h-[240px] rounded border border-white/10 object-contain" />
+                  <img
+                    src={challenge.imageUrl}
+                    alt="Challenge"
+                    className="max-h-[240px] rounded border border-white/10 object-contain cursor-zoom-in"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openImageViewer(challenge.imageUrl as string)
+                    }}
+                  />
                 </div>
               ) : null}
             </div>
@@ -985,7 +1073,15 @@ export default function ChallengeAttemptPage() {
                   {challenge.imageUrl ? (
                     <div className="mt-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={challenge.imageUrl} alt="Challenge" className="max-h-[240px] rounded border border-white/10 object-contain" />
+                      <img
+                        src={challenge.imageUrl}
+                        alt="Challenge"
+                        className="max-h-[240px] rounded border border-white/10 object-contain cursor-zoom-in"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openImageViewer(challenge.imageUrl as string)
+                        }}
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -1014,6 +1110,239 @@ export default function ChallengeAttemptPage() {
             >
               <span className="material-icons" style={{ fontSize: 16, verticalAlign: 'middle' }}>info</span>
             </button>
+          ) : null}
+
+          {imageViewerOpen && imageViewerSrc ? (
+            <OverlayPortal>
+              <div
+                ref={imageViewerRootRef}
+                className="fixed inset-0 z-[10050] flex items-center justify-center"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Challenge image viewer"
+                onWheel={(e) => {
+                  e.preventDefault()
+                  const root = imageViewerRootRef.current
+                  const rect = root?.getBoundingClientRect()
+                  if (!rect) return
+
+                  const centerX = rect.left + rect.width / 2
+                  const centerY = rect.top + rect.height / 2
+                  const focusX = (e as any).clientX ?? centerX
+                  const focusY = (e as any).clientY ?? centerY
+
+                  const s0 = clampScale(imageViewerScaleRef.current)
+                  const t0x = Number.isFinite(imageViewerTxRef.current) ? imageViewerTxRef.current : 0
+                  const t0y = Number.isFinite(imageViewerTyRef.current) ? imageViewerTyRef.current : 0
+                  const s1 = clampScale(s0 * (e.deltaY < 0 ? 1.14 : 0.88))
+                  if (s1 === s0) return
+                  const ratio = s1 / s0
+                  const nextTx = (focusX - centerX) * (1 - ratio) + t0x * ratio
+                  const nextTy = (focusY - centerY) * (1 - ratio) + t0y * ratio
+                  const next = clampPan(nextTx, nextTy, s1)
+
+                  setImageViewerScale(s1)
+                  setImageViewerTx(next.tx)
+                  setImageViewerTy(next.ty)
+                }}
+                style={{ touchAction: 'none' }}
+              >
+                <div
+                  className="absolute inset-0 bg-black/85 backdrop-blur-sm"
+                  onMouseDown={() => closeImageViewer()}
+                  onTouchStart={() => closeImageViewer()}
+                  aria-hidden="true"
+                />
+
+                <button
+                  type="button"
+                  aria-label="Close image viewer"
+                  className="absolute top-3 right-3 z-[10060] h-10 w-10 rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 bg-black/30"
+                  onClick={closeImageViewer}
+                >
+                  ×
+                </button>
+
+                <div
+                  className="relative z-[10055] max-w-[100vw] max-h-[100vh] flex items-center justify-center"
+                  onPointerDown={(e) => {
+                    const root = imageViewerRootRef.current
+                    const rect = root?.getBoundingClientRect()
+                    if (!rect) return
+                    const x = e.clientX
+                    const y = e.clientY
+
+                    try { (e.currentTarget as any).setPointerCapture?.(e.pointerId) } catch {}
+                    imageViewerPointersRef.current.set(e.pointerId, { x, y })
+
+                    const pointers = Array.from(imageViewerPointersRef.current.values())
+                    const centerX = rect.left + rect.width / 2
+                    const centerY = rect.top + rect.height / 2
+
+                    const startTx = Number.isFinite(imageViewerTxRef.current) ? imageViewerTxRef.current : 0
+                    const startTy = Number.isFinite(imageViewerTyRef.current) ? imageViewerTyRef.current : 0
+                    const startScale = clampScale(imageViewerScaleRef.current)
+
+                    if (pointers.length >= 2) {
+                      const [a, b] = pointers
+                      const dx = b.x - a.x
+                      const dy = b.y - a.y
+                      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+                      const midX = (a.x + b.x) / 2
+                      const midY = (a.y + b.y) / 2
+                      imageViewerGestureRef.current = {
+                        kind: 'pinch',
+                        startX: midX,
+                        startY: midY,
+                        startTx,
+                        startTy,
+                        startScale,
+                        startDistance: dist,
+                        startMidX: midX,
+                        startMidY: midY,
+                        centerX,
+                        centerY,
+                      }
+                    } else {
+                      imageViewerGestureRef.current = {
+                        kind: 'pan',
+                        startX: x,
+                        startY: y,
+                        startTx,
+                        startTy,
+                        startScale,
+                        startDistance: 1,
+                        startMidX: x,
+                        startMidY: y,
+                        centerX,
+                        centerY,
+                      }
+                    }
+                  }}
+                  onPointerMove={(e) => {
+                    if (!imageViewerGestureRef.current) return
+                    if (!imageViewerPointersRef.current.has(e.pointerId)) return
+                    imageViewerPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+                    const gesture = imageViewerGestureRef.current
+                    const pointers = Array.from(imageViewerPointersRef.current.values())
+
+                    if (pointers.length >= 2 && gesture.kind === 'pinch') {
+                      const [a, b] = pointers
+                      const dx = b.x - a.x
+                      const dy = b.y - a.y
+                      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+                      const midX = (a.x + b.x) / 2
+                      const midY = (a.y + b.y) / 2
+
+                      const rawScale = gesture.startScale * (dist / gesture.startDistance)
+                      const s1 = clampScale(rawScale)
+                      const ratio = s1 / clampScale(gesture.startScale)
+
+                      const baseTx = (gesture.startX - gesture.centerX) * (1 - ratio) + gesture.startTx * ratio
+                      const baseTy = (gesture.startY - gesture.centerY) * (1 - ratio) + gesture.startTy * ratio
+                      const panDx = midX - gesture.startMidX
+                      const panDy = midY - gesture.startMidY
+                      const next = clampPan(baseTx + panDx, baseTy + panDy, s1)
+
+                      setImageViewerScale(s1)
+                      setImageViewerTx(next.tx)
+                      setImageViewerTy(next.ty)
+                      return
+                    }
+
+                    if (gesture.kind === 'pan') {
+                      const dx = e.clientX - gesture.startX
+                      const dy = e.clientY - gesture.startY
+                      const next = clampPan(gesture.startTx + dx, gesture.startTy + dy, clampScale(imageViewerScaleRef.current))
+                      setImageViewerTx(next.tx)
+                      setImageViewerTy(next.ty)
+                    }
+                  }}
+                  onPointerUp={(e) => {
+                    const root = imageViewerRootRef.current
+                    const rect = root?.getBoundingClientRect()
+                    const centerX = rect ? rect.left + rect.width / 2 : e.clientX
+                    const centerY = rect ? rect.top + rect.height / 2 : e.clientY
+
+                    // Double-tap to zoom.
+                    if (e.pointerType === 'touch') {
+                      const now = Date.now()
+                      const prev = lastTapRef.current
+                      const dx = prev ? (e.clientX - prev.x) : 0
+                      const dy = prev ? (e.clientY - prev.y) : 0
+                      const within = prev && (now - prev.ts) < 320 && Math.abs(dx) < 26 && Math.abs(dy) < 26
+                      lastTapRef.current = { ts: now, x: e.clientX, y: e.clientY }
+
+                      if (within) {
+                        const s0 = clampScale(imageViewerScaleRef.current)
+                        const t0x = Number.isFinite(imageViewerTxRef.current) ? imageViewerTxRef.current : 0
+                        const t0y = Number.isFinite(imageViewerTyRef.current) ? imageViewerTyRef.current : 0
+                        const zoomIn = s0 < 1.3
+                        const s1 = zoomIn ? 2.6 : 1
+                        if (s1 === 1) {
+                          setImageViewerScale(1)
+                          setImageViewerTx(0)
+                          setImageViewerTy(0)
+                        } else {
+                          const ratio = s1 / s0
+                          const nextTx = (e.clientX - centerX) * (1 - ratio) + t0x * ratio
+                          const nextTy = (e.clientY - centerY) * (1 - ratio) + t0y * ratio
+                          const next = clampPan(nextTx, nextTy, s1)
+                          setImageViewerScale(s1)
+                          setImageViewerTx(next.tx)
+                          setImageViewerTy(next.ty)
+                        }
+                      }
+                    }
+
+                    imageViewerPointersRef.current.delete(e.pointerId)
+                    if (imageViewerPointersRef.current.size === 0) {
+                      imageViewerGestureRef.current = null
+                    } else {
+                      // If one pointer remains after pinch, continue with pan from its current position.
+                      const remaining = Array.from(imageViewerPointersRef.current.values())[0]
+                      const g = imageViewerGestureRef.current
+                      if (g) {
+                        imageViewerGestureRef.current = {
+                          ...g,
+                          kind: 'pan',
+                          startX: remaining.x,
+                          startY: remaining.y,
+                          startTx: Number.isFinite(imageViewerTxRef.current) ? imageViewerTxRef.current : 0,
+                          startTy: Number.isFinite(imageViewerTyRef.current) ? imageViewerTyRef.current : 0,
+                          startScale: clampScale(imageViewerScaleRef.current),
+                        }
+                      }
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    imageViewerPointersRef.current.delete(e.pointerId)
+                    if (imageViewerPointersRef.current.size === 0) {
+                      imageViewerGestureRef.current = null
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      transform: `translate3d(${imageViewerTx}px, ${imageViewerTy}px, 0) scale(${imageViewerScale})`,
+                      transformOrigin: 'center center',
+                      transition: imageViewerPointersRef.current.size === 0 ? 'transform 90ms ease-out' : 'none',
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imageViewerSrc}
+                      alt="Challenge"
+                      draggable={false}
+                      className="block max-w-[96vw] max-h-[92vh] select-none"
+                      style={{ objectFit: 'contain', touchAction: 'none' }}
+                      onDragStart={(e) => e.preventDefault()}
+                    />
+                  </div>
+                </div>
+              </div>
+            </OverlayPortal>
           ) : null}
         </>
       )}

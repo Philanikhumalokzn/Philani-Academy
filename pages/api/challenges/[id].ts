@@ -3,6 +3,10 @@ import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 
+const MAX_TITLE_LENGTH = 120
+const MAX_PROMPT_LENGTH = 5000
+const MAX_IMAGE_URL_LENGTH = 2000
+
 function clampAudience(audience: unknown) {
   const v = typeof audience === 'string' ? audience.trim().toLowerCase() : ''
   if (v === 'public' || v === 'grade' || v === 'private') return v
@@ -16,8 +20,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const id = String(req.query.id || '')
   if (!id) return res.status(400).json({ message: 'Missing challenge id' })
 
-  if (req.method !== 'GET' && req.method !== 'PATCH') {
-    res.setHeader('Allow', ['GET', 'PATCH'])
+  if (req.method !== 'GET' && req.method !== 'PATCH' && req.method !== 'DELETE') {
+    res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
     return res.status(405).end()
   }
 
@@ -27,7 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Schema contains UserChallenge but TS may not see prisma.userChallenge yet.
   const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
 
-  const challenge = await userChallenge.findUnique({
+  let challenge = await userChallenge.findUnique({
     where: { id },
     select: {
       id: true,
@@ -64,15 +68,107 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const isOwner = requesterId === String(challenge.createdById)
 
+  if (req.method === 'DELETE') {
+    if (!isOwner && !isPrivileged) return res.status(403).json({ message: 'Forbidden' })
+
+    try {
+      const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+      const sessionKey = `challenge:${id}`
+
+      await prisma.$transaction([
+        learnerResponse.deleteMany({ where: { sessionKey } }),
+        userChallenge.delete({ where: { id } }),
+      ])
+
+      return res.status(200).json({ ok: true })
+    } catch (err: any) {
+      console.error('Failed to delete challenge', err)
+      return res.status(500).json({ message: err?.message || 'Failed to delete challenge' })
+    }
+  }
+
   if (req.method === 'PATCH') {
     if (!isOwner && !isPrivileged) return res.status(403).json({ message: 'Forbidden' })
 
-    const { attemptsOpen, solutionsVisible } = (req.body || {}) as { attemptsOpen?: unknown; solutionsVisible?: unknown }
+    const body = (req.body || {}) as any
+
+    const { attemptsOpen, solutionsVisible } = body as { attemptsOpen?: unknown; solutionsVisible?: unknown }
     const wantsAttemptsOpen = typeof attemptsOpen === 'boolean' ? attemptsOpen : undefined
     const wantsSolutionsVisible = typeof solutionsVisible === 'boolean' ? solutionsVisible : undefined
 
     const updateData: any = {}
 
+    // Core editable fields (mirrors create options)
+    const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
+    const hasPrompt = Object.prototype.hasOwnProperty.call(body, 'prompt')
+    const hasImageUrl = Object.prototype.hasOwnProperty.call(body, 'imageUrl')
+    const hasAudience = Object.prototype.hasOwnProperty.call(body, 'audience')
+    const hasMaxAttempts = Object.prototype.hasOwnProperty.call(body, 'maxAttempts')
+
+    if (hasTitle) {
+      const nextTitle = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, MAX_TITLE_LENGTH)
+      updateData.title = nextTitle
+    }
+
+    // We validate prompt/image together using the final merged values.
+    let nextPrompt = challenge.prompt
+    if (hasPrompt) {
+      const requested = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+      nextPrompt = requested.slice(0, MAX_PROMPT_LENGTH)
+    }
+
+    let nextImageUrl: string | null = challenge.imageUrl ?? null
+    if (hasImageUrl) {
+      const raw = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : ''
+      const clipped = raw.slice(0, MAX_IMAGE_URL_LENGTH)
+      nextImageUrl = clipped ? clipped : null
+    }
+
+    if (hasAudience) {
+      updateData.audience = clampAudience(body.audience)
+    }
+
+    if (hasMaxAttempts) {
+      const raw = body.maxAttempts
+      if (raw === null) {
+        updateData.maxAttempts = null
+      } else {
+        const n = typeof raw === 'number' ? raw : Number(raw)
+        if (!Number.isFinite(n)) {
+          return res.status(400).json({ message: 'Invalid maxAttempts' })
+        }
+        const v = Math.trunc(n)
+        if (v <= 0) {
+          updateData.maxAttempts = null
+        } else {
+          updateData.maxAttempts = Math.min(100, Math.max(1, v))
+        }
+      }
+    }
+
+    const hasMeaningfulPrompt = Boolean(nextPrompt)
+    const hasImage = Boolean(nextImageUrl)
+    if (!hasMeaningfulPrompt && !hasImage) {
+      return res.status(400).json({ message: 'Either a prompt or an image is required' })
+    }
+
+    const effectivePrompt = hasMeaningfulPrompt ? nextPrompt : 'See attached image.'
+    if (hasPrompt || hasImageUrl) {
+      updateData.prompt = effectivePrompt
+      updateData.imageUrl = nextImageUrl
+    }
+
+    // If the challenge is grade-scoped and we don't have a grade, set it.
+    const nextAudience = (typeof updateData.audience === 'string') ? updateData.audience : clampAudience(challenge.audience)
+    if (nextAudience === 'grade') {
+      const currentGrade = normalizeGradeInput(challenge.grade)
+      if (!currentGrade) {
+        const requesterGrade = normalizeGradeInput(await getUserGrade(req))
+        if (requesterGrade) updateData.grade = requesterGrade
+      }
+    }
+
+    // Owner-controlled attempt visibility.
     if (wantsAttemptsOpen === false && challenge.attemptsOpen) {
       updateData.attemptsOpen = false
       updateData.closedAt = new Date()
@@ -88,11 +184,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       updateData.revealedAt = new Date()
     }
 
-    if (Object.keys(updateData).length === 0) {
+    if (Object.keys(updateData).length > 0) {
+      challenge = await userChallenge.update({ where: { id }, data: updateData, select: {
+        id: true,
+        title: true,
+        prompt: true,
+        imageUrl: true,
+        grade: true,
+        audience: true,
+        attemptsOpen: true,
+        solutionsVisible: true,
+        maxAttempts: true,
+        closedAt: true,
+        revealedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        createdById: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            grade: true,
+            avatar: true,
+            statusBio: true,
+            schoolName: true,
+            profileVisibility: true,
+          },
+        },
+      } })
+    } else {
       return res.status(200).json({ ok: true })
     }
-
-    await userChallenge.update({ where: { id }, data: updateData })
   }
 
   if (!isOwner && !isPrivileged) {

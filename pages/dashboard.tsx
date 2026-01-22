@@ -404,6 +404,7 @@ export default function Dashboard() {
 
   const [createOverlayOpen, setCreateOverlayOpen] = useState(false)
   const [createKind, setCreateKind] = useState<'quiz'>('quiz')
+  const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null)
   const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
   const [challengePromptDraft, setChallengePromptDraft] = useState('')
   const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
@@ -414,6 +415,7 @@ export default function Dashboard() {
   const [challengeParsedOpen, setChallengeParsedOpen] = useState(false)
   const [challengeUploading, setChallengeUploading] = useState(false)
   const [challengePosting, setChallengePosting] = useState(false)
+  const [challengeDeleting, setChallengeDeleting] = useState(false)
   const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
 
   const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
@@ -574,6 +576,11 @@ export default function Dashboard() {
     setChallengeImageEditOpen(true)
   }, [])
 
+  const closeCreateOverlay = useCallback(() => {
+    setCreateOverlayOpen(false)
+    setEditingChallengeId(null)
+  }, [])
+
   const postChallenge = useCallback(async () => {
     if (status !== 'authenticated') return
     if (createKind !== 'quiz') return
@@ -590,8 +597,12 @@ export default function Dashboard() {
     const maxAttempts = challengeMaxAttempts === 'unlimited' ? null : parseInt(challengeMaxAttempts, 10)
     setChallengePosting(true)
     try {
-      const res = await fetch('/api/challenges', {
-        method: 'POST',
+      const isEditing = Boolean(editingChallengeId)
+      const endpoint = isEditing
+        ? `/api/challenges/${encodeURIComponent(editingChallengeId as string)}`
+        : '/api/challenges'
+      const res = await fetch(endpoint, {
+        method: isEditing ? 'PATCH' : 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -599,15 +610,31 @@ export default function Dashboard() {
           prompt,
           imageUrl: challengeImageUrl,
           audience,
-          grade,
           maxAttempts,
+          ...(isEditing ? {} : { grade }),
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        return alert(data?.message || `Failed to post (${res.status})`)
+        return alert(data?.message || `Failed to ${isEditing ? 'save' : 'post'} (${res.status})`)
       }
-      setCreateOverlayOpen(false)
+
+      if (isEditing && editingChallengeId) {
+        const id = String(editingChallengeId)
+        const patch = {
+          id,
+          title,
+          prompt,
+          imageUrl: challengeImageUrl,
+          audience,
+          maxAttempts,
+        }
+        setSelectedChallengeData((prev: any) => (prev && String(prev?.id) === id ? { ...prev, ...patch } : prev))
+        setTimelineChallenges((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
+        setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
+      }
+
+      closeCreateOverlay()
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
       setChallengeAudienceDraft('public')
@@ -615,13 +642,13 @@ export default function Dashboard() {
       setChallengeImageUrl(null)
       setChallengeParsedJsonText(null)
       setChallengeParsedOpen(false)
-      alert('Posted')
+      alert(editingChallengeId ? 'Saved' : 'Posted')
     } catch (err: any) {
-      alert(err?.message || 'Failed to post')
+      alert(err?.message || `Failed to ${editingChallengeId ? 'save' : 'post'}`)
     } finally {
       setChallengePosting(false)
     }
-  }, [challengeAudienceDraft, challengeImageUrl, challengePromptDraft, challengeTitleDraft, createKind, selectedGrade, session, status])
+  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, closeCreateOverlay])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)
@@ -2421,6 +2448,73 @@ export default function Dashboard() {
       setSelectedSubmissionDetail(null)
     } finally {
       setSelectedSubmissionLoading(false)
+    }
+  }, [])
+
+  const openEditSelectedChallenge = useCallback(() => {
+    const id = selectedChallengeId ? String(selectedChallengeId) : ''
+    if (!id) return
+
+    const c = selectedChallengeData
+    if (!c || String(c?.id || '') !== id) {
+      alert('Please wait for the quiz details to load, then try again.')
+      return
+    }
+
+    const audienceRaw = typeof c?.audience === 'string' ? c.audience : 'public'
+    const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
+
+    setCreateKind('quiz')
+    setEditingChallengeId(id)
+    setChallengeTitleDraft(String(c?.title || ''))
+    setChallengePromptDraft(String(c?.prompt || ''))
+    setChallengeAudienceDraft(audience)
+    setChallengeMaxAttempts(typeof c?.maxAttempts === 'number' ? String(c.maxAttempts) : 'unlimited')
+    setChallengeImageUrl(typeof c?.imageUrl === 'string' ? c.imageUrl : null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
+
+    setChallengeGradingOverlayOpen(false)
+    setSelectedSubmissionUserId(null)
+    setSelectedSubmissionDetail(null)
+    setCreateOverlayOpen(true)
+  }, [selectedChallengeData, selectedChallengeId])
+
+  const deleteChallenge = useCallback(async (challengeId: string) => {
+    const id = challengeId ? String(challengeId) : ''
+    if (!id) return
+
+    const ok = typeof window !== 'undefined'
+      ? window.confirm('Delete this quiz post? This will remove it from your timeline and delete all submissions.')
+      : false
+    if (!ok) return
+
+    setChallengeDeleting(true)
+    try {
+      const res = await fetch(`/api/challenges/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to delete (${res.status})`)
+        return
+      }
+
+      setTimelineChallenges(prev => (Array.isArray(prev) ? prev.filter((c: any) => String(c?.id || '') !== id) : prev))
+      setStudentFeedPosts(prev => (Array.isArray(prev) ? prev.filter((c: any) => String(c?.id || '') !== id) : prev))
+
+      setChallengeGradingOverlayOpen(false)
+      setSelectedChallengeId(null)
+      setSelectedChallengeData(null)
+      setSelectedSubmissionUserId(null)
+      setSelectedSubmissionDetail(null)
+
+      alert('Deleted')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete')
+    } finally {
+      setChallengeDeleting(false)
     }
   }, [])
 
@@ -6407,6 +6501,25 @@ export default function Dashboard() {
                                                             )
                                                           }
 
+                                                          if (steps.length > 1) {
+                                                            return (
+                                                              <div className="space-y-2">
+                                                                {steps.map((stepLatex: string, i: number) => {
+                                                                  const html = renderKatexDisplayHtml(stepLatex)
+                                                                  return html ? (
+                                                                    <div
+                                                                      key={`${qid}-admin-step-plain-${i}`}
+                                                                      className="text-sm leading-relaxed [&_.katex]:text-sm [&_.katex-display]:text-sm"
+                                                                      dangerouslySetInnerHTML={{ __html: html }}
+                                                                    />
+                                                                  ) : (
+                                                                    <div key={`${qid}-admin-step-plain-${i}`} className="text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
+                                                                  )
+                                                                })}
+                                                              </div>
+                                                            )
+                                                          }
+
                                                           const html = renderKatexDisplayHtml(respLatex)
                                                           if (html) {
                                                             return (
@@ -6909,6 +7022,21 @@ export default function Dashboard() {
                                               ) : null}
                                             </div>
                                           </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                }
+
+                                if (Array.isArray(steps) && steps.length > 1) {
+                                  return (
+                                    <div className="space-y-2">
+                                      {steps.map((stepLatex: string, i: number) => {
+                                        const html = renderKatexDisplayHtml(stepLatex)
+                                        return html ? (
+                                          <div key={`${qid}-learner-step-plain-${i}`} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                        ) : (
+                                          <div key={`${qid}-learner-step-plain-${i}`} className="text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
                                         )
                                       })}
                                     </div>
@@ -8193,18 +8321,18 @@ export default function Dashboard() {
       {createOverlayOpen && (
         <OverlayPortal>
           <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-            <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateOverlayOpen(false)} />
-            <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateOverlayOpen(false)}>
+            <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeCreateOverlay} />
+            <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeCreateOverlay}>
               <div
                 className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-3 border-b flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-semibold break-words">Create</div>
-                    <div className="text-sm muted">Post a quiz to your profile timeline.</div>
+                    <div className="font-semibold break-words">{editingChallengeId ? 'Edit' : 'Create'}</div>
+                    <div className="text-sm muted">{editingChallengeId ? 'Update your quiz post.' : 'Post a quiz to your profile timeline.'}</div>
                   </div>
-                  <button type="button" className="btn btn-ghost" onClick={() => setCreateOverlayOpen(false)} aria-label="Close">✕</button>
+                  <button type="button" className="btn btn-ghost" onClick={closeCreateOverlay} aria-label="Close">✕</button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -8325,7 +8453,7 @@ export default function Dashboard() {
                       disabled={challengePosting || challengeUploading}
                       onClick={() => void postChallenge()}
                     >
-                      {challengePosting ? 'Posting…' : 'Post'}
+                      {challengePosting ? (editingChallengeId ? 'Saving…' : 'Posting…') : (editingChallengeId ? 'Save' : 'Post')}
                     </button>
                   </div>
                 </div>
@@ -8668,6 +8796,7 @@ export default function Dashboard() {
               onClick={() => {
                 setChallengeGradingOverlayOpen(false)
                 setSelectedChallengeId(null)
+                setSelectedChallengeData(null)
                 setSelectedSubmissionUserId(null)
                 setSelectedSubmissionDetail(null)
               }}
@@ -8677,6 +8806,7 @@ export default function Dashboard() {
               onClick={() => {
                 setChallengeGradingOverlayOpen(false)
                 setSelectedChallengeId(null)
+                setSelectedChallengeData(null)
                 setSelectedSubmissionUserId(null)
                 setSelectedSubmissionDetail(null)
               }}
@@ -8708,6 +8838,7 @@ export default function Dashboard() {
                     onClick={() => {
                       setChallengeGradingOverlayOpen(false)
                       setSelectedChallengeId(null)
+                      setSelectedChallengeData(null)
                       setSelectedSubmissionUserId(null)
                       setSelectedSubmissionDetail(null)
                     }}
@@ -8717,6 +8848,35 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {!selectedSubmissionUserId && (
+                    <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold text-sm">Actions</div>
+                        <div className="text-xs text-white/60">
+                          {challengeDeleting ? 'Working…' : selectedChallengeData ? 'Ready' : 'Loading…'}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-xs"
+                          onClick={openEditSelectedChallenge}
+                          disabled={!selectedChallengeData || challengeDeleting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-red-300"
+                          onClick={() => void deleteChallenge(selectedChallengeId)}
+                          disabled={challengeDeleting}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {!selectedSubmissionUserId && (
                     <div className="border border-white/10 rounded bg-white/5 p-3 space-y-3">
                       <div className="flex items-center justify-between gap-2">

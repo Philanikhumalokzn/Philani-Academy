@@ -1298,8 +1298,10 @@ export default function TextOverlayModule(props: {
                 position: 'absolute',
                 left: isQuizFeedbackBox ? '50%' : `${effective.x * 100}%`,
                 top: `${effective.y * 100}%`,
-                width: isQuizFeedbackBox ? 'fit-content' : `${effective.w * 100}%`,
-                minWidth: isQuizFeedbackBox ? undefined : (isMinimized ? 120 : MIN_BOX_PX_W),
+                width: isQuizFeedbackBox
+                  ? 'fit-content'
+                  : (isMinimized ? 'max-content' : `${effective.w * 100}%`),
+                minWidth: isQuizFeedbackBox ? undefined : (isMinimized ? undefined : MIN_BOX_PX_W),
                 maxWidth: '92vw',
                 height: shouldAutoFitHeight ? 'fit-content' : `${effective.h * 100}%`,
                 minHeight: shouldAutoFitHeight ? undefined : MIN_BOX_PX_H,
@@ -1331,111 +1333,188 @@ export default function TextOverlayModule(props: {
                 }}
               >
                 {(isQuizBox || isQuizFeedbackBox) && (
-                  <div className="absolute right-2 top-2 flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
-                    {!isAdmin && isQuizBox && (
+                  (isMinimized && !isAdmin && isQuizBox) ? (
+                    <div
+                      className="flex items-center gap-2 whitespace-nowrap pr-2"
+                      style={{ pointerEvents: 'auto' }}
+                      onPointerDown={e => {
+                        // Prevent clicks on buttons from triggering a drag.
+                        e.stopPropagation()
+                      }}
+                    >
+                      <div className="text-xs font-semibold text-white/90">Quiz</div>
+                      {!isAdmin && quizTimeLeftSec != null && (
+                        <div className="text-xs text-white/75">⏱ {formatCountdown(quizTimeLeftSec)}</div>
+                      )}
+                      <div className="text-xs text-white/35">⋮⋮</div>
+
+                      <div className="ml-auto flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs text-white/80 hover:text-white"
+                          onClick={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setLocalQuizOverride(prev => {
+                              const current = prev || {}
+                              const currentlyMinimized = Boolean(current.minimized)
+                              if (currentlyMinimized) {
+                                const restoredW = (typeof current.prevW === 'number' && Number.isFinite(current.prevW)) ? current.prevW : current.w
+                                const restoredH = (typeof current.prevH === 'number' && Number.isFinite(current.prevH)) ? current.prevH : current.h
+                                return {
+                                  ...current,
+                                  minimized: false,
+                                  prevW: undefined,
+                                  prevH: undefined,
+                                  w: restoredW,
+                                  h: restoredH,
+                                }
+                              }
+
+                              const nextPrevW = (typeof current.w === 'number' && Number.isFinite(current.w)) ? current.w : effective.w
+                              const nextPrevH = (typeof current.h === 'number' && Number.isFinite(current.h)) ? current.h : effective.h
+                              // Default minimized size (fractions of stage). Keep it small so it doesn't obstruct writing.
+                              const minW = 0.24
+                              const minH = 0.08
+                              return {
+                                ...current,
+                                minimized: true,
+                                prevW: nextPrevW,
+                                prevH: nextPrevH,
+                                w: minW,
+                                h: minH,
+                              }
+                            })
+                          }}
+                          aria-label="Restore quiz prompt"
+                          title="Restore"
+                        >
+                          ▢
+                        </button>
+
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs text-white/80 hover:text-white"
+                          onClick={async e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
+                            window.setTimeout(() => {
+                              setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                              setClosingPopupIds(prev => {
+                                if (!prev[QUIZ_BOX_ID]) return prev
+                                const next = { ...prev }
+                                delete next[QUIZ_BOX_ID]
+                                return next
+                              })
+                            }, 230)
+                          }}
+                          aria-label="Hide quiz prompt"
+                          title="Hide"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="absolute right-2 top-2 flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
+                      {!isAdmin && isQuizBox && (
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs text-white/80 hover:text-white"
+                          onClick={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setLocalQuizOverride(prev => {
+                              const current = prev || {}
+                              const currentlyMinimized = Boolean(current.minimized)
+                              if (currentlyMinimized) {
+                                const restoredW = (typeof current.prevW === 'number' && Number.isFinite(current.prevW)) ? current.prevW : current.w
+                                const restoredH = (typeof current.prevH === 'number' && Number.isFinite(current.prevH)) ? current.prevH : current.h
+                                return {
+                                  ...current,
+                                  minimized: false,
+                                  prevW: undefined,
+                                  prevH: undefined,
+                                  w: restoredW,
+                                  h: restoredH,
+                                }
+                              }
+
+                              const nextPrevW = (typeof current.w === 'number' && Number.isFinite(current.w)) ? current.w : effective.w
+                              const nextPrevH = (typeof current.h === 'number' && Number.isFinite(current.h)) ? current.h : effective.h
+                              // Default minimized size (fractions of stage). Keep it small so it doesn't obstruct writing.
+                              const minW = 0.24
+                              const minH = 0.08
+                              return {
+                                ...current,
+                                minimized: true,
+                                prevW: nextPrevW,
+                                prevH: nextPrevH,
+                                w: minW,
+                                h: minH,
+                              }
+                            })
+                          }}
+                          onPointerDown={e => {
+                            e.stopPropagation()
+                          }}
+                          aria-label={isMinimized ? 'Restore quiz prompt' : 'Minimize quiz prompt'}
+                          title={isMinimized ? 'Restore' : 'Minimize'}
+                        >
+                          {isMinimized ? '▢' : '–'}
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         className="px-2 py-1 text-xs text-white/80 hover:text-white"
-                        onClick={e => {
+                        onClick={async e => {
                           e.preventDefault()
                           e.stopPropagation()
-                          setLocalQuizOverride(prev => {
-                            const current = prev || {}
-                            const currentlyMinimized = Boolean(current.minimized)
-                            if (currentlyMinimized) {
-                              const restoredW = (typeof current.prevW === 'number' && Number.isFinite(current.prevW)) ? current.prevW : current.w
-                              const restoredH = (typeof current.prevH === 'number' && Number.isFinite(current.prevH)) ? current.prevH : current.h
-                              return {
-                                ...current,
-                                minimized: false,
-                                prevW: undefined,
-                                prevH: undefined,
-                                w: restoredW,
-                                h: restoredH,
-                              }
-                            }
-
-                            const nextPrevW = (typeof current.w === 'number' && Number.isFinite(current.w)) ? current.w : effective.w
-                            const nextPrevH = (typeof current.h === 'number' && Number.isFinite(current.h)) ? current.h : effective.h
-                            // Default minimized size (fractions of stage). Keep it small so it doesn't obstruct writing.
-                            const minW = 0.24
-                            const minH = 0.08
-                            return {
-                              ...current,
-                              minimized: true,
-                              prevW: nextPrevW,
-                              prevH: nextPrevH,
-                              w: minW,
-                              h: minH,
-                            }
-                          })
-                        }}
-                        onPointerDown={e => {
-                          e.stopPropagation()
-                        }}
-                        aria-label={isMinimized ? 'Restore quiz prompt' : 'Minimize quiz prompt'}
-                        title={isMinimized ? 'Restore' : 'Minimize'}
-                      >
-                        {isMinimized ? '▢' : '–'}
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-xs text-white/80 hover:text-white"
-                      onClick={async e => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        if (isAdmin) {
-                          await toggleBoxVisibilityById(box.id)
-                          return
-                        }
-                        if (isQuizBox) {
-                          setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
+                          if (isAdmin) {
+                            await toggleBoxVisibilityById(box.id)
+                            return
+                          }
+                          if (isQuizBox) {
+                            setClosingPopupIds(prev => ({ ...prev, [QUIZ_BOX_ID]: true }))
+                            window.setTimeout(() => {
+                              setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                              setClosingPopupIds(prev => {
+                                if (!prev[QUIZ_BOX_ID]) return prev
+                                const next = { ...prev }
+                                delete next[QUIZ_BOX_ID]
+                                return next
+                              })
+                            }, 230)
+                            return
+                          }
+                          clearQuizFeedbackAutoHide()
+                          setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
                           window.setTimeout(() => {
-                            setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
+                            setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
                             setClosingPopupIds(prev => {
-                              if (!prev[QUIZ_BOX_ID]) return prev
+                              if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
                               const next = { ...prev }
-                              delete next[QUIZ_BOX_ID]
+                              delete next[QUIZ_FEEDBACK_BOX_ID]
                               return next
                             })
                           }, 230)
-                          return
-                        }
-                        clearQuizFeedbackAutoHide()
-                        setClosingPopupIds(prev => ({ ...prev, [QUIZ_FEEDBACK_BOX_ID]: true }))
-                        window.setTimeout(() => {
-                          setStudentLocalBoxes(prev => prev.map(b => (b.id === QUIZ_FEEDBACK_BOX_ID ? { ...b, visible: false } : b)))
-                          setClosingPopupIds(prev => {
-                            if (!prev[QUIZ_FEEDBACK_BOX_ID]) return prev
-                            const next = { ...prev }
-                            delete next[QUIZ_FEEDBACK_BOX_ID]
-                            return next
-                          })
-                        }, 230)
-                      }}
-                      onPointerDown={e => {
-                        // Prevent the drag handler from swallowing a click on mobile.
-                        e.stopPropagation()
-                      }}
-                      aria-label="Close"
-                      title="Close"
-                    >
-                      ×
-                    </button>
-                  </div>
+                        }}
+                        onPointerDown={e => {
+                          // Prevent the drag handler from swallowing a click on mobile.
+                          e.stopPropagation()
+                        }}
+                        aria-label="Close"
+                        title="Close"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )
                 )}
 
-                {isMinimized ? (
-                  <div className="flex items-center gap-2 pr-14" style={{ pointerEvents: 'none' }}>
-                    <div className="text-xs font-semibold text-white/90">Quiz</div>
-                    {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
-                      <div className="text-xs text-white/75">⏱ {formatCountdown(quizTimeLeftSec)}</div>
-                    )}
-                    <div className="ml-auto text-xs text-white/35">⋮⋮</div>
-                  </div>
-                ) : (
+                {isMinimized ? null : (
                   <>
                     <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
 

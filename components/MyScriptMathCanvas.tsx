@@ -9057,7 +9057,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     await loadTopPanelStepForEditing(index)
                   } : undefined}
                 >
-                  {hasWriteAccess && !isAssignmentSolutionAuthoring && (
+                  {isAdmin && hasWriteAccess && !isAssignmentSolutionAuthoring && (
                     <button
                       type="button"
                       aria-label={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}

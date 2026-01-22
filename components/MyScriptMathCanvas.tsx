@@ -2142,47 +2142,49 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Semantic alias: presenter == controller-rights.
   const setPresenterRightsForClient = setControllerRightsForClient
 
-  const autoSaveCurrentQuestionAsNotesRef = useRef<null | (() => void)>(null)
+  const autoSaveCurrentQuestionAsNotesRef = useRef<null | ((options?: { requireEmptyBottom?: boolean }) => Promise<void>)>(null)
 
   const handOverPresentation = useCallback(
     (target: null | { clientId: string; userId?: string; userKey: string; displayName: string }) => {
       if (!isAdmin) return
 
-      // Best-effort: silently capture the current question into Notes before switching presenter context.
-      try {
-        autoSaveCurrentQuestionAsNotesRef.current?.()
-      } catch {}
-
-      // Bidirectional: null target means the admin reclaims control.
-      if (!target) {
-        void reclaimAdminControl()
-        return
-      }
-
-      const clickedClientId = String(target.clientId || '').trim()
-      const clickedUserId = String(target.userId || '').trim()
-      const clickedUserKey = String(target.userKey || '').trim()
-      const displayName = String(target.displayName || '').trim()
-      if (!clickedClientId && !clickedUserKey) return
-
-      const prevPresenterUserKey = activePresenterUserKeyRef.current || ''
-      const prevPresenterClientIds = Array.from(activePresenterClientIdsRef.current)
-
-      const nameKey = normalizeName(displayName).toLowerCase()
-      const matchingClientIds = connectedClients
-        .filter(x => x.clientId && x.clientId !== ALL_STUDENTS_ID)
-        .filter(x => {
-          const xUserId = typeof (x as any).userId === 'string' ? String((x as any).userId) : ''
-          if (clickedUserId && xUserId) return xUserId === clickedUserId
-          const xName = normalizeName((x as any).name || '') || String(x.clientId)
-          return normalizeName(xName).toLowerCase() === nameKey
-        })
-        .map(x => x.clientId)
-
-      const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
-      if (!nextClientIds.length) return
-
       void (async () => {
+        // Best-effort: silently capture the current question into Notes before switching presenter context.
+        // For admin reclaim, bypass the "bottom canvas empty" gating since the teacher may be viewing the
+        // student's board state (which would otherwise block the auto-save).
+        try {
+          await autoSaveCurrentQuestionAsNotesRef.current?.({ requireEmptyBottom: Boolean(target) })
+        } catch {}
+
+        // Bidirectional: null target means the admin reclaims control.
+        if (!target) {
+          await reclaimAdminControl()
+          return
+        }
+
+        const clickedClientId = String(target.clientId || '').trim()
+        const clickedUserId = String(target.userId || '').trim()
+        const clickedUserKey = String(target.userKey || '').trim()
+        const displayName = String(target.displayName || '').trim()
+        if (!clickedClientId && !clickedUserKey) return
+
+        const prevPresenterUserKey = activePresenterUserKeyRef.current || ''
+        const prevPresenterClientIds = Array.from(activePresenterClientIdsRef.current)
+
+        const nameKey = normalizeName(displayName).toLowerCase()
+        const matchingClientIds = connectedClients
+          .filter(x => x.clientId && x.clientId !== ALL_STUDENTS_ID)
+          .filter(x => {
+            const xUserId = typeof (x as any).userId === 'string' ? String((x as any).userId) : ''
+            if (clickedUserId && xUserId) return xUserId === clickedUserId
+            const xName = normalizeName((x as any).name || '') || String(x.clientId)
+            return normalizeName(xName).toLowerCase() === nameKey
+          })
+          .map(x => x.clientId)
+
+        const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
+        if (!nextClientIds.length) return
+
         // Promote the tapped attendee to presenter.
         await setPresenterRightsForClients(nextClientIds, true, {
           userKey: clickedUserKey,
@@ -8487,21 +8489,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Silent "Finish Question" save (no modal) used when the admin is switching presenter context.
   // Mirrors the paper-plane empty-canvas flow by saving the full question (top steps) into Notes.
   const lastAutoQuestionNotesHashRef = useRef<string | null>(null)
-  const autoSaveCurrentQuestionAsNotes = useCallback(async () => {
+  const autoSaveCurrentQuestionAsNotes = useCallback(async (options?: { requireEmptyBottom?: boolean }) => {
     if (isLessonAuthoring) return
     if (!isAdmin) return
     if (!canPersistLatex || !sessionKey) return
 
-    // Only auto-finish when the bottom canvas is empty.
-    let emptyCanvas = false
-    let emptyLine = false
-    try {
-      emptyCanvas = isEditorEmptyNow()
-      emptyLine = isCurrentLineEmptyNow()
-    } catch {
-      return
+    const requireEmptyBottom = options?.requireEmptyBottom !== false
+
+    // By default, only auto-finish when the bottom canvas is empty.
+    // On admin reclaim we bypass this gating since the teacher may be viewing the student's board state.
+    if (requireEmptyBottom) {
+      let emptyCanvas = false
+      let emptyLine = false
+      try {
+        emptyCanvas = isEditorEmptyNow()
+        emptyLine = isCurrentLineEmptyNow()
+      } catch {
+        return
+      }
+      if (!emptyCanvas || !emptyLine) return
     }
-    if (!emptyCanvas || !emptyLine) return
 
     const normalized = adminSteps
       .filter(s => s && typeof s === 'object')
@@ -8520,8 +8527,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {
-    autoSaveCurrentQuestionAsNotesRef.current = () => {
-      void autoSaveCurrentQuestionAsNotes()
+    autoSaveCurrentQuestionAsNotesRef.current = async (options?: { requireEmptyBottom?: boolean }) => {
+      await autoSaveCurrentQuestionAsNotes(options)
     }
     return () => {
       autoSaveCurrentQuestionAsNotesRef.current = null

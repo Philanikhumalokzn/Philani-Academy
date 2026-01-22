@@ -2142,9 +2142,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Semantic alias: presenter == controller-rights.
   const setPresenterRightsForClient = setControllerRightsForClient
 
+  const autoSaveCurrentQuestionAsNotesRef = useRef<null | (() => void)>(null)
+
   const handOverPresentation = useCallback(
     (target: null | { clientId: string; userId?: string; userKey: string; displayName: string }) => {
       if (!isAdmin) return
+
+      // Best-effort: silently capture the current question into Notes before switching presenter context.
+      try {
+        autoSaveCurrentQuestionAsNotesRef.current?.()
+      } catch {}
 
       // Bidirectional: null target means the admin reclaims control.
       if (!target) {
@@ -2198,18 +2205,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [connectedClients, isAdmin, normalizeName, reclaimAdminControl, setPresenterRightsForClients]
   )
 
-  const autoSaveCurrentQuestionAsNotesRef = useRef<null | (() => void)>(null)
-
   const handleRosterAttendeeAvatarClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault()
       e.stopPropagation()
       if (!isAdmin) return
-
-      // Best-effort: silently capture the current question into Notes before switching presenter.
-      try {
-        autoSaveCurrentQuestionAsNotesRef.current?.()
-      } catch {}
 
       const el = e.currentTarget
       const clickedClientId = String(el?.dataset?.clientId || '').trim()
@@ -9290,10 +9290,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               // Otherwise, it toggles the roster open.
                               if (overlayRosterVisible) {
                                 if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
-                                  // Best-effort: silently capture the current question into Notes before reclaiming control.
-                                  try {
-                                    autoSaveCurrentQuestionAsNotesRef.current?.()
-                                  } catch {}
                                   handOverPresentation(null)
                                   return
                                 }

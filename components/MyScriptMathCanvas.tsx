@@ -1362,8 +1362,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       quizCombinedLatexRef.current = initialAssignmentLatex
       quizHasCommittedRef.current = true
       setStudentCommittedLatex(initialAssignmentLatex)
+
+      // IMPORTANT: assignment responses store multi-step work using LaTeX line breaks (\\).
+      // Do NOT split on a single backslash: that would destroy LaTeX commands (\frac, \sqrt, etc).
       const parsed = String(initialAssignmentLatex || '')
-        .split(/\\/g)
+        .replace(/\r\n/g, '\n')
+        .replace(/\\\\/g, '\n')
+        .split('\n')
         .map(s => s.trim())
         .filter(Boolean)
       setStudentSteps(parsed.map(latex => ({ latex, symbols: null })))
@@ -6507,7 +6512,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     try {
       const teacherLatexContext = (useAdminStepComposer
-        ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
+        ? [adminSteps.map(s => s?.latex || '').join(' \\\\ '), adminDraftLatex].filter(Boolean).join(' \\\\ ')
         : latexDisplayStateRef.current?.enabled
           ? (latexDisplayStateRef.current?.latex || '')
           : (latexOutput || '')
@@ -6745,7 +6750,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (!isChallengeBoard && !(typeof opts?.promptText === 'string' && opts.promptText.trim())) {
           try {
             const teacherLatexContext = (useAdminStepComposer
-              ? [adminSteps.map(s => s?.latex || '').join(' \\ '), adminDraftLatex].filter(Boolean).join(' \\ ')
+              ? [adminSteps.map(s => s?.latex || '').join(' \\\\ '), adminDraftLatex].filter(Boolean).join(' \\\\ ')
               : latexDisplayStateRef.current?.enabled
                 ? (latexDisplayStateRef.current?.latex || '')
                 : (latexOutput || '')
@@ -7135,7 +7140,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         } else if (draft) {
           stepLines.push(draft)
         }
-        const merged = stepLines.filter(Boolean).join(' \\ ').trim()
+        const merged = stepLines.filter(Boolean).join(' \\\\ ').trim()
         if (merged) {
           combined = merged
           quizCombinedLatexRef.current = merged

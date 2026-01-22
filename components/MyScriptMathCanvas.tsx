@@ -8419,7 +8419,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [activePresenterUserKey, canPersistLatex, isAdmin, isLessonAuthoring, saveLatexSnapshot, sessionKey])
 
   const saveQuestionAsNotes = useCallback(
-    async (options: { title: string; noteId: string }) => {
+    async (options: { title: string; noteId: string; stepsOverride?: Array<{ latex: string; symbols: any[] }> }) => {
       if (isLessonAuthoring) {
         setLatexSaveError('Finish Question is only available inside a live session.')
         return null
@@ -8433,9 +8433,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return null
       }
 
-      const steps = adminSteps
+      const steps = (Array.isArray(options.stepsOverride) ? options.stepsOverride : adminSteps
         .filter(s => s && typeof s === 'object')
-        .map(s => ({ latex: normalizeStepLatex((s as any).latex || ''), symbols: Array.isArray((s as any).symbols) ? (s as any).symbols : [] }))
+        .map(s => ({ latex: normalizeStepLatex((s as any).latex || ''), symbols: Array.isArray((s as any).symbols) ? (s as any).symbols : [] })))
+        .map(s => ({ latex: normalizeStepLatex((s as any)?.latex || ''), symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [] }))
         .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
 
       if (!steps.length) {
@@ -8510,20 +8511,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!emptyCanvas || !emptyLine) return
     }
 
-    const normalized = adminSteps
+    const stepsFromAdmin = adminSteps
       .filter(s => s && typeof s === 'object')
-      .map(s => normalizeStepLatex((s as any)?.latex || ''))
-      .filter(Boolean)
+      .map(s => ({ latex: normalizeStepLatex((s as any)?.latex || ''), symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [] }))
+      .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
 
-    if (!normalized.length) return
-    const hash = normalized.join('\n')
+    const snapshotLatexRaw = latestSnapshotRef.current?.snapshot?.latex
+    const snapshotLatex = normalizeStepLatex(typeof snapshotLatexRaw === 'string' ? snapshotLatexRaw : '')
+    const snapshotSymbols = latestSnapshotRef.current?.snapshot?.symbols
+
+    const stepsForSave = stepsFromAdmin.length
+      ? stepsFromAdmin
+      : (snapshotLatex ? [{ latex: snapshotLatex, symbols: Array.isArray(snapshotSymbols) ? snapshotSymbols : [] }] : [])
+
+    if (!stepsForSave.length) return
+    const hash = stepsForSave.map(s => normalizeStepLatex(s.latex || '')).filter(Boolean).join('\n')
     if (lastAutoQuestionNotesHashRef.current === hash) return
     lastAutoQuestionNotesHashRef.current = hash
 
     const noteId = createSessionNoteId()
-    const inferredTitle = prettyPrintTitleFromLatex(adminSteps[0]?.latex || '')
+    const inferredTitle = prettyPrintTitleFromLatex(stepsForSave[0]?.latex || '')
     const title = (inferredTitle || '').trim() || 'Untitled question'
-    await saveQuestionAsNotes({ title, noteId })
+    await saveQuestionAsNotes({ title, noteId, stepsOverride: stepsForSave })
   }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {

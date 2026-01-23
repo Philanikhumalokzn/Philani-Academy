@@ -1,7 +1,6 @@
 ﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
-import katex from 'katex'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import BrandLogo from '../components/BrandLogo'
@@ -9,12 +8,14 @@ import UserLink from '../components/UserLink'
 import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
+import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
+import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -226,86 +227,7 @@ export default function Dashboard() {
   }, [])
 
   const renderTextWithKatex = useCallback((text: unknown) => {
-    const input = typeof text === 'string' ? text : ''
-    if (!input) return input
-
-    const nodes: Array<string | { display: boolean; expr: string }> = []
-    let i = 0
-
-    const pushText = (s: string) => {
-      if (!s) return
-      const last = nodes[nodes.length - 1]
-      if (typeof last === 'string') nodes[nodes.length - 1] = last + s
-      else nodes.push(s)
-    }
-
-    const tryReadDelimited = (open: string, close: string, display: boolean) => {
-      if (!input.startsWith(open, i)) return false
-      const start = i + open.length
-      const end = input.indexOf(close, start)
-      if (end < 0) return false
-      const expr = input.slice(start, end).trim()
-      i = end + close.length
-      if (!expr) {
-        pushText(open + close)
-        return true
-      }
-      nodes.push({ display, expr })
-      return true
-    }
-
-    while (i < input.length) {
-      if (tryReadDelimited('$$', '$$', true)) continue
-      if (tryReadDelimited('\\[', '\\]', true)) continue
-      if (tryReadDelimited('\\(', '\\)', false)) continue
-
-      // Inline $...$ (ignore escaped \$)
-      if (input[i] === '$' && (i === 0 || input[i - 1] !== '\\')) {
-        if (input[i + 1] === '$') {
-          pushText('$')
-          i += 1
-          continue
-        }
-        const start = i + 1
-        let end = start
-        while (end < input.length) {
-          if (input[end] === '$' && input[end - 1] !== '\\') break
-          end += 1
-        }
-        if (end < input.length && input[end] === '$') {
-          const expr = input.slice(start, end).trim()
-          i = end + 1
-          if (!expr) {
-            pushText('$$')
-            continue
-          }
-          nodes.push({ display: false, expr })
-          continue
-        }
-        pushText('$')
-        i += 1
-        continue
-      }
-
-      pushText(input[i])
-      i += 1
-    }
-
-    return nodes.map((n, idx) => {
-      if (typeof n === 'string') return <span key={`t-${idx}`}>{renderInlineEmphasis(n, `t-${idx}`)}</span>
-      try {
-        const html = katex.renderToString(n.expr, { displayMode: n.display, throwOnError: false, strict: 'ignore' })
-        return (
-          <span
-            key={`k-${idx}`}
-            className={n.display ? 'block my-1' : 'inline'}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )
-      } catch {
-        return <span key={`f-${idx}`}>{n.expr}</span>
-      }
-    })
+    return renderTextWithKatexRaw(text, { renderInlineEmphasis })
   }, [renderInlineEmphasis])
 
   const formatSessionDate = useCallback((value: unknown) => {
@@ -5228,90 +5150,73 @@ export default function Dashboard() {
 
             {createLessonOverlayOpen && (
               <OverlayPortal>
-                <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-                  <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setCreateLessonOverlayOpen(false)} />
-                  <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setCreateLessonOverlayOpen(false)}>
-                    <div
-                      className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                    <div className="p-3 border-b flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold break-words">Create lesson</div>
-                        <div className="text-sm muted">Create a session for {activeGradeLabel} learners.</div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setCreateLessonOverlayOpen(false)}
-                        aria-label="Close"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                <FullScreenGlassOverlay
+                  title="Create lesson"
+                  subtitle={`Create a session for ${activeGradeLabel} learners.`}
+                  onClose={() => setCreateLessonOverlayOpen(false)}
+                  zIndexClassName="z-50"
+                >
+                  <div className="space-y-3">
+                    {!selectedGrade ? (
+                      <div className="text-sm muted">Select a grade before creating a session.</div>
+                    ) : (
+                      <form onSubmit={createSession} className="space-y-3">
+                        <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
+                        <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+                        <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
+                        <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
+                        <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
 
-                    <div className="flex-1 overflow-y-auto p-3">
-                      <div className="space-y-3">
-                        {!selectedGrade ? (
-                          <div className="text-sm muted">Select a grade before creating a session.</div>
-                        ) : (
-                          <form onSubmit={createSession} className="space-y-3">
-                            <p className="text-sm muted">This session will be visible only to {activeGradeLabel} learners.</p>
-                            <input className="input" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
-                            <input className="input" placeholder="Join URL (Teams, Padlet, Zoom)" value={joinUrl} onChange={e => setJoinUrl(e.target.value)} />
-                            <input className="input" type="datetime-local" value={startsAt} min={minStartsAt} step={60} onChange={e => setStartsAt(e.target.value)} />
-                            <input className="input" type="datetime-local" value={endsAt} min={minEndsAt} step={60} onChange={e => setEndsAt(e.target.value)} />
-
-                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm font-semibold">Lesson thumbnail — optional</p>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    ref={sessionThumbnailInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const file = e.currentTarget.files?.[0]
-                                      if (!file) return
-                                      const url = await uploadSessionThumbnail(file)
-                                      if (url) setSessionThumbnailUrlDraft(url)
-                                      e.currentTarget.value = ''
-                                    }}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost text-xs"
-                                    onClick={() => sessionThumbnailInputRef.current?.click()}
-                                    disabled={sessionThumbnailUploading}
-                                  >
-                                    {sessionThumbnailUploading ? 'Uploading…' : 'Upload'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost text-xs"
-                                    onClick={() => setSessionThumbnailUrlDraft(null)}
-                                    disabled={!sessionThumbnailUrlDraft}
-                                  >
-                                    Clear
-                                  </button>
-                                </div>
-                              </div>
-
-                              {sessionThumbnailUrlDraft ? (
-                                <div className="space-y-2">
-                                  <div className="text-xs muted break-all">{sessionThumbnailUrlDraft}</div>
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={sessionThumbnailUrlDraft}
-                                    alt="Thumbnail preview"
-                                    className="w-full max-h-48 object-cover rounded-xl border border-white/10"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="text-xs muted">No thumbnail uploaded.</div>
-                              )}
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold">Lesson thumbnail — optional</p>
+                            <div className="flex items-center gap-2">
+                              <input
+                                ref={sessionThumbnailInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.currentTarget.files?.[0]
+                                  if (!file) return
+                                  const url = await uploadSessionThumbnail(file)
+                                  if (url) setSessionThumbnailUrlDraft(url)
+                                  e.currentTarget.value = ''
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => sessionThumbnailInputRef.current?.click()}
+                                disabled={sessionThumbnailUploading}
+                              >
+                                {sessionThumbnailUploading ? 'Uploading…' : 'Upload'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => setSessionThumbnailUrlDraft(null)}
+                                disabled={!sessionThumbnailUrlDraft}
+                              >
+                                Clear
+                              </button>
                             </div>
+                          </div>
+
+                          {sessionThumbnailUrlDraft ? (
+                            <div className="space-y-2">
+                              <div className="text-xs muted break-all">{sessionThumbnailUrlDraft}</div>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={sessionThumbnailUrlDraft}
+                                alt="Thumbnail preview"
+                                className="w-full max-h-48 object-cover rounded-xl border border-white/10"
+                              />
+                            </div>
+                          ) : (
+                            <div className="text-xs muted">No thumbnail uploaded.</div>
+                          )}
+                        </div>
 
                             <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
                               <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
@@ -5466,16 +5371,13 @@ export default function Dashboard() {
                               ))}
                             </div>
 
-                            <div>
-                              <button className="btn btn-primary" type="submit">Create</button>
-                            </div>
-                          </form>
-                        )}
-                      </div>
-                    </div>
-                    </div>
+                        <div>
+                          <button className="btn btn-primary" type="submit">Create</button>
+                        </div>
+                      </form>
+                    )}
                   </div>
-                </div>
+                </FullScreenGlassOverlay>
               </OverlayPortal>
             )}
           </>
@@ -5498,35 +5400,18 @@ export default function Dashboard() {
 
             {liveLessonSelectorOverlayOpen && (
               <OverlayPortal>
-                <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-                  <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setLiveLessonSelectorOverlayOpen(false)} />
-                  <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setLiveLessonSelectorOverlayOpen(false)}>
-                    <div
-                      className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                    <div className="p-3 border-b flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold break-words">Live lesson selector</div>
-                        <div className="text-sm muted">Override the automatically resolved live lesson.</div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setLiveLessonSelectorOverlayOpen(false)}
-                        aria-label="Close"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-3">
-                      <div className="space-y-3">
-                        <p className="text-sm muted">
-                          Current lessons are determined by the scheduled timeframe. By default, the current lesson is live.
-                          You can override by selecting a past session.
-                        </p>
-                        <div className="space-y-2">
+                <FullScreenGlassOverlay
+                  title="Live lesson selector"
+                  subtitle="Override the automatically resolved live lesson."
+                  onClose={() => setLiveLessonSelectorOverlayOpen(false)}
+                  zIndexClassName="z-50"
+                >
+                  <div className="space-y-3">
+                    <p className="text-sm muted">
+                      Current lessons are determined by the scheduled timeframe. By default, the current lesson is live.
+                      You can override by selecting a past session.
+                    </p>
+                    <div className="space-y-2">
                           <label className="flex items-center gap-2 text-sm">
                             <input
                               type="radio"
@@ -5597,11 +5482,8 @@ export default function Dashboard() {
                             ? sessionById.get(defaultCurrentSessionId).title
                             : 'None'}
                         </div>
-                      </div>
-                    </div>
-                    </div>
                   </div>
-                </div>
+                </FullScreenGlassOverlay>
               </OverlayPortal>
             )}
           </>
@@ -5765,396 +5647,344 @@ export default function Dashboard() {
 
         {sessionDetailsOpen && (
           <OverlayPortal>
-            <div
-              className={`fixed inset-0 z-50 transition-opacity duration-200 ${sessionDetailsHiddenByChildOverlay ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-              role="dialog"
-              aria-modal="true"
+            <FullScreenGlassOverlay
+              title={
+                sessionDetailsView === 'pastList'
+                  ? `Past sessions — ${activeGradeLabel}`
+                  : (sessionDetailsSession?.title || 'Session details')
+              }
+              subtitle={
+                sessionDetailsView === 'pastList'
+                  ? 'Tap a session to view assignments.'
+                  : (sessionDetailsSession?.startsAt
+                    ? formatSessionRange(
+                      sessionDetailsSession.startsAt,
+                      (sessionDetailsSession as any).endsAt || sessionDetailsSession.startsAt
+                    )
+                    : undefined)
+              }
+              onClose={closeSessionDetails}
+              onBackdropClick={closeSessionDetails}
+              zIndexClassName="z-50"
+              className={`transition-opacity duration-200 ${sessionDetailsHiddenByChildOverlay ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              leftActions={
+                sessionDetailsView !== 'pastList' && sessionDetailsIds.length > 1 ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setSessionDetailsView('pastList')}
+                  >
+                    Back
+                  </button>
+                ) : null
+              }
             >
-              <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeSessionDetails} />
-              <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeSessionDetails}>
-                <div
-                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                {sessionDetailsView === 'pastList' ? (
-                  <>
-                    <div className="p-3 border-b flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold break-words">Past sessions — {activeGradeLabel}</div>
-                        <div className="text-sm muted">Tap a session to view assignments.</div>
-                      </div>
-                      <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
-                        Close
-                      </button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-3">
-                      <ul className="border rounded divide-y overflow-hidden">
-                        {sessionDetailsIds.map((id, idx) => {
-                          const s = sessionById.get(id)
-                          return (
-                            <li key={id}>
-                              <button
-                                type="button"
-                                className="w-full text-left p-3"
-                                onClick={() => {
-                                  setSessionDetailsIndex(idx)
-                                  setSessionDetailsView('details')
-                                  setSessionDetailsTab('assignments')
-                                }}
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="font-medium break-words">{s?.title || 'Session'}</div>
-                                  {s?.startsAt && (
-                                    <div className="text-sm muted">
-                                      {formatSessionRange(s.startsAt, (s as any).endsAt || s.startsAt)}
-                                    </div>
-                                  )}
-                                </div>
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="p-3 border-b flex items-start justify-between gap-3">
-                      <div className="w-24 shrink-0">
-                        {sessionDetailsIds.length > 1 ? (
+              {sessionDetailsView === 'pastList' ? (
+                <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
+                  {sessionDetailsIds.map((id, idx) => {
+                    const s = sessionById.get(id)
+                    return (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          className="w-full text-left p-3"
+                          onClick={() => {
+                            setSessionDetailsIndex(idx)
+                            setSessionDetailsView('details')
+                            setSessionDetailsTab('assignments')
+                          }}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-medium break-words">{s?.title || 'Session'}</div>
+                            {s?.startsAt && (
+                              <div className="text-sm muted">
+                                {formatSessionRange(s.startsAt, (s as any).endsAt || s.startsAt)}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <>
+                  {canManageSessionThumbnails && sessionDetailsSessionId && sessionDetailsSession ? (
+                    <div className="mb-3 rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold">Lesson thumbnail</div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={updateSessionThumbnailInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.currentTarget.files?.[0]
+                              if (!file) return
+                              const currentId = updatingSessionThumbnailId || sessionDetailsSessionId
+                              if (!currentId) return
+                              const url = await uploadSessionThumbnail(file)
+                              if (url) await updateSessionThumbnail(currentId, url)
+                              setUpdatingSessionThumbnailId(null)
+                              e.currentTarget.value = ''
+                            }}
+                          />
                           <button
                             type="button"
-                            className="btn btn-ghost"
-                            onClick={() => setSessionDetailsView('pastList')}
+                            className="btn btn-ghost text-xs"
+                            onClick={() => {
+                              setUpdatingSessionThumbnailId(sessionDetailsSessionId)
+                              updateSessionThumbnailInputRef.current?.click()
+                            }}
+                            disabled={updatingSessionThumbnailBusy}
                           >
-                            Back
+                            {updatingSessionThumbnailBusy ? 'Updating…' : 'Upload / Update'}
                           </button>
-                        ) : null}
-                      </div>
-                      <div className="min-w-0 flex-1 flex flex-wrap items-center justify-center gap-3 text-center">
-                        <div className="font-semibold break-words">{sessionDetailsSession?.title || 'Session details'}</div>
-                        {sessionDetailsSession?.startsAt && (
-                          <div className="text-xs muted">
-                            {formatSessionRange(sessionDetailsSession.startsAt, (sessionDetailsSession as any).endsAt || sessionDetailsSession.startsAt)}
-                          </div>
-                        )}
-                      </div>
-                      <div className="w-24 shrink-0 flex justify-end">
-                        <button type="button" className="btn btn-ghost" onClick={closeSessionDetails}>
-                          Close
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-3">
-                      {canManageSessionThumbnails && sessionDetailsSessionId && sessionDetailsSession ? (
-                        <div className="mb-3 rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold">Lesson thumbnail</div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                ref={updateSessionThumbnailInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const file = e.currentTarget.files?.[0]
-                                  if (!file) return
-                                  const currentId = updatingSessionThumbnailId || sessionDetailsSessionId
-                                  if (!currentId) return
-                                  const url = await uploadSessionThumbnail(file)
-                                  if (url) await updateSessionThumbnail(currentId, url)
-                                  setUpdatingSessionThumbnailId(null)
-                                  e.currentTarget.value = ''
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="btn btn-ghost text-xs"
-                                onClick={() => {
-                                  setUpdatingSessionThumbnailId(sessionDetailsSessionId)
-                                  updateSessionThumbnailInputRef.current?.click()
-                                }}
-                                disabled={updatingSessionThumbnailBusy}
-                              >
-                                {updatingSessionThumbnailBusy ? 'Updating…' : 'Upload / Update'}
-                              </button>
-                            </div>
-                          </div>
-                          {typeof (sessionDetailsSession as any)?.thumbnailUrl === 'string' && (sessionDetailsSession as any).thumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={(sessionDetailsSession as any).thumbnailUrl}
-                              alt="Lesson thumbnail"
-                              className="w-full max-h-48 object-cover rounded-xl border border-white/10"
-                            />
-                          ) : (
-                            <div className="text-xs muted">No thumbnail.</div>
-                          )}
                         </div>
-                      ) : null}
+                      </div>
+                      {typeof (sessionDetailsSession as any)?.thumbnailUrl === 'string' && (sessionDetailsSession as any).thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={(sessionDetailsSession as any).thumbnailUrl}
+                          alt="Lesson thumbnail"
+                          className="w-full max-h-48 object-cover rounded-xl border border-white/10"
+                        />
+                      ) : (
+                        <div className="text-xs muted">No thumbnail.</div>
+                      )}
+                    </div>
+                  ) : null}
 
-                      <div className="mb-3 flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          className={sessionDetailsTab === 'assignments' ? 'btn btn-secondary' : 'btn btn-ghost'}
-                          onClick={() => {
-                            setSessionDetailsTab('assignments')
-                            if (expandedSessionId) {
+                  <div className="mb-3 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      className={sessionDetailsTab === 'assignments' ? 'btn btn-secondary' : 'btn btn-ghost'}
+                      onClick={() => {
+                        setSessionDetailsTab('assignments')
+                        if (expandedSessionId) {
+                          fetchAssignments(expandedSessionId)
+                          if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
+                        }
+                      }}
+                      disabled={isSubscriptionBlocked}
+                    >
+                      Assignments
+                    </button>
+                    <button
+                      type="button"
+                      className={sessionDetailsTab === 'responses' ? 'btn btn-secondary' : 'btn btn-ghost'}
+                      onClick={() => {
+                        setSessionDetailsTab('responses')
+                        if (expandedSessionId) fetchMyResponses(expandedSessionId)
+                      }}
+                      disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                    >
+                      Quizzes
+                    </button>
+                  </div>
+
+                  {sessionDetailsTab === 'assignments' ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-sm">Assignments</div>
+                        {expandedSessionId && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                            onClick={() => {
                               fetchAssignments(expandedSessionId)
                               if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
-                            }
-                          }}
-                          disabled={isSubscriptionBlocked}
-                        >
-                          Assignments
-                        </button>
-                        <button
-                          type="button"
-                          className={sessionDetailsTab === 'responses' ? 'btn btn-secondary' : 'btn btn-ghost'}
-                          onClick={() => {
-                            setSessionDetailsTab('responses')
-                            if (expandedSessionId) fetchMyResponses(expandedSessionId)
-                          }}
-                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                        >
-                          Quizzes
-                        </button>
+                            }}
+                            disabled={assignmentsLoading}
+                          >
+                            {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
+                          </button>
+                        )}
                       </div>
 
-                      {sessionDetailsTab === 'assignments' ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">Assignments</div>
-                            {expandedSessionId && (
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                                onClick={() => {
-                                  fetchAssignments(expandedSessionId)
-                                  if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
-                                }}
-                                disabled={assignmentsLoading}
-                              >
-                                {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
-                              </button>
-                            )}
-                          </div>
+                      {(() => {
+                        const sorted = [...(assignments || [])].sort((a: any, b: any) => {
+                          const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
+                          const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0
+                          return bT - aT
+                        })
 
-                          {(() => {
-                            const sorted = [...(assignments || [])].sort((a: any, b: any) => {
-                              const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
-                              const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0
-                              return bT - aT
-                            })
+                        if (assignmentsError) return <div className="text-sm text-red-600">{assignmentsError}</div>
+                        if (assignmentsLoading) return <div className="text-sm muted">Loading assignments…</div>
+                        if (sorted.length === 0) return <div className="text-sm muted">No assignments yet.</div>
 
-                            if (assignmentsError) return <div className="text-sm text-red-600">{assignmentsError}</div>
-                            if (assignmentsLoading) return <div className="text-sm muted">Loading assignments…</div>
-                            if (sorted.length === 0) return <div className="text-sm muted">No assignments yet.</div>
-
-                            return (
-                              <div className="space-y-2">
-                                <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
-                                  {sorted.map((a: any) => (
-                                    <li key={a.id} className="p-3 flex items-start justify-between gap-3">
-                                      <button
-                                        type="button"
-                                        className="min-w-0 text-left"
-                                        onClick={() => {
-                                          if (!expandedSessionId) return
-                                          setSelectedAssignmentId(String(a.id))
-                                          setSelectedAssignmentQuestionId(null)
-                                          setAssignmentQuestionOverlayOpen(false)
-                                          setAssignmentOverlayOpen(true)
-                                          fetchAssignmentDetails(expandedSessionId, String(a.id))
-                                        }}
-                                      >
-                                        <div className="font-medium break-words">{a.title || 'Assignment'}</div>
-                                        <div className="text-xs muted">
-                                          {a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}
-                                          {typeof a?._count?.questions === 'number' ? ` • ${a._count.questions} questions` : ''}
-                                        </div>
-                                      </button>
-                                      <div className="shrink-0">
-                                        <button
-                                          type="button"
-                                          className="btn btn-ghost text-xs"
-                                          onClick={() => {
-                                            if (!expandedSessionId) return
-                                            setSelectedAssignmentId(String(a.id))
-                                            setSelectedAssignmentQuestionId(null)
-                                            setAssignmentQuestionOverlayOpen(false)
-                                            setAssignmentOverlayOpen(true)
-                                            fetchAssignmentDetails(expandedSessionId, String(a.id))
-                                          }}
-                                        >
-                                          View
-                                        </button>
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )
-                          })()}
-
-                          {!isLearner && expandedSessionId && (
-                            <div className="p-3 border border-white/10 rounded-xl bg-white/5 space-y-2">
-                              <div className="font-semibold text-sm">Import assignment (PDF/screenshot)</div>
-                              <div className="grid gap-2">
-                                <input
-                                  className="input"
-                                  placeholder="Optional title"
-                                  value={assignmentTitle}
-                                  onChange={e => setAssignmentTitle(e.target.value)}
-                                />
-                                <input
-                                  className="input"
-                                  type="file"
-                                  accept="application/pdf,image/*"
-                                  onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
-                                />
-                                {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
-                                <div>
+                        return (
+                          <div className="space-y-2">
+                            <ul className="border border-white/10 rounded divide-y divide-white/10 overflow-hidden">
+                              {sorted.map((a: any) => (
+                                <li key={a.id} className="p-3 flex items-start justify-between gap-3">
                                   <button
                                     type="button"
-                                    className="btn btn-primary"
-                                    disabled={assignmentImporting || !assignmentFile}
-                                    onClick={() => importAssignment(expandedSessionId)}
+                                    className="min-w-0 text-left"
+                                    onClick={() => {
+                                      if (!expandedSessionId) return
+                                      setSelectedAssignmentId(String(a.id))
+                                      setSelectedAssignmentQuestionId(null)
+                                      setAssignmentQuestionOverlayOpen(false)
+                                      setAssignmentOverlayOpen(true)
+                                      fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                    }}
                                   >
-                                    {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
+                                    <div className="font-medium break-words">{a.title || 'Assignment'}</div>
+                                    <div className="text-xs muted">
+                                      {a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}
+                                      {typeof a?._count?.questions === 'number' ? ` • ${a._count.questions} questions` : ''}
+                                    </div>
                                   </button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : sessionDetailsTab === 'responses' ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold text-sm">Quizzes</div>
-                            {expandedSessionId && (
+                                  <div className="shrink-0">
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost text-xs"
+                                      onClick={() => {
+                                        if (!expandedSessionId) return
+                                        setSelectedAssignmentId(String(a.id))
+                                        setSelectedAssignmentQuestionId(null)
+                                        setAssignmentQuestionOverlayOpen(false)
+                                        setAssignmentOverlayOpen(true)
+                                        fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                      }}
+                                    >
+                                      View
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      })()}
+
+                      {!isLearner && expandedSessionId && (
+                        <div className="p-3 border border-white/10 rounded-xl bg-white/5 space-y-2">
+                          <div className="font-semibold text-sm">Import assignment (PDF/screenshot)</div>
+                          <div className="grid gap-2">
+                            <input
+                              className="input"
+                              placeholder="Optional title"
+                              value={assignmentTitle}
+                              onChange={e => setAssignmentTitle(e.target.value)}
+                            />
+                            <input
+                              className="input"
+                              type="file"
+                              accept="application/pdf,image/*"
+                              onChange={e => setAssignmentFile(e.target.files?.[0] ?? null)}
+                            />
+                            {assignmentImportError ? <div className="text-sm text-red-600">{assignmentImportError}</div> : null}
+                            <div>
                               <button
                                 type="button"
-                                className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                                onClick={() => fetchMyResponses(expandedSessionId)}
-                                disabled={myResponsesLoading}
+                                className="btn btn-primary"
+                                disabled={assignmentImporting || !assignmentFile}
+                                onClick={() => importAssignment(expandedSessionId)}
                               >
-                                {myResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                                {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
                               </button>
-                            )}
-                          </div>
-
-                          {myResponsesError ? (
-                            <div className="text-sm text-red-600">{myResponsesError}</div>
-                          ) : myResponsesLoading ? (
-                            <div className="text-sm muted">Loading responses…</div>
-                          ) : myResponses.length === 0 ? (
-                            <div className="text-sm muted">No responses submitted yet.</div>
-                          ) : (
-                            <div className="space-y-2">
-                              {myResponses.map((r: any) => (
-                                <div key={r.id} className="p-3 border rounded bg-white space-y-1">
-                                  {r?.updatedAt ? (
-                                    <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
-                                  ) : null}
-                                  {r?.quizLabel ? (
-                                    <div className="text-sm font-semibold text-slate-900">{String(r.quizLabel)}</div>
-                                  ) : null}
-                                  {r?.prompt ? (
-                                    <div className="text-sm text-slate-900 font-medium whitespace-pre-wrap break-words">
-                                      {renderTextWithKatex(r.prompt)}
-                                    </div>
-                                  ) : null}
-                                  {(() => {
-                                    const html = renderKatexDisplayHtml(r?.latex)
-                                    if (html) {
-                                      return (
-                                        <div
-                                          className="text-slate-900 leading-relaxed"
-                                          dangerouslySetInnerHTML={{ __html: html }}
-                                        />
-                                      )
-                                    }
-                                    return (
-                                      <div className="text-slate-900 whitespace-pre-wrap break-words">{renderTextWithKatex(String(r?.latex || ''))}</div>
-                                    )
-                                  })()}
-                                </div>
-                              ))}
                             </div>
-                          )}
+                          </div>
                         </div>
-                      ) : null}
+                      )}
                     </div>
-                  </>
-                )}
-                </div>
-              </div>
-            </div>
+                  ) : sessionDetailsTab === 'responses' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-sm">Quizzes</div>
+                        {expandedSessionId && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                            onClick={() => fetchMyResponses(expandedSessionId)}
+                            disabled={myResponsesLoading}
+                          >
+                            {myResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                          </button>
+                        )}
+                      </div>
+
+                      {myResponsesError ? (
+                        <div className="text-sm text-red-600">{myResponsesError}</div>
+                      ) : myResponsesLoading ? (
+                        <div className="text-sm muted">Loading responses…</div>
+                      ) : myResponses.length === 0 ? (
+                        <div className="text-sm muted">No responses submitted yet.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {myResponses.map((r: any) => (
+                            <div key={r.id} className="p-3 border rounded bg-white space-y-1">
+                              {r?.updatedAt ? (
+                                <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
+                              ) : null}
+                              {r?.quizLabel ? (
+                                <div className="text-sm font-semibold text-slate-900">{String(r.quizLabel)}</div>
+                              ) : null}
+                              {r?.prompt ? (
+                                <div className="text-sm text-slate-900 font-medium whitespace-pre-wrap break-words">
+                                  {renderTextWithKatex(r.prompt)}
+                                </div>
+                              ) : null}
+                              {(() => {
+                                const html = renderKatexDisplayHtml(r?.latex)
+                                if (html) {
+                                  return (
+                                    <div
+                                      className="text-slate-900 leading-relaxed"
+                                      dangerouslySetInnerHTML={{ __html: html }}
+                                    />
+                                  )
+                                }
+                                return (
+                                  <div className="text-slate-900 whitespace-pre-wrap break-words">{renderTextWithKatex(String(r?.latex || ''))}</div>
+                                )
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </FullScreenGlassOverlay>
           </OverlayPortal>
         )}
 
         {assignmentOverlayOpen && (
           <OverlayPortal>
-            <div
-              className={`fixed inset-0 z-[60] transition-opacity duration-200 ${assignmentQuestionOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-              role="dialog"
-              aria-modal="true"
-            >
-              <div
-                className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-                onClick={() => {
-                  setAssignmentQuestionOverlayOpen(false)
-                  setSelectedAssignmentQuestionId(null)
-                  setAssignmentOverlayOpen(false)
-                }}
-              />
-              <div
-                className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
-                onClick={() => {
-                  setAssignmentQuestionOverlayOpen(false)
-                  setSelectedAssignmentQuestionId(null)
-                  setAssignmentOverlayOpen(false)
-                }}
-              >
-                <div
-                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                  onClick={(e) => e.stopPropagation()}
+            <FullScreenGlassOverlay
+              title={selectedAssignment?.title || 'Assignment'}
+              onClose={() => {
+                setAssignmentQuestionOverlayOpen(false)
+                setSelectedAssignmentQuestionId(null)
+                setAssignmentOverlayOpen(false)
+              }}
+              onBackdropClick={() => {
+                setAssignmentQuestionOverlayOpen(false)
+                setSelectedAssignmentQuestionId(null)
+                setAssignmentOverlayOpen(false)
+              }}
+              zIndexClassName="z-[60]"
+              className={`transition-opacity duration-200 ${assignmentQuestionOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              leftActions={
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setAssignmentQuestionOverlayOpen(false)
+                    setSelectedAssignmentQuestionId(null)
+                    setAssignmentOverlayOpen(false)
+                  }}
                 >
-                  <div className="p-3 border-b flex items-start justify-between gap-3">
-                    <div className="w-24 shrink-0">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setAssignmentQuestionOverlayOpen(false)
-                          setSelectedAssignmentQuestionId(null)
-                          setAssignmentOverlayOpen(false)
-                        }}
-                      >
-                        Back
-                      </button>
-                    </div>
-                    <div className="min-w-0 flex-1 text-center">
-                      <div className="font-semibold break-words">{selectedAssignment?.title || 'Assignment'}</div>
-                    </div>
-                    <div className="w-24 shrink-0 flex justify-end">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setAssignmentQuestionOverlayOpen(false)
-                          setSelectedAssignmentQuestionId(null)
-                          setAssignmentOverlayOpen(false)
-                        }}
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  Back
+                </button>
+              }
+            >
+              <div className="space-y-3">
                     {selectedAssignmentError ? (
                       <div className="text-sm text-red-600">{selectedAssignmentError}</div>
                     ) : selectedAssignmentLoading ? (
@@ -6338,65 +6168,38 @@ export default function Dashboard() {
                         ) : null}
                       </>
                     )}
-                  </div>
-                </div>
               </div>
-            </div>
+            </FullScreenGlassOverlay>
           </OverlayPortal>
         )}
 
         {assignmentQuestionOverlayOpen && selectedAssignmentQuestionId && (
           <OverlayPortal>
-            <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
-              <div
-                className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-                onClick={() => {
-                  setAssignmentQuestionOverlayOpen(false)
-                  setSelectedAssignmentQuestionId(null)
-                }}
-              />
-              <div
-                className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
-                onClick={() => {
-                  setAssignmentQuestionOverlayOpen(false)
-                  setSelectedAssignmentQuestionId(null)
-                }}
-              >
-                <div
-                  className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                  onClick={(e) => e.stopPropagation()}
+            <FullScreenGlassOverlay
+              title="Question"
+              onClose={() => {
+                setAssignmentQuestionOverlayOpen(false)
+                setSelectedAssignmentQuestionId(null)
+              }}
+              onBackdropClick={() => {
+                setAssignmentQuestionOverlayOpen(false)
+                setSelectedAssignmentQuestionId(null)
+              }}
+              zIndexClassName="z-[70]"
+              leftActions={
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setAssignmentQuestionOverlayOpen(false)
+                    setSelectedAssignmentQuestionId(null)
+                  }}
                 >
-                  <div className="p-3 border-b flex items-start justify-between gap-3">
-                    <div className="w-24 shrink-0">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setAssignmentQuestionOverlayOpen(false)
-                          setSelectedAssignmentQuestionId(null)
-                        }}
-                      >
-                        Back
-                      </button>
-                    </div>
-                    <div className="min-w-0 flex-1 text-center">
-                      <div className="font-semibold break-words">Question</div>
-                    </div>
-                    <div className="w-24 shrink-0 flex justify-end">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setAssignmentQuestionOverlayOpen(false)
-                          setSelectedAssignmentQuestionId(null)
-                        }}
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                  Back
+                </button>
+              }
+            >
+              <div className="space-y-4">
                     {(() => {
                       const qid = String(selectedAssignmentQuestionId || '')
                       const qs = Array.isArray(selectedAssignment?.questions) ? selectedAssignment.questions : []
@@ -6801,10 +6604,8 @@ export default function Dashboard() {
                         </>
                       )
                     })()}
-                  </div>
-                </div>
               </div>
-            </div>
+            </FullScreenGlassOverlay>
           </OverlayPortal>
         )}
 
@@ -8343,134 +8144,67 @@ export default function Dashboard() {
 
       {timelineOpen && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true">
-            <div
-              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-              onClick={() => setTimelineOpen(false)}
-            />
-            <div
-              className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
-              onClick={() => setTimelineOpen(false)}
-            >
-              <div
-                className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-3 border-b flex items-start justify-between gap-3">
-                  <div className="w-24 shrink-0" />
-                  <div className="min-w-0 flex-1 text-center">
-                    <div className="font-semibold break-words">My posts</div>
-                  </div>
-                  <div className="w-24 shrink-0 flex justify-end">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => setTimelineOpen(false)}
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  {timelineChallengesError ? (
-                    <div className="text-sm text-red-400">{timelineChallengesError}</div>
-                  ) : timelineChallengesLoading ? (
-                    <div className="text-sm text-white/70">Loading…</div>
-                  ) : timelineChallenges.length === 0 ? (
-                    <div className="text-sm text-white/70">No quizzes yet.</div>
-                  ) : (
-                    renderTimelineItems(timelineChallenges)
-                  )}
-                </div>
-              </div>
+          <FullScreenGlassOverlay
+            title="My posts"
+            onClose={() => setTimelineOpen(false)}
+            onBackdropClick={() => setTimelineOpen(false)}
+            zIndexClassName="z-[55]"
+          >
+            <div className="space-y-3">
+              {timelineChallengesError ? (
+                <div className="text-sm text-red-400">{timelineChallengesError}</div>
+              ) : timelineChallengesLoading ? (
+                <div className="text-sm text-white/70">Loading…</div>
+              ) : timelineChallenges.length === 0 ? (
+                <div className="text-sm text-white/70">No quizzes yet.</div>
+              ) : (
+                renderTimelineItems(timelineChallenges)
+              )}
             </div>
-          </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       )}
 
       {isMobile && studentQuickOverlay && (
-        <div
-          className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-          role="dialog"
-          aria-modal="true"
+        <FullScreenGlassOverlay
+          title={
+            studentQuickOverlay === 'timeline'
+              ? 'Timeline'
+              : (DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === studentQuickOverlay)?.label || 'Section'
+          }
+          onClose={closeStudentQuickOverlay}
+          onBackdropClick={closeStudentQuickOverlay}
+          zIndexClassName="z-50 md:hidden"
+          className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeStudentQuickOverlay} />
-          <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeStudentQuickOverlay}>
-            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="p-3 border-b flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold break-words">
-                    {studentQuickOverlay === 'timeline'
-                      ? 'Timeline'
-                      : (DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === studentQuickOverlay)?.label || 'Section'}
-                  </div>
-                </div>
-                <button type="button" className="btn btn-ghost" onClick={closeStudentQuickOverlay} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {studentQuickOverlay === 'timeline' ? renderTimelineCard() : renderSection(studentQuickOverlay)}
-              </div>
-            </div>
+          <div className="space-y-3">
+            {studentQuickOverlay === 'timeline' ? renderTimelineCard() : renderSection(studentQuickOverlay)}
           </div>
-        </div>
+        </FullScreenGlassOverlay>
       )}
 
       {accountSnapshotOverlayOpen && (
-        <div
-          className={`fixed inset-0 z-40 transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-          role="dialog"
-          aria-modal="true"
+        <FullScreenGlassOverlay
+          title="Account snapshot"
+          onClose={() => setAccountSnapshotOverlayOpen(false)}
+          onBackdropClick={() => setAccountSnapshotOverlayOpen(false)}
+          zIndexClassName="z-40"
+          className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setAccountSnapshotOverlayOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setAccountSnapshotOverlayOpen(false)}>
-            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="p-3 border-b flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold break-words">Account snapshot</div>
-                </div>
-                <button type="button" className="btn btn-ghost" onClick={() => setAccountSnapshotOverlayOpen(false)} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {renderAccountSnapshotBody()}
-              </div>
-            </div>
-          </div>
-        </div>
+          <div className="space-y-3">{renderAccountSnapshotBody()}</div>
+        </FullScreenGlassOverlay>
       )}
 
       {!isAdmin && isMobile && mobilePanels.sessions && (
-        <div
-          className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-          role="dialog"
-          aria-modal="true"
+        <FullScreenGlassOverlay
+          title="Sessions"
+          onClose={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
+          onBackdropClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
+          zIndexClassName="z-50 md:hidden"
+          className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))} />
-          <div className="absolute inset-x-0 bottom-0" onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}>
-            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="p-3 border-b flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold break-words">Sessions</div>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3">
-                {renderSessionsSection()}
-              </div>
-            </div>
-          </div>
-        </div>
+          {renderSessionsSection()}
+        </FullScreenGlassOverlay>
       )}
       </main>
       {liveOverlayOpen && (

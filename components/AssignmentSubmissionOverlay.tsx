@@ -1,4 +1,5 @@
 import React from 'react'
+import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 type GradingEntry = {
   earnedMarks?: number | string | null
@@ -219,110 +220,77 @@ export default function AssignmentSubmissionOverlay(props: AssignmentSubmissionO
   }
 
   return (
-    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true">
-      <div
-        className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-        onClick={handleBackdropClick}
-      />
-      <div className="absolute inset-0 p-2 sm:p-6" onClick={handleBackdropClick}>
-        <div
-          className="h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl flex flex-col"
-          onClick={(e) => e.stopPropagation()}
+    <FullScreenGlassOverlay
+      title={title}
+      subtitle={subtitle}
+      onClose={onClose}
+      onBackdropClick={handleBackdropClick}
+      rightActions={showRegradeButton ? (
+        <button
+          type="button"
+          className="px-4 py-2 rounded-full border border-white/15 bg-white/15 hover:bg-white/20 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-60"
+          disabled={Boolean(regradeLoading)}
+          onClick={() => onRegrade?.()}
         >
-          <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-semibold text-white truncate">{title}</div>
-              {subtitle ? <div className="text-xs text-white/70 truncate">{subtitle}</div> : null}
-            </div>
-            <div className="flex items-center gap-2">
-              {showRegradeButton ? (
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-full border border-white/15 bg-white/15 hover:bg-white/20 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-60"
-                  disabled={Boolean(regradeLoading)}
-                  onClick={() => onRegrade?.()}
-                >
-                  {regradeLoading ? 'Re-grading…' : 'Re-grade'}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white"
-                onClick={onClose}
-                aria-label="Close"
-                title="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                  <path
-                    d="M6 6l8 8M14 6l-8 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
+          {regradeLoading ? 'Re-grading…' : 'Re-grade'}
+        </button>
+      ) : null}
+    >
+      {normalizedErrors.map((e, idx) => (
+        <div key={`overlay-err-${idx}`} className="text-sm text-red-200 mb-3">{e}</div>
+      ))}
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-            {normalizedErrors.map((e, idx) => (
-              <div key={`overlay-err-${idx}`} className="text-sm text-red-200 mb-3">{e}</div>
-            ))}
+      {meta ? <div className="mb-4">{meta}</div> : null}
 
-            {meta ? <div className="mb-4">{meta}</div> : null}
+      {loading ? (
+        <div className="text-sm text-white/70">{String(loadingText || 'Loading…')}</div>
+      ) : (
+        (() => {
+          if (!Array.isArray(questions) || !questions.length) return emptyState || <div className="text-sm text-white/70">No questions found.</div>
 
-            {loading ? (
-              <div className="text-sm text-white/70">{String(loadingText || 'Loading…')}</div>
-            ) : (
-              (() => {
-                if (!Array.isArray(questions) || !questions.length) return emptyState || <div className="text-sm text-white/70">No questions found.</div>
+          return (
+            <div className="space-y-3">
+              {questions.map((q: any, idx: number) => {
+                const qid = String(q?.id || '')
+                const respLatex = qid ? String(responsesByQuestionId?.[qid]?.latex || '') : ''
+                const grade = qid ? gradingByQuestionId?.[qid] : undefined
+
+                const earnedMarks = (typeof grade?.earnedMarks === 'number' || typeof grade?.earnedMarks === 'string') ? Number(grade.earnedMarks) : undefined
+                const totalMarks = (typeof grade?.totalMarks === 'number' || typeof grade?.totalMarks === 'string') ? Number(grade.totalMarks) : undefined
+                const stepFeedback = Array.isArray(grade?.stepFeedback) ? grade?.stepFeedback : []
 
                 return (
-                  <div className="space-y-3">
-                    {questions.map((q: any, idx: number) => {
-                      const qid = String(q?.id || '')
-                      const respLatex = qid ? String(responsesByQuestionId?.[qid]?.latex || '') : ''
-                      const grade = qid ? gradingByQuestionId?.[qid] : undefined
+                  <details
+                    key={`${mode}-sub-q-${qid || idx}`}
+                    className="border border-white/10 rounded-lg bg-white/5 overflow-hidden"
+                    open={Boolean(openFirstQuestion && idx === 0)}
+                  >
+                    <summary className="cursor-pointer px-3 py-2 font-medium text-sm text-white flex items-center justify-between gap-2">
+                      <span className="truncate">Question {idx + 1}</span>
+                      {typeof earnedMarks === 'number' && typeof totalMarks === 'number' ? (
+                        <span className={Number(earnedMarks) > 0 ? 'text-green-200' : 'text-red-200'}>(
+                          {Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))}
+                        )</span>
+                      ) : null}
+                    </summary>
 
-                      const earnedMarks = (typeof grade?.earnedMarks === 'number' || typeof grade?.earnedMarks === 'string') ? Number(grade.earnedMarks) : undefined
-                      const totalMarks = (typeof grade?.totalMarks === 'number' || typeof grade?.totalMarks === 'string') ? Number(grade.totalMarks) : undefined
-                      const stepFeedback = Array.isArray(grade?.stepFeedback) ? grade?.stepFeedback : []
+                    <div className="px-3 pb-3">
+                      <div className="pt-2 text-sm text-white/90 whitespace-pre-wrap break-words [&_.katex]:text-sm [&_.katex-display]:text-sm">
+                        {renderTextWithKatex(String(q?.latex || ''))}
+                      </div>
 
-                      return (
-                        <details
-                          key={`${mode}-sub-q-${qid || idx}`}
-                          className="border border-white/10 rounded-lg bg-white/5 overflow-hidden"
-                          open={Boolean(openFirstQuestion && idx === 0)}
-                        >
-                          <summary className="cursor-pointer px-3 py-2 font-medium text-sm text-white flex items-center justify-between gap-2">
-                            <span className="truncate">Question {idx + 1}</span>
-                            {typeof earnedMarks === 'number' && typeof totalMarks === 'number' ? (
-                              <span className={Number(earnedMarks) > 0 ? 'text-green-200' : 'text-red-200'}>(
-                                {Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))}
-                              )</span>
-                            ) : null}
-                          </summary>
-
-                          <div className="px-3 pb-3">
-                            <div className="pt-2 text-sm text-white/90 whitespace-pre-wrap break-words [&_.katex]:text-sm [&_.katex-display]:text-sm">
-                              {renderTextWithKatex(String(q?.latex || ''))}
-                            </div>
-
-                            <div className="pt-3 space-y-2">
-                              <div className="text-xs text-white/70">{responseLabel}</div>
-                              {renderResponseBlock(qid, respLatex, stepFeedback)}
-                            </div>
-                          </div>
-                        </details>
-                      )
-                    })}
-                  </div>
+                      <div className="pt-3 space-y-2">
+                        <div className="text-xs text-white/70">{responseLabel}</div>
+                        {renderResponseBlock(qid, respLatex, stepFeedback)}
+                      </div>
+                    </div>
+                  </details>
                 )
-              })()
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+              })}
+            </div>
+          )
+        })()
+      )}
+    </FullScreenGlassOverlay>
   )
 }

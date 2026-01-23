@@ -7,6 +7,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import NavBar from '../components/NavBar'
 import MobileTopChrome from '../components/MobileTopChrome'
+import AppErrorBoundary from '../components/AppErrorBoundary'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   const router = useRouter()
@@ -41,7 +42,9 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <div className="app-shell">
         {!hideGlobalChrome && <NavBar />}
         {!hideGlobalChrome && <MobileTopChrome />}
-        <Component {...pageProps} />
+        <AppErrorBoundary key={router.asPath}>
+          <Component {...pageProps} />
+        </AppErrorBoundary>
       </div>
     </SessionProvider>
   )

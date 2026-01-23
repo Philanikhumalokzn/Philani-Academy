@@ -1,6 +1,7 @@
 import { signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 const provinceOptions = [
   'Eastern Cape',
@@ -303,39 +304,28 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" data-mobile-chrome-ignore>
-      <div
-        className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-        onClick={onRequestClose}
-        aria-hidden="true"
-      />
-
-      <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-2xl overflow-hidden">
-        <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Account control</p>
-            <div className="text-base font-semibold text-white truncate">{displayName}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="text-sm font-semibold text-red-200 hover:text-red-100"
-              onClick={() => signOut({ callbackUrl: '/' })}
-            >
-              Sign out
-            </button>
-            <button
-              type="button"
-              aria-label="Close account control"
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5 backdrop-blur"
-              onClick={onRequestClose}
-            >
-              <span aria-hidden="true" className="text-lg leading-none">×</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="p-3 overflow-auto h-full">
+    <FullScreenGlassOverlay
+      title={displayName}
+      subtitle="Account control"
+      onClose={onRequestClose}
+      onBackdropClick={onRequestClose}
+      closeDisabled={saving}
+      zIndexClassName="z-[80]"
+      className="md:hidden"
+      mobileChromeIgnore
+      panelClassName="rounded-3xl bg-white/5"
+      contentClassName="p-0"
+      leftActions={
+        <button
+          type="button"
+          className="text-sm font-semibold text-red-200 hover:text-red-100"
+          onClick={() => signOut({ callbackUrl: '/' })}
+        >
+          Sign out
+        </button>
+      }
+    >
+      <div className="p-3">
           {loading ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 text-sm text-white/80">Loading…</div>
           ) : (
@@ -566,8 +556,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
               </div>
             </div>
           )}
-        </div>
       </div>
-    </div>
+    </FullScreenGlassOverlay>
   )
 }

@@ -7672,24 +7672,19 @@ export default function Dashboard() {
           ) : (
             <div className="flex-1 flex flex-col py-4">
               {mobilePanels.announcements && (
-                <div
-                  className={`fixed inset-0 z-50 md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                  role="dialog"
-                  aria-modal="true"
+                <FullScreenGlassOverlay
+                  title="Announcements"
+                  onClose={closeMobileAnnouncements}
+                  onBackdropClick={closeMobileAnnouncements}
+                  zIndexClassName="z-50 md:hidden"
+                  className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                  panelClassName="rounded-3xl bg-[#06184a]"
+                  contentClassName="p-0"
                 >
-                  <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeMobileAnnouncements} />
-                  <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-[#06184a] shadow-2xl overflow-hidden">
-                    <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
-                      <div className="font-semibold text-white">Announcements</div>
-                      <button type="button" className="btn btn-ghost" onClick={closeMobileAnnouncements}>
-                        Close
-                      </button>
-                    </div>
-                    <div className="p-4 overflow-auto h-full">
-                      <AnnouncementsSection />
-                    </div>
+                  <div className="p-4">
+                    <AnnouncementsSection />
                   </div>
-                </div>
+                </FullScreenGlassOverlay>
               )}
 
               <div className="fixed inset-x-2 top-[0.9rem] z-30">

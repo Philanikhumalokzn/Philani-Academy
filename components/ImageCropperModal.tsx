@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
 import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
+import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 export default function ImageCropperModal(props: {
   open: boolean
@@ -120,97 +121,87 @@ export default function ImageCropperModal(props: {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={saving ? undefined : onCancel} />
+    <FullScreenGlassOverlay
+      title={title || 'Edit screenshot'}
+      subtitle="Crop and rotate before uploading."
+      onClose={onCancel}
+      onBackdropClick={onCancel}
+      closeDisabled={saving}
+      zIndexClassName="z-[60]"
+      contentClassName="space-y-3"
+    >
+      {error ? <div className="text-sm text-red-300">{error}</div> : null}
 
-      <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={saving ? undefined : onCancel}>
-        <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-          <div className="p-3 border-b flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-semibold break-words">{title || 'Edit screenshot'}</div>
-              <div className="text-sm muted">Crop and rotate before uploading.</div>
-            </div>
-            <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving} aria-label="Close">
-              ✕
+      <div className="relative w-full h-[50vh] rounded overflow-hidden border border-white/10 bg-black">
+        {objectUrl ? (
+          <div className="absolute inset-0">
+            <ReactCrop
+              crop={crop}
+              onChange={(_, percentCrop) => setCrop(percentCrop)}
+              onComplete={(px) => setCompletedCropPx(px)}
+              keepSelection
+              ruleOfThirds
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                ref={imgRef}
+                alt="Crop preview"
+                src={objectUrl}
+                style={{ maxHeight: '50vh', width: '100%', objectFit: 'contain' }}
+                onLoad={() => {
+                  setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+                  setCompletedCropPx(null)
+                }}
+              />
+            </ReactCrop>
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-sm text-white/70">No image</div>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <div className="text-xs muted">Crop</div>
+          <div className="text-sm text-white/80">Drag to move. Drag handles to resize.</div>
+          <button
+            type="button"
+            className="btn btn-ghost w-fit"
+            onClick={() => {
+              setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+              setCompletedCropPx(null)
+            }}
+            disabled={saving || rotating}
+          >
+            Reset crop
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs muted">Rotate</div>
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(-90)} disabled={saving || rotating || !workingFile}>
+              Rotate -90°
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(90)} disabled={saving || rotating || !workingFile}>
+              Rotate +90°
             </button>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {error ? <div className="text-sm text-red-300">{error}</div> : null}
-
-            <div className="relative w-full h-[50vh] rounded overflow-hidden border border-white/10 bg-black">
-              {objectUrl ? (
-                <div className="absolute inset-0">
-                  <ReactCrop
-                    crop={crop}
-                    onChange={(_, percentCrop) => setCrop(percentCrop)}
-                    onComplete={(px) => setCompletedCropPx(px)}
-                    keepSelection
-                    ruleOfThirds
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      ref={imgRef}
-                      alt="Crop preview"
-                      src={objectUrl}
-                      style={{ maxHeight: '50vh', width: '100%', objectFit: 'contain' }}
-                      onLoad={() => {
-                        setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
-                        setCompletedCropPx(null)
-                      }}
-                    />
-                  </ReactCrop>
-                </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-sm text-white/70">No image</div>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <div className="text-xs muted">Crop</div>
-                <div className="text-sm text-white/80">Drag to move. Drag handles to resize.</div>
-                <button
-                  type="button"
-                  className="btn btn-ghost w-fit"
-                  onClick={() => {
-                    setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
-                    setCompletedCropPx(null)
-                  }}
-                  disabled={saving || rotating}
-                >
-                  Reset crop
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-xs muted">Rotate</div>
-                <div className="flex gap-2 flex-wrap">
-                  <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(-90)} disabled={saving || rotating || !workingFile}>
-                    Rotate -90°
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(90)} disabled={saving || rotating || !workingFile}>
-                    Rotate +90°
-                  </button>
-                </div>
-                {rotating ? <div className="text-xs text-white/70">Rotating…</div> : null}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 justify-end">
-              <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>
-                Cancel
-              </button>
-              <button type="button" className="btn" onClick={doUseOriginal} disabled={saving || !file}>
-                Upload original
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => void doConfirm()} disabled={saving || !file || !objectUrl}>
-                {saving ? 'Processing…' : (confirmLabel || 'Upload edited')}
-              </button>
-            </div>
-          </div>
+          {rotating ? <div className="text-xs text-white/70">Rotating…</div> : null}
         </div>
       </div>
-    </div>
+
+      <div className="flex flex-wrap gap-2 justify-end">
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+        <button type="button" className="btn" onClick={doUseOriginal} disabled={saving || !file}>
+          Upload original
+        </button>
+        <button type="button" className="btn btn-primary" onClick={() => void doConfirm()} disabled={saving || !file || !objectUrl}>
+          {saving ? 'Processing…' : (confirmLabel || 'Upload edited')}
+        </button>
+      </div>
+    </FullScreenGlassOverlay>
   )
 }

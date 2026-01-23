@@ -1,6 +1,7 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
+import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 function renderTextWithInlineKatex(inputRaw: string) {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
@@ -11572,57 +11573,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       )}
 
       {quizSetupOpen && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed inset-0 z-[10050] flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Start quiz"
+        <FullScreenGlassOverlay
+          title="Start Quiz"
+          subtitle="Edit the prompt, choose a timer, and start."
+          onClose={() => setQuizSetupOpen(false)}
+          onBackdropClick={() => setQuizSetupOpen(false)}
+          zIndexClassName="z-[10050]"
+          rightActions={
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => { void openQuizSetupOverlay() }}
+              disabled={quizSetupLoading}
+              title="Ask Gemini for a fresh quiz suggestion"
+            >
+              {quizSetupLoading ? 'Suggesting…' : 'Re-suggest'}
+            </button>
+          }
+          contentClassName="p-0 overflow-hidden flex flex-col"
         >
-          <div
-            className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-            aria-hidden="true"
-            onMouseDown={() => setQuizSetupOpen(false)}
-          />
-
-          <div
-            className="card philani-overlay-panel philani-overlay-enter relative w-[min(1150px,calc(100vw-24px))] h-full max-h-[92vh] overflow-hidden flex flex-col"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">Start Quiz</div>
-                <div className="text-[11px] opacity-80">
-                  Edit the prompt, choose a timer, and start.
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => { void openQuizSetupOverlay() }}
-                  disabled={quizSetupLoading}
-                  title="Ask Gemini for a fresh quiz suggestion"
-                >
-                  {quizSetupLoading ? 'Suggesting…' : 'Re-suggest'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setQuizSetupOpen(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-
+          <div className="flex-1 overflow-auto">
             {quizSetupError && (
               <div className="mx-4 mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                 {quizSetupError}
               </div>
             )}
 
-            <div className="p-4 flex-1 overflow-hidden">
-              <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="h-full flex flex-col overflow-hidden">
                   <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                     <label className="block text-xs font-medium opacity-80">Quiz label (optional)</label>
@@ -11714,32 +11692,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-3">
-              <div className="text-[11px] opacity-70">
-                Duration: {Math.max(0, Math.trunc(Number(quizSetupMinutes) || 0))}:{String(Math.max(0, Math.min(59, Math.trunc(Number(quizSetupSeconds) || 0)))).padStart(2, '0')}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setQuizSetupOpen(false)}
-                  disabled={quizSetupLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => { void startQuizFromOverlay() }}
-                  disabled={quizSetupLoading || !(quizSetupPrompt || '').trim()}
-                >
-                  Start Quiz
-                </button>
-              </div>
+          <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-3">
+            <div className="text-[11px] opacity-70">
+              Duration: {Math.max(0, Math.trunc(Number(quizSetupMinutes) || 0))}:{String(Math.max(0, Math.min(59, Math.trunc(Number(quizSetupSeconds) || 0)))).padStart(2, '0')}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setQuizSetupOpen(false)}
+                disabled={quizSetupLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { void startQuizFromOverlay() }}
+                disabled={quizSetupLoading || !(quizSetupPrompt || '').trim()}
+              >
+                Start Quiz
+              </button>
             </div>
           </div>
-        </div>,
+        </FullScreenGlassOverlay>,
         document.body,
       )}
 

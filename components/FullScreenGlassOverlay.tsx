@@ -7,6 +7,11 @@ export type FullScreenGlassOverlayProps = {
   onClose: () => void
   onBackdropClick?: () => void
 
+  closeDisabled?: boolean
+
+  panelClassName?: string
+  mobileChromeIgnore?: boolean
+
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
 
@@ -22,6 +27,9 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     subtitle,
     onClose,
     onBackdropClick,
+    closeDisabled,
+    panelClassName,
+    mobileChromeIgnore,
     leftActions,
     rightActions,
     className,
@@ -43,6 +51,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (closeDisabled) return
         e.preventDefault()
         onClose()
       }
@@ -50,7 +59,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [closeDisabled, onClose])
 
   useEffect(() => {
     // Focus the close button for accessibility.
@@ -59,10 +68,15 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  const handleBackdropClick = onBackdropClick || onClose
+  const handleBackdropClick = closeDisabled ? undefined : (onBackdropClick || onClose)
 
   return (
-    <div className={`fixed inset-0 ${zIndexClassName || 'z-[80]'} ${className || ''}`} role="dialog" aria-modal="true">
+    <div
+      className={`fixed inset-0 ${zIndexClassName || 'z-[80]'} ${className || ''}`}
+      role="dialog"
+      aria-modal="true"
+      data-mobile-chrome-ignore={mobileChromeIgnore ? true : undefined}
+    >
       <div
         className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
         onClick={handleBackdropClick}
@@ -70,7 +84,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
 
       <div className="absolute inset-0 p-2 sm:p-6" onClick={handleBackdropClick}>
         <div
-          className="h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl flex flex-col"
+          className={`h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl flex flex-col ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3">
@@ -90,6 +104,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
                 type="button"
                 className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white"
                 onClick={onClose}
+                disabled={closeDisabled}
                 aria-label="Close"
                 title="Close"
               >

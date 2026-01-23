@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
+import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -169,28 +170,11 @@ export default function Dashboard() {
   }, [])
 
   const renderKatexDisplayHtml = useCallback((latex: unknown) => {
-    const value = typeof latex === 'string' ? latex.trim() : ''
-    if (!value) return ''
-    try {
-      return katex.renderToString(value, {
-        displayMode: true,
-        throwOnError: false,
-        strict: 'ignore',
-      })
-    } catch {
-      return ''
-    }
+    return renderKatexDisplayHtmlRaw(latex)
   }, [])
 
   const splitLatexIntoSteps = useCallback((latex: unknown) => {
-    const raw = typeof latex === 'string' ? latex.replace(/\r\n/g, '\n').trim() : ''
-    if (!raw) return [] as string[]
-    const withNewlines = raw.replace(/\\\\/g, '\n')
-    const steps = withNewlines
-      .split('\n')
-      .map(s => s.trim())
-      .filter(Boolean)
-    return steps.slice(0, 30)
+    return splitLatexIntoStepsRaw(latex)
   }, [])
 
   const normalizeChallengeGrade = useCallback((gradingJson: any, stepCount: number) => {

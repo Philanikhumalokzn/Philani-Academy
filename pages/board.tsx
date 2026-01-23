@@ -6,7 +6,6 @@ import { useSession } from 'next-auth/react'
 import BrandLogo from '../components/BrandLogo'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import type { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
-import useRedirectToDashboardOnReload from '../lib/useRedirectToDashboardOnReload'
 
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 const FloatingJitsiWindow = dynamic(() => import('../components/FloatingJitsiWindow'), { ssr: false })
@@ -37,7 +36,6 @@ const useIsMobile = (maxWidth = 768) => {
 
 export default function BoardPage() {
   const router = useRouter()
-  useRedirectToDashboardOnReload(true)
   const { data: session, status } = useSession()
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)

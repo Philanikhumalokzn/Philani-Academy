@@ -5,11 +5,13 @@ import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
 import { isSpecialTestStudentEmail } from '../../../../../../lib/testUsers'
+import useRedirectToDashboardOnReload from '../../../../../../lib/useRedirectToDashboardOnReload'
 
 const StackedCanvasWindow = dynamic(() => import('../../../../../../components/StackedCanvasWindow'), { ssr: false })
 
 export default function AssignmentQuestionPage() {
   const router = useRouter()
+  useRedirectToDashboardOnReload(true)
   const { data: session, status } = useSession()
 
   const sessionId = typeof router.query.sessionId === 'string' ? router.query.sessionId : ''

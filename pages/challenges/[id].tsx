@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 import katex from 'katex'
 
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
+import useRedirectToDashboardOnReload from '../../lib/useRedirectToDashboardOnReload'
 
 const StackedCanvasWindow = dynamic(() => import('../../components/StackedCanvasWindow'), { ssr: false })
 
@@ -370,6 +371,7 @@ function OwnerAttemptCard(props: {
 export default function ChallengeAttemptPage() {
   const [metaVisible, setMetaVisible] = useState(false)
   const router = useRouter()
+  useRedirectToDashboardOnReload(true)
   const { data: session, status } = useSession()
 
   const [imageViewerOpen, setImageViewerOpen] = useState(false)

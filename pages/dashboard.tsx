@@ -2458,13 +2458,10 @@ export default function Dashboard() {
         const awardedMarks = Number(g?.awardedMarks ?? 0)
         const isCorrect = (typeof g?.isCorrect === 'boolean') ? Boolean(g.isCorrect) : (awardedMarks > 0)
         const isSignificant = (typeof g?.isSignificant === 'boolean') ? Boolean(g.isSignificant) : (!isCorrect)
-        const grade = awardedMarks > 0
-          ? 'tick'
-          : isCorrect
-            ? 'dot-green'
-            : isSignificant
-              ? 'cross'
-              : 'dot-red'
+        // Prefer explicit correctness/significance. Marks alone shouldn't force a tick.
+        const grade = isCorrect
+          ? (awardedMarks > 0 ? 'tick' : 'dot-green')
+          : (isSignificant ? 'cross' : 'dot-red')
         grading[step] = grade
         if (Number.isFinite(awardedMarks)) stepMarks[step] = Math.max(0, Math.trunc(awardedMarks))
         const fb = String(g?.feedback ?? '').trim()
@@ -2519,7 +2516,7 @@ export default function Dashboard() {
       const totalMarks = Math.max(1, stepCount)
       const gradingJson = { totalMarks, earnedMarks, steps: gradingSteps }
 
-      await fetch(`/api/sessions/challenge:${encodeURIComponent(selectedChallengeId)}/responses`, {
+      const res = await fetch(`/api/sessions/challenge:${encodeURIComponent(selectedChallengeId)}/responses`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
@@ -2528,6 +2525,26 @@ export default function Dashboard() {
           gradingJson,
           feedback: challengeGradingFeedback,
         }),
+      })
+
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(payload?.message || `Failed to save grading (${res.status})`)
+      }
+
+      // Update local UI immediately (avoids stale ticks/marks if the refetch is slow).
+      setSelectedSubmissionDetail((prev: any) => {
+        if (!prev || !Array.isArray(prev?.responses)) return prev
+        const nextResponses = prev.responses.map((r: any) =>
+          String(r?.id) === String(challengeGradingResponseId)
+            ? {
+              ...r,
+              gradingJson: payload?.gradingJson ?? gradingJson,
+              feedback: typeof payload?.feedback === 'string' ? payload.feedback : challengeGradingFeedback,
+            }
+            : r
+        )
+        return { ...prev, responses: nextResponses }
       })
 
       if (selectedSubmissionUserId) {
@@ -8816,12 +8833,24 @@ export default function Dashboard() {
                                     const selected = challengeGradingByStep[stepIdx] || null
                                     const selectGrade = (grade: string) => {
                                       setChallengeGradingByStep((g) => ({ ...g, [stepIdx]: grade }))
-                                      if (grade === 'tick') {
-                                        setChallengeGradingStepMarks((m) => ({
-                                          ...m,
-                                          [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1,
-                                        }))
-                                      }
+                                      setChallengeGradingStepMarks((m) => {
+                                        const currentRaw = Number(m[stepIdx])
+                                        const hasCurrent = Number.isFinite(currentRaw)
+                                        const current = hasCurrent ? Math.max(0, Math.trunc(currentRaw)) : null
+
+                                        // Default mark behaviors:
+                                        // - tick: ensure at least 1 (unless the grader already set a higher mark)
+                                        // - dots/cross: force 0 (prevents a previous tick mark from keeping the tick)
+                                        if (grade === 'tick') {
+                                          if (current == null || current <= 0) return { ...m, [stepIdx]: 1 }
+                                          return m
+                                        }
+                                        if (grade === 'dot-green' || grade === 'cross' || grade === 'dot-red') {
+                                          if (current === 0) return m
+                                          return { ...m, [stepIdx]: 0 }
+                                        }
+                                        return m
+                                      })
                                     }
 
                                     const pill = (isActive: boolean) => `btn btn-xs ${isActive ? 'btn-primary' : 'btn-ghost'} !px-2 !py-1`

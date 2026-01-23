@@ -1,5 +1,8 @@
 import React, { useEffect, useRef } from 'react'
 
+let bodyScrollLockCount = 0
+let bodyPrevOverflow: string | null = null
+
 export type FullScreenGlassOverlayProps = {
   title: string
   subtitle?: string
@@ -12,6 +15,8 @@ export type FullScreenGlassOverlayProps = {
   panelClassName?: string
   frameClassName?: string
   mobileChromeIgnore?: boolean
+
+  panelSize?: 'full' | 'auto'
 
   variant?: 'dark' | 'light'
   position?: 'fixed' | 'absolute'
@@ -38,6 +43,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     mobileChromeIgnore,
     variant,
     position,
+    panelSize,
     showCloseButton,
     leftActions,
     rightActions,
@@ -50,10 +56,19 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (typeof document === 'undefined') return
+    if (bodyScrollLockCount === 0) {
+      bodyPrevOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
+    bodyScrollLockCount += 1
     return () => {
-      document.body.style.overflow = prevOverflow
+      if (typeof document === 'undefined') return
+      bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1)
+      if (bodyScrollLockCount === 0) {
+        document.body.style.overflow = bodyPrevOverflow ?? ''
+        bodyPrevOverflow = null
+      }
     }
   }, [])
 
@@ -82,6 +97,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const overlayVariant = variant || 'dark'
   const rootPosition = position || 'fixed'
   const shouldShowCloseButton = showCloseButton !== undefined ? showCloseButton : true
+  const panelSizing = panelSize || 'full'
 
   const headerClassName = overlayVariant === 'light'
     ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-center justify-between gap-3 bg-white/70'
@@ -103,6 +119,8 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'border border-slate-200/60 bg-white/95 shadow-2xl'
     : 'border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl'
 
+  const panelSizeClassName = panelSizing === 'full' ? 'h-full w-full' : ''
+
   return (
     <div
       className={`${rootPosition} inset-0 ${zIndexClassName || 'z-[80]'} ${className || ''}`}
@@ -120,7 +138,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
         onClick={handleBackdropClick}
       >
         <div
-          className={`h-full w-full overflow-hidden rounded-2xl flex flex-col ${defaultPanelClassName} ${panelClassName || ''}`}
+          className={`overflow-hidden rounded-2xl flex flex-col ${panelSizeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
         >
           <div className={headerClassName}>

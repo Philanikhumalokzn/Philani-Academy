@@ -11425,151 +11425,132 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       </div>
 
       {finishQuestionModalOpen && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Save question as notes"
-          onMouseDown={(e) => {
-            // Click outside to close.
-            if (e.target === e.currentTarget) setFinishQuestionModalOpen(false)
-          }}
+        <FullScreenGlassOverlay
+          title="Save As"
+          subtitle="Saves the full question (all top steps) into Notes."
+          variant="light"
+          panelSize="auto"
+          zIndexClassName="z-[9999]"
+          onClose={() => setFinishQuestionModalOpen(false)}
+          onBackdropClick={() => setFinishQuestionModalOpen(false)}
+          closeDisabled={isSavingLatex}
+          frameClassName="absolute inset-0 flex items-center justify-center p-3"
+          panelClassName="w-[min(560px,calc(100vw-24px))] rounded-lg"
+          contentClassName="p-0"
         >
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
-          <div className="relative w-[min(560px,calc(100vw-24px))] rounded-lg bg-slate-50 shadow-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 bg-slate-900 text-white">
-              <div className="text-sm font-semibold">Save As</div>
-              <div className="text-[11px] text-slate-200 mt-0.5">
-                Saves the full question (all top steps) into Notes.
-              </div>
-            </div>
-
-            <form
-              className="p-4"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void confirmFinishQuestionSave()
-              }}
-            >
-              <div className="rounded-md border border-slate-200 bg-white p-3">
-                <label className="block text-xs font-medium text-slate-700">Title</label>
-                <input
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-                  value={finishQuestionTitle}
-                  onChange={(e) => setFinishQuestionTitle(e.target.value)}
-                  autoFocus
-                  placeholder="e.g. Solve for x"
-                />
-                {finishQuestionNoteId && (
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Internal ID saved (hidden): <span className="font-mono">{finishQuestionNoteId}</span>
-                  </div>
-                )}
-              </div>
-
-              {latexSaveError && (
-                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{latexSaveError}</div>
-              )}
-
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setFinishQuestionModalOpen(false)}
-                  disabled={isSavingLatex}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-sm"
-                  disabled={isSavingLatex || !finishQuestionNoteId}
-                >
-                  {isSavingLatex ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {notesLibraryOpen && (
-        <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Session notes"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setNotesLibraryOpen(false)
-          }}
-        >
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
-          <div className="relative w-[min(680px,calc(100vw-24px))] max-h-[min(78vh,720px)] rounded-lg bg-slate-50 shadow-xl border border-slate-200 overflow-hidden flex flex-col">
-            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">Notes</div>
-                <div className="text-[11px] text-slate-200 mt-0.5">Saved questions for this session</div>
-              </div>
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={() => setNotesLibraryOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="p-4 overflow-auto">
-              {notesLibraryLoading ? (
-                <div className="text-sm text-slate-600">Loading…</div>
-              ) : notesLibraryError ? (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {notesLibraryError}
-                </div>
-              ) : notesLibraryItems.length === 0 ? (
-                <div className="text-sm text-slate-600">No saved questions yet.</div>
-              ) : (
-                <div className="space-y-2">
-                  {notesLibraryItems.map((item) => {
-                    const updatedAt = (item as any)?.updatedAt
-                    const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="w-full text-left rounded-md border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50"
-                        onClick={() => {
-                          applySavedNotesRecord(item)
-                          setNotesLibraryOpen(false)
-                        }}
-                      >
-                        <div className="text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
-                        <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
-                          <span className="truncate">{when}</span>
-                          <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
-                        </div>
-                      </button>
-                    )
-                  })}
+          <form
+            className="p-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void confirmFinishQuestionSave()
+            }}
+          >
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <label className="block text-xs font-medium text-slate-700">Title</label>
+              <input
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                value={finishQuestionTitle}
+                onChange={(e) => setFinishQuestionTitle(e.target.value)}
+                autoFocus
+                placeholder="e.g. Solve for x"
+              />
+              {finishQuestionNoteId && (
+                <div className="mt-2 text-[11px] text-slate-500">
+                  Internal ID saved (hidden): <span className="font-mono">{finishQuestionNoteId}</span>
                 </div>
               )}
             </div>
 
-            <div className="px-4 py-3 border-t border-slate-200 bg-white flex items-center justify-between">
-              <div className="text-[11px] text-slate-500">
-                Selecting a question overwrites your current notes view.
-              </div>
+            {latexSaveError && (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{latexSaveError}</div>
+            )}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => { void openNotesLibrary() }}
-                disabled={notesLibraryLoading}
+                onClick={() => setFinishQuestionModalOpen(false)}
+                disabled={isSavingLatex}
               >
-                Refresh
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={isSavingLatex || !finishQuestionNoteId}
+              >
+                {isSavingLatex ? 'Saving…' : 'Save'}
               </button>
             </div>
+          </form>
+        </FullScreenGlassOverlay>
+      )}
+
+      {notesLibraryOpen && (
+        <FullScreenGlassOverlay
+          title="Notes"
+          subtitle="Saved questions for this session"
+          variant="light"
+          panelSize="auto"
+          zIndexClassName="z-[10000]"
+          onClose={() => setNotesLibraryOpen(false)}
+          onBackdropClick={() => setNotesLibraryOpen(false)}
+          frameClassName="absolute inset-0 flex items-center justify-center p-3"
+          panelClassName="w-[min(680px,calc(100vw-24px))] max-h-[min(78vh,720px)] rounded-lg"
+          contentClassName="p-0 overflow-hidden flex flex-col"
+          rightActions={
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => { void openNotesLibrary() }}
+              disabled={notesLibraryLoading}
+            >
+              Refresh
+            </button>
+          }
+        >
+          <div className="flex-1 overflow-auto p-4">
+            {notesLibraryLoading ? (
+              <div className="text-sm text-slate-600">Loading…</div>
+            ) : notesLibraryError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {notesLibraryError}
+              </div>
+            ) : notesLibraryItems.length === 0 ? (
+              <div className="text-sm text-slate-600">No saved questions yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {notesLibraryItems.map((item) => {
+                  const updatedAt = (item as any)?.updatedAt
+                  const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="w-full text-left rounded-md border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50"
+                      onClick={() => {
+                        applySavedNotesRecord(item)
+                        setNotesLibraryOpen(false)
+                      }}
+                    >
+                      <div className="text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
+                      <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                        <span className="truncate">{when}</span>
+                        <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        </div>
+
+          <div className="px-4 py-3 border-t border-slate-200 bg-white flex items-center justify-between">
+            <div className="text-[11px] text-slate-500">
+              Selecting a question overwrites your current notes view.
+            </div>
+          </div>
+        </FullScreenGlassOverlay>
       )}
 
       {quizSetupOpen && typeof document !== 'undefined' && createPortal(

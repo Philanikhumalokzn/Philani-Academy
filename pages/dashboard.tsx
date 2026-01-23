@@ -8392,64 +8392,27 @@ export default function Dashboard() {
 
       {challengeGradingOverlayOpen && selectedChallengeId && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
-            <div
-              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-              onClick={() => {
-                setChallengeGradingOverlayOpen(false)
-                setSelectedChallengeId(null)
-                setSelectedChallengeData(null)
-                setSelectedSubmissionUserId(null)
-                setSelectedSubmissionDetail(null)
-              }}
-            />
-            <div
-              className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
-              onClick={() => {
-                setChallengeGradingOverlayOpen(false)
-                setSelectedChallengeId(null)
-                setSelectedChallengeData(null)
-                setSelectedSubmissionUserId(null)
-                setSelectedSubmissionDetail(null)
-              }}
-            >
-              <div
-                className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-3 border-b flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold break-words">
-                      {selectedSubmissionUserId ? (
-                        (() => {
-                          const userSubmission = challengeSubmissions.find((s: any) => String(s?.userId) === String(selectedSubmissionUserId))
-                          const userName = userSubmission?.name || 'Student'
-                          return `${userName}'s Response`
-                        })()
-                      ) : (
-                        'Quiz Management'
-                      )}
-                    </div>
-                    <div className="text-sm muted">
-                      {selectedSubmissionUserId ? 'View and grade response' : 'View student responses'}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      setChallengeGradingOverlayOpen(false)
-                      setSelectedChallengeId(null)
-                      setSelectedChallengeData(null)
-                      setSelectedSubmissionUserId(null)
-                      setSelectedSubmissionDetail(null)
-                    }}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <FullScreenGlassOverlay
+            title={
+              selectedSubmissionUserId
+                ? (() => {
+                    const userSubmission = challengeSubmissions.find((s: any) => String(s?.userId) === String(selectedSubmissionUserId))
+                    const userName = userSubmission?.name || 'Student'
+                    return `${userName}'s Response`
+                  })()
+                : 'Quiz Management'
+            }
+            subtitle={selectedSubmissionUserId ? 'View and grade response' : 'View student responses'}
+            zIndexClassName="z-[60]"
+            onClose={() => {
+              setChallengeGradingOverlayOpen(false)
+              setSelectedChallengeId(null)
+              setSelectedChallengeData(null)
+              setSelectedSubmissionUserId(null)
+              setSelectedSubmissionDetail(null)
+            }}
+          >
+            <div className="space-y-3">
                   {!selectedSubmissionUserId && (
                     <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
@@ -8698,175 +8661,160 @@ export default function Dashboard() {
 
                   {challengeGradingResponseId && activeChallengeGradingResponse && (
                     <OverlayPortal>
-                      <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Grade response">
-                        <div
-                          className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-                          onClick={closeChallengeGrading}
-                        />
-
-                        <div className="absolute inset-0 p-2 sm:p-6" onClick={closeChallengeGrading}>
-                          <div
-                            className="card philani-overlay-panel philani-overlay-enter h-full w-full overflow-hidden flex flex-col"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="p-3 border-b border-white/10 flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="font-semibold break-words">Grade Response</div>
-                                <div className="text-xs text-white/60 break-words">Step-by-step marking and feedback</div>
-                              </div>
-                              <button type="button" className="btn btn-ghost" onClick={closeChallengeGrading}>
-                                Close
-                              </button>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-3">
-                              {(() => {
-                                const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
-                                const stepCount = Math.max(1, steps.length || 0)
-                                return (
-                                  <div className="space-y-3">
-                                    {Array.from({ length: stepCount }, (_, stepIdx) => {
-                                      const stepLatex = steps[stepIdx] || ''
-                                      const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
-                                      const selected = challengeGradingByStep[stepIdx] || null
-                                      const selectGrade = (grade: string) => {
-                                        setChallengeGradingByStep((g) => ({ ...g, [stepIdx]: grade }))
-                                        if (grade === 'tick') {
-                                          setChallengeGradingStepMarks((m) => ({
-                                            ...m,
-                                            [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1,
-                                          }))
-                                        }
+                      <FullScreenGlassOverlay
+                        title="Grade Response"
+                        subtitle="Step-by-step marking and feedback"
+                        zIndexClassName="z-[80]"
+                        onClose={closeChallengeGrading}
+                        contentClassName="!p-0"
+                      >
+                        <div className="min-h-full flex flex-col">
+                          <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+                            {(() => {
+                              const steps = splitLatexIntoSteps(activeChallengeGradingResponse?.latex || '')
+                              const stepCount = Math.max(1, steps.length || 0)
+                              return (
+                                <div className="space-y-3">
+                                  {Array.from({ length: stepCount }, (_, stepIdx) => {
+                                    const stepLatex = steps[stepIdx] || ''
+                                    const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
+                                    const selected = challengeGradingByStep[stepIdx] || null
+                                    const selectGrade = (grade: string) => {
+                                      setChallengeGradingByStep((g) => ({ ...g, [stepIdx]: grade }))
+                                      if (grade === 'tick') {
+                                        setChallengeGradingStepMarks((m) => ({
+                                          ...m,
+                                          [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1,
+                                        }))
                                       }
+                                    }
 
-                                      const pill = (isActive: boolean) =>
-                                        `btn btn-xs ${isActive ? 'btn-primary' : 'btn-ghost'} !px-2 !py-1`
+                                    const pill = (isActive: boolean) => `btn btn-xs ${isActive ? 'btn-primary' : 'btn-ghost'} !px-2 !py-1`
 
-                                      return (
-                                        <div key={stepIdx} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="text-sm font-semibold">Step {stepIdx + 1}</div>
-                                          </div>
-
-                                          {stepLatex ? (
-                                            stepHtml ? (
-                                              <div
-                                                className="mt-2 rounded border border-white/10 bg-black/20 p-2"
-                                                dangerouslySetInnerHTML={{ __html: stepHtml }}
-                                              />
-                                            ) : (
-                                              <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-xs font-mono whitespace-pre-wrap break-words">
-                                                {stepLatex}
-                                              </div>
-                                            )
-                                          ) : (
-                                            <div className="mt-2 text-xs text-white/60">(empty step)</div>
-                                          )}
-
-                                          <div className="mt-3 flex flex-wrap gap-2">
-                                            <button
-                                              type="button"
-                                              className={pill(selected === 'tick')}
-                                              onClick={() => selectGrade('tick')}
-                                              aria-pressed={selected === 'tick'}
-                                              aria-label="Green tick"
-                                              title="Correct"
-                                            >
-                                              <span role="img" aria-hidden="true">✅</span>
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className={pill(selected === 'dot-green')}
-                                              onClick={() => selectGrade('dot-green')}
-                                              aria-pressed={selected === 'dot-green'}
-                                              aria-label="Green dot"
-                                              title="Correct (0 marks)"
-                                            >
-                                              <span role="img" aria-hidden="true">🟢</span>
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className={pill(selected === 'cross')}
-                                              onClick={() => selectGrade('cross')}
-                                              aria-pressed={selected === 'cross'}
-                                              aria-label="Red cross"
-                                              title="Incorrect (significant)"
-                                            >
-                                              <span role="img" aria-hidden="true">❌</span>
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className={pill(selected === 'dot-red')}
-                                              onClick={() => selectGrade('dot-red')}
-                                              aria-pressed={selected === 'dot-red'}
-                                              aria-label="Red dot"
-                                              title="Incorrect (insignificant)"
-                                            >
-                                              <span role="img" aria-hidden="true">🔴</span>
-                                            </button>
-                                          </div>
-
-                                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                                            <label className="text-xs font-medium text-white/80">Marks</label>
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={20}
-                                              step={1}
-                                              className="w-20 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white"
-                                              value={Number.isFinite(Number(challengeGradingStepMarks[stepIdx])) ? challengeGradingStepMarks[stepIdx] : ''}
-                                              onChange={(e) => {
-                                                const next = Number(e.target.value)
-                                                if (!Number.isFinite(next)) {
-                                                  setChallengeGradingStepMarks((m) => {
-                                                    const { [stepIdx]: _, ...rest } = m
-                                                    return rest
-                                                  })
-                                                  return
-                                                }
-                                                setChallengeGradingStepMarks((m) => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
-                                              }}
-                                            />
-                                          </div>
-
-                                          <div className="mt-3">
-                                            <label className="block text-xs font-medium text-white/80 mb-1">Step feedback (optional)</label>
-                                            <textarea
-                                              className="w-full rounded border border-white/10 bg-white/5 p-2 text-xs text-white"
-                                              rows={3}
-                                              value={challengeGradingStepFeedback[stepIdx] || ''}
-                                              onChange={(e) => setChallengeGradingStepFeedback((f) => ({ ...f, [stepIdx]: e.target.value }))}
-                                            />
-                                          </div>
+                                    return (
+                                      <div key={stepIdx} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-sm font-semibold">Step {stepIdx + 1}</div>
                                         </div>
-                                      )
-                                    })}
 
-                                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                                      <label className="block text-xs font-medium text-white/80 mb-1">Overall feedback (optional)</label>
-                                      <textarea
-                                        className="w-full rounded border border-white/10 bg-white/5 p-2 text-xs text-white"
-                                        rows={4}
-                                        value={challengeGradingFeedback}
-                                        onChange={(e) => setChallengeGradingFeedback(e.target.value)}
-                                      />
-                                    </div>
+                                        {stepLatex ? (
+                                          stepHtml ? (
+                                            <div
+                                              className="mt-2 rounded border border-white/10 bg-black/20 p-2"
+                                              dangerouslySetInnerHTML={{ __html: stepHtml }}
+                                            />
+                                          ) : (
+                                            <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-xs font-mono whitespace-pre-wrap break-words">
+                                              {stepLatex}
+                                            </div>
+                                          )
+                                        ) : (
+                                          <div className="mt-2 text-xs text-white/60">(empty step)</div>
+                                        )}
+
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            className={pill(selected === 'tick')}
+                                            onClick={() => selectGrade('tick')}
+                                            aria-pressed={selected === 'tick'}
+                                            aria-label="Green tick"
+                                            title="Correct"
+                                          >
+                                            <span role="img" aria-hidden="true">✅</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={pill(selected === 'dot-green')}
+                                            onClick={() => selectGrade('dot-green')}
+                                            aria-pressed={selected === 'dot-green'}
+                                            aria-label="Green dot"
+                                            title="Correct (0 marks)"
+                                          >
+                                            <span role="img" aria-hidden="true">🟢</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={pill(selected === 'cross')}
+                                            onClick={() => selectGrade('cross')}
+                                            aria-pressed={selected === 'cross'}
+                                            aria-label="Red cross"
+                                            title="Incorrect (significant)"
+                                          >
+                                            <span role="img" aria-hidden="true">❌</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={pill(selected === 'dot-red')}
+                                            onClick={() => selectGrade('dot-red')}
+                                            aria-pressed={selected === 'dot-red'}
+                                            aria-label="Red dot"
+                                            title="Incorrect (insignificant)"
+                                          >
+                                            <span role="img" aria-hidden="true">🔴</span>
+                                          </button>
+                                        </div>
+
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                          <label className="text-xs font-medium text-white/80">Marks</label>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={20}
+                                            step={1}
+                                            className="w-20 rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white"
+                                            value={Number.isFinite(Number(challengeGradingStepMarks[stepIdx])) ? challengeGradingStepMarks[stepIdx] : ''}
+                                            onChange={(e) => {
+                                              const next = Number(e.target.value)
+                                              if (!Number.isFinite(next)) {
+                                                setChallengeGradingStepMarks((m) => {
+                                                  const { [stepIdx]: _, ...rest } = m
+                                                  return rest
+                                                })
+                                                return
+                                              }
+                                              setChallengeGradingStepMarks((m) => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
+                                            }}
+                                          />
+                                        </div>
+
+                                        <div className="mt-3">
+                                          <label className="block text-xs font-medium text-white/80 mb-1">Step feedback (optional)</label>
+                                          <textarea
+                                            className="w-full rounded border border-white/10 bg-white/5 p-2 text-xs text-white"
+                                            rows={3}
+                                            value={challengeGradingStepFeedback[stepIdx] || ''}
+                                            onChange={(e) => setChallengeGradingStepFeedback((f) => ({ ...f, [stepIdx]: e.target.value }))}
+                                          />
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+
+                                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                                    <label className="block text-xs font-medium text-white/80 mb-1">Overall feedback (optional)</label>
+                                    <textarea
+                                      className="w-full rounded border border-white/10 bg-white/5 p-2 text-xs text-white"
+                                      rows={4}
+                                      value={challengeGradingFeedback}
+                                      onChange={(e) => setChallengeGradingFeedback(e.target.value)}
+                                    />
                                   </div>
-                                )
-                              })()}
-                            </div>
+                                </div>
+                              )
+                            })()}
+                          </div>
 
-                            <div className="p-3 border-t border-white/10 flex items-center justify-end gap-2">
-                              <button type="button" className="btn btn-ghost" onClick={closeChallengeGrading}>
-                                Cancel
-                              </button>
-                              <button type="button" className="btn btn-primary" onClick={saveChallengeGrading} disabled={challengeGradingSaving}>
-                                {challengeGradingSaving ? 'Saving…' : 'Save grading'}
-                              </button>
-                            </div>
+                          <div className="p-3 border-t border-white/10 flex items-center justify-end gap-2">
+                            <button type="button" className="btn btn-ghost" onClick={closeChallengeGrading}>
+                              Cancel
+                            </button>
+                            <button type="button" className="btn btn-primary" onClick={saveChallengeGrading} disabled={challengeGradingSaving}>
+                              {challengeGradingSaving ? 'Saving…' : 'Save grading'}
+                            </button>
                           </div>
                         </div>
-                      </div>
+                      </FullScreenGlassOverlay>
                     </OverlayPortal>
                   )}
 
@@ -8874,183 +8822,143 @@ export default function Dashboard() {
                     Note: Manual grading is available here; automated grading may be added in a future update.
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       )}
 
       {challengeResponseOverlayOpen && selectedChallengeResponseId && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[55]" role="dialog" aria-modal="true">
-            <div
-              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-              onClick={() => {
-                setChallengeResponseOverlayOpen(false)
-                setSelectedChallengeResponseId(null)
-                setChallengeResponseChallenge(null)
-                setChallengeMyResponses([])
-                setChallengeResponseError(null)
-              }}
-            />
-            <div
-              className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8"
-              onClick={() => {
-                setChallengeResponseOverlayOpen(false)
-                setSelectedChallengeResponseId(null)
-                setChallengeResponseChallenge(null)
-                setChallengeMyResponses([])
-                setChallengeResponseError(null)
-              }}
-            >
-              <div
-                className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
+          <FullScreenGlassOverlay
+            title={(challengeResponseChallenge?.title || 'Quiz') as any}
+            subtitle="Your submission and feedback"
+            zIndexClassName="z-[55]"
+            onClose={() => {
+              setChallengeResponseOverlayOpen(false)
+              setSelectedChallengeResponseId(null)
+              setChallengeResponseChallenge(null)
+              setChallengeMyResponses([])
+              setChallengeResponseError(null)
+            }}
+            leftActions={
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setChallengeResponseOverlayOpen(false)
+                  setSelectedChallengeResponseId(null)
+                  setChallengeResponseChallenge(null)
+                  setChallengeMyResponses([])
+                  setChallengeResponseError(null)
+                }}
               >
-                <div className="p-3 border-b flex items-start justify-between gap-3">
-                  <div className="w-24 shrink-0">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setChallengeResponseOverlayOpen(false)
-                        setSelectedChallengeResponseId(null)
-                        setChallengeResponseChallenge(null)
-                        setChallengeMyResponses([])
-                        setChallengeResponseError(null)
-                      }}
-                    >
-                      Back
-                    </button>
-                  </div>
-                  <div className="min-w-0 flex-1 text-center">
-                    <div className="font-semibold break-words">
-                      {(challengeResponseChallenge?.title || 'Quiz') as any}
+                Back
+              </button>
+            }
+          >
+            <div className="space-y-3">
+              {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
+              {challengeResponseLoading ? (
+                <div className="text-sm muted">Loading your feedback…</div>
+              ) : (
+                <>
+                  {(() => {
+                    const maxAttempts = typeof (challengeResponseChallenge as any)?.maxAttempts === 'number' ? (challengeResponseChallenge as any).maxAttempts : null
+                    const attemptsOpen = (challengeResponseChallenge as any)?.attemptsOpen !== false
+                    const myAttemptCount = typeof (challengeResponseChallenge as any)?.myAttemptCount === 'number'
+                      ? (challengeResponseChallenge as any).myAttemptCount
+                      : challengeMyResponses.length
+                    const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+                    const showReattempt = challengeMyResponses.length > 0 && canAttempt
+                    if (!showReattempt) return null
+                    return (
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          className="btn btn-primary text-xs"
+                          onClick={() => {
+                            const targetId = String(selectedChallengeResponseId)
+                            setChallengeResponseOverlayOpen(false)
+                            setSelectedChallengeResponseId(null)
+                            setChallengeResponseChallenge(null)
+                            setChallengeMyResponses([])
+                            setChallengeResponseError(null)
+                            void router.push(`/challenges/${encodeURIComponent(targetId)}`)
+                          }}
+                        >
+                          Re-attempt
+                        </button>
+                      </div>
+                    )
+                  })()}
+
+                  {challengeResponseChallenge?.prompt ? (
+                    <div className="border border-white/10 rounded bg-white/5 p-3">
+                      <div className="text-sm whitespace-pre-wrap break-words">
+                        {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
+                      </div>
                     </div>
-                  </div>
-                  <div className="w-24 shrink-0 flex justify-end">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setChallengeResponseOverlayOpen(false)
-                        setSelectedChallengeResponseId(null)
-                        setChallengeResponseChallenge(null)
-                        setChallengeMyResponses([])
-                        setChallengeResponseError(null)
-                      }}
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
+                  ) : null}
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
-                  {challengeResponseLoading ? (
-                    <div className="text-sm muted">Loading your feedback…</div>
+                  {challengeMyResponses.length === 0 ? (
+                    <div className="border border-white/10 rounded bg-white/5 p-3">
+                      <div className="text-sm muted">No submission found yet.</div>
+                    </div>
                   ) : (
-                    <>
-                      {(() => {
-                        const maxAttempts = typeof (challengeResponseChallenge as any)?.maxAttempts === 'number' ? (challengeResponseChallenge as any).maxAttempts : null
-                        const attemptsOpen = (challengeResponseChallenge as any)?.attemptsOpen !== false
-                        const myAttemptCount = typeof (challengeResponseChallenge as any)?.myAttemptCount === 'number'
-                          ? (challengeResponseChallenge as any).myAttemptCount
-                          : challengeMyResponses.length
-                        const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
-                        const showReattempt = challengeMyResponses.length > 0 && canAttempt
-                        if (!showReattempt) return null
-                        return (
-                          <div className="flex items-center justify-end">
-                            <button
-                              type="button"
-                              className="btn btn-primary text-xs"
-                              onClick={() => {
-                                const targetId = String(selectedChallengeResponseId)
-                                setChallengeResponseOverlayOpen(false)
-                                setSelectedChallengeResponseId(null)
-                                setChallengeResponseChallenge(null)
-                                setChallengeMyResponses([])
-                                setChallengeResponseError(null)
-                                void router.push(`/challenges/${encodeURIComponent(targetId)}`)
-                              }}
-                            >
-                              Re-attempt
-                            </button>
-                          </div>
-                        )
-                      })()}
+                    <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold text-sm">Your submission</div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost text-xs"
+                          disabled={challengeResponseLoading}
+                          onClick={() => fetchMyChallengeResponse(String(selectedChallengeResponseId))}
+                        >
+                          Refresh
+                        </button>
+                      </div>
 
-                      {challengeResponseChallenge?.prompt ? (
-                        <div className="border border-white/10 rounded bg-white/5 p-3">
-                          <div className="text-sm whitespace-pre-wrap break-words">
-                            {renderTextWithKatex(String(challengeResponseChallenge.prompt || ''))}
-                          </div>
-                        </div>
-                      ) : null}
+                      <div className="text-sm">
+                        Submitted: <span className="font-medium">{new Date(String(challengeMyResponses[0]?.createdAt)).toLocaleString()}</span>
+                        {challengeMyResponses.length > 1 ? ` • ${challengeMyResponses.length} attempts` : ''}
+                      </div>
 
-                      {challengeMyResponses.length === 0 ? (
-                        <div className="border border-white/10 rounded bg-white/5 p-3">
-                          <div className="text-sm muted">No submission found yet.</div>
-                        </div>
-                      ) : (
-                        <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="font-semibold text-sm">Your submission</div>
-                            <button
-                              type="button"
-                              className="btn btn-ghost text-xs"
-                              disabled={challengeResponseLoading}
-                              onClick={() => fetchMyChallengeResponse(String(selectedChallengeResponseId))}
-                            >
-                              Refresh
-                            </button>
-                          </div>
+                      <div className="space-y-2">
+                        {challengeMyResponses.map((resp: any, idx: number) => {
+                          const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
+                          const latex = String(resp?.latex || '')
+                          const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                          return (
+                            <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                              {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
+                              <div>
+                                <div className="text-xs muted mb-1">Your answer</div>
+                                {latex.trim() ? (
+                                  html ? (
+                                    <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                  ) : (
+                                    <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
+                                  )
+                                ) : (
+                                  <div className="text-sm muted">(empty)</div>
+                                )}
+                              </div>
 
-                          <div className="text-sm">
-                            Submitted: <span className="font-medium">{new Date(String(challengeMyResponses[0]?.createdAt)).toLocaleString()}</span>
-                            {challengeMyResponses.length > 1 ? ` • ${challengeMyResponses.length} attempts` : ''}
-                          </div>
-
-                          <div className="space-y-2">
-                            {challengeMyResponses.map((resp: any, idx: number) => {
-                              const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
-                              const latex = String(resp?.latex || '')
-                              const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
-                              return (
-                                <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                                  {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
-                                  <div>
-                                    <div className="text-xs muted mb-1">Your answer</div>
-                                    {latex.trim() ? (
-                                      html ? (
-                                        <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                                      ) : (
-                                        <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
-                                      )
-                                    ) : (
-                                      <div className="text-sm muted">(empty)</div>
-                                    )}
-                                  </div>
-
-                                  {String(resp?.studentText || '').trim() ? (
-                                    <div>
-                                      <div className="text-xs muted mb-1">Typed text</div>
-                                      <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
-                                    </div>
-                                  ) : null}
+                              {String(resp?.studentText || '').trim() ? (
+                                <div>
+                                  <div className="text-xs muted mb-1">Typed text</div>
+                                  <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
                                 </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
                   )}
-                </div>
-              </div>
+                </>
+              )}
             </div>
-          </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       )}
     </>

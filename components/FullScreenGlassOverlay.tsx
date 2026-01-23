@@ -10,7 +10,12 @@ export type FullScreenGlassOverlayProps = {
   closeDisabled?: boolean
 
   panelClassName?: string
+  frameClassName?: string
   mobileChromeIgnore?: boolean
+
+  variant?: 'dark' | 'light'
+  position?: 'fixed' | 'absolute'
+  showCloseButton?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -29,7 +34,11 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     onBackdropClick,
     closeDisabled,
     panelClassName,
+    frameClassName,
     mobileChromeIgnore,
+    variant,
+    position,
+    showCloseButton,
     leftActions,
     rightActions,
     className,
@@ -70,9 +79,33 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
 
   const handleBackdropClick = closeDisabled ? undefined : (onBackdropClick || onClose)
 
+  const overlayVariant = variant || 'dark'
+  const rootPosition = position || 'fixed'
+  const shouldShowCloseButton = showCloseButton !== undefined ? showCloseButton : true
+
+  const headerClassName = overlayVariant === 'light'
+    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-center justify-between gap-3 bg-white/70'
+    : 'p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3'
+
+  const titleClassName = overlayVariant === 'light'
+    ? 'font-semibold text-slate-900 truncate'
+    : 'font-semibold text-white truncate'
+
+  const subtitleClassName = overlayVariant === 'light'
+    ? 'text-xs text-slate-500 truncate'
+    : 'text-xs text-white/70 truncate'
+
+  const closeBtnClassName = overlayVariant === 'light'
+    ? 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+    : 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white'
+
+  const defaultPanelClassName = overlayVariant === 'light'
+    ? 'border border-slate-200/60 bg-white/95 shadow-2xl'
+    : 'border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl'
+
   return (
     <div
-      className={`fixed inset-0 ${zIndexClassName || 'z-[80]'} ${className || ''}`}
+      className={`${rootPosition} inset-0 ${zIndexClassName || 'z-[80]'} ${className || ''}`}
       role="dialog"
       aria-modal="true"
       data-mobile-chrome-ignore={mobileChromeIgnore ? true : undefined}
@@ -82,41 +115,46 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
         onClick={handleBackdropClick}
       />
 
-      <div className="absolute inset-0 p-2 sm:p-6" onClick={handleBackdropClick}>
+      <div
+        className={frameClassName || 'absolute inset-0 p-2 sm:p-6'}
+        onClick={handleBackdropClick}
+      >
         <div
-          className={`h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl flex flex-col ${panelClassName || ''}`}
+          className={`h-full w-full overflow-hidden rounded-2xl flex flex-col ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3">
+          <div className={headerClassName}>
             <div className="shrink-0 flex items-center gap-2">
               {leftActions}
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="font-semibold text-white truncate">{title}</div>
-              {subtitle ? <div className="text-xs text-white/70 truncate">{subtitle}</div> : null}
+              <div className={titleClassName}>{title}</div>
+              {subtitle ? <div className={subtitleClassName}>{subtitle}</div> : null}
             </div>
 
             <div className="shrink-0 flex items-center gap-2">
               {rightActions}
-              <button
-                ref={closeBtnRef}
-                type="button"
-                className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white"
-                onClick={onClose}
-                disabled={closeDisabled}
-                aria-label="Close"
-                title="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                  <path
-                    d="M6 6l8 8M14 6l-8 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
+              {shouldShowCloseButton ? (
+                <button
+                  ref={closeBtnRef}
+                  type="button"
+                  className={closeBtnClassName}
+                  onClick={onClose}
+                  disabled={closeDisabled}
+                  aria-label="Close"
+                  title="Close"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <path
+                      d="M6 6l8 8M14 6l-8 8"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              ) : null}
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import AccountControlOverlay from './AccountControlOverlay'
+import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import UserLink from './UserLink'
 
 type AnnouncementLike = {
@@ -425,27 +426,18 @@ export default function MobileTopChrome() {
       </div>
 
       {notificationsOpen && (
-        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" data-mobile-chrome-ignore>
-          <div
-            className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-            onClick={closeNotifications}
-            aria-hidden="true"
-          />
-          <div className="absolute inset-x-2 top-14 bottom-3 rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-2xl overflow-hidden">
-            <div className="p-3 border-b border-white/10 backdrop-blur flex items-center justify-between">
-              <div className="font-semibold text-white">Notifications</div>
-              <button
-                type="button"
-                aria-label="Close notifications"
-                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5 backdrop-blur"
-                onClick={closeNotifications}
-              >
-                <span aria-hidden="true" className="text-lg leading-none">×</span>
-              </button>
-            </div>
-
-            <div className="p-3 overflow-auto h-full">
-              <div className="space-y-3">
+        <FullScreenGlassOverlay
+          title="Notifications"
+          onClose={closeNotifications}
+          onBackdropClick={closeNotifications}
+          zIndexClassName="z-[60] md:hidden"
+          className="md:hidden"
+          mobileChromeIgnore
+          frameClassName="absolute inset-0 px-2 pt-14 pb-3"
+          panelClassName="rounded-3xl bg-white/5"
+          contentClassName="p-3"
+        >
+          <div className="space-y-3">
                 <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-white">Group invites</div>
@@ -593,10 +585,8 @@ export default function MobileTopChrome() {
                     No notifications yet.
                   </div>
                 ) : null}
-              </div>
-            </div>
           </div>
-        </div>
+        </FullScreenGlassOverlay>
       )}
 
       {accountControlOpen && typeof window !== 'undefined' && (

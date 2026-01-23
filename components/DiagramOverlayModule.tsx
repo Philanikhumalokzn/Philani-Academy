@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 const IMAGE_SPACE = 'image' as const
 
@@ -2384,89 +2385,88 @@ export default function DiagramOverlayModule(props: {
     <>
       {mobileDiagramTray}
       {diagramState.isOpen && !activeDiagram ? (
-        <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" aria-hidden="true" />
-          <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900">
-            <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500">Diagram</p>
-                <p className="text-sm font-semibold truncate">No diagrams yet</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {isAdmin && (
-                  <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
-                    {uploading ? 'Uploading…' : 'Upload'}
-                  </button>
-                )}
-                {canPresent && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      void handleClose()
-                    }}
-                  >
-                    Close
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="p-4">
-              <p className="text-sm text-slate-700">Upload an image to start a diagram.</p>
-              {uploadError ? <p className="mt-2 text-sm text-red-600">{uploadError}</p> : null}
-            </div>
-          </div>
-        </div>
+        <FullScreenGlassOverlay
+          title="Diagram"
+          subtitle="No diagrams yet"
+          variant="light"
+          position={isAdmin ? 'absolute' : 'fixed'}
+          zIndexClassName="z-[200]"
+          onClose={() => {
+            if (!(canPresent || isAdmin)) return
+            void handleClose()
+          }}
+          onBackdropClick={() => {
+            if (!(canPresent || isAdmin)) return
+            void handleClose()
+          }}
+          closeDisabled={!(canPresent || isAdmin)}
+          showCloseButton={Boolean(canPresent || isAdmin)}
+          frameClassName="absolute inset-0 p-3 sm:p-6"
+          panelClassName="rounded-xl"
+          rightActions={
+            <>
+              {isAdmin && (
+                <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                  {uploading ? 'Uploading…' : 'Upload'}
+                </button>
+              )}
+            </>
+          }
+        >
+          <p className="text-sm text-slate-700">Upload an image to start a diagram.</p>
+          {uploadError ? <p className="mt-2 text-sm text-red-600">{uploadError}</p> : null}
+        </FullScreenGlassOverlay>
       ) : null}
 
       {diagramState.isOpen && activeDiagram ? (
-        <div className={isAdmin ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'} aria-label="Diagram overlay module">
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" aria-hidden="true" />
-          <div className="absolute inset-3 sm:inset-6 rounded-xl border border-white/10 bg-white/95 overflow-hidden shadow-sm text-slate-900 flex flex-col">
-        <div className="shrink-0 relative z-10 flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 bg-white">
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Diagram</p>
-            <p className="text-sm font-semibold truncate">{activeDiagram.title || 'Untitled diagram'}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
-                {uploading ? 'Uploading…' : 'Upload'}
-              </button>
-            )}
-            {isAdmin && (
-              <select
-                className="input"
-                value={diagramState.activeDiagramId ?? ''}
-                onChange={async (e) => {
-                  const nextId = e.target.value || null
-                  await setOverlayState({ activeDiagramId: nextId, isOpen: true })
-                }}
-              >
-                {diagrams.map(d => (
-                  <option key={d.id} value={d.id}>{d.title || 'Untitled diagram'}</option>
-                ))}
-              </select>
-            )}
-            {isAdmin && (
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  void handleClose()
-                }}
-              >
-                Close
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div
-          ref={containerRef}
-          className="relative w-full flex-1 min-h-0"
-          onMouseDown={() => setContextMenu(null)}
+        <FullScreenGlassOverlay
+          title="Diagram"
+          subtitle={activeDiagram.title || 'Untitled diagram'}
+          variant="light"
+          position={isAdmin ? 'absolute' : 'fixed'}
+          zIndexClassName="z-[200]"
+          onClose={() => {
+            if (!isAdmin) return
+            void handleClose()
+          }}
+          onBackdropClick={() => {
+            if (!isAdmin) return
+            void handleClose()
+          }}
+          closeDisabled={!isAdmin}
+          showCloseButton={isAdmin}
+          frameClassName="absolute inset-0 p-3 sm:p-6"
+          panelClassName="rounded-xl"
+          rightActions={
+            <>
+              {isAdmin && (
+                <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                  {uploading ? 'Uploading…' : 'Upload'}
+                </button>
+              )}
+              {isAdmin && (
+                <select
+                  className="input"
+                  value={diagramState.activeDiagramId ?? ''}
+                  onChange={async (e) => {
+                    const nextId = e.target.value || null
+                    await setOverlayState({ activeDiagramId: nextId, isOpen: true })
+                  }}
+                >
+                  {diagrams.map(d => (
+                    <option key={d.id} value={d.id}>{d.title || 'Untitled diagram'}</option>
+                  ))}
+                </select>
+              )}
+            </>
+          }
+          contentClassName="p-0"
         >
+          <div
+            ref={containerRef}
+            className="relative w-full flex-1 min-h-0"
+            onMouseDown={() => setContextMenu(null)}
+          >
           {canPresent && (
             <div className="absolute bottom-2 left-2 z-40 pointer-events-none">
               <div className="pointer-events-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm">
@@ -2906,8 +2906,7 @@ export default function DiagramOverlayModule(props: {
             }}
           />
         </div>
-          </div>
-        </div>
+        </FullScreenGlassOverlay>
       ) : null}
     </>
   )

@@ -5,6 +5,7 @@ import { signOut, useSession } from 'next-auth/react'
 import { gradeToLabel } from '../lib/grades'
 
 import NavArrows from '../components/NavArrows'
+import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 
 const defaultMobileHeroBg = (() => {
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -545,28 +546,27 @@ export default function ProfilePage() {
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/45 via-[#041448]/30 to-[#031641]/45" aria-hidden="true" />
 
-        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" aria-hidden="true" />
-          <div className="absolute inset-x-2 top-3 bottom-3 rounded-3xl border border-white/10 bg-white/3 shadow-2xl overflow-hidden">
-            <div className="p-3 border-b border-white/10 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                className="text-sm font-semibold text-red-200 hover:text-red-100"
-                onClick={() => signOut({ callbackUrl: '/' })}
-              >
-                Sign out
-              </button>
-              <button
-                type="button"
-                aria-label="Close"
-                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-                onClick={() => router.push('/dashboard')}
-              >
-                <span aria-hidden="true" className="text-lg leading-none">×</span>
-              </button>
-            </div>
-            <div className="p-4 overflow-auto h-full">
-              <div className="mx-auto max-w-5xl space-y-6">
+        <FullScreenGlassOverlay
+          title="My profile"
+          subtitle={displayName}
+          onClose={() => router.push('/dashboard')}
+          onBackdropClick={() => router.push('/dashboard')}
+          zIndexClassName="z-40"
+          className="md:hidden"
+          frameClassName="absolute inset-0 px-2 pt-3 pb-3"
+          panelClassName="rounded-3xl bg-white/3"
+          contentClassName="p-4"
+          leftActions={
+            <button
+              type="button"
+              className="text-sm font-semibold text-red-200 hover:text-red-100"
+              onClick={() => signOut({ callbackUrl: '/' })}
+            >
+              Sign out
+            </button>
+          }
+        >
+          <div className="mx-auto max-w-5xl space-y-6">
                 <section className="hero flex-col gap-5">
                   <div className="space-y-4 rounded-3xl border border-white/10 bg-white/3 p-5">
                     <div className="flex flex-col gap-4">
@@ -794,10 +794,8 @@ export default function ProfilePage() {
                     </section>
                   </div>
                 )}
-              </div>
-            </div>
           </div>
-        </div>
+        </FullScreenGlassOverlay>
       </main>
     </>
   )

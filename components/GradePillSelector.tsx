@@ -18,6 +18,13 @@ export type GradePillSelectorProps<T extends string> = {
   labelForValue: (value: T) => string
   onSelect: (value: T) => void
   onClose: () => void
+  /**
+   * Optional: start a drag interaction from an external element (e.g. the grade display pill).
+   * When provided, the selector will track pointermove/pointerup globally for that pointer.
+   */
+  externalDrag?: { pointerId: number; startClientY: number } | null
+  /** Called when the external drag session ends (pointerup/cancel). */
+  onExternalDragEnd?: () => void
   autoCloseMs?: number
   /**
    * If provided, forces a fixed width. Prefer leaving undefined so the pill fits the label width.
@@ -49,6 +56,8 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
     labelForValue,
     onSelect,
     onClose,
+    externalDrag,
+    onExternalDragEnd,
     autoCloseMs = 2500,
     widthPx,
     offsetYPx = 0,
@@ -97,6 +106,76 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       dragValueRef.current = null
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    if (!externalDrag) return
+    if (typeof window === 'undefined') return
+
+    pointerIdRef.current = externalDrag.pointerId
+    startYRef.current = externalDrag.startClientY
+    isDraggingRef.current = false
+    setIsDragging(false)
+    suppressClickRef.current = false
+    setDragValue(null)
+    dragValueRef.current = null
+
+    const move = (ev: PointerEvent) => {
+      if (pointerIdRef.current !== ev.pointerId) return
+      const dy = Math.abs(ev.clientY - startYRef.current)
+      if (!isDraggingRef.current && dy < 6) return
+
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true
+        setIsDragging(true)
+        suppressClickRef.current = true
+      }
+
+      const v = valueAtClientY(ev.clientY)
+      if (v) {
+        dragValueRef.current = v
+        setDragValue(v)
+      }
+    }
+
+    const end = (ev: PointerEvent) => {
+      if (pointerIdRef.current !== ev.pointerId) return
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', end, true)
+      window.removeEventListener('pointercancel', end, true)
+
+      pointerIdRef.current = null
+
+      // If the user didn't actually drag, leave the selector open for a normal tap.
+      if (!isDraggingRef.current) {
+        onExternalDragEnd?.()
+        return
+      }
+
+      const v = dragValueRef.current ?? valueAtClientY(ev.clientY)
+      if (v) onSelect(v)
+      onClose()
+      onExternalDragEnd?.()
+
+      window.setTimeout(() => {
+        suppressClickRef.current = false
+        isDraggingRef.current = false
+        setIsDragging(false)
+        setDragValue(null)
+        dragValueRef.current = null
+      }, 0)
+    }
+
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', end, true)
+    window.addEventListener('pointercancel', end, true)
+
+    return () => {
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', end, true)
+      window.removeEventListener('pointercancel', end, true)
+    }
+  }, [open, externalDrag, onSelect, onClose, onExternalDragEnd, optionHeight, values])
 
   const valueAtClientY = (clientY: number): T | null => {
     const el = pillRef.current

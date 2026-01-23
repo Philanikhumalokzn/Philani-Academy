@@ -874,6 +874,7 @@ export default function Dashboard() {
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
+  const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
   const studentMobilePanelRefs = useRef<{
     timeline: HTMLDivElement | null
@@ -3034,8 +3035,29 @@ export default function Dashboard() {
                 <span>Grade</span>
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white"
+                  className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white touch-none"
+                  onPointerDown={(e) => {
+                    // Touch/pen: allow press + slide to select in one gesture.
+                    if ((e as any).pointerType === 'mouse') return
+                    const el = e.currentTarget as HTMLElement
+                    const r = el.getBoundingClientRect()
+                    setGradeWorkspaceSelectorAnchor({
+                      top: r.top,
+                      right: r.right,
+                      bottom: r.bottom,
+                      left: r.left,
+                      width: r.width,
+                      height: r.height,
+                    })
+                    setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
+                    setGradeWorkspaceSelectorOpen(true)
+
+                    // Prevent the browser from treating this as a scroll gesture.
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
                   onClick={(e) => {
+                    // Mouse: keep simple click-to-open.
                     const el = e.currentTarget as HTMLElement
                     const r = el.getBoundingClientRect()
                     setGradeWorkspaceSelectorAnchor({
@@ -8324,7 +8346,12 @@ export default function Dashboard() {
           return numeric.length === 1 ? `0${numeric}` : numeric
         }}
         onSelect={(g) => updateGradeSelection(g)}
-        onClose={() => setGradeWorkspaceSelectorOpen(false)}
+        onClose={() => {
+          setGradeWorkspaceSelectorOpen(false)
+          setGradeWorkspaceSelectorExternalDrag(null)
+        }}
+        externalDrag={gradeWorkspaceSelectorExternalDrag}
+        onExternalDragEnd={() => setGradeWorkspaceSelectorExternalDrag(null)}
         autoCloseMs={2500}
         anchorX="left"
         anchorY="bottom"

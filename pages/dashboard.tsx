@@ -7776,14 +7776,15 @@ export default function Dashboard() {
                 <div
                   ref={studentMobilePanelsRef}
                   onScroll={onStudentPanelsScroll}
-                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
+                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
+                  style={{ WebkitOverflowScrolling: 'auto', overscrollBehaviorX: 'contain', scrollBehavior: 'auto' }}
                 >
                   <div
                     ref={el => {
                       studentMobilePanelRefs.current.timeline = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderStudentTimelinePanel()}
                   </div>
@@ -7793,6 +7794,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.sessions = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('sessions')}
                   </div>
@@ -7802,6 +7804,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.groups = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('groups')}
                   </div>
@@ -7811,6 +7814,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.discover = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('discover')}
                   </div>
@@ -8031,14 +8035,15 @@ export default function Dashboard() {
               <div
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
-                className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
-                style={{ WebkitOverflowScrolling: 'touch' }}
+                className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
+                style={{ WebkitOverflowScrolling: 'auto', overscrollBehaviorX: 'contain', scrollBehavior: 'auto' }}
               >
                 <div
                   ref={el => {
                     studentMobilePanelRefs.current.timeline = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderStudentTimelinePanel()}
                 </div>
@@ -8048,6 +8053,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.sessions = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('sessions')}
                 </div>
@@ -8057,6 +8063,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.groups = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('groups')}
                 </div>
@@ -8066,6 +8073,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.discover = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('discover')}
                 </div>

@@ -6838,7 +6838,7 @@ export default function Dashboard() {
                       ) : null}
                       <button
                         type="button"
-                        className="px-4 py-2 rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white text-xs font-semibold whitespace-nowrap"
+                        className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white"
                         onClick={() => {
                           setAdminSubmissionOverlayOpen(false)
                           setAdminSelectedSubmissionUserId(null)
@@ -6846,8 +6846,17 @@ export default function Dashboard() {
                           setAdminSelectedSubmissionError(null)
                           setAdminRegradeError(null)
                         }}
+                        aria-label="Close"
+                        title="Close"
                       >
-                        Clear
+                        <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                          <path
+                            d="M6 6l8 8M14 6l-8 8"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
                       </button>
                     </div>
                   </div>

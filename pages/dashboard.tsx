@@ -870,7 +870,7 @@ export default function Dashboard() {
   }, [status])
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
-  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | null>(null)
+  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
   const studentMobilePanelRefs = useRef<{
     timeline: HTMLDivElement | null
@@ -2190,7 +2190,7 @@ export default function Dashboard() {
     }
   }, [studentMobileTabIndex])
 
-  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover' | 'admin') => {
     setStudentQuickOverlay(tab)
     if (tab === 'timeline') setTimelineOpen(true)
   }, [])
@@ -2226,7 +2226,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (sessionRole !== 'student') return
+    if (sessionRole !== 'student' && sessionRole !== 'admin') return
 
     let cancelled = false
     setStudentFeedLoading(true)
@@ -2802,9 +2802,52 @@ export default function Dashboard() {
     </section>
   )
 
+  const renderAdminToolsQuickPanel = () => {
+    if (!isAdmin) return null
+
+    const adminSections = availableSections.filter(s => s.id !== 'overview')
+
+    return (
+      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-semibold text-white">Admin tools</div>
+          <button
+            type="button"
+            className="btn btn-ghost text-xs"
+            onClick={closeStudentQuickOverlay}
+          >
+            Close
+          </button>
+        </div>
+
+        {adminSections.length === 0 ? (
+          <div className="text-sm text-white/70">No admin sections available.</div>
+        ) : (
+          <div className="grid gap-2">
+            {adminSections.map(section => (
+              <button
+                key={section.id}
+                type="button"
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20"
+                onClick={() => {
+                  closeStudentQuickOverlay()
+                  openDashboardOverlay(section.id as OverlaySectionId)
+                }}
+              >
+                <div className="text-sm font-semibold text-white">{section.label}</div>
+                <div className="text-xs text-white/60">{section.description}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    )
+  }
+
   const renderStudentQuickActionsRow = () => {
-    const baseBtn =
-      'inline-flex flex-col items-center justify-center gap-1 h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
+    const baseBtn = isAdmin
+      ? 'inline-flex flex-col items-center justify-center gap-1 h-12 w-12 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
+      : 'inline-flex flex-col items-center justify-center gap-1 h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
 
     const activeBtn = 'bg-white/10 border-white/20 text-white'
 
@@ -2815,7 +2858,11 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className="mobile-row-width w-full flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3">
+      <section className={
+        isAdmin
+          ? 'mobile-row-width w-full grid grid-cols-5 items-center gap-2 rounded-3xl border border-white/10 bg-white/5 p-3'
+          : 'mobile-row-width w-full flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3'
+      }>
         <button
           type="button"
           className={btnClass('timeline')}
@@ -2873,12 +2920,34 @@ export default function Dashboard() {
           </svg>
           <span className={labelClass('discover')}>Discover</span>
         </button>
+
+        {isAdmin && (
+          <button
+            type="button"
+            className={baseBtn}
+            onClick={() => openStudentQuickOverlay('admin')}
+            aria-label="Admin tools"
+            title="Admin tools"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" strokeWidth="2" />
+              <path
+                d="M19.4 15a7.98 7.98 0 0 0 .1-1 7.98 7.98 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a8.2 8.2 0 0 0-1.7-1l-.4-2.6h-4l-.4 2.6a8.2 8.2 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.98 7.98 0 0 0-.1 1c0 .34.03.67.1 1l-2 1.5 2 3.5 2.4-1c.52.41 1.09.75 1.7 1l.4 2.6h4l.4-2.6c.61-.25 1.18-.59 1.7-1l2.4 1 2-3.5-2-1.5Z"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="text-[10px] leading-none opacity-80 text-white">Admin</span>
+          </button>
+        )}
       </section>
     )
   }
 
   const renderStudentHomeFeed = () => {
-    if (status !== 'authenticated' || sessionRole !== 'student') return null
+    if (status !== 'authenticated') return null
+    if (sessionRole !== 'student' && sessionRole !== 'admin') return null
 
     const nowMs = Date.now()
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
@@ -7651,10 +7720,50 @@ export default function Dashboard() {
                   maskSize: '100% 100%',
                 }}
               >
-                <SectionNav />
-                <section className="min-w-0 space-y-6">
-                  <OverviewSection />
-                </section>
+                {renderStudentQuickActionsRow()}
+
+                <div
+                  ref={studentMobilePanelsRef}
+                  onScroll={onStudentPanelsScroll}
+                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-3xl border border-white/10 bg-white/5"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                  <div
+                    ref={el => {
+                      studentMobilePanelRefs.current.timeline = el
+                    }}
+                    className="w-full flex-none snap-start"
+                  >
+                    {renderStudentTimelinePanel()}
+                  </div>
+
+                  <div
+                    ref={el => {
+                      studentMobilePanelRefs.current.sessions = el
+                    }}
+                    className="w-full flex-none snap-start"
+                  >
+                    {renderSection('sessions')}
+                  </div>
+
+                  <div
+                    ref={el => {
+                      studentMobilePanelRefs.current.groups = el
+                    }}
+                    className="w-full flex-none snap-start"
+                  >
+                    {renderSection('groups')}
+                  </div>
+
+                  <div
+                    ref={el => {
+                      studentMobilePanelRefs.current.discover = el
+                    }}
+                    className="w-full flex-none snap-start"
+                  >
+                    {renderSection('discover')}
+                  </div>
+                </div>
 
                 {status === 'authenticated' && (
                   <div className="pt-2 flex justify-center">
@@ -8139,6 +8248,8 @@ export default function Dashboard() {
           title={
             studentQuickOverlay === 'timeline'
               ? 'Timeline'
+              : studentQuickOverlay === 'admin'
+                ? 'Admin tools'
               : (DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === studentQuickOverlay)?.label || 'Section'
           }
           onClose={closeStudentQuickOverlay}
@@ -8147,7 +8258,11 @@ export default function Dashboard() {
           className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           <div className="space-y-3">
-            {studentQuickOverlay === 'timeline' ? renderTimelineCard() : renderSection(studentQuickOverlay)}
+            {studentQuickOverlay === 'timeline'
+              ? renderTimelineCard()
+              : studentQuickOverlay === 'admin'
+                ? renderAdminToolsQuickPanel()
+                : renderSection(studentQuickOverlay)}
           </div>
         </FullScreenGlassOverlay>
       )}

@@ -2249,7 +2249,7 @@ export default function Dashboard() {
         | 'groups'
         | 'discover'
       scrollStudentPanelsToTab(tab)
-    }, 120)
+    }, 60)
   }, [scrollStudentPanelsToTab])
 
   useEffect(() => {
@@ -7826,6 +7826,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.timeline = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderStudentTimelinePanel()}
                   </div>
@@ -7835,6 +7836,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.sessions = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('sessions')}
                   </div>
@@ -7844,6 +7846,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.groups = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('groups')}
                   </div>
@@ -7853,6 +7856,7 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.discover = el
                     }}
                     className="w-full flex-none snap-start"
+                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('discover')}
                   </div>
@@ -8081,6 +8085,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.timeline = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderStudentTimelinePanel()}
                 </div>
@@ -8090,6 +8095,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.sessions = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('sessions')}
                 </div>
@@ -8099,6 +8105,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.groups = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('groups')}
                 </div>
@@ -8108,6 +8115,7 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.discover = el
                   }}
                   className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('discover')}
                 </div>

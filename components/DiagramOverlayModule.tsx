@@ -2911,3 +2911,5 @@ export default function DiagramOverlayModule(props: {
     </>
   )
 }
+
+(DiagramOverlayModule as any).displayName = 'DiagramOverlayModule'

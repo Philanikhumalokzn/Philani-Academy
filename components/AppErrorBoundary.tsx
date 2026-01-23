@@ -18,12 +18,38 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     const componentStack = info?.componentStack
+    const safeMessage = String((error as any)?.message || error)
+    const safeStack = String((error as any)?.stack || '')
+    const href = typeof window !== 'undefined' ? window.location.href : ''
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
     // Keep a readable log in production; this is crucial when React throws minified errors.
     // eslint-disable-next-line no-console
-    console.error('[AppErrorBoundary] Uncaught render error', error)
+    console.error('[AppErrorBoundary] Uncaught render error', {
+      message: safeMessage,
+      href,
+      userAgent: ua,
+    })
+    if (safeStack) {
+      // eslint-disable-next-line no-console
+      console.error('[AppErrorBoundary] Error stack', safeStack)
+    }
     if (componentStack) {
       // eslint-disable-next-line no-console
       console.error('[AppErrorBoundary] Component stack', componentStack)
+    }
+
+    try {
+      if (typeof window !== 'undefined') {
+        ;(window as any).__philani_last_render_error = {
+          ts: Date.now(),
+          message: safeMessage,
+          stack: safeStack,
+          componentStack,
+          href,
+        }
+      }
+    } catch {
+      // ignore
     }
 
     this.setState({ componentStack })
@@ -76,7 +102,8 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
           <details className="mt-4">
             <summary className="cursor-pointer text-sm text-white/70">Details</summary>
             <pre className="mt-2 text-xs whitespace-pre-wrap break-words text-white/70">
-{String(error?.message || error)}
+{String((error as any)?.message || error)}
+{(error as any)?.stack ? `\n\n${String((error as any).stack)}` : ''}
 {componentStack ? `\n\n${componentStack}` : ''}
             </pre>
           </details>

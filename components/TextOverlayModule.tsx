@@ -1698,3 +1698,5 @@ export default function TextOverlayModule(props: {
     </>
   )
 }
+
+(TextOverlayModule as any).displayName = 'TextOverlayModule'

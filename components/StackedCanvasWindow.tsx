@@ -120,3 +120,5 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
     </div>
   )
 }
+
+(StackedCanvasWindow as any).displayName = 'StackedCanvasWindow'

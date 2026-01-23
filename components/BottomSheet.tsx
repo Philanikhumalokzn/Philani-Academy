@@ -174,3 +174,5 @@ export default function BottomSheet(props: BottomSheetProps) {
     </div>
   )
 }
+
+(BottomSheet as any).displayName = 'BottomSheet'

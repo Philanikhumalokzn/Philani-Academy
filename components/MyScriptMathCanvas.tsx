@@ -11688,6 +11688,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 }
 
+(MyScriptMathCanvas as any).displayName = 'MyScriptMathCanvas'
+
 export default MyScriptMathCanvas
 export { MyScriptMathCanvas }
 

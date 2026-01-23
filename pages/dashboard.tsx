@@ -2220,18 +2220,27 @@ export default function Dashboard() {
     if (typeof window === 'undefined') return
     if (studentMobileScrollRafRef.current) return
 
+    const tabForIndex = (idx: number) =>
+      (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
+        | 'timeline'
+        | 'sessions'
+        | 'groups'
+        | 'discover'
+
     studentMobileScrollRafRef.current = window.requestAnimationFrame(() => {
       studentMobileScrollRafRef.current = null
       const width = el.clientWidth || 0
       if (!width) return
       const thresholdPx = width / 3
-      const idx = Math.floor((el.scrollLeft + thresholdPx) / width)
-      const nextTab = (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
-        | 'timeline'
-        | 'sessions'
-        | 'groups'
-        | 'discover'
-      setStudentMobileTab(prev => (prev === nextTab ? prev : nextTab))
+      const rawIdx = Math.floor((el.scrollLeft + thresholdPx) / width)
+      const nextTab = tabForIndex(rawIdx)
+      setStudentMobileTab(prev => {
+        const prevIdx = studentMobileTabIndex(prev)
+        const nextIdx = studentMobileTabIndex(nextTab)
+        if (nextIdx > prevIdx + 1) return tabForIndex(prevIdx + 1)
+        if (nextIdx < prevIdx - 1) return tabForIndex(prevIdx - 1)
+        return prev === nextTab ? prev : nextTab
+      })
     })
 
     if (studentMobileScrollEndTimeoutRef.current) {
@@ -2242,15 +2251,13 @@ export default function Dashboard() {
       const width = el.clientWidth || 0
       if (!width) return
       const thresholdPx = width / 3
-      const idx = Math.floor((el.scrollLeft + thresholdPx) / width)
-      const tab = (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
-        | 'timeline'
-        | 'sessions'
-        | 'groups'
-        | 'discover'
+      const rawIdx = Math.floor((el.scrollLeft + thresholdPx) / width)
+      const currentIdx = studentMobileTabIndex(studentMobileTab)
+      const cappedIdx = rawIdx > currentIdx + 1 ? currentIdx + 1 : rawIdx < currentIdx - 1 ? currentIdx - 1 : rawIdx
+      const tab = tabForIndex(cappedIdx)
       scrollStudentPanelsToTab(tab)
     }, 60)
-  }, [scrollStudentPanelsToTab])
+  }, [scrollStudentPanelsToTab, studentMobileTab, studentMobileTabIndex])
 
   useEffect(() => {
     if (status !== 'authenticated') return

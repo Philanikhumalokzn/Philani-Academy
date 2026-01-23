@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
+import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 
 type ResourceBankItem = {
   id: string
@@ -219,27 +220,15 @@ export default function ResourceBankPage() {
         ) : (
           <>
             {parsedViewerOpen ? (
-              <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-                <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={() => setParsedViewerOpen(false)} />
-                <div className="absolute inset-x-0 bottom-0 sm:inset-x-8 sm:inset-y-8" onClick={() => setParsedViewerOpen(false)}>
-                  <div
-                    className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="p-3 border-b flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold break-words">Parsed</div>
-                        <div className="text-sm muted break-words">{parsedViewerTitle}</div>
-                      </div>
-                      <button type="button" className="btn btn-ghost" onClick={() => setParsedViewerOpen(false)} aria-label="Close">✕</button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-3">
-                      {parsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
-                      <pre className="whitespace-pre-wrap text-xs text-white/90">{parsedViewerText}</pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <FullScreenGlassOverlay
+                title="Parsed"
+                subtitle={parsedViewerTitle}
+                zIndexClassName="z-50"
+                onClose={() => setParsedViewerOpen(false)}
+              >
+                {parsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
+                <pre className="whitespace-pre-wrap text-xs text-white/90">{parsedViewerText}</pre>
+              </FullScreenGlassOverlay>
             ) : null}
 
             <div className="grid gap-4 lg:grid-cols-2">

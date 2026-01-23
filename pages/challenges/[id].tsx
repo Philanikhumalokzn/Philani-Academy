@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
 import katex from 'katex'
 
+import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
+
 const StackedCanvasWindow = dynamic(() => import('../../components/StackedCanvasWindow'), { ssr: false })
 
 type Challenge = {
@@ -253,119 +255,112 @@ function OwnerAttemptCard(props: {
 
       {showGradePopup ? (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
-            <div
-              className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
-              onClick={saving ? undefined : () => setShowGradePopup(false)}
-            />
-            <div
-              className="absolute inset-0 p-2 sm:p-6"
-              onClick={saving ? undefined : () => setShowGradePopup(false)}
-            >
-              <div
-                className="card philani-overlay-panel philani-overlay-enter h-full w-full overflow-hidden flex flex-col border border-white/10"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-3 border-b border-white/10 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold">Grade Response</div>
-                    <div className="text-xs muted">Scroll to see all steps.</div>
-                  </div>
-                  <button type="button" className="btn btn-ghost" onClick={() => setShowGradePopup(false)} disabled={saving} aria-label="Close">✕</button>
-                </div>
+          <FullScreenGlassOverlay
+            title="Grade Response"
+            subtitle="Scroll to see all steps."
+            zIndexClassName="z-[70]"
+            onClose={() => {
+              if (saving) return
+              setShowGradePopup(false)
+            }}
+            onBackdropClick={() => {
+              if (saving) return
+              setShowGradePopup(false)
+            }}
+            contentClassName="!p-0 !overflow-hidden"
+          >
+            <div className="h-full flex flex-col">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
+                {stepIndices.map((stepIdx) => {
+                  const stepLatex = steps[stepIdx] || ''
+                  const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
+                  return (
+                    <div key={stepIdx} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <div className="mb-2 text-sm font-medium">Step {stepIdx + 1}</div>
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-4">
-                  {stepIndices.map((stepIdx) => {
-                    const stepLatex = steps[stepIdx] || ''
-                    const stepHtml = stepLatex ? renderKatexDisplayHtml(stepLatex) : ''
-                    return (
-                      <div key={stepIdx} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="mb-2 text-sm font-medium">Step {stepIdx + 1}</div>
+                      {stepLatex ? (
+                        stepHtml ? (
+                          <div className="mb-3 rounded border border-white/10 bg-black/20 p-2" dangerouslySetInnerHTML={{ __html: stepHtml }} />
+                        ) : (
+                          <div className="mb-3 rounded border border-white/10 bg-black/20 p-2 text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
+                        )
+                      ) : null}
 
-                        {stepLatex ? (
-                          stepHtml ? (
-                            <div className="mb-3 rounded border border-white/10 bg-black/20 p-2" dangerouslySetInnerHTML={{ __html: stepHtml }} />
-                          ) : (
-                            <div className="mb-3 rounded border border-white/10 bg-black/20 p-2 text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
-                          )
-                        ) : null}
-
-                        <div className="flex flex-wrap gap-4 text-sm">
-                          <label className="flex items-center gap-2">
-                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => {
-                              setGrading(g => ({ ...g, [stepIdx]: 'tick' }))
-                              setStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
-                            }} />
-                            <span>✅</span>
-                            <span className="text-white/80">Correct</span>
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
-                            <span>🟢</span>
-                            <span className="text-white/80">Mostly</span>
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
-                            <span>❌</span>
-                            <span className="text-white/80">Incorrect</span>
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
-                            <span>🔴</span>
-                            <span className="text-white/80">Minor error</span>
-                          </label>
-                        </div>
-
-                        <div className="mt-3 flex items-center gap-3 flex-wrap">
-                          <div className="text-xs muted">Marks</div>
-                          <input
-                            type="number"
-                            min={0}
-                            max={50}
-                            step={1}
-                            className="input w-24"
-                            value={Number.isFinite(Number(stepMarks[stepIdx])) ? stepMarks[stepIdx] : ''}
-                            onChange={(e) => {
-                              const next = Number(e.target.value)
-                              if (!Number.isFinite(next)) {
-                                setStepMarks(m => {
-                                  const { [stepIdx]: _, ...rest } = m
-                                  return rest
-                                })
-                                return
-                              }
-                              setStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
-                            }}
-                          />
-                        </div>
-
-                        <div className="mt-3">
-                          <div className="text-xs muted mb-1">Step feedback (optional)</div>
-                          <textarea
-                            className="input w-full min-h-[60px]"
-                            value={stepFeedback[stepIdx] || ''}
-                            onChange={e => setStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
-                          />
-                        </div>
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <label className="flex items-center gap-2">
+                          <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="tick" checked={grading[stepIdx] === 'tick'} onChange={() => {
+                            setGrading(g => ({ ...g, [stepIdx]: 'tick' }))
+                            setStepMarks(m => ({ ...m, [stepIdx]: Number.isFinite(Number(m[stepIdx])) ? m[stepIdx] : 1 }))
+                          }} />
+                          <span>✅</span>
+                          <span className="text-white/80">Correct</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="dot-green" checked={grading[stepIdx] === 'dot-green'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-green' }))} />
+                          <span>🟢</span>
+                          <span className="text-white/80">Mostly</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="cross" checked={grading[stepIdx] === 'cross'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'cross' }))} />
+                          <span>❌</span>
+                          <span className="text-white/80">Incorrect</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="radio" name={`grade-step-${resp.id || idx}-${stepIdx}`} value="dot-red" checked={grading[stepIdx] === 'dot-red'} onChange={() => setGrading(g => ({ ...g, [stepIdx]: 'dot-red' }))} />
+                          <span>🔴</span>
+                          <span className="text-white/80">Minor error</span>
+                        </label>
                       </div>
-                    )
-                  })}
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs muted mb-1">Overall feedback (optional)</div>
-                    <textarea className="input w-full min-h-[70px]" value={feedback} onChange={e => setFeedback(e.target.value)} />
-                  </div>
-                </div>
+                      <div className="mt-3 flex items-center gap-3 flex-wrap">
+                        <div className="text-xs muted">Marks</div>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          step={1}
+                          className="input w-24"
+                          value={Number.isFinite(Number(stepMarks[stepIdx])) ? stepMarks[stepIdx] : ''}
+                          onChange={(e) => {
+                            const next = Number(e.target.value)
+                            if (!Number.isFinite(next)) {
+                              setStepMarks(m => {
+                                const { [stepIdx]: _, ...rest } = m
+                                return rest
+                              })
+                              return
+                            }
+                            setStepMarks(m => ({ ...m, [stepIdx]: Math.max(0, Math.trunc(next)) }))
+                          }}
+                        />
+                      </div>
 
-                <div className="p-3 border-t border-white/10 flex items-center justify-end gap-2">
-                  <button className="btn btn-ghost" onClick={() => setShowGradePopup(false)} disabled={saving}>Cancel</button>
-                  <button className="btn btn-primary" onClick={handleSaveGrading} disabled={saving}>
-                    {saving ? 'Saving…' : 'Save'}
-                  </button>
+                      <div className="mt-3">
+                        <div className="text-xs muted mb-1">Step feedback (optional)</div>
+                        <textarea
+                          className="input w-full min-h-[60px]"
+                          value={stepFeedback[stepIdx] || ''}
+                          onChange={e => setStepFeedback(f => ({ ...f, [stepIdx]: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs muted mb-1">Overall feedback (optional)</div>
+                  <textarea className="input w-full min-h-[70px]" value={feedback} onChange={e => setFeedback(e.target.value)} />
                 </div>
               </div>
+
+              <div className="p-3 border-t border-white/10 flex items-center justify-end gap-2">
+                <button className="btn btn-ghost" onClick={() => setShowGradePopup(false)} disabled={saving}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleSaveGrading} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             </div>
-          </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       ) : null}
     </div>

@@ -871,6 +871,7 @@ export default function Dashboard() {
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
+  const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
   const studentMobilePanelRefs = useRef<{
     timeline: HTMLDivElement | null
@@ -2226,7 +2227,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (sessionRole !== 'student' && sessionRole !== 'admin') return
+    if (sessionRole !== 'student' && sessionRole !== 'admin' && sessionRole !== 'teacher') return
 
     let cancelled = false
     setStudentFeedLoading(true)
@@ -2947,7 +2948,7 @@ export default function Dashboard() {
 
   const renderStudentHomeFeed = () => {
     if (status !== 'authenticated') return null
-    if (sessionRole !== 'student' && sessionRole !== 'admin') return null
+    if (sessionRole !== 'student' && sessionRole !== 'admin' && sessionRole !== 'teacher') return null
 
     const nowMs = Date.now()
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
@@ -2985,14 +2986,29 @@ export default function Dashboard() {
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
             <div />
             <div className="font-semibold text-white text-center">Current lesson</div>
-            <button
-              type="button"
-              className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50 justify-self-end"
-              onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
-              disabled={sessionsLoading || !selectedGrade}
-            >
-              {sessionsLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
+            {sessionRole === 'admin' || sessionRole === 'teacher' ? (
+              <div className="justify-self-end flex items-center gap-1 text-xs font-semibold text-white/70">
+                <span>Grade</span>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white"
+                  onClick={() => setGradeWorkspaceSelectorOpen(true)}
+                  aria-label="Select grade workspace"
+                  title="Select grade workspace"
+                >
+                  {selectedGrade ? String(selectedGrade).replace('GRADE_', '') : '—'}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50 justify-self-end"
+                onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
+                disabled={sessionsLoading || !selectedGrade}
+              >
+                {sessionsLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            )}
           </div>
 
           {!resolvedCurrentLesson ? (
@@ -8238,6 +8254,58 @@ export default function Dashboard() {
               ) : (
                 renderTimelineItems(timelineChallenges)
               )}
+            </div>
+          </FullScreenGlassOverlay>
+        </OverlayPortal>
+      )}
+
+      {gradeWorkspaceSelectorOpen && (
+        <OverlayPortal>
+          <FullScreenGlassOverlay
+            title="Workspace"
+            subtitle="Select grade"
+            onClose={() => setGradeWorkspaceSelectorOpen(false)}
+            onBackdropClick={() => setGradeWorkspaceSelectorOpen(false)}
+            zIndexClassName="z-[60]"
+            panelSize="auto"
+            frameClassName="absolute inset-0 px-4 pt-24 pb-6 flex items-start justify-center"
+            panelClassName="rounded-[999px] w-[96px]"
+            contentClassName="p-0"
+          >
+            <div
+              role="radiogroup"
+              aria-label="Grade workspace"
+              className="overflow-hidden rounded-[999px] border border-white/10 bg-white/10 backdrop-blur-xl"
+            >
+              {(GRADE_VALUES as readonly GradeValue[]).map((g, idx) => {
+                const isSelected = selectedGrade === g
+                const numeric = String(g).replace('GRADE_', '')
+                const label = numeric.length === 1 ? `0${numeric}` : numeric
+                const isFirst = idx === 0
+                const isLast = idx === (GRADE_VALUES.length - 1)
+
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    className={
+                      `w-full h-11 flex items-center justify-center text-base font-semibold tabular-nums transition focus:outline-none focus:ring-2 focus:ring-white/25 ` +
+                      (isSelected ? 'bg-white/20 text-white' : 'bg-transparent text-white/85 hover:bg-white/10') +
+                      (!isLast ? ' border-b border-white/10' : '') +
+                      (isFirst ? ' rounded-t-[999px]' : '') +
+                      (isLast ? ' rounded-b-[999px]' : '')
+                    }
+                    onClick={() => {
+                      updateGradeSelection(g)
+                      setGradeWorkspaceSelectorOpen(false)
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
             </div>
           </FullScreenGlassOverlay>
         </OverlayPortal>

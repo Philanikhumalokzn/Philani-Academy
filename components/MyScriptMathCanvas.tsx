@@ -1,6 +1,7 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
+import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 function renderTextWithInlineKatex(inputRaw: string) {
@@ -10004,24 +10005,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
 
                     {isCompactViewport && mobileLatexTrayOpen && (
-                      <div
-                        className="fixed left-2 right-2 z-50 rounded-lg border border-slate-200 bg-white shadow-sm p-3"
+                      <BottomSheet
+                        open
+                        title={isLessonAuthoring ? 'LaTeX for this point' : 'LaTeX'}
+                        onClose={() => setMobileLatexTrayOpen(false)}
                         style={{ bottom: viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8 }}
-                        role="dialog"
-                        aria-label="LaTeX actions"
+                        className="rounded-lg"
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-sm text-slate-700 font-medium">
-                            {isLessonAuthoring ? 'LaTeX for this point' : 'LaTeX'}
-                          </div>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700"
-                            onClick={() => setMobileLatexTrayOpen(false)}
-                          >
-                            Close
-                          </button>
-                        </div>
                         {isLessonAuthoring ? (
                           <div className="text-[11px] text-slate-600">
                             <button
@@ -10145,29 +10135,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             )}
                           </div>
                         )}
-                      </div>
+                      </BottomSheet>
                     )}
 
                     {isCompactViewport && mobileModulePicker && (
-                      <div
-                        className="fixed left-2 right-2 z-50 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+                      <BottomSheet
+                        open
+                        title={`${mobileModulePicker.type === 'diagram' ? 'Diagrams' : mobileModulePicker.type === 'text' ? 'Text' : 'LaTeX'} for this point`}
+                        onClose={closeMobileModulePicker}
                         style={{ bottom: viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 88 }}
-                        role="dialog"
-                        aria-label="Select module"
+                        className="rounded-lg"
                       >
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200">
-                          <div className="text-sm text-slate-700 font-medium">
-                            {mobileModulePicker.type === 'diagram' ? 'Diagrams' : mobileModulePicker.type === 'text' ? 'Text' : 'LaTeX'} for this point
-                          </div>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-slate-700"
-                            onClick={closeMobileModulePicker}
-                          >
-                            Close
-                          </button>
-                        </div>
-                        <div className="p-2 max-h-[40vh] overflow-auto">
+                        <div className="max-h-[40vh] overflow-auto">
                           <div className="flex flex-col gap-1">
                             {v2ModuleChoices
                               .filter(({ mod }) => mod.type === mobileModulePicker.type)
@@ -10193,7 +10172,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               })}
                           </div>
                         </div>
-                      </div>
+                      </BottomSheet>
                     )}
                   </div>
                 ) : null}

@@ -3064,7 +3064,7 @@ export default function Dashboard() {
                     </div>
                   ) : null}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <button
                     type="button"
                     className="btn btn-primary"

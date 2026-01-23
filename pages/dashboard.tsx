@@ -947,6 +947,7 @@ export default function Dashboard() {
   const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
   const [profileStatusBio, setProfileStatusBio] = useState<string | null>(null)
+  const [profileUiHandedness, setProfileUiHandedness] = useState<'left' | 'right'>('right')
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarEditArmed, setAvatarEditArmed] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
@@ -1101,6 +1102,9 @@ export default function Dashboard() {
         const data = await res.json().catch(() => ({}))
         const next = typeof data?.avatar === 'string' ? data.avatar.trim() : ''
         if (!cancelled) setProfileAvatarUrl(next || null)
+
+        const nextHand = typeof data?.uiHandedness === 'string' ? data.uiHandedness.trim().toLowerCase() : ''
+        if (!cancelled) setProfileUiHandedness(nextHand === 'left' ? 'left' : 'right')
 
         const nextStatus = typeof data?.statusBio === 'string' ? data.statusBio.trim() : ''
         if (!cancelled) {
@@ -8285,8 +8289,9 @@ export default function Dashboard() {
         onSelect={(g) => updateGradeSelection(g)}
         onClose={() => setGradeWorkspaceSelectorOpen(false)}
         autoCloseMs={2500}
-        widthPx={96}
-        offsetPx={8}
+        handedness={profileUiHandedness}
+        centerBiasStrength={0.7}
+        offsetYPx={0}
       />
 
       {isMobile && studentQuickOverlay && (

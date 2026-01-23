@@ -84,6 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         schoolName: true,
         avatar: true,
         statusBio: true,
+        uiHandedness: true,
         profileVisibility: true,
         consentToPolicies: true,
         consentTimestamp: true,
@@ -238,6 +239,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         errors.push('Profile visibility must be shared, discoverable, or private')
       } else {
         data.profileVisibility = raw
+      }
+    }
+
+    if (hasKey(body, 'uiHandedness')) {
+      const raw = asString(body.uiHandedness).toLowerCase()
+      const allowed = new Set(['left', 'right'])
+      if (!raw || !allowed.has(raw)) {
+        errors.push('Handedness must be left or right')
+      } else {
+        data.uiHandedness = raw
       }
     }
 

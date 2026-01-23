@@ -86,6 +86,7 @@ export default function ProfilePage() {
   const [country, setCountry] = useState('South Africa')
   const [schoolName, setSchoolName] = useState('')
   const [avatar, setAvatar] = useState('')
+  const [uiHandedness, setUiHandedness] = useState<'left' | 'right'>('right')
   const [popiConsent, setPopiConsent] = useState(true)
   const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -200,6 +201,7 @@ export default function ProfilePage() {
         setCountry(data.country || 'South Africa')
         setSchoolName(data.schoolName || '')
         setAvatar(data.avatar || '')
+        setUiHandedness(data.uiHandedness === 'left' ? 'left' : 'right')
         setPopiConsent(Boolean(data.consentToPolicies))
         setConsentTimestamp(data.consentTimestamp || null)
       }
@@ -282,6 +284,7 @@ export default function ProfilePage() {
           postalCode: cleanedPostal,
           country: cleanedCountry,
           schoolName: cleanedSchool,
+          uiHandedness,
           popiConsent: true,
           avatar: avatar.trim() || undefined
         })
@@ -474,6 +477,32 @@ export default function ProfilePage() {
               <section className="card p-6 space-y-4">
                 <h2 className="text-xl font-semibold">Compliance & preferences</h2>
                 <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium">Handedness</label>
+                    <p className="mt-1 text-xs muted">Used to position small one-handed UI controls (like the grade selector).</p>
+                    <div className="mt-2 inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+                      <button
+                        type="button"
+                        className={
+                          `px-4 py-2 text-sm font-semibold rounded-lg transition ` +
+                          (uiHandedness === 'left' ? 'bg-white/15 text-white' : 'text-white/75 hover:bg-white/10')
+                        }
+                        onClick={() => setUiHandedness('left')}
+                      >
+                        Left
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          `px-4 py-2 text-sm font-semibold rounded-lg transition ` +
+                          (uiHandedness === 'right' ? 'bg-white/15 text-white' : 'text-white/75 hover:bg-white/10')
+                        }
+                        onClick={() => setUiHandedness('right')}
+                      >
+                        Right
+                      </button>
+                    </div>
+                  </div>
                   <label className="flex items-start space-x-2 text-sm">
                     <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} />
                     <span>

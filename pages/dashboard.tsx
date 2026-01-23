@@ -6715,9 +6715,9 @@ export default function Dashboard() {
                                           : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
 
                                         return (
-                                          <div key={`${qid}-learner-step-${stepNum}`} className="flex items-start gap-3">
-                                            <div className="min-w-0 flex-1">{line}</div>
-                                            <div className="shrink-0 flex items-start gap-2">
+                                          <div key={`${qid}-learner-step-${stepNum}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
+                                            <div className="min-w-0">{line}</div>
+                                            <div className="shrink-0 justify-self-end self-start flex items-center gap-2">
                                               {awardedInt > 0 ? (
                                                 <span
                                                   className="text-green-500 flex items-center"
@@ -6760,13 +6760,13 @@ export default function Dashboard() {
                                                   </span>
                                                 )
                                               )}
-
-                                              {!isCorrect && awardedInt === 0 ? (
-                                                <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                  {(feedbackText || 'Check this step').slice(0, 160)}
-                                                </div>
-                                              ) : null}
                                             </div>
+
+                                            {!isCorrect && awardedInt === 0 ? (
+                                              <div className="text-xs text-white/70 max-w-full whitespace-pre-wrap break-words">
+                                                {(feedbackText || 'Check this step').slice(0, 160)}
+                                              </div>
+                                            ) : null}
                                           </div>
                                         )
                                       })}
@@ -6956,9 +6956,9 @@ export default function Dashboard() {
                                                       const line = <div className="overflow-x-auto max-w-full">{inner}</div>
 
                                                       return (
-                                                        <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-3">
-                                                          <div className="min-w-0 flex-1">{line}</div>
-                                                          <div className="shrink-0 flex items-start gap-2">
+                                                        <div key={`${qid}-admin-step-${stepNum}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
+                                                          <div className="min-w-0">{line}</div>
+                                                          <div className="shrink-0 justify-self-end self-start flex items-center gap-2">
                                                             {awardedInt > 0 ? (
                                                               <span
                                                                 className="text-green-200 flex items-center"
@@ -7001,13 +7001,13 @@ export default function Dashboard() {
                                                                 </span>
                                                               )
                                                             )}
-
-                                                            {!isCorrect && awardedInt === 0 ? (
-                                                              <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                                {(feedbackText || 'Check this step').slice(0, 160)}
-                                                              </div>
-                                                            ) : null}
                                                           </div>
+
+                                                          {!isCorrect && awardedInt === 0 ? (
+                                                            <div className="text-xs text-white/70 max-w-full whitespace-pre-wrap break-words">
+                                                              {(feedbackText || 'Check this step').slice(0, 160)}
+                                                            </div>
+                                                          ) : null}
                                                         </div>
                                                       )
                                                     })}

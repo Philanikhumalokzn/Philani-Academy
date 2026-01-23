@@ -9861,7 +9861,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">LaTeX</span>
-                        <span className="text-slate-700 text-[16px] leading-none font-semibold" aria-hidden="true">Σ</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-slate-700"
+                          aria-hidden="true"
+                        >
+                          <rect x="5" y="3" width="14" height="18" rx="2" />
+                          <line x1="8" y1="7" x2="16" y2="7" />
+                          <line x1="9" y1="11" x2="9" y2="11" />
+                          <line x1="12" y1="11" x2="12" y2="11" />
+                          <line x1="15" y1="11" x2="15" y2="11" />
+                          <line x1="9" y1="14" x2="9" y2="14" />
+                          <line x1="12" y1="14" x2="12" y2="14" />
+                          <line x1="15" y1="14" x2="15" y2="14" />
+                          <line x1="9" y1="17" x2="9" y2="17" />
+                          <line x1="12" y1="17" x2="12" y2="17" />
+                          <line x1="15" y1="17" x2="15" y2="17" />
+                        </svg>
                       </button>
                     )}
 

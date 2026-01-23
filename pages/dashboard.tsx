@@ -8306,9 +8306,10 @@ export default function Dashboard() {
         onSelect={(g) => updateGradeSelection(g)}
         onClose={() => setGradeWorkspaceSelectorOpen(false)}
         autoCloseMs={2500}
-        handedness={profileUiHandedness}
-        centerBiasStrength={0.7}
-        offsetYPx={0}
+        anchorX="left"
+        anchorY="bottom"
+        offsetXPx={0}
+        offsetYPx={6}
       />
 
       {isMobile && studentQuickOverlay && (

@@ -4839,19 +4839,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             // Everyone except the active presenter follows the presenter's shared page.
             const isPresenter = isSelfActivePresenter()
             if (!isPresenter) {
+              const prevPage = pageIndexRef.current
+              const pageChanged = prevPage !== idx
               // Ensure local page list can represent this page index.
               while (pageRecordsRef.current.length <= idx) {
                 pageRecordsRef.current.push({ snapshot: null })
               }
-              if (pageIndexRef.current !== idx) {
+              if (pageChanged) {
                 setPageIndex(idx)
               }
-              try {
-                editor?.clear?.()
-              } catch {}
-              setLatexOutput('')
-              lastSymbolCountRef.current = 0
-              lastBroadcastBaseCountRef.current = 0
+
+              // IMPORTANT UX: during presenter/controller switches the shared-page message is
+              // frequently re-broadcast even when the page index is unchanged.
+              // Don't clear the board in that case; keep the last-visible notes on screen and
+              // let the sync-request reconcile in the background.
+              if (pageChanged) {
+                const cached = pageRecordsRef.current[idx]?.snapshot ?? null
+                if (cached && !isSnapshotEmpty(cached)) {
+                  void applyPageSnapshot(cached)
+                } else {
+                  try {
+                    editor?.clear?.()
+                  } catch {}
+                  setLatexOutput('')
+                  lastSymbolCountRef.current = 0
+                  lastBroadcastBaseCountRef.current = 0
+                }
+              }
               void requestSyncFromPublisher()
             }
             return

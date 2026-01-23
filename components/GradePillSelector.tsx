@@ -17,6 +17,8 @@ export type GradePillSelectorProps<T extends string> = {
   selected: T | null
   labelForValue: (value: T) => string
   onSelect: (value: T) => void
+  /** Live preview during drag (does not select). */
+  onPreview?: (value: T | null) => void
   onClose: () => void
   /**
    * Optional: start a drag interaction from an external element (e.g. the grade display pill).
@@ -37,6 +39,11 @@ export type GradePillSelectorProps<T extends string> = {
   /** Anchor the pill relative to the click target. */
   anchorX?: 'left' | 'center'
   anchorY?: 'top' | 'bottom'
+  /**
+   * Optional: nudges the pill toward the viewport center by a fraction of its own width.
+   * Example: 0.25 moves it by 25% of pill width toward screen center.
+   */
+  nudgeTowardCenterFraction?: number
   /** Bias placement for one-handed use. */
   handedness?: 'left' | 'right'
   /** 0..1: 0 = stick to click X; 1 = stick to preferred center-ish X. */
@@ -55,6 +62,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
     selected,
     labelForValue,
     onSelect,
+    onPreview,
     onClose,
     externalDrag,
     onExternalDragEnd,
@@ -64,6 +72,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
     offsetXPx = 0,
     anchorX,
     anchorY,
+    nudgeTowardCenterFraction = 0,
     handedness = 'right',
     centerBiasStrength = 0.7,
   } = props
@@ -104,8 +113,9 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       suppressClickRef.current = false
       setDragValue(null)
       dragValueRef.current = null
+      onPreview?.(null)
     }
-  }, [open])
+  }, [open, onPreview])
 
   useEffect(() => {
     if (!open) return
@@ -135,6 +145,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       if (v) {
         dragValueRef.current = v
         setDragValue(v)
+        onPreview?.(v)
       }
     }
 
@@ -155,6 +166,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       const v = dragValueRef.current ?? valueAtClientY(ev.clientY)
       if (v) onSelect(v)
       onClose()
+      onPreview?.(null)
       onExternalDragEnd?.()
 
       window.setTimeout(() => {
@@ -175,7 +187,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       window.removeEventListener('pointerup', end, true)
       window.removeEventListener('pointercancel', end, true)
     }
-  }, [open, externalDrag, onSelect, onClose, onExternalDragEnd, optionHeight, values])
+  }, [open, externalDrag, onSelect, onClose, onExternalDragEnd, onPreview, optionHeight, values])
 
   const valueAtClientY = (clientY: number): T | null => {
     const el = pillRef.current
@@ -224,6 +236,13 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       leftRaw = targetCenterX - effectiveWidth / 2
     }
 
+    if (nudgeTowardCenterFraction) {
+      const frac = clamp(nudgeTowardCenterFraction, -1, 1)
+      const viewportCenterX = viewportWidth / 2
+      const direction = viewportCenterX >= clickCenterX ? 1 : -1
+      leftRaw += direction * effectiveWidth * frac
+    }
+
     const baseY = (resolvedAnchorY === 'top') ? anchorRect.top : anchorRect.bottom
     const topRaw = baseY + offsetYPx
 
@@ -237,7 +256,8 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
       zIndex: 9999,
       touchAction: 'none' as const,
     }
-  }, [anchorRect, widthPx, measuredWidth, offsetYPx, offsetXPx, anchorX, anchorY, handedness, centerBiasStrength])
+  }, [anchorRect, widthPx, measuredWidth, offsetYPx, offsetXPx, anchorX, anchorY, nudgeTowardCenterFraction, handedness, centerBiasStrength])
+
 
   useEffect(() => {
     if (!open) return
@@ -296,6 +316,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
             if (v) {
               dragValueRef.current = v
               setDragValue(v)
+              onPreview?.(v)
             }
           }
 
@@ -315,6 +336,7 @@ export default function GradePillSelector<T extends string>(props: GradePillSele
             const v = dragValueRef.current ?? valueAtClientY(ev.clientY)
             if (v) onSelect(v)
             onClose()
+            onPreview?.(null)
 
             // Allow the click event triggered after pointerup to be ignored once.
             window.setTimeout(() => {

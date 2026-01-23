@@ -875,6 +875,7 @@ export default function Dashboard() {
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
+  const [gradeWorkspaceSelectorPreview, setGradeWorkspaceSelectorPreview] = useState<GradeValue | null>(null)
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
   const studentMobilePanelRefs = useRef<{
     timeline: HTMLDivElement | null
@@ -3034,11 +3035,10 @@ export default function Dashboard() {
     return (
       <section className="space-y-3">
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-            <div />
-            <div className="font-semibold text-white text-center">Current lesson</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-semibold text-white">Current lesson</div>
             {sessionRole === 'admin' || sessionRole === 'teacher' ? (
-              <div className="justify-self-end flex items-center gap-1 text-xs font-semibold text-white/70">
+              <div className="flex items-center gap-1 text-xs font-semibold text-white/70">
                 <span>Grade</span>
                 <button
                   type="button"
@@ -3056,6 +3056,7 @@ export default function Dashboard() {
                       width: r.width,
                       height: r.height,
                     })
+                    setGradeWorkspaceSelectorPreview(null)
                     setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
                     setGradeWorkspaceSelectorOpen(true)
 
@@ -3075,12 +3076,16 @@ export default function Dashboard() {
                       width: r.width,
                       height: r.height,
                     })
+                    setGradeWorkspaceSelectorPreview(null)
                     setGradeWorkspaceSelectorOpen(true)
                   }}
                   aria-label="Select grade workspace"
                   title="Select grade workspace"
                 >
-                  {selectedGrade ? String(selectedGrade).replace('GRADE_', '') : '—'}
+                  {(() => {
+                    const g = gradeWorkspaceSelectorPreview ?? selectedGrade
+                    return g ? String(g).replace('GRADE_', '') : '—'
+                  })()}
                 </button>
               </div>
             ) : (
@@ -8360,18 +8365,24 @@ export default function Dashboard() {
           const numeric = String(g).replace('GRADE_', '')
           return numeric.length === 1 ? `0${numeric}` : numeric
         }}
-        onSelect={(g) => updateGradeSelection(g)}
+        onSelect={(g) => {
+          setGradeWorkspaceSelectorPreview(null)
+          updateGradeSelection(g)
+        }}
         onClose={() => {
           setGradeWorkspaceSelectorOpen(false)
           setGradeWorkspaceSelectorExternalDrag(null)
+          setGradeWorkspaceSelectorPreview(null)
         }}
         externalDrag={gradeWorkspaceSelectorExternalDrag}
         onExternalDragEnd={() => setGradeWorkspaceSelectorExternalDrag(null)}
+        onPreview={(g) => setGradeWorkspaceSelectorPreview(g)}
         autoCloseMs={2500}
         anchorX="left"
         anchorY="bottom"
         offsetXPx={0}
         offsetYPx={6}
+        nudgeTowardCenterFraction={0.25}
       />
 
       {isMobile && studentQuickOverlay && (

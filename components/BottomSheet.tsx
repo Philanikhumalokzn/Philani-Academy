@@ -102,7 +102,7 @@ export default function BottomSheet(props: BottomSheetProps) {
       >
         <div
           className="absolute inset-0 bg-black/40"
-          onMouseDown={closeOnBackdrop ? onClose : undefined}
+          onPointerDown={closeOnBackdrop ? onClose : undefined}
         />
         <div
           className={`absolute left-2 right-2 ${className || ''}`}
@@ -110,7 +110,7 @@ export default function BottomSheet(props: BottomSheetProps) {
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          onMouseDown={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
         >
           {sheetInner}
         </div>

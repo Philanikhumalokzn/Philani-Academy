@@ -10141,6 +10141,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {isCompactViewport && mobileModulePicker && (
                       <BottomSheet
                         open
+                        backdrop
                         title={`${mobileModulePicker.type === 'diagram' ? 'Diagrams' : mobileModulePicker.type === 'text' ? 'Text' : 'LaTeX'} for this point`}
                         onClose={closeMobileModulePicker}
                         style={{ bottom: viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 88 }}

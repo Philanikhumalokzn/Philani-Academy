@@ -882,6 +882,7 @@ export default function Dashboard() {
     discover: HTMLDivElement | null
   }>({ timeline: null, sessions: null, groups: null, discover: null })
   const studentMobileScrollRafRef = useRef<number | null>(null)
+  const studentMobileScrollEndTimeoutRef = useRef<number | null>(null)
 
   const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
   const [sessionThumbnailUploading, setSessionThumbnailUploading] = useState(false)
@@ -2215,13 +2216,15 @@ export default function Dashboard() {
   const onStudentPanelsScroll = useCallback(() => {
     const el = studentMobilePanelsRef.current
     if (!el) return
+    if (typeof window === 'undefined') return
     if (studentMobileScrollRafRef.current) return
 
     studentMobileScrollRafRef.current = window.requestAnimationFrame(() => {
       studentMobileScrollRafRef.current = null
       const width = el.clientWidth || 0
       if (!width) return
-      const idx = Math.round(el.scrollLeft / width)
+      const thresholdPx = width / 3
+      const idx = Math.floor((el.scrollLeft + thresholdPx) / width)
       const nextTab = (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
         | 'timeline'
         | 'sessions'
@@ -2229,7 +2232,24 @@ export default function Dashboard() {
         | 'discover'
       setStudentMobileTab(prev => (prev === nextTab ? prev : nextTab))
     })
-  }, [])
+
+    if (studentMobileScrollEndTimeoutRef.current) {
+      window.clearTimeout(studentMobileScrollEndTimeoutRef.current)
+    }
+    studentMobileScrollEndTimeoutRef.current = window.setTimeout(() => {
+      studentMobileScrollEndTimeoutRef.current = null
+      const width = el.clientWidth || 0
+      if (!width) return
+      const thresholdPx = width / 3
+      const idx = Math.floor((el.scrollLeft + thresholdPx) / width)
+      const tab = (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
+        | 'timeline'
+        | 'sessions'
+        | 'groups'
+        | 'discover'
+      scrollStudentPanelsToTab(tab)
+    }, 120)
+  }, [scrollStudentPanelsToTab])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -7777,14 +7797,13 @@ export default function Dashboard() {
                   ref={studentMobilePanelsRef}
                   onScroll={onStudentPanelsScroll}
                   className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
-                  style={{ WebkitOverflowScrolling: 'auto', overscrollBehaviorX: 'contain', scrollBehavior: 'auto' }}
+                  style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
                 >
                   <div
                     ref={el => {
                       studentMobilePanelRefs.current.timeline = el
                     }}
                     className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderStudentTimelinePanel()}
                   </div>
@@ -7794,7 +7813,6 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.sessions = el
                     }}
                     className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('sessions')}
                   </div>
@@ -7804,7 +7822,6 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.groups = el
                     }}
                     className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('groups')}
                   </div>
@@ -7814,7 +7831,6 @@ export default function Dashboard() {
                       studentMobilePanelRefs.current.discover = el
                     }}
                     className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
                   >
                     {renderSection('discover')}
                   </div>
@@ -8036,14 +8052,13 @@ export default function Dashboard() {
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
                 className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
-                style={{ WebkitOverflowScrolling: 'auto', overscrollBehaviorX: 'contain', scrollBehavior: 'auto' }}
+                style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
               >
                 <div
                   ref={el => {
                     studentMobilePanelRefs.current.timeline = el
                   }}
                   className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderStudentTimelinePanel()}
                 </div>
@@ -8053,7 +8068,6 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.sessions = el
                   }}
                   className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('sessions')}
                 </div>
@@ -8063,7 +8077,6 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.groups = el
                   }}
                   className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('groups')}
                 </div>
@@ -8073,7 +8086,6 @@ export default function Dashboard() {
                     studentMobilePanelRefs.current.discover = el
                   }}
                   className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
                 >
                   {renderSection('discover')}
                 </div>

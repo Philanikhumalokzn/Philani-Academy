@@ -882,6 +882,7 @@ export default function Dashboard() {
   const [adminSelectedSubmissionDetail, setAdminSelectedSubmissionDetail] = useState<any | null>(null)
   const [adminSelectedSubmissionLoading, setAdminSelectedSubmissionLoading] = useState(false)
   const [adminSelectedSubmissionError, setAdminSelectedSubmissionError] = useState<string | null>(null)
+  const [adminSubmissionOverlayOpen, setAdminSubmissionOverlayOpen] = useState(false)
   const [adminRegradeLoading, setAdminRegradeLoading] = useState(false)
   const [adminRegradeError, setAdminRegradeError] = useState<string | null>(null)
   const [assignmentSolutionsByQuestionId, setAssignmentSolutionsByQuestionId] = useState<Record<string, any>>({})
@@ -6306,6 +6307,7 @@ export default function Dashboard() {
                                           const userId = String(row?.userId || '')
                                           if (!userId) return
                                           setAdminSelectedSubmissionUserId(userId)
+                                          setAdminSubmissionOverlayOpen(true)
                                           void fetchAdminSubmissionDetail(expandedSessionId, String(selectedAssignment.id), userId)
                                         }}
                                       >
@@ -6316,262 +6318,6 @@ export default function Dashboard() {
                                 ))}
                               </ul>
                             )}
-
-                            {adminSelectedSubmissionUserId ? (
-                              <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="font-semibold text-sm">Selected submission</div>
-                                  <div className="flex items-center gap-2">
-                                    {isAdmin ? (
-                                      <button
-                                        type="button"
-                                        className="btn btn-secondary text-xs"
-                                        disabled={adminRegradeLoading}
-                                        onClick={() => adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)}
-                                      >
-                                        {adminRegradeLoading ? 'Re-grading…' : 'Re-grade'}
-                                      </button>
-                                    ) : null}
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost text-xs"
-                                      onClick={() => {
-                                        setAdminSelectedSubmissionUserId(null)
-                                        setAdminSelectedSubmissionDetail(null)
-                                        setAdminSelectedSubmissionError(null)
-                                      }}
-                                    >
-                                      Clear
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {adminRegradeError ? <div className="text-sm text-red-600">{adminRegradeError}</div> : null}
-                                {adminSelectedSubmissionError ? <div className="text-sm text-red-600">{adminSelectedSubmissionError}</div> : null}
-                                {adminSelectedSubmissionLoading ? (
-                                  <div className="text-sm muted">Loading submission…</div>
-                                ) : adminSelectedSubmissionDetail ? (
-                                  (() => {
-                                    const detail: any = adminSelectedSubmissionDetail
-                                    const submission = detail?.submission
-                                    const user = submission?.user
-                                    const results: any[] = Array.isArray(detail?.gradingJson?.results)
-                                      ? detail.gradingJson.results
-                                      : (Array.isArray(detail?.grade?.results) ? detail.grade.results : [])
-                                    const gradingJson = detail?.gradingJson
-                                    const rawGeminiOutput = String(detail?.rawGeminiOutput || '')
-                                    const byQuestionId = detail?.responses?.byQuestionId || {}
-                                    const questions = Array.isArray(detail?.assignment?.questions) ? detail.assignment.questions : []
-
-                                    const grade = detail?.grade || null
-                                    const gradeByQ = new Map<string, any>()
-                                    for (const r of results) {
-                                      const qid = String(r?.questionId || '')
-                                      if (qid) gradeByQ.set(qid, r)
-                                    }
-
-                                    const responsesByQ = byQuestionId || {}
-
-                                    return (
-                                      <div className="space-y-2">
-                                        <div className="text-sm">
-                                          <span className="font-medium">{user?.name || user?.email || 'Learner'}</span>
-                                          {submission?.submittedAt ? ` • ${new Date(submission.submittedAt).toLocaleString()}` : ''}
-                                        </div>
-
-                                        {typeof detail?.grade?.percentage === 'number' ? (
-                                          <div className="text-sm">
-                                            Grade: <span className="font-medium">{detail.grade.earnedPoints}/{detail.grade.totalPoints}</span>{' '}
-                                            ({Math.round(detail.grade.percentage)}%)
-                                          </div>
-                                        ) : null}
-
-                                        {questions.length ? (
-                                          <div className="space-y-2">
-                                            {questions.map((q: any, idx: number) => {
-                                              const qid = String(q?.id || '')
-                                              const respLatex = String(responsesByQ?.[qid]?.latex || '')
-                                              const result = gradeByQ.get(qid)
-                                              const earnedMarks = (typeof result?.earnedMarks === 'number' || typeof result?.earnedMarks === 'string') ? Number(result.earnedMarks) : null
-                                              const totalMarks = (typeof result?.totalMarks === 'number' || typeof result?.totalMarks === 'string') ? Number(result.totalMarks) : null
-                                              const stepFeedback = Array.isArray(result?.steps) ? result.steps : (Array.isArray(result?.stepFeedback) ? result.stepFeedback : [])
-
-                                              return (
-                                                <details key={`admin-sub-q-${qid || idx}`} className="border border-white/10 rounded p-2" open={idx === 0}>
-                                                  <summary className="cursor-pointer font-medium text-sm flex items-center justify-between gap-2">
-                                                    <span>Question {idx + 1}</span>
-                                                    {grade && Number.isFinite(earnedMarks as any) && Number.isFinite(totalMarks as any) ? (
-                                                      <span className={Number(earnedMarks) > 0 ? 'text-green-500' : 'text-red-500'}>(
-                                                        {Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))}
-                                                      )</span>
-                                                    ) : null}
-                                                  </summary>
-
-                                                  <div className="pt-2 text-sm whitespace-pre-wrap break-words">
-                                                    {renderTextWithKatex(String(q?.latex || ''))}
-                                                  </div>
-
-                                                  <div className="pt-2 space-y-1">
-                                                    <div className="text-xs text-white/70">Student response</div>
-                                                    {respLatex.trim() ? (
-                                                        (() => {
-                                                          const steps = splitLatexIntoSteps(respLatex)
-                                                          if (Array.isArray(stepFeedback) && stepFeedback.length && steps.length) {
-                                                            const byStep = new Map<number, any>()
-                                                            for (const s of stepFeedback) {
-                                                              const idx2 = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
-                                                              if (Number.isFinite(idx2) && idx2 > 0) byStep.set(Math.trunc(idx2), s)
-                                                            }
-
-                                                            return (
-                                                              <div className="space-y-2">
-                                                                {steps.map((stepLatex: string, i: number) => {
-                                                                  const stepNum = i + 1
-                                                                  const fb = byStep.get(stepNum)
-                                                                  const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
-                                                                  const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
-
-                                                                  const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
-                                                                  const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
-                                                                  const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
-                                                                  const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
-
-                                                                  const html = renderKatexDisplayHtml(stepLatex)
-                                                                  const line = html
-                                                                    ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: html }} />
-                                                                    : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
-
-                                                                  return (
-                                                                    <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-3">
-                                                                      <div className="min-w-0 flex-1">{line}</div>
-                                                                      <div className="shrink-0 flex items-start gap-2">
-                                                                        {awardedInt > 0 ? (
-                                                                          <span
-                                                                            className="text-green-500 flex items-center"
-                                                                            aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`}
-                                                                            title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}
-                                                                          >
-                                                                            {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
-                                                                              <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                                <path
-                                                                                  d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
-                                                                                  fill="currentColor"
-                                                                                />
-                                                                              </svg>
-                                                                            ))}
-                                                                            {awardedInt > 12 ? (
-                                                                              <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
-                                                                            ) : null}
-                                                                          </span>
-                                                                        ) : isCorrect ? (
-                                                                          <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
-                                                                            <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                                              <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                                            </svg>
-                                                                          </span>
-                                                                        ) : (
-                                                                          isSignificant ? (
-                                                                            <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
-                                                                              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                                                <path
-                                                                                  d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
-                                                                                  fill="currentColor"
-                                                                                />
-                                                                              </svg>
-                                                                            </span>
-                                                                          ) : (
-                                                                            <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
-                                                                              <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                                                <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                                              </svg>
-                                                                            </span>
-                                                                          )
-                                                                        )}
-
-                                                                        {!isCorrect && awardedInt === 0 ? (
-                                                                          <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                                            {(feedbackText || 'Check this step').slice(0, 160)}
-                                                                          </div>
-                                                                        ) : null}
-                                                                      </div>
-                                                                    </div>
-                                                                  )
-                                                                })}
-                                                              </div>
-                                                            )
-                                                          }
-
-                                                          if (steps.length > 1) {
-                                                            return (
-                                                              <div className="space-y-2">
-                                                                {steps.map((stepLatex: string, i: number) => {
-                                                                  const html = renderKatexDisplayHtml(stepLatex)
-                                                                  return html ? (
-                                                                    <div
-                                                                      key={`${qid}-admin-step-plain-${i}`}
-                                                                      className="text-sm leading-relaxed [&_.katex]:text-sm [&_.katex-display]:text-sm"
-                                                                      dangerouslySetInnerHTML={{ __html: html }}
-                                                                    />
-                                                                  ) : (
-                                                                    <div key={`${qid}-admin-step-plain-${i}`} className="text-xs font-mono whitespace-pre-wrap break-words">{stepLatex}</div>
-                                                                  )
-                                                                })}
-                                                              </div>
-                                                            )
-                                                          }
-
-                                                          const html = renderKatexDisplayHtml(respLatex)
-                                                          if (html) {
-                                                            return (
-                                                              <div
-                                                                className="text-sm leading-relaxed [&_.katex]:text-sm [&_.katex-display]:text-sm"
-                                                                dangerouslySetInnerHTML={{ __html: html }}
-                                                              />
-                                                            )
-                                                          }
-                                                          return <div className="text-xs font-mono whitespace-pre-wrap break-words">{respLatex}</div>
-                                                        })()
-                                                      ) : (
-                                                        <div className="text-sm text-white/60">(empty)</div>
-                                                      )}
-                                                  </div>
-                                                </details>
-                                              )
-                                            })}
-                                          </div>
-                                        ) : null}
-
-                                        {isAdmin ? (
-                                          <>
-                                            <div className="pt-2">
-                                              <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                <div className="text-xs text-white/70 mb-1">Final grading JSON object</div>
-                                                {gradingJson ? (
-                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{JSON.stringify(gradingJson, null, 2)}</pre>
-                                                ) : (
-                                                  <div className="text-sm text-white/60">No grade JSON yet.</div>
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div className="pt-2">
-                                              <div className="p-2 rounded border border-white/10 bg-white/5">
-                                                <div className="text-xs text-white/70 mb-1">Raw Gemini output (parser input)</div>
-                                                {rawGeminiOutput.trim() ? (
-                                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">{rawGeminiOutput}</pre>
-                                                ) : (
-                                                  <div className="text-sm text-white/60">Not available for this grade (requires re-grade after migration).</div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </>
-                                        ) : null}
-                                      </div>
-                                    )
-                                  })()
-                                ) : null}
-                              </div>
-                            ) : null}
                           </div>
                         ) : null}
 
@@ -7053,6 +6799,279 @@ export default function Dashboard() {
                         </>
                       )
                     })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayPortal>
+        )}
+
+        {isTeacherOrAdminUser && adminSubmissionOverlayOpen && expandedSessionId && selectedAssignment?.id && adminSelectedSubmissionUserId && (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true">
+              <div
+                className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter"
+                onClick={() => {
+                  setAdminSubmissionOverlayOpen(false)
+                }}
+              />
+              <div className="absolute inset-0 p-2 sm:p-6" onClick={() => setAdminSubmissionOverlayOpen(false)}>
+                <div
+                  className="h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white truncate">Student response</div>
+                      <div className="text-xs text-white/70 truncate">Review submission</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded-full border border-white/15 bg-white/15 hover:bg-white/20 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-60"
+                          disabled={adminRegradeLoading}
+                          onClick={() => adminRegradeSubmission(expandedSessionId, String(selectedAssignment.id), adminSelectedSubmissionUserId)}
+                        >
+                          {adminRegradeLoading ? 'Re-grading…' : 'Re-grade'}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="px-4 py-2 rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white text-xs font-semibold whitespace-nowrap"
+                        onClick={() => {
+                          setAdminSubmissionOverlayOpen(false)
+                          setAdminSelectedSubmissionUserId(null)
+                          setAdminSelectedSubmissionDetail(null)
+                          setAdminSelectedSubmissionError(null)
+                          setAdminRegradeError(null)
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+                    {adminRegradeError ? <div className="text-sm text-red-200 mb-3">{adminRegradeError}</div> : null}
+                    {adminSelectedSubmissionError ? <div className="text-sm text-red-200 mb-3">{adminSelectedSubmissionError}</div> : null}
+
+                    {adminSelectedSubmissionLoading ? (
+                      <div className="text-sm text-white/70">Loading submission…</div>
+                    ) : adminSelectedSubmissionDetail ? (
+                      (() => {
+                        const detail: any = adminSelectedSubmissionDetail
+                        const submission = detail?.submission
+                        const user = submission?.user
+                        const results: any[] = Array.isArray(detail?.gradingJson?.results)
+                          ? detail.gradingJson.results
+                          : (Array.isArray(detail?.grade?.results) ? detail.grade.results : [])
+                        const byQuestionId = detail?.responses?.byQuestionId || {}
+                        const questions = Array.isArray(detail?.assignment?.questions) ? detail.assignment.questions : []
+
+                        const grade = detail?.grade || null
+                        const gradeByQ = new Map<string, any>()
+                        for (const r of results) {
+                          const qid = String(r?.questionId || '')
+                          if (qid) gradeByQ.set(qid, r)
+                        }
+
+                        const responsesByQ = byQuestionId || {}
+
+                        return (
+                          <div className="space-y-4">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/80">
+                              <span className="font-medium text-white">{user?.name || user?.email || 'Learner'}</span>
+                              {submission?.submittedAt ? <span>• {new Date(submission.submittedAt).toLocaleString()}</span> : null}
+                              {typeof detail?.grade?.percentage === 'number' ? (
+                                <span>
+                                  • <span className="font-medium text-white">{detail.grade.earnedPoints}/{detail.grade.totalPoints}</span> ({Math.round(detail.grade.percentage)}%)
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {questions.length ? (
+                              <div className="space-y-3">
+                                {questions.map((q: any, idx: number) => {
+                                  const qid = String(q?.id || '')
+                                  const respLatex = String(responsesByQ?.[qid]?.latex || '')
+                                  const result = gradeByQ.get(qid)
+                                  const earnedMarks = (typeof result?.earnedMarks === 'number' || typeof result?.earnedMarks === 'string') ? Number(result.earnedMarks) : null
+                                  const totalMarks = (typeof result?.totalMarks === 'number' || typeof result?.totalMarks === 'string') ? Number(result.totalMarks) : null
+                                  const stepFeedback = Array.isArray(result?.steps) ? result.steps : (Array.isArray(result?.stepFeedback) ? result.stepFeedback : [])
+
+                                  return (
+                                    <details key={`admin-sub-q-${qid || idx}`} className="rounded-xl border border-white/10 bg-white/5" open={idx === 0}>
+                                      <summary className="cursor-pointer px-3 py-2 font-medium text-sm text-white flex items-center justify-between gap-2">
+                                        <span className="truncate">Question {idx + 1}</span>
+                                        {grade && Number.isFinite(earnedMarks as any) && Number.isFinite(totalMarks as any) ? (
+                                          <span className={Number(earnedMarks) > 0 ? 'text-green-200' : 'text-red-200'}>(
+                                            {Math.trunc(Number(earnedMarks))}/{Math.trunc(Number(totalMarks))}
+                                          )</span>
+                                        ) : null}
+                                      </summary>
+
+                                      <div className="px-3 pb-3">
+                                        <div className="pt-2 text-sm text-white/90 whitespace-pre-wrap break-words [&_.katex]:text-sm [&_.katex-display]:text-sm">
+                                          {renderTextWithKatex(String(q?.latex || ''))}
+                                        </div>
+
+                                        <div className="pt-3 space-y-2">
+                                          <div className="text-xs text-white/70">Student response</div>
+                                          {respLatex.trim() ? (
+                                            (() => {
+                                              const steps = splitLatexIntoSteps(respLatex)
+                                              if (Array.isArray(stepFeedback) && stepFeedback.length && steps.length) {
+                                                const byStep = new Map<number, any>()
+                                                for (const s of stepFeedback) {
+                                                  const idx2 = Number(s?.step ?? s?.index ?? s?.stepIndex ?? 0)
+                                                  if (Number.isFinite(idx2) && idx2 > 0) byStep.set(Math.trunc(idx2), s)
+                                                }
+
+                                                return (
+                                                  <div className="space-y-2">
+                                                    {steps.map((stepLatex: string, i: number) => {
+                                                      const stepNum = i + 1
+                                                      const fb = byStep.get(stepNum)
+                                                      const awarded = Number(fb?.awardedMarks ?? fb?.awarded ?? fb?.marks ?? 0)
+                                                      const awardedInt = Number.isFinite(awarded) ? Math.max(0, Math.trunc(awarded)) : 0
+
+                                                      const explicitIsCorrect = (typeof fb?.isCorrect === 'boolean') ? Boolean(fb.isCorrect) : null
+                                                      const isCorrect = (explicitIsCorrect == null) ? (awardedInt > 0) : explicitIsCorrect
+                                                      const isSignificant = (typeof fb?.isSignificant === 'boolean') ? Boolean(fb.isSignificant) : (!isCorrect)
+                                                      const feedbackText = String(fb?.feedback ?? fb?.note ?? fb?.why ?? fb?.correctStep ?? '').trim()
+
+                                                      const html = renderKatexDisplayHtml(stepLatex)
+                                                      const inner = html
+                                                        ? (
+                                                          <div
+                                                            className={(isCorrect ? '' : 'underline decoration-red-300') + ' min-w-max text-sm leading-relaxed text-white/90 [&_.katex]:text-sm [&_.katex-display]:text-sm'}
+                                                            dangerouslySetInnerHTML={{ __html: html }}
+                                                          />
+                                                        ) : (
+                                                          <div className={(isCorrect ? '' : 'underline decoration-red-300 ') + 'min-w-max text-sm leading-relaxed text-white/90 font-mono whitespace-pre'}>
+                                                            {stepLatex}
+                                                          </div>
+                                                        )
+                                                      const line = <div className="overflow-x-auto max-w-full">{inner}</div>
+
+                                                      return (
+                                                        <div key={`${qid}-admin-step-${stepNum}`} className="flex items-start gap-3">
+                                                          <div className="min-w-0 flex-1">{line}</div>
+                                                          <div className="shrink-0 flex items-start gap-2">
+                                                            {awardedInt > 0 ? (
+                                                              <span
+                                                                className="text-green-200 flex items-center"
+                                                                aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`}
+                                                                title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}
+                                                              >
+                                                                {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
+                                                                  <svg key={`tick-${qid}-${stepNum}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                    <path
+                                                                      d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                                                      fill="currentColor"
+                                                                    />
+                                                                  </svg>
+                                                                ))}
+                                                                {awardedInt > 12 ? (
+                                                                  <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
+                                                                ) : null}
+                                                              </span>
+                                                            ) : isCorrect ? (
+                                                              <span className="text-green-200" aria-label="Correct but 0 marks" title="Correct but 0 marks">
+                                                                <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                  <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                </svg>
+                                                              </span>
+                                                            ) : (
+                                                              isSignificant ? (
+                                                                <span className="text-red-200" aria-label="Incorrect significant step" title="Incorrect (significant)">
+                                                                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                                                                    <path
+                                                                      d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
+                                                                      fill="currentColor"
+                                                                    />
+                                                                  </svg>
+                                                                </span>
+                                                              ) : (
+                                                                <span className="text-red-200" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
+                                                                  <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
+                                                                    <circle cx="5" cy="5" r="4" fill="currentColor" />
+                                                                  </svg>
+                                                                </span>
+                                                              )
+                                                            )}
+
+                                                            {!isCorrect && awardedInt === 0 ? (
+                                                              <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
+                                                                {(feedbackText || 'Check this step').slice(0, 160)}
+                                                              </div>
+                                                            ) : null}
+                                                          </div>
+                                                        </div>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                )
+                                              }
+
+                                              if (steps.length > 1) {
+                                                return (
+                                                  <div className="space-y-2">
+                                                    {steps.map((stepLatex: string, i: number) => {
+                                                      const html = renderKatexDisplayHtml(stepLatex)
+                                                      const inner = html ? (
+                                                        <div
+                                                          className="min-w-max text-sm leading-relaxed text-white/90 [&_.katex]:text-sm [&_.katex-display]:text-sm"
+                                                          dangerouslySetInnerHTML={{ __html: html }}
+                                                        />
+                                                      ) : (
+                                                        <div className="min-w-max text-sm leading-relaxed text-white/90 font-mono whitespace-pre">{stepLatex}</div>
+                                                      )
+                                                      return (
+                                                        <div key={`${qid}-admin-step-plain-${i}`} className="overflow-x-auto max-w-full">{inner}</div>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                )
+                                              }
+
+                                              const html = renderKatexDisplayHtml(respLatex)
+                                              if (html) {
+                                                return (
+                                                  <div className="overflow-x-auto max-w-full">
+                                                    <div
+                                                      className="min-w-max text-sm leading-relaxed text-white/90 [&_.katex]:text-sm [&_.katex-display]:text-sm"
+                                                      dangerouslySetInnerHTML={{ __html: html }}
+                                                    />
+                                                  </div>
+                                                )
+                                              }
+
+                                              return (
+                                                <div className="overflow-x-auto max-w-full">
+                                                  <div className="min-w-max text-sm leading-relaxed text-white/90 font-mono whitespace-pre">{respLatex}</div>
+                                                </div>
+                                              )
+                                            })()
+                                          ) : (
+                                            <div className="text-sm text-white/60">(empty)</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </details>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-sm text-white/70">No questions found.</div>
+                            )}
+                          </div>
+                        )
+                      })()
+                    ) : (
+                      <div className="text-sm text-white/70">No submission selected.</div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import BrandLogo from '../components/BrandLogo'
+import GradePillSelector, { type PillAnchorRect } from '../components/GradePillSelector'
 import UserLink from '../components/UserLink'
 import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
@@ -872,6 +873,7 @@ export default function Dashboard() {
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
+  const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const studentMobilePanelsRef = useRef<HTMLDivElement | null>(null)
   const studentMobilePanelRefs = useRef<{
     timeline: HTMLDivElement | null
@@ -2992,7 +2994,19 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white"
-                  onClick={() => setGradeWorkspaceSelectorOpen(true)}
+                  onClick={(e) => {
+                    const el = e.currentTarget as HTMLElement
+                    const r = el.getBoundingClientRect()
+                    setGradeWorkspaceSelectorAnchor({
+                      top: r.top,
+                      right: r.right,
+                      bottom: r.bottom,
+                      left: r.left,
+                      width: r.width,
+                      height: r.height,
+                    })
+                    setGradeWorkspaceSelectorOpen(true)
+                  }}
                   aria-label="Select grade workspace"
                   title="Select grade workspace"
                 >
@@ -8259,57 +8273,21 @@ export default function Dashboard() {
         </OverlayPortal>
       )}
 
-      {gradeWorkspaceSelectorOpen && (
-        <OverlayPortal>
-          <FullScreenGlassOverlay
-            title="Workspace"
-            subtitle="Select grade"
-            onClose={() => setGradeWorkspaceSelectorOpen(false)}
-            onBackdropClick={() => setGradeWorkspaceSelectorOpen(false)}
-            zIndexClassName="z-[60]"
-            panelSize="auto"
-            frameClassName="absolute inset-0 px-4 pt-24 pb-6 flex items-start justify-center"
-            panelClassName="rounded-[999px] w-[96px]"
-            contentClassName="p-0"
-          >
-            <div
-              role="radiogroup"
-              aria-label="Grade workspace"
-              className="overflow-hidden rounded-[999px] border border-white/10 bg-white/10 backdrop-blur-xl"
-            >
-              {(GRADE_VALUES as readonly GradeValue[]).map((g, idx) => {
-                const isSelected = selectedGrade === g
-                const numeric = String(g).replace('GRADE_', '')
-                const label = numeric.length === 1 ? `0${numeric}` : numeric
-                const isFirst = idx === 0
-                const isLast = idx === (GRADE_VALUES.length - 1)
-
-                return (
-                  <button
-                    key={g}
-                    type="button"
-                    role="radio"
-                    aria-checked={isSelected}
-                    className={
-                      `w-full h-11 flex items-center justify-center text-base font-semibold tabular-nums transition focus:outline-none focus:ring-2 focus:ring-white/25 ` +
-                      (isSelected ? 'bg-white/20 text-white' : 'bg-transparent text-white/85 hover:bg-white/10') +
-                      (!isLast ? ' border-b border-white/10' : '') +
-                      (isFirst ? ' rounded-t-[999px]' : '') +
-                      (isLast ? ' rounded-b-[999px]' : '')
-                    }
-                    onClick={() => {
-                      updateGradeSelection(g)
-                      setGradeWorkspaceSelectorOpen(false)
-                    }}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </FullScreenGlassOverlay>
-        </OverlayPortal>
-      )}
+      <GradePillSelector
+        open={gradeWorkspaceSelectorOpen}
+        anchorRect={gradeWorkspaceSelectorAnchor}
+        values={GRADE_VALUES}
+        selected={selectedGrade}
+        labelForValue={(g) => {
+          const numeric = String(g).replace('GRADE_', '')
+          return numeric.length === 1 ? `0${numeric}` : numeric
+        }}
+        onSelect={(g) => updateGradeSelection(g)}
+        onClose={() => setGradeWorkspaceSelectorOpen(false)}
+        autoCloseMs={2500}
+        widthPx={96}
+        offsetPx={8}
+      />
 
       {isMobile && studentQuickOverlay && (
         <FullScreenGlassOverlay

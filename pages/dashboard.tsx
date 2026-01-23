@@ -7961,50 +7961,27 @@ export default function Dashboard() {
       </div>
 
       {dashboardSectionOverlay && (
-        <div
-          className={`fixed inset-0 z-40 transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-          role="dialog"
-          aria-modal="true"
+        <FullScreenGlassOverlay
+          title={(DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === dashboardSectionOverlay)?.label || 'Section'}
+          onClose={closeDashboardOverlay}
+          onBackdropClick={closeDashboardOverlay}
+          zIndexClassName="z-40"
+          className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
-          <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeDashboardOverlay} />
-          <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeDashboardOverlay}>
-            <div className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="p-3 border-b flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold break-words">
-                    {(DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === dashboardSectionOverlay)?.label || 'Section'}
-                  </div>
-                </div>
-                <button type="button" className="btn btn-ghost" onClick={closeDashboardOverlay} aria-label="Close">
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3">
-                {renderSection(dashboardSectionOverlay)}
-              </div>
-            </div>
-          </div>
-        </div>
+          {renderSection(dashboardSectionOverlay)}
+        </FullScreenGlassOverlay>
       )}
 
       {createOverlayOpen && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
-            <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={closeCreateOverlay} />
-            <div className="absolute inset-x-0 bottom-0 px-2 sm:px-0 sm:inset-x-8 sm:inset-y-8" onClick={closeCreateOverlay}>
-              <div
-                className="card philani-overlay-panel philani-overlay-enter h-full max-h-[92vh] overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-3 border-b flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold break-words">{editingChallengeId ? 'Edit' : 'Create'}</div>
-                    <div className="text-sm muted">{editingChallengeId ? 'Update your quiz post.' : 'Post a quiz to your profile timeline.'}</div>
-                  </div>
-                  <button type="button" className="btn btn-ghost" onClick={closeCreateOverlay} aria-label="Close">✕</button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <FullScreenGlassOverlay
+            title={editingChallengeId ? 'Edit' : 'Create'}
+            subtitle={editingChallengeId ? 'Update your quiz post.' : 'Post a quiz to your profile timeline.'}
+            onClose={closeCreateOverlay}
+            onBackdropClick={closeCreateOverlay}
+            zIndexClassName="z-[70]"
+            contentClassName="space-y-3"
+          >
                   <input
                     className="input"
                     placeholder="Title (optional)"
@@ -8125,10 +8102,7 @@ export default function Dashboard() {
                       {challengePosting ? (editingChallengeId ? 'Saving…' : 'Posting…') : (editingChallengeId ? 'Save' : 'Post')}
                     </button>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       )}
 

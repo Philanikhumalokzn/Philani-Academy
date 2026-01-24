@@ -258,16 +258,48 @@ export default function Dashboard() {
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [currentLessonCardCollapsed, setCurrentLessonCardCollapsed] = useState(false)
-  const currentLessonCardCollapsedRef = useRef(false)
+  const currentLessonCardRef = useRef<HTMLDivElement | null>(null)
+  const [currentLessonCardNaturalHeight, setCurrentLessonCardNaturalHeight] = useState(0)
+  const currentLessonCardNaturalHeightRef = useRef(0)
+  const [currentLessonCardCollapsePx, setCurrentLessonCardCollapsePx] = useState(0)
+  const currentLessonCardCollapsePxRef = useRef(0)
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
 
   useEffect(() => {
-    currentLessonCardCollapsedRef.current = currentLessonCardCollapsed
-  }, [currentLessonCardCollapsed])
+    currentLessonCardNaturalHeightRef.current = currentLessonCardNaturalHeight
+  }, [currentLessonCardNaturalHeight])
+
+  useEffect(() => {
+    currentLessonCardCollapsePxRef.current = currentLessonCardCollapsePx
+  }, [currentLessonCardCollapsePx])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const measure = () => {
+      const el = currentLessonCardRef.current
+      if (!el) return
+      const h = el.getBoundingClientRect().height
+      if (!Number.isFinite(h) || h <= 0) return
+      const next = Math.max(currentLessonCardNaturalHeightRef.current || 0, Math.round(h))
+      if (next !== currentLessonCardNaturalHeightRef.current) {
+        currentLessonCardNaturalHeightRef.current = next
+        setCurrentLessonCardNaturalHeight(next)
+      }
+    }
+
+    // Initial + resize re-measure.
+    const onResize = () => {
+      window.requestAnimationFrame(measure)
+    }
+
+    window.requestAnimationFrame(measure)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -283,16 +315,16 @@ export default function Dashboard() {
         const delta = y - lastY
         lastY = y
 
-        // Ignore tiny jitter from touchpads.
-        if (Math.abs(delta) < 6) return
+        const maxH = currentLessonCardNaturalHeightRef.current || 0
+        if (!maxH) return
 
-        if (delta > 0) {
-          // Scrolling down: collapse once we’re past the very top.
-          if (y > 60 && !currentLessonCardCollapsedRef.current) setCurrentLessonCardCollapsed(true)
-        } else {
-          // Scrolling up: re-expand immediately (implies intent to see it).
-          if (currentLessonCardCollapsedRef.current) setCurrentLessonCardCollapsed(false)
-        }
+        // 1:1 proportional collapse: every px scrolled down collapses 1px; scrolling up expands 1px.
+        let next = currentLessonCardCollapsePxRef.current + delta
+        if (next < 0) next = 0
+        if (next > maxH) next = maxH
+        if (next === currentLessonCardCollapsePxRef.current) return
+        currentLessonCardCollapsePxRef.current = next
+        setCurrentLessonCardCollapsePx(next)
       })
     }
 
@@ -3183,15 +3215,21 @@ export default function Dashboard() {
     return (
       <section className="space-y-3">
         <div
-          className={
-            `grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
-              currentLessonCardCollapsed
-                ? 'grid-rows-[0fr] opacity-0 pointer-events-none'
-                : 'grid-rows-[1fr] opacity-100'
-            }`
-          }
+          className="overflow-hidden"
+          style={(() => {
+            const maxH = currentLessonCardNaturalHeight || 0
+            if (!maxH) return undefined
+            const collapsed = Math.min(maxH, Math.max(0, currentLessonCardCollapsePx))
+            const progress = maxH ? collapsed / maxH : 0
+            const heightPx = Math.max(0, Math.round(maxH - collapsed))
+            return {
+              height: `${heightPx}px`,
+              opacity: String(Math.max(0, 1 - progress)),
+              pointerEvents: progress >= 1 ? 'none' : 'auto',
+            } as React.CSSProperties
+          })()}
         >
-          <div className="overflow-hidden">
+          <div ref={currentLessonCardRef}>
             <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold text-white">Current lesson</div>
@@ -3346,19 +3384,15 @@ export default function Dashboard() {
 
                 <button
                   type="button"
-                  className="group flex-1 h-10 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-3 text-left"
+                  className="group flex-1 h-10 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-4 text-left"
                   onClick={openCreateChallengeComposer}
                 >
-                  <span className="w-full inline-flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center h-7 px-3 rounded-full border border-white/20 text-sm text-white/70 group-hover:text-white/80">
-                      Post a challenge
-                    </span>
-                    <span className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-white/15 text-white/70 group-hover:text-white/90 group-hover:border-white/25">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                      </svg>
-                    </span>
+                  <span className="w-full h-8 inline-flex items-center justify-between gap-3 rounded-full border border-white/20 px-4 text-sm text-white/70 group-hover:text-white/80">
+                    <span>Post a challenge</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="text-white/70 group-hover:text-white/90">
+                      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                    </svg>
                   </span>
                 </button>
 

@@ -3446,6 +3446,7 @@ export default function Dashboard() {
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
                 const prompt = (p?.prompt || '').trim()
+                const imageUrl = typeof p?.imageUrl === 'string' ? p.imageUrl.trim() : ''
                 const myAttemptCount = typeof p?.myAttemptCount === 'number' ? p.myAttemptCount : 0
                 const maxAttempts = typeof p?.maxAttempts === 'number' ? p.maxAttempts : null
                 const attemptsOpen = p?.attemptsOpen !== false
@@ -3464,6 +3465,16 @@ export default function Dashboard() {
                           {authorName}{createdAt ? ` • ${createdAt}` : ''}
                         </div>
                         {prompt ? <div className="mt-1 text-sm text-white/70 break-words">{prompt.slice(0, 160)}{prompt.length > 160 ? '…' : ''}</div> : null}
+                        {imageUrl ? (
+                          <div className="mt-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={imageUrl}
+                              alt="Post screenshot"
+                              className="max-h-[220px] w-full rounded-lg border border-white/10 object-contain"
+                            />
+                          </div>
+                        ) : null}
                       </div>
                       {p?.id ? (
                         isOwner ? (
@@ -8556,11 +8567,19 @@ export default function Dashboard() {
                   />
 
                   {challengeImageUrl ? (
-                    <button
-                      type="button"
-                      className="w-full rounded-xl border border-white/10 bg-black/20 p-2 text-left"
+                    <div
+                      className="w-full cursor-pointer"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         if (!challengeImageSourceFile) return
+                        setChallengeImageEditFile(challengeImageSourceFile)
+                        setChallengeImageEditOpen(true)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return
+                        if (!challengeImageSourceFile) return
+                        e.preventDefault()
                         setChallengeImageEditFile(challengeImageSourceFile)
                         setChallengeImageEditOpen(true)
                       }}
@@ -8568,8 +8587,8 @@ export default function Dashboard() {
                       title={challengeImageSourceFile ? 'Edit screenshot' : 'Screenshot'}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] w-full rounded-lg object-contain" />
-                    </button>
+                      <img src={challengeImageUrl} alt="Uploaded" className="max-h-[260px] w-full rounded-lg object-contain" />
+                    </div>
                   ) : null}
                 </div>
 

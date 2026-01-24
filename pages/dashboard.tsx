@@ -326,6 +326,31 @@ export default function Dashboard() {
   const [challengeDeleting, setChallengeDeleting] = useState(false)
   const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
 
+  const openCreateChallengeComposer = useCallback(() => {
+    setCreateOverlayOpen(true)
+  }, [])
+
+  const openCreateChallengeScreenshotPicker = useCallback(() => {
+    setCreateOverlayOpen(true)
+    if (typeof window === 'undefined') return
+    let attempts = 0
+    const tick = () => {
+      const input = challengeUploadInputRef.current
+      if (input) {
+        try {
+          input.click()
+        } catch {
+          // ignore
+        }
+        return
+      }
+      attempts += 1
+      if (attempts > 12) return
+      window.setTimeout(tick, 50)
+    }
+    window.setTimeout(tick, 0)
+  }, [])
+
   const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
   const [challengeImageEditFile, setChallengeImageEditFile] = useState<File | null>(null)
 
@@ -3211,35 +3236,67 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-semibold text-white">Posts</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-primary text-xs"
-                onClick={() => setCreateOverlayOpen(true)}
-              >
-                Post
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost text-xs"
-                onClick={() => setTimelineOpen(true)}
-              >
-                My posts
-              </button>
+          <div className="space-y-3">
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
+                  {effectiveAvatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="flex-1 h-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 px-4 text-left text-sm text-white/70"
+                  onClick={openCreateChallengeComposer}
+                >
+                  Post a challenge
+                </button>
+
+                <button
+                  type="button"
+                  className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                  aria-label="Upload screenshot"
+                  onClick={openCreateChallengeScreenshotPicker}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M4 7.5C4 6.11929 5.11929 5 6.5 5H8.5L9.2 3.6C9.538 2.924 10.229 2.5 10.985 2.5H13.015C13.771 2.5 14.462 2.924 14.8 3.6L15.5 5H17.5C18.8807 5 20 6.11929 20 7.5V18.5C20 19.8807 18.8807 21 17.5 21H6.5C5.11929 21 4 19.8807 4 18.5V7.5Z" stroke="currentColor" strokeWidth="1.6" />
+                    <path d="M12 17.5C14.2091 17.5 16 15.7091 16 13.5C16 11.2909 14.2091 9.5 12 9.5C9.79086 9.5 8 11.2909 8 13.5C8 15.7091 9.79086 17.5 12 17.5Z" stroke="currentColor" strokeWidth="1.6" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="btn btn-ghost text-xs"
+                  onClick={() => setTimelineOpen(true)}
+                >
+                  My posts
+                </button>
+              </div>
             </div>
-          </div>
-          {studentFeedLoading ? (
-            <div className="text-sm text-white/70">Loading…</div>
-          ) : studentFeedError ? (
-            <div className="text-sm text-red-400">{studentFeedError}</div>
-          ) : studentFeedPosts.length === 0 ? (
-            <div className="text-sm text-white/70">No posts yet.</div>
-          ) : (
-            <ul className="space-y-2">
-              {studentFeedPosts.slice(0, 15).map((p: any) => {
+
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-white">Feed</div>
+                  <div className="text-xs text-white/60">From your circle</div>
+                </div>
+              </div>
+
+              {studentFeedLoading ? (
+                <div className="text-sm text-white/70">Loading…</div>
+              ) : studentFeedError ? (
+                <div className="text-sm text-red-400">{studentFeedError}</div>
+              ) : studentFeedPosts.length === 0 ? (
+                <div className="text-sm text-white/70">No posts yet.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {studentFeedPosts.slice(0, 15).map((p: any) => {
                 const title = (p?.title || '').trim() || 'Quiz'
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
@@ -3316,10 +3373,11 @@ export default function Dashboard() {
                     </div>
                   </li>
                 )
-              })}
-            </ul>
-          )}
-        </div>
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
       </section>
     )
   }

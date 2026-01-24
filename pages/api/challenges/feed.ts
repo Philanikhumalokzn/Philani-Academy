@@ -28,6 +28,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .filter(Boolean)
     : []
 
+  const learningGroupMember = (prisma as any).learningGroupMember as any
+  const groupIds: string[] = learningGroupMember
+    ? (await learningGroupMember.findMany({ where: { userId: requesterId }, select: { groupId: true }, take: 200 }).catch(() => []))
+        .map((r: any) => String(r.groupId || ''))
+        .filter(Boolean)
+    : []
+
+  const groupmateIds: string[] = (learningGroupMember && groupIds.length)
+    ? (await learningGroupMember.findMany({ where: { groupId: { in: groupIds } }, select: { userId: true }, take: 800 }).catch(() => []))
+        .map((r: any) => String(r.userId || ''))
+        .filter((id: string) => Boolean(id) && id !== requesterId)
+    : []
+
+  const privilegedIds: string[] = (await prisma.user.findMany({
+    where: { role: { in: ['admin', 'teacher'] } },
+    select: { id: true },
+    take: 800,
+  }).catch(() => [] as any[])).map((u: any) => String(u?.id || '')).filter(Boolean)
+
+  const publicCircleIds = Array.from(new Set([...followingIds, ...groupmateIds, ...privilegedIds]))
+    .filter((id) => id && id !== requesterId)
+
   if (onlyFollowing && followingIds.length === 0) {
     return res.status(200).json({ posts: [] })
   }
@@ -39,8 +61,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     audience: { in: ['public', 'grade'] },
   }
 
-  if (!isPrivileged) {
-    // Students: only allow grade posts that match their grade.
+  if (!isPrivileged && !onlyFollowing) {
+    // Students: allow grade posts for their grade (classmates).
+    // For public posts, restrict to a reasonable “circle” (following, groupmates, staff).
+    where.OR = [
+      ...(requesterGrade ? [{ audience: 'grade', grade: requesterGrade }] : []),
+      ...(publicCircleIds.length ? [{ audience: 'public', createdById: { in: publicCircleIds } }] : []),
+    ]
+  } else if (!isPrivileged && onlyFollowing) {
+    // Follow-only mode: already restricted by createdById above; keep the grade rule for safety.
     where.OR = [
       { audience: 'public' },
       ...(requesterGrade ? [{ audience: 'grade', grade: requesterGrade }] : []),

@@ -8470,7 +8470,7 @@ export default function Dashboard() {
             zIndexClassName="z-[70]"
             contentClassName="p-0 flex flex-col overflow-hidden"
           >
-            <div className="card p-0 overflow-hidden flex flex-col flex-1 min-h-0">
+            <div className="p-0 overflow-hidden flex flex-col flex-1 min-h-0">
               <input
                 ref={challengeUploadInputRef}
                 type="file"

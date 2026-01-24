@@ -5,8 +5,6 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 
-const DEFAULT_PROFILE_COVER = '/philani-logo.png'
-
 type PublicUser = {
   id: string
   name: string
@@ -280,73 +278,70 @@ export default function PublicUserProfilePage() {
           ) : error ? (
             <div className="card p-4"><div className="text-sm text-red-200">{error}</div></div>
           ) : profile ? (
-            <div className="card p-4 space-y-3">
-              <div className="h-32 rounded-2xl overflow-hidden border border-white/10 bg-white/5 relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={(profile.profileCoverUrl || profile.profileThemeBgUrl || DEFAULT_PROFILE_COVER) || DEFAULT_PROFILE_COVER}
-                  alt="Cover"
-                  className="h-full w-full object-cover"
+            <div className="card p-4 space-y-4">
+              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+                <div
+                  className="h-[160px] w-full"
+                  style={{
+                    backgroundImage: `url(${(profile.profileCoverUrl || profile.profileThemeBgUrl || '').trim()})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                  aria-hidden="true"
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/10 to-black/35" aria-hidden="true" />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/40" aria-hidden="true" />
               </div>
 
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.35em] text-white/70">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/philani-logo.png" alt="Philani Academy" className="h-5 w-5" />
-                <span>Philani Academy</span>
-              </div>
-
-              <div className="flex items-start gap-4">
-                <div className="h-14 w-14 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
-                  {profile.avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={profile.avatar} alt={profile.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-lg font-semibold">{profile.name.slice(0, 1).toUpperCase()}</span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <div className="text-lg font-semibold break-words">{profile.name}</div>
-                        {profile.verified ? (
-                          <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                            <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
-                              <path
-                                d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
-                                fill="currentColor"
-                              />
-                            </svg>
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="text-sm text-white/70">
-                        {profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
-                        {profile.grade ? ` • ${profile.grade.replace('GRADE_', 'Grade ')}` : ''}
-                      </div>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden">
+                    {profile.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={profile.avatar} alt={profile.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{profile.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Profile</p>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-3xl font-semibold break-words">{profile.name}</h1>
+                      {profile.verified ? (
+                        <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                          <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
+                            <path
+                              d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </span>
+                      ) : null}
                     </div>
-
-                    {canFollow ? (
-                      <button
-                        type="button"
-                        className={profile.isFollowing ? 'btn btn-secondary shrink-0' : 'btn btn-primary shrink-0'}
-                        disabled={followBusy}
-                        onClick={() => void toggleFollow()}
-                      >
-                        {followBusy ? '…' : profile.isFollowing ? 'Following' : 'Follow'}
-                      </button>
-                    ) : null}
+                    <p className="text-sm text-blue-100/80">
+                      {profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
+                      {profile.grade ? ` • ${profile.grade.replace('GRADE_', 'Grade ')}` : ''}
+                    </p>
+                    {profile.statusBio ? <p className="mt-2 text-sm text-white/90">{profile.statusBio}</p> : null}
                   </div>
-
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5">{typeof profile.followerCount === 'number' ? profile.followerCount : 0} followers</span>
-                    <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5">{typeof profile.followingCount === 'number' ? profile.followingCount : 0} following</span>
-                  </div>
-
-                  {profile.statusBio ? <div className="mt-2 text-sm text-white/90">{profile.statusBio}</div> : null}
                 </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5">{typeof profile.followerCount === 'number' ? profile.followerCount : 0} followers</span>
+                  <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5">{typeof profile.followingCount === 'number' ? profile.followingCount : 0} following</span>
+                </div>
+
+                {canFollow ? (
+                  <div>
+                    <button
+                      type="button"
+                      className={profile.isFollowing ? 'btn btn-secondary' : 'btn btn-primary'}
+                      disabled={followBusy}
+                      onClick={() => void toggleFollow()}
+                    >
+                      {followBusy ? '…' : profile.isFollowing ? 'Following' : 'Follow'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

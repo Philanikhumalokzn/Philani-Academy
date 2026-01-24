@@ -201,15 +201,16 @@ body{
 }
 
 /* Cards */
-.card{
-  background:var(--card);
-  color:#f8fafc;
-  border-radius:var(--card-radius);
-  padding:var(--card-padding);
-  border:1px solid var(--card-border);
-  box-shadow:0 25px 45px rgba(0,0,0,0.35);
-  backdrop-filter:blur(14px);
-}
+@layer components{
+  .card{
+    background:var(--card);
+    color:#f8fafc;
+    border-radius:var(--card-radius);
+    padding:var(--card-padding);
+    border:1px solid var(--card-border);
+    box-shadow:0 25px 45px rgba(0,0,0,0.35);
+    backdrop-filter:blur(14px);
+  }
 
 /* Normalize rounded utilities to the global card radius */
 .rounded,
@@ -226,25 +227,23 @@ body{
   border-radius:9999px !important;
 }
 
-.dashboard-card{
-  background:linear-gradient(160deg, rgba(9,18,60,0.92), rgba(2,6,24,0.88));
-  border:1px solid rgba(124,172,255,0.18);
-  box-shadow:0 25px 60px rgba(3,8,32,0.6);
-}
+  .dashboard-card{
+    background:linear-gradient(160deg, rgba(9,18,60,0.92), rgba(2,6,24,0.88));
+    border:1px solid rgba(124,172,255,0.18);
+    box-shadow:0 25px 60px rgba(3,8,32,0.6);
+  }
 
 /* Flatten nested panels that use bg-white/5 to avoid overly tight content */
 .bg-white\/5 .bg-white\/5{
   background:transparent;
   border-color:rgba(255,255,255,0.12);
   box-shadow:none;
-  padding:0.5rem;
 }
 
 .bg-white\/5 .bg-white\/5 .bg-white\/5{
   background:transparent;
   border:0;
   box-shadow:none;
-  padding:0;
 }
 
 /* Reduce nested card inset to be very subtle */
@@ -252,7 +251,6 @@ body{
 .card .dashboard-card,
 .dashboard-card .card,
 .dashboard-card .dashboard-card{
-  padding:var(--card-padding);
   border-radius:var(--card-radius);
   box-shadow:0 12px 28px rgba(0,0,0,0.26);
   margin-left:calc(-0.5 * var(--card-padding));
@@ -282,7 +280,6 @@ body{
   .card .dashboard-card,
   .dashboard-card .card,
   .dashboard-card .dashboard-card{
-    padding:var(--card-padding);
     border-radius:var(--card-radius);
     margin-left:calc(-0.5 * var(--card-padding));
     margin-right:calc(-0.5 * var(--card-padding));
@@ -317,6 +314,8 @@ body{
     border-radius:var(--card-radius);
   }
 
+
+}
 
 }
 

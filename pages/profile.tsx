@@ -86,20 +86,30 @@ export default function ProfilePage() {
   const [country, setCountry] = useState('South Africa')
   const [schoolName, setSchoolName] = useState('')
   const [avatar, setAvatar] = useState('')
+  const [profileCoverUrl, setProfileCoverUrl] = useState('')
   const [uiHandedness, setUiHandedness] = useState<'left' | 'right'>('right')
   const [popiConsent, setPopiConsent] = useState(true)
   const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null)
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const coverInputRef = useRef<HTMLInputElement | null>(null)
 
   const [mobileHeroBgUrl, setMobileHeroBgUrl] = useState<string>(defaultMobileHeroBg)
 
   useEffect(() => {
+    // Prefer the DB-stored theme background. Fallback to legacy localStorage value.
+    if (profile?.profileThemeBgUrl && typeof profile.profileThemeBgUrl === 'string') {
+      const next = profile.profileThemeBgUrl.trim()
+      if (next) setMobileHeroBgUrl(next)
+      return
+    }
     if (typeof window === 'undefined') return
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     const storageKey = `pa:mobileHeroBg:${userKey}`
@@ -107,7 +117,7 @@ export default function ProfilePage() {
       const raw = window.localStorage.getItem(storageKey)
       if (raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
     } catch {}
-  }, [session])
+  }, [profile?.profileThemeBgUrl, session])
 
   const gradeLabel = useMemo(() => {
     if (!profile?.grade) return 'Unassigned'
@@ -134,6 +144,12 @@ export default function ProfilePage() {
     setAvatarUploadError(null)
     if (uploadingAvatar) return
     avatarInputRef.current?.click()
+  }
+
+  const handleCoverButtonClick = () => {
+    setCoverUploadError(null)
+    if (uploadingCover) return
+    coverInputRef.current?.click()
   }
 
   const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,6 +186,42 @@ export default function ProfilePage() {
     }
   }
 
+  const handleCoverFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setCoverUploadError('Please choose an image file.')
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setCoverUploadError('Please keep images under 8 MB.')
+      return
+    }
+
+    setUploadingCover(true)
+    setCoverUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch('/api/profile/cover', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData,
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.message || 'Failed to upload cover image')
+      }
+      setProfileCoverUrl(payload.url)
+      setProfile((prev: any) => (prev ? { ...prev, profileCoverUrl: payload.url } : prev))
+    } catch (err: any) {
+      setCoverUploadError(err?.message || 'Unable to upload cover image right now')
+    } finally {
+      setUploadingCover(false)
+    }
+  }
+
   useEffect(() => {
     fetchProfile()
   }, [])
@@ -201,6 +253,7 @@ export default function ProfilePage() {
         setCountry(data.country || 'South Africa')
         setSchoolName(data.schoolName || '')
         setAvatar(data.avatar || '')
+        setProfileCoverUrl(data.profileCoverUrl || '')
         setUiHandedness(data.uiHandedness === 'left' ? 'left' : 'right')
         setPopiConsent(Boolean(data.consentToPolicies))
         setConsentTimestamp(data.consentTimestamp || null)
@@ -313,6 +366,39 @@ export default function ProfilePage() {
               <NavArrows backHref="/dashboard" forwardHref={undefined} />
             </div>
             <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+                <div
+                  className="h-[180px] w-full"
+                  style={{
+                    backgroundImage: `url(${(profileCoverUrl || '').trim() || defaultMobileHeroBg})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                  aria-hidden="true"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/40" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur"
+                  aria-label="Edit cover"
+                  onClick={handleCoverButtonClick}
+                  disabled={uploadingCover}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                  </svg>
+                </button>
+              </div>
+
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                onChange={handleCoverFileChange}
+              />
+              {coverUploadError && <p className="text-xs text-red-400">{coverUploadError}</p>}
+
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
                   <button
@@ -598,6 +684,39 @@ export default function ProfilePage() {
           <div className="mx-auto max-w-5xl space-y-6">
                 <section className="hero flex-col gap-5">
                   <div className="space-y-4 rounded-3xl border border-white/10 bg-white/3 p-5">
+                    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5">
+                      <div
+                        className="h-[160px] w-full"
+                        style={{
+                          backgroundImage: `url(${(profileCoverUrl || '').trim() || defaultMobileHeroBg})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                        aria-hidden="true"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/40" aria-hidden="true" />
+                      <button
+                        type="button"
+                        className="absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur"
+                        aria-label="Edit cover"
+                        onClick={handleCoverButtonClick}
+                        disabled={uploadingCover}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="sr-only"
+                      onChange={handleCoverFileChange}
+                    />
+                    {coverUploadError && <p className="text-xs text-red-400">{coverUploadError}</p>}
+
                     <div className="flex flex-col gap-4">
                       <div className="flex items-center gap-4">
                         <button

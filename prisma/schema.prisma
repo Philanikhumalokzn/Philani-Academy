@@ -27,12 +27,19 @@ model User {
   role      String  @default("student")
   grade     Grade?
   avatar    String?
+  profileCoverUrl String?
+  profileThemeBgUrl String?
   statusBio String? @db.VarChar(100)
   uiHandedness String @default("right")
   // shared: visible only to shared groups (default)
   // discoverable: shows up in Discover search + minimal profile is viewable
   // private: only you + admins/instructors
   profileVisibility String @default("shared")
+  // grade: same-grade classmates + groupmates (default)
+  // school: same schoolName + groupmates
+  // province: same province + groupmates
+  // global: anyone (who can discover you)
+  discoverabilityScope String @default("grade")
   dateOfBirth DateTime?
   phoneNumber String @default("")
   emailVerifiedAt DateTime?
@@ -70,7 +77,24 @@ model User {
   notifications Notification[]
   challenges UserChallenge[]
 
+  followers UserFollow[] @relation("UserFollowers")
+  following UserFollow[] @relation("UserFollowing")
+
   resourceBankItems ResourceBankItem[]
+}
+
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId, createdAt])
+  @@index([followingId, createdAt])
 }
 
 model ResourceBankItem {

@@ -3,6 +3,7 @@ import type { GetServerSideProps } from 'next'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 
 type PublicUser = {
   id: string
@@ -10,9 +11,14 @@ type PublicUser = {
   role?: string | null
   grade?: string | null
   avatar?: string | null
+  profileCoverUrl?: string | null
+  profileThemeBgUrl?: string | null
   statusBio?: string | null
   schoolName?: string | null
   verified?: boolean
+  followerCount?: number
+  followingCount?: number
+  isFollowing?: boolean
 }
 
 type MyGroup = {
@@ -60,6 +66,7 @@ export default function PublicUserProfilePage() {
   const [challengesError, setChallengesError] = useState<string | null>(null)
 
   const [viewerId, setViewerId] = useState<string>('')
+  const [followBusy, setFollowBusy] = useState(false)
 
   const role = ((session as any)?.user?.role as string | undefined) || 'student'
   const isPrivileged = role === 'admin' || role === 'teacher'
@@ -94,9 +101,14 @@ export default function PublicUserProfilePage() {
         role: (data?.role as string | undefined) || null,
         grade: (data?.grade as string | undefined) || null,
         avatar: (data?.avatar as string | undefined) || null,
+        profileCoverUrl: (data?.profileCoverUrl as string | undefined) || null,
+        profileThemeBgUrl: (data?.profileThemeBgUrl as string | undefined) || null,
         statusBio: (data?.statusBio as string | undefined) || null,
         schoolName: (data?.schoolName as string | undefined) || null,
         verified: Boolean(data?.verified),
+        followerCount: typeof data?.followerCount === 'number' ? data.followerCount : 0,
+        followingCount: typeof data?.followingCount === 'number' ? data.followingCount : 0,
+        isFollowing: Boolean(data?.isFollowing),
       })
     } catch (err: any) {
       setProfile(null)
@@ -198,49 +210,130 @@ export default function PublicUserProfilePage() {
     }
   }, [selectedGroupId, userId])
 
+  const toggleFollow = useCallback(async () => {
+    if (!profile) return
+    if (!viewerId) return
+    if (String(profile.id) === String(viewerId)) return
+
+    setFollowBusy(true)
+    try {
+      const method = profile.isFollowing ? 'DELETE' : 'POST'
+      const res = await fetch(`/api/follow/${encodeURIComponent(profile.id)}`, {
+        method,
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || 'Failed')
+      setProfile(prev => (prev ? {
+        ...prev,
+        isFollowing: Boolean(data?.isFollowing),
+        followerCount: typeof data?.followerCount === 'number' ? data.followerCount : prev.followerCount,
+        followingCount: typeof data?.followingCount === 'number' ? data.followingCount : prev.followingCount,
+      } : prev))
+    } catch (err: any) {
+      alert(err?.message || 'Failed')
+    } finally {
+      setFollowBusy(false)
+    }
+  }, [profile, viewerId])
+
   if (status === 'loading') return null
 
-  return (
-    <main className="deep-page min-h-screen pb-16">
-      <div className="max-w-3xl mx-auto px-4 lg:px-8 py-8 space-y-4">
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => {
-            if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
-            else void router.push('/dashboard?panel=discover')
-          }}
-        >
-          Back
-        </button>
+  const backgroundUrl = (profile?.profileThemeBgUrl || profile?.profileCoverUrl || '').trim()
+  const canFollow = Boolean(profile && viewerId && String(profile.id) !== String(viewerId))
 
-        <section className="card p-4">
+  return (
+    <main className="mobile-dashboard-theme profile-overlay-theme min-h-screen overflow-hidden text-white">
+      {backgroundUrl ? (
+        <div className="absolute inset-0" style={{ backgroundImage: `url(${backgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/55 via-[#041448]/35 to-[#031641]/55" aria-hidden="true" />
+
+      <FullScreenGlassOverlay
+        title={profile?.name || 'Profile'}
+        subtitle={profile?.schoolName ? String(profile.schoolName) : 'Philani Academy'}
+        onClose={() => {
+          if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
+          else void router.push('/dashboard?panel=discover')
+        }}
+        onBackdropClick={() => {
+          if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
+          else void router.push('/dashboard?panel=discover')
+        }}
+        zIndexClassName="z-40"
+        frameClassName="absolute inset-0 px-2 pt-3 pb-3"
+        panelClassName="rounded-3xl bg-white/5"
+        contentClassName="p-4"
+        leftActions={
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
+              else void router.push('/dashboard?panel=discover')
+            }}
+          >
+            Back
+          </button>
+        }
+      >
+        <section className="space-y-3">
           {loading ? (
-            <div className="text-sm muted">Loading…</div>
+            <div className="card p-4"><div className="text-sm muted">Loading…</div></div>
           ) : error ? (
-            <div className="text-sm text-red-600">{error}</div>
+            <div className="card p-4"><div className="text-sm text-red-200">{error}</div></div>
           ) : profile ? (
-            <div className="flex items-start gap-4">
-              <div className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
-                {profile.avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.avatar} alt={profile.name} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-lg font-semibold">{profile.name.slice(0, 1).toUpperCase()}</span>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <div className="text-lg font-semibold truncate">{profile.name}</div>
-                  {profile.verified ? (
-                    <span className="text-xs px-2 py-0.5 rounded-full border border-white/10 bg-white/5">Verified</span>
-                  ) : null}
+            <div className="card p-4 space-y-3">
+              {profile.profileCoverUrl ? (
+                <div className="h-28 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={profile.profileCoverUrl} alt="Cover" className="h-full w-full object-cover" />
                 </div>
-                <div className="text-sm muted">
-                  {(profile.schoolName || '').trim() ? profile.schoolName : '—'}
-                  {profile.grade ? ` • ${profile.grade.replace('GRADE_', 'Grade ')}` : ''}
+              ) : null}
+
+              <div className="flex items-start gap-4">
+                <div className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
+                  {profile.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={profile.avatar} alt={profile.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-lg font-semibold">{profile.name.slice(0, 1).toUpperCase()}</span>
+                  )}
                 </div>
-                {profile.statusBio ? <div className="mt-2 text-sm">{profile.statusBio}</div> : null}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="text-lg font-semibold truncate">{profile.name}</div>
+                        {profile.verified ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full border border-white/10 bg-white/5">Verified</span>
+                        ) : null}
+                      </div>
+                      <div className="text-sm muted">
+                        {(profile.schoolName || '').trim() ? profile.schoolName : '—'}
+                        {profile.grade ? ` • ${profile.grade.replace('GRADE_', 'Grade ')}` : ''}
+                      </div>
+                    </div>
+
+                    {canFollow ? (
+                      <button
+                        type="button"
+                        className={profile.isFollowing ? 'btn btn-secondary shrink-0' : 'btn btn-primary shrink-0'}
+                        disabled={followBusy}
+                        onClick={() => void toggleFollow()}
+                      >
+                        {followBusy ? '…' : profile.isFollowing ? 'Following' : 'Follow'}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5">{typeof profile.followerCount === 'number' ? profile.followerCount : 0} followers</span>
+                    <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5">{typeof profile.followingCount === 'number' ? profile.followingCount : 0} following</span>
+                  </div>
+
+                  {profile.statusBio ? <div className="mt-2 text-sm text-white/90">{profile.statusBio}</div> : null}
+                </div>
               </div>
             </div>
           ) : null}
@@ -342,7 +435,7 @@ export default function PublicUserProfilePage() {
             </ul>
           )}
         </section>
-      </div>
+      </FullScreenGlassOverlay>
     </main>
   )
 }

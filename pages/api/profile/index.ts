@@ -83,9 +83,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         country: true,
         schoolName: true,
         avatar: true,
+        profileCoverUrl: true,
+        profileThemeBgUrl: true,
         statusBio: true,
         uiHandedness: true,
         profileVisibility: true,
+        discoverabilityScope: true,
         consentToPolicies: true,
         consentTimestamp: true,
         createdAt: true,
@@ -223,6 +226,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data.avatar = avatar ? avatar : null
     }
 
+    if (hasKey(body, 'profileCoverUrl')) {
+      const v = asString((body as any).profileCoverUrl)
+      data.profileCoverUrl = v ? v : null
+    }
+
+    if (hasKey(body, 'profileThemeBgUrl')) {
+      const v = asString((body as any).profileThemeBgUrl)
+      data.profileThemeBgUrl = v ? v : null
+    }
+
     if (hasKey(body, 'statusBio')) {
       const statusBioRaw = asString(body.statusBio)
       if (statusBioRaw.length > 100) {
@@ -239,6 +252,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         errors.push('Profile visibility must be shared, discoverable, or private')
       } else {
         data.profileVisibility = raw
+      }
+    }
+
+    if (hasKey(body, 'discoverabilityScope')) {
+      const raw = asString((body as any).discoverabilityScope).toLowerCase()
+      const allowed = new Set(['grade', 'school', 'province', 'global'])
+      if (!raw || !allowed.has(raw)) {
+        errors.push('Discoverability scope must be grade, school, province, or global')
+      } else {
+        data.discoverabilityScope = raw
       }
     }
 

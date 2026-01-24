@@ -850,6 +850,26 @@ export default function Dashboard() {
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
+  const [studentFeedMode, setStudentFeedMode] = useState<'all' | 'following'>('all')
+  const [studentFeedReloadNonce, setStudentFeedReloadNonce] = useState(0)
+  const studentFeedModeLoadedRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!viewerId) return
+    if (studentFeedModeLoadedRef.current) return
+    studentFeedModeLoadedRef.current = true
+    const key = `pa:studentFeedMode:${viewerId}`
+    const raw = String(window.localStorage.getItem(key) || '').toLowerCase()
+    if (raw === 'following') setStudentFeedMode('following')
+  }, [viewerId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!viewerId) return
+    const key = `pa:studentFeedMode:${viewerId}`
+    window.localStorage.setItem(key, studentFeedMode)
+  }, [viewerId, studentFeedMode])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -1008,6 +1028,16 @@ export default function Dashboard() {
   const [discoverLoading, setDiscoverLoading] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [discoverResults, setDiscoverResults] = useState<any[]>([])
+
+  const discoverCacheKey = useMemo(() => {
+    const id = String((session as any)?.user?.id || session?.user?.email || 'anon')
+    return `pa:discover:recs:v1:${id}`
+  }, [session])
+
+  const discoverLastQueryKey = useMemo(() => {
+    const id = String((session as any)?.user?.id || session?.user?.email || 'anon')
+    return `pa:discover:lastQuery:v1:${id}`
+  }, [session])
 
   const [actionInvites, setActionInvites] = useState<any[]>([])
   const [actionJoinRequests, setActionJoinRequests] = useState<any[]>([])
@@ -1190,26 +1220,43 @@ export default function Dashboard() {
     const q = query.trim()
     const role = ((session as any)?.user?.role as string | undefined) || 'student'
     const isPrivileged = role === 'admin' || role === 'teacher'
-    if (q.length < 2 && !isPrivileged) {
+
+    // Allow empty query for recommendations. Still block 1-char searches.
+    if (q.length > 0 && q.length < 2 && !isPrivileged) {
       setDiscoverResults([])
       return
     }
+
     setDiscoverLoading(true)
     setDiscoverError(null)
     try {
+      let hint = ''
+      try {
+        hint = (typeof window !== 'undefined' ? (window.localStorage.getItem(discoverLastQueryKey) || '') : '')
+      } catch {}
+
       const url = q.length >= 2
-        ? `/api/discover/users?q=${encodeURIComponent(q)}`
-        : '/api/discover/users'
+        ? `/api/discover/users?q=${encodeURIComponent(q)}&hint=${encodeURIComponent(q)}`
+        : `/api/discover/users?hint=${encodeURIComponent(hint)}`
       const res = await fetch(url, { credentials: 'same-origin' })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.message || 'Search failed')
       setDiscoverResults(Array.isArray(data) ? data : [])
+
+      try {
+        if (typeof window !== 'undefined') {
+          if (q.length >= 2) window.localStorage.setItem(discoverLastQueryKey, q)
+          if (q.length === 0) window.localStorage.setItem(discoverCacheKey, JSON.stringify(Array.isArray(data) ? data : []))
+        }
+      } catch {
+        // ignore
+      }
     } catch (err: any) {
       setDiscoverError(err?.message || 'Search failed')
     } finally {
       setDiscoverLoading(false)
     }
-  }, [session])
+  }, [discoverCacheKey, discoverLastQueryKey, session])
 
   const respondInvite = useCallback(async (inviteId: string, action: 'accept' | 'decline') => {
     try {
@@ -1262,13 +1309,24 @@ export default function Dashboard() {
   useEffect(() => {
     if (dashboardSectionOverlay !== 'discover') return
     setDiscoverError(null)
-    setDiscoverResults([])
-    const role = ((session as any)?.user?.role as string | undefined) || 'student'
-    const isPrivileged = role === 'admin' || role === 'teacher'
-    if (isPrivileged) {
-      setDiscoverQuery('')
-      void searchDiscover('')
+    setDiscoverQuery('')
+
+    // Instant UI: show cached recs, then refresh.
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem(discoverCacheKey)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) setDiscoverResults(parsed)
+        } else {
+          setDiscoverResults([])
+        }
+      }
+    } catch {
+      setDiscoverResults([])
     }
+
+    void searchDiscover('')
   }, [dashboardSectionOverlay, searchDiscover, session])
 
   const createGroup = useCallback(async () => {
@@ -1556,13 +1614,43 @@ export default function Dashboard() {
     return `pa:mobileHeroBg:${userKey}`
   }, [session])
 
+  const roleLabel = useCallback((raw: unknown) => {
+    const v = String(raw || '').trim().toLowerCase()
+    if (!v) return ''
+    if (v === 'student') return 'Learner'
+    if (v === 'admin') return 'Admin'
+    if (v === 'teacher') return 'Teacher'
+    return v.slice(0, 1).toUpperCase() + v.slice(1)
+  }, [])
+
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(mobileHeroBgStorageKey)
-      if (raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
-    } catch {}
-  }, [mobileHeroBgStorageKey])
+    if (status !== 'authenticated') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        const next = typeof (data as any)?.profileThemeBgUrl === 'string' ? String((data as any).profileThemeBgUrl).trim() : ''
+        if (!cancelled && next) {
+          setMobileHeroBgUrl(next)
+          return
+        }
+      } catch {
+        // ignore
+      }
+
+      // Backwards-compat fallback: previously this was stored in localStorage as a data URL.
+      if (typeof window === 'undefined') return
+      try {
+        const raw = window.localStorage.getItem(mobileHeroBgStorageKey)
+        if (!cancelled && raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
+      } catch {}
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [mobileHeroBgStorageKey, status])
 
   const applyMobileHeroBackgroundFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -1570,58 +1658,29 @@ export default function Dashboard() {
       return
     }
 
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result || ''))
-      reader.onerror = () => reject(new Error('Failed to read file'))
-      reader.readAsDataURL(file)
-    })
-
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('Could not load image'))
-      el.src = dataUrl
-    })
-
-    const w = img.naturalWidth || 0
-    const h = img.naturalHeight || 0
-    if (w < MOBILE_HERO_BG_MIN_WIDTH || h < MOBILE_HERO_BG_MIN_HEIGHT) {
-      alert(
-        'Image is too small. Minimum is ' +
-          MOBILE_HERO_BG_MIN_WIDTH +
-          ' x ' +
-          MOBILE_HERO_BG_MIN_HEIGHT +
-          '.'
-      )
-      return
-    }
-    if (w < h) {
-      alert('Please use a landscape (wide) image.')
-      return
-    }
-
-    const scale = Math.min(1, MOBILE_HERO_BG_MAX_WIDTH / w)
-    const targetW = Math.max(1, Math.round(w * scale))
-    const targetH = Math.max(1, Math.round(h * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = targetW
-    canvas.height = targetH
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      alert('Could not process this image.')
-      return
-    }
-    ctx.drawImage(img, 0, 0, targetW, targetH)
-
-    const compressed = canvas.toDataURL('image/jpeg', 0.86)
-    setMobileHeroBgUrl(compressed)
     try {
-      window.localStorage.setItem(mobileHeroBgStorageKey, compressed)
-    } catch {
-      // Ignore storage failures (quota exceeded)
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/profile/theme-bg', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to upload background (${res.status})`)
+        return
+      }
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!url) {
+        alert('Upload succeeded but returned no URL')
+        return
+      }
+      setMobileHeroBgUrl(url)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload background')
     }
-  }, [mobileHeroBgStorageKey])
+  }, [])
 
   useEffect(() => {
     if (status !== 'authenticated') {
@@ -2269,7 +2328,8 @@ export default function Dashboard() {
     setStudentFeedError(null)
     void (async () => {
       try {
-        const res = await fetch('/api/challenges/feed', { credentials: 'same-origin' })
+        const qs = studentFeedMode === 'following' ? '?onlyFollowing=1' : ''
+        const res = await fetch(`/api/challenges/feed${qs}`, { credentials: 'same-origin' })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           if (!cancelled) {
@@ -2293,7 +2353,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [status, sessionRole])
+  }, [status, sessionRole, studentFeedMode, studentFeedReloadNonce])
 
   const uploadSessionThumbnail = useCallback(async (file: File) => {
     if (!file) return null
@@ -3175,7 +3235,28 @@ export default function Dashboard() {
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={studentFeedMode === 'all' ? 'btn btn-primary text-xs' : 'btn btn-ghost text-xs'}
+                onClick={() => setStudentFeedMode('all')}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className={studentFeedMode === 'following' ? 'btn btn-primary text-xs' : 'btn btn-ghost text-xs'}
+                onClick={() => setStudentFeedMode('following')}
+              >
+                Following
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost text-xs"
+                onClick={() => setStudentFeedReloadNonce(n => n + 1)}
+              >
+                Refresh
+              </button>
               <button
                 type="button"
                 className="btn btn-primary text-xs"
@@ -7497,31 +7578,64 @@ export default function Dashboard() {
               </div>
               {discoverError && <div className="text-sm text-red-200">{discoverError}</div>}
 
-              {discoverResults.length > 0 && (
+              {discoverLoading && discoverResults.length === 0 ? (
+                <div className="text-sm muted">Loading recommendations…</div>
+              ) : discoverResults.length === 0 ? (
+                <div className="text-sm muted">Start typing a name, or browse recommended classmates and groupmates.</div>
+              ) : (
                 <div className="grid gap-2">
-                  {discoverResults.map((u: any) => (
-                    <UserLink
-                      key={u.id}
-                      userId={u?.id}
-                      className="card p-3 text-left block"
-                      title="View profile"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
-                          {u.avatar ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={u.avatar} alt={u.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <span className="text-sm font-semibold">{String(u.name || 'U').slice(0, 1).toUpperCase()}</span>
-                          )}
+                  {discoverResults.map((u: any) => {
+                    const sharedGroupsCount = typeof u?.sharedGroupsCount === 'number' ? u.sharedGroupsCount : 0
+                    const chips: string[] = []
+                    if (sharedGroupsCount > 0) chips.push(sharedGroupsCount === 1 ? '1 shared group' : `${sharedGroupsCount} shared groups`)
+                    const r = roleLabel(u?.role)
+                    if (r) chips.push(r)
+                    const verified = Boolean(u?.verified)
+                    return (
+                      <UserLink
+                        key={u.id}
+                        userId={u?.id}
+                        className="card p-3 text-left block"
+                        title="View profile"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="relative h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                            {u.avatar ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={u.avatar} alt={u.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="text-sm font-semibold">{String(u.name || 'U').slice(0, 1).toUpperCase()}</span>
+                            )}
+
+                            {verified ? (
+                              <div
+                                className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/30"
+                                title="Verified"
+                                aria-label="Verified"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                  <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                                </svg>
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-semibold text-white truncate">{u.name}</div>
+                              {chips.length > 0 ? (
+                                <div className="shrink-0 flex flex-wrap gap-1">
+                                  {chips.slice(0, 2).map((c) => (
+                                    <span key={c} className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5">{c}</span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="text-xs muted truncate">{u.schoolName ? `${u.schoolName} • ` : ''}{u.statusBio || ''}</div>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-white truncate">{u.name}</div>
-                          <div className="text-xs muted truncate">{u.schoolName ? `${u.schoolName} • ` : ''}{u.statusBio || ''}</div>
-                        </div>
-                      </div>
-                    </UserLink>
-                  ))}
+                      </UserLink>
+                    )
+                  })}
                 </div>
               )}
             </section>

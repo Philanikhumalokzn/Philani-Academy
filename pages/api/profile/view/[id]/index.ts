@@ -26,9 +26,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       role: true,
       grade: true,
       avatar: true,
+      profileCoverUrl: true,
+      profileThemeBgUrl: true,
       statusBio: true,
       schoolName: true,
       profileVisibility: true,
+      discoverabilityScope: true,
     },
   })
 
@@ -55,14 +58,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  const userFollow = (prisma as any).userFollow as any
+  const isFollowing = requesterId !== targetId
+    ? Boolean(await userFollow?.findUnique?.({ where: { followerId_followingId: { followerId: requesterId, followingId: targetId } } }).catch(() => null))
+    : false
+  const followerCount = await userFollow?.count?.({ where: { followingId: targetId } }).catch(() => 0)
+  const followingCount = await userFollow?.count?.({ where: { followerId: targetId } }).catch(() => 0)
+
   return res.status(200).json({
     id: target.id,
     name: target.name || target.email,
     role: target.role,
     grade: target.grade,
     avatar: target.avatar,
+    profileCoverUrl: (target as any).profileCoverUrl ?? null,
+    profileThemeBgUrl: (target as any).profileThemeBgUrl ?? null,
     statusBio: target.statusBio,
     schoolName: target.schoolName,
     verified: target.role === 'admin' || target.role === 'teacher',
+    followerCount: typeof followerCount === 'number' ? followerCount : 0,
+    followingCount: typeof followingCount === 'number' ? followingCount : 0,
+    isFollowing,
   })
 }

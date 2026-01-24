@@ -3,6 +3,10 @@ import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 
+function asString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requesterId = await getUserIdFromReq(req)
   if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
@@ -16,10 +20,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const isPrivileged = role === 'admin' || role === 'teacher'
   const requesterGrade = normalizeGradeInput(await getUserGrade(req))
 
+  const onlyFollowing = asString(req.query.onlyFollowing) === '1'
+  const userFollow = (prisma as any).userFollow as any
+  const followingIds: string[] = userFollow
+    ? (await userFollow.findMany({ where: { followerId: requesterId }, select: { followingId: true }, take: 400 }).catch(() => []))
+        .map((r: any) => String(r.followingId || ''))
+        .filter(Boolean)
+    : []
+
+  if (onlyFollowing && followingIds.length === 0) {
+    return res.status(200).json({ posts: [] })
+  }
+
   const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
 
   const where: any = {
-    createdById: { not: requesterId },
+    createdById: onlyFollowing ? { in: followingIds, not: requesterId } : { not: requesterId },
     audience: { in: ['public', 'grade'] },
   }
 
@@ -81,6 +97,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ...item,
     myAttemptCount: attemptCounts.get(`challenge:${item.id}`) || 0,
   }))
+
+  const followingSet = new Set(followingIds)
+  postsWithAttempts.sort((a: any, b: any) => {
+    if (onlyFollowing) return 0
+    const af = followingSet.has(String(a?.createdById || a?.createdBy?.id || '')) ? 1 : 0
+    const bf = followingSet.has(String(b?.createdById || b?.createdBy?.id || '')) ? 1 : 0
+    if (bf !== af) return bf - af
+    const at = new Date(String(a?.createdAt || 0)).getTime()
+    const bt = new Date(String(b?.createdAt || 0)).getTime()
+    return (bt || 0) - (at || 0)
+  })
 
   return res.status(200).json({ posts: postsWithAttempts })
 }

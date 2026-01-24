@@ -54,8 +54,11 @@ type ProfileSnapshot = {
   country?: string | null
   schoolName?: string | null
   avatar?: string | null
+  profileCoverUrl?: string | null
+  profileThemeBgUrl?: string | null
   statusBio?: string | null
   profileVisibility?: string | null
+  discoverabilityScope?: string | null
   consentToPolicies?: boolean
   consentTimestamp?: string | null
 }
@@ -92,9 +95,12 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
   const [postalCode, setPostalCode] = useState('')
   const [country, setCountry] = useState('South Africa')
   const [schoolName, setSchoolName] = useState('')
+  const [profileCoverUrl, setProfileCoverUrl] = useState('')
+  const [profileThemeBgUrl, setProfileThemeBgUrl] = useState('')
   const [popiConsent, setPopiConsent] = useState(true)
   const [consentTimestamp, setConsentTimestamp] = useState<string | null>(null)
   const [profileVisibility, setProfileVisibility] = useState<'shared' | 'discoverable' | 'private'>('shared')
+  const [discoverabilityScope, setDiscoverabilityScope] = useState<'grade' | 'school' | 'province' | 'global'>('grade')
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -139,10 +145,15 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
       setPostalCode(data.postalCode || '')
       setCountry(data.country || 'South Africa')
       setSchoolName(data.schoolName || '')
+      setProfileCoverUrl(String((data as any)?.profileCoverUrl || ''))
+      setProfileThemeBgUrl(String((data as any)?.profileThemeBgUrl || ''))
       setPopiConsent(Boolean(data.consentToPolicies))
       setConsentTimestamp(data.consentTimestamp || null)
       const rawVisibility = String((data as any)?.profileVisibility || 'shared').toLowerCase()
       setProfileVisibility(rawVisibility === 'private' ? 'private' : rawVisibility === 'discoverable' ? 'discoverable' : 'shared')
+
+      const rawScope = String((data as any)?.discoverabilityScope || 'grade').toLowerCase()
+      setDiscoverabilityScope(rawScope === 'global' ? 'global' : rawScope === 'province' ? 'province' : rawScope === 'school' ? 'school' : 'grade')
     } catch (err: any) {
       setError(err?.message || 'Unable to load profile')
     } finally {
@@ -263,10 +274,23 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     const nextSchool = schoolName.trim()
     if ((original.schoolName || '') !== nextSchool) payload.schoolName = nextSchool
 
+    const nextCover = profileCoverUrl.trim()
+    const originalCover = String((original as any)?.profileCoverUrl || '')
+    if (originalCover !== nextCover) payload.profileCoverUrl = nextCover
+
+    const nextTheme = profileThemeBgUrl.trim()
+    const originalTheme = String((original as any)?.profileThemeBgUrl || '')
+    if (originalTheme !== nextTheme) payload.profileThemeBgUrl = nextTheme
+
     const nextVisibility = profileVisibility
     const originalVisibilityRaw = String((original as any)?.profileVisibility || 'shared').toLowerCase()
     const originalVisibility = originalVisibilityRaw === 'private' ? 'private' : originalVisibilityRaw === 'discoverable' ? 'discoverable' : 'shared'
     if (originalVisibility !== nextVisibility) payload.profileVisibility = nextVisibility
+
+    const nextScope = discoverabilityScope
+    const originalScopeRaw = String((original as any)?.discoverabilityScope || 'grade').toLowerCase()
+    const originalScope = originalScopeRaw === 'global' ? 'global' : originalScopeRaw === 'province' ? 'province' : originalScopeRaw === 'school' ? 'school' : 'grade'
+    if (originalScope !== nextScope) payload.discoverabilityScope = nextScope
 
     if (Boolean(original.consentToPolicies) !== Boolean(popiConsent)) payload.popiConsent = popiConsent
 
@@ -488,6 +512,36 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                       </select>
                       <p className="mt-1 text-xs text-white/70">Discoverable makes you searchable in Discover. Shared limits viewing to shared groups. Private hides you.</p>
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-white/90">Discoverability scope</label>
+                      <select
+                        className="input"
+                        value={discoverabilityScope}
+                        onChange={e => {
+                          const v = String(e.target.value || '').toLowerCase()
+                          setDiscoverabilityScope(v === 'global' ? 'global' : v === 'province' ? 'province' : v === 'school' ? 'school' : 'grade')
+                        }}
+                      >
+                        <option value="grade">Grade (default)</option>
+                        <option value="school">School-wide</option>
+                        <option value="province">Province-wide</option>
+                        <option value="global">Global</option>
+                      </select>
+                      <p className="mt-1 text-xs text-white/70">Only used when your visibility is set to Discoverable.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-white/90">Profile cover photo URL (optional)</label>
+                      <input className="input" value={profileCoverUrl} onChange={e => setProfileCoverUrl(e.target.value)} placeholder="https://..." />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-white/90">Profile theme background URL (optional)</label>
+                      <input className="input" value={profileThemeBgUrl} onChange={e => setProfileThemeBgUrl(e.target.value)} placeholder="https://..." />
+                      <p className="mt-1 text-xs text-white/70">Used as the blurred background when others view your profile.</p>
+                    </div>
+
                     <label className="flex items-start space-x-2 text-sm text-white/90">
                       <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} />
                       <span>

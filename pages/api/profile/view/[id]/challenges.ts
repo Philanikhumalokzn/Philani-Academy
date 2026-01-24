@@ -31,23 +31,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (visibility === 'private') {
       return res.status(403).json({ message: 'This profile is private' })
     }
-
-    // If profile is discoverable, allow access without shared membership.
-    if (visibility !== 'discoverable') {
-      const shared = await prisma.learningGroupMember.findFirst({
-        where: {
-          userId: requesterId,
-          group: {
-            members: {
-              some: { userId: targetId },
-            },
-          },
-        },
-        select: { id: true },
-      })
-
-      if (!shared) return res.status(403).json({ message: 'Forbidden' })
-    }
   }
 
   const requesterGrade = normalizeGradeInput(await getUserGrade(req))

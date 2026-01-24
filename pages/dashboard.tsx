@@ -850,26 +850,6 @@ export default function Dashboard() {
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
-  const [studentFeedMode, setStudentFeedMode] = useState<'all' | 'following'>('all')
-  const [studentFeedReloadNonce, setStudentFeedReloadNonce] = useState(0)
-  const studentFeedModeLoadedRef = useRef(false)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!viewerId) return
-    if (studentFeedModeLoadedRef.current) return
-    studentFeedModeLoadedRef.current = true
-    const key = `pa:studentFeedMode:${viewerId}`
-    const raw = String(window.localStorage.getItem(key) || '').toLowerCase()
-    if (raw === 'following') setStudentFeedMode('following')
-  }, [viewerId])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!viewerId) return
-    const key = `pa:studentFeedMode:${viewerId}`
-    window.localStorage.setItem(key, studentFeedMode)
-  }, [viewerId, studentFeedMode])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -2328,8 +2308,7 @@ export default function Dashboard() {
     setStudentFeedError(null)
     void (async () => {
       try {
-        const qs = studentFeedMode === 'following' ? '?onlyFollowing=1' : ''
-        const res = await fetch(`/api/challenges/feed${qs}`, { credentials: 'same-origin' })
+        const res = await fetch('/api/challenges/feed', { credentials: 'same-origin' })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           if (!cancelled) {
@@ -2353,7 +2332,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [status, sessionRole, studentFeedMode, studentFeedReloadNonce])
+  }, [status, sessionRole])
 
   const uploadSessionThumbnail = useCallback(async (file: File) => {
     if (!file) return null
@@ -3236,27 +3215,6 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-3">
             <div className="font-semibold text-white">Posts</div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={studentFeedMode === 'all' ? 'btn btn-primary text-xs' : 'btn btn-ghost text-xs'}
-                onClick={() => setStudentFeedMode('all')}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className={studentFeedMode === 'following' ? 'btn btn-primary text-xs' : 'btn btn-ghost text-xs'}
-                onClick={() => setStudentFeedMode('following')}
-              >
-                Following
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost text-xs"
-                onClick={() => setStudentFeedReloadNonce(n => n + 1)}
-              >
-                Refresh
-              </button>
               <button
                 type="button"
                 className="btn btn-primary text-xs"

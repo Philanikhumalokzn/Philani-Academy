@@ -255,8 +255,8 @@ body{
   padding:var(--card-padding);
   border-radius:var(--card-radius);
   box-shadow:0 12px 28px rgba(0,0,0,0.26);
-  margin-left:calc(-1 * var(--card-padding));
-  margin-right:calc(-1 * var(--card-padding));
+  margin-left:calc(-0.5 * var(--card-padding));
+  margin-right:calc(-0.5 * var(--card-padding));
 }
 
 /* Flatten 3+ level nested cards to avoid cramped content */
@@ -284,8 +284,8 @@ body{
   .dashboard-card .dashboard-card{
     padding:var(--card-padding);
     border-radius:var(--card-radius);
-    margin-left:calc(-1 * var(--card-padding));
-    margin-right:calc(-1 * var(--card-padding));
+    margin-left:calc(-0.5 * var(--card-padding));
+    margin-right:calc(-0.5 * var(--card-padding));
   }
 
   .card .card .card,

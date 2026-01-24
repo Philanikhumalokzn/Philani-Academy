@@ -8479,7 +8479,7 @@ export default function Dashboard() {
                 onChange={(e) => void onChallengeFilePicked(e)}
               />
 
-              <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-white/10 bg-white/5">
+              <div className="px-4 py-4 sm:px-6 sm:py-5">
                 <div className="flex items-start gap-3">
                   {learnerAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -8565,7 +8565,7 @@ export default function Dashboard() {
                 ) : null}
               </div>
 
-              <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-white/10 bg-white/5 flex items-center justify-between gap-3 min-w-0">
+              <div className="px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3 min-w-0">
                 <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
                   <button
                     type="button"

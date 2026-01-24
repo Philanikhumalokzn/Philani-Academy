@@ -710,6 +710,7 @@ export default function Dashboard() {
   const [selectedUserDetail, setSelectedUserDetail] = useState<any | null>(null)
   const [userDetailOverlayOpen, setUserDetailOverlayOpen] = useState(false)
   const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [bulkVerifyLoading, setBulkVerifyLoading] = useState(false)
   const [userTempPassword, setUserTempPassword] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
@@ -4851,6 +4852,56 @@ export default function Dashboard() {
     }
   }
 
+  async function markAllUsersVerified() {
+    const safeUsers = Array.isArray(users) ? users : []
+    const targets = safeUsers
+      .filter(u => !u?.emailVerifiedAt)
+      .map(u => String(u?.id || ''))
+      .filter(Boolean)
+
+    if (targets.length === 0) {
+      alert('All users are already verified.')
+      return
+    }
+
+    if (!confirm(`Skip verification for ${targets.length} users?`)) return
+
+    setBulkVerifyLoading(true)
+    try {
+      const results = await Promise.allSettled(targets.map(async (userId) => {
+        const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skipVerification: true })
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data?.message || `Failed to verify (${res.status})`)
+        }
+        return res.json().catch(() => ({}))
+      }))
+
+      const failed = results.filter(r => r.status === 'rejected').length
+      const nowIso = new Date().toISOString()
+
+      setUsers(prev => prev
+        ? prev.map(u => targets.includes(String(u.id)) ? { ...u, emailVerifiedAt: u.emailVerifiedAt || nowIso } : u)
+        : prev
+      )
+
+      if (failed > 0) {
+        alert(`Completed with ${failed} failures.`)
+      } else {
+        alert('All users verified.')
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to verify users')
+    } finally {
+      setBulkVerifyLoading(false)
+    }
+  }
+
   async function generateTempPassword(userId: string) {
     if (!userId) return
     setUserDetailLoading(true)
@@ -7296,6 +7347,15 @@ export default function Dashboard() {
             <span>Verified: <strong className="text-white">{verifiedCount}</strong></span>
             <span>Unverified: <strong className="text-white">{unverifiedCount}</strong></span>
             <span>In view: <strong className="text-white">{roleCount}</strong></span>
+            <button
+              type="button"
+              className="btn btn-ghost text-xs"
+              onClick={markAllUsersVerified}
+              disabled={bulkVerifyLoading || unverifiedCount === 0}
+              title="Skip verification for all unverified users"
+            >
+              {bulkVerifyLoading ? 'Verifying…' : 'Skip verification for all'}
+            </button>
           </div>
         )
       })()}

@@ -47,7 +47,19 @@ export async function sendEmail(options: SendEmailOptions) {
     throw new Error('Destination email is required')
   }
   const subject = options.subject && options.subject.trim() ? options.subject.trim() : 'Philani Academy email'
-  const html = options.html && options.html.trim() ? options.html.trim() : '<p>Hello! This is a Philani Academy email.</p>'
+  const rawHtml = options.html && options.html.trim() ? options.html.trim() : '<p>Hello! This is a Philani Academy email.</p>'
+  const faviconUrl = getPublicAssetUrl('/favicon.ico')
+  const faviconHeader = `
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0;padding:12px 0 4px;background:#040b1d;">
+      <tr>
+        <td align="center">
+          <img src="${faviconUrl}" alt="Philani Academy" width="32" height="32" style="display:inline-block;width:32px;height:32px;border-radius:6px;" />
+        </td>
+      </tr>
+    </table>
+  `.trim()
+  const html = `${faviconHeader}
+${rawHtml}`
   const text = options.text && options.text.trim() ? options.text.trim() : undefined
 
   const client = getResendClient()

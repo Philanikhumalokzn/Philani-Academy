@@ -6,8 +6,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userId = await getUserIdFromReq(req)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
+  if (req.method === 'PATCH') {
+    const ids = Array.isArray((req.body as any)?.ids)
+      ? (req.body as any).ids.map((id: any) => String(id || '')).filter(Boolean)
+      : []
+
+    const markAll = Boolean((req.body as any)?.markAll)
+    if (!markAll && ids.length === 0) {
+      return res.status(400).json({ message: 'No notification ids provided' })
+    }
+
+    try {
+      const where: any = { userId }
+      if (!markAll) where.id = { in: ids }
+      await prisma.notification.updateMany({
+        where,
+        data: { readAt: new Date() },
+      })
+      return res.status(200).json({ ok: true })
+    } catch (err: any) {
+      console.error('Failed to mark notifications read', err)
+      return res.status(500).json({ message: 'Failed to update notifications' })
+    }
+  }
+
   if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
+    res.setHeader('Allow', ['GET', 'PATCH'])
     return res.status(405).end()
   }
 

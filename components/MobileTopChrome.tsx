@@ -29,6 +29,16 @@ type GroupJoinRequestLike = {
   requestedBy?: { id?: string | null; name?: string | null; email?: string | null } | null
 }
 
+type ActivityNotification = {
+  id: string
+  type?: string | null
+  title?: string | null
+  body?: string | null
+  createdAt?: string | null
+  readAt?: string | null
+  data?: any
+}
+
 const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: boolean) => {
   if (!authenticated) return false
   if (!pathname) return false
@@ -61,6 +71,7 @@ export default function MobileTopChrome() {
   const [actionLoading, setActionLoading] = useState(false)
   const [actionInvites, setActionInvites] = useState<GroupInviteLike[]>([])
   const [actionJoinRequests, setActionJoinRequests] = useState<GroupJoinRequestLike[]>([])
+  const [activityFeed, setActivityFeed] = useState<ActivityNotification[]>([])
   const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null)
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
 
@@ -108,13 +119,16 @@ export default function MobileTopChrome() {
       if (!res.ok) {
         setActionInvites([])
         setActionJoinRequests([])
+        setActivityFeed([])
         return
       }
       setActionInvites(Array.isArray(data?.invites) ? data.invites : [])
       setActionJoinRequests(Array.isArray(data?.joinRequests) ? data.joinRequests : [])
+      setActivityFeed(Array.isArray(data?.activity) ? data.activity : [])
     } catch {
       setActionInvites([])
       setActionJoinRequests([])
+      setActivityFeed([])
     } finally {
       setActionLoading(false)
     }
@@ -240,8 +254,9 @@ export default function MobileTopChrome() {
     if (!isVisible) return
     const announcementUnread = computeUnread(announcements, readSet)
     const actionUnread = (actionInvites?.length || 0) + (actionJoinRequests?.length || 0)
-    setUnreadCount(announcementUnread + actionUnread)
-  }, [actionInvites, actionJoinRequests, announcements, computeUnread, isVisible, readSet])
+    const activityUnread = activityFeed.filter((n) => !n?.readAt).length
+    setUnreadCount(announcementUnread + actionUnread + activityUnread)
+  }, [actionInvites, actionJoinRequests, activityFeed, announcements, computeUnread, isVisible, readSet])
 
   const showChrome = useCallback(() => {
     setOpen(true)
@@ -316,6 +331,28 @@ export default function MobileTopChrome() {
     }
     void loadActionNotifications()
   }
+
+  const markActivityRead = useCallback(async () => {
+    const unreadIds = activityFeed.filter((n) => !n?.readAt).map((n) => String(n.id)).filter(Boolean)
+    if (unreadIds.length === 0) return
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: unreadIds }),
+      })
+      const nowIso = new Date().toISOString()
+      setActivityFeed((prev) => prev.map((n) => unreadIds.includes(String(n.id)) ? { ...n, readAt: nowIso } : n))
+    } catch {
+      // ignore
+    }
+  }, [activityFeed])
+
+  useEffect(() => {
+    if (!notificationsOpen) return
+    void markActivityRead()
+  }, [notificationsOpen, activityFeed, markActivityRead])
 
   const closeNotifications = () => {
     setNotificationsOpen(false)
@@ -539,6 +576,46 @@ export default function MobileTopChrome() {
                     </div>
                   </div>
                 )}
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-white">Activity</div>
+                    <button
+                      type="button"
+                      className="text-xs text-white/80 underline"
+                      onClick={() => void loadActionNotifications()}
+                      disabled={actionLoading}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {actionLoading ? (
+                    <div className="mt-2 text-sm text-white/70">Loading…</div>
+                  ) : activityFeed.length === 0 ? (
+                    <div className="mt-2 text-sm text-white/70">No activity yet.</div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {activityFeed.map((n) => {
+                        const id = String(n.id)
+                        const isUnread = !n.readAt
+                        const title = String(n.title || 'Notification')
+                        const body = String(n.body || '')
+                        const createdAt = n.createdAt ? new Date(n.createdAt).toLocaleString() : ''
+                        return (
+                          <div
+                            key={id}
+                            className={`rounded-2xl border backdrop-blur p-3 ${isUnread ? 'border-blue-300/40 bg-white/10' : 'border-white/10 bg-white/5'}`}
+                          >
+                            <div className="text-sm font-semibold text-white">{title}</div>
+                            {body ? <div className="text-xs text-white/80 mt-1 whitespace-pre-wrap break-words">{body}</div> : null}
+                            {createdAt ? <div className="text-[11px] text-white/60 mt-1">{createdAt}</div> : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3">
                   <div className="text-sm font-semibold text-white">Announcements</div>

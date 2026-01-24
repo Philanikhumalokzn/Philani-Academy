@@ -5,6 +5,8 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 
+const DEFAULT_PROFILE_COVER = '/philani-logo.png'
+
 type PublicUser = {
   id: string
   name: string
@@ -279,14 +281,20 @@ export default function PublicUserProfilePage() {
             <div className="card p-4"><div className="text-sm text-red-200">{error}</div></div>
           ) : profile ? (
             <div className="card p-4 space-y-3">
-              <div className="h-28 rounded-2xl overflow-hidden border border-white/10 bg-white/5 relative">
-                {(profile.profileCoverUrl || profile.profileThemeBgUrl) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.profileCoverUrl || profile.profileThemeBgUrl || ''} alt="Cover" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="h-full w-full bg-white/5" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/5 to-black/25" aria-hidden="true" />
+              <div className="h-32 rounded-2xl overflow-hidden border border-white/10 bg-white/5 relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={(profile.profileCoverUrl || profile.profileThemeBgUrl || DEFAULT_PROFILE_COVER) || DEFAULT_PROFILE_COVER}
+                  alt="Cover"
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/10 to-black/35" aria-hidden="true" />
+              </div>
+
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.35em] text-white/70">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/philani-logo.png" alt="Philani Academy" className="h-5 w-5" />
+                <span>Philani Academy</span>
               </div>
 
               <div className="flex items-start gap-4">
@@ -299,10 +307,10 @@ export default function PublicUserProfilePage() {
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-lg font-semibold truncate">{profile.name}</div>
+                        <div className="text-lg font-semibold break-words">{profile.name}</div>
                         {profile.verified ? (
                           <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                             <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
@@ -314,8 +322,8 @@ export default function PublicUserProfilePage() {
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-sm muted">
-                        {(profile.schoolName || '').trim() ? profile.schoolName : '—'}
+                      <div className="text-sm text-white/70">
+                        {profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
                         {profile.grade ? ` • ${profile.grade.replace('GRADE_', 'Grade ')}` : ''}
                       </div>
                     </div>

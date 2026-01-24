@@ -258,10 +258,50 @@ export default function Dashboard() {
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [currentLessonCardCollapsed, setCurrentLessonCardCollapsed] = useState(false)
+  const currentLessonCardCollapsedRef = useRef(false)
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
+
+  useEffect(() => {
+    currentLessonCardCollapsedRef.current = currentLessonCardCollapsed
+  }, [currentLessonCardCollapsed])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let lastY = window.scrollY || 0
+    let rafId: number | null = null
+
+    const onScroll = () => {
+      const y = window.scrollY || 0
+      if (rafId) return
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null
+        const delta = y - lastY
+        lastY = y
+
+        // Ignore tiny jitter from touchpads.
+        if (Math.abs(delta) < 6) return
+
+        if (delta > 0) {
+          // Scrolling down: collapse once we’re past the very top.
+          if (y > 60 && !currentLessonCardCollapsedRef.current) setCurrentLessonCardCollapsed(true)
+        } else {
+          // Scrolling up: re-expand immediately (implies intent to see it).
+          if (currentLessonCardCollapsedRef.current) setCurrentLessonCardCollapsed(false)
+        }
+      })
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (rafId) window.cancelAnimationFrame(rafId)
+    }
+  }, [])
   type LessonPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
   type LessonDiagramSnapshot = { title: string; imageUrl: string; annotations: any }
   type LessonPointDraft = {
@@ -3098,141 +3138,153 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-3">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-semibold text-white">Current lesson</div>
-            {sessionRole === 'admin' || sessionRole === 'teacher' ? (
-              <div className="flex items-center gap-1 text-xs font-semibold text-white/70">
-                <span>Grade</span>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white touch-none"
-                  onPointerDown={(e) => {
-                    // Touch/pen: allow press + slide to select in one gesture.
-                    if ((e as any).pointerType === 'mouse') return
-                    const el = e.currentTarget as HTMLElement
-                    const r = el.getBoundingClientRect()
-                    setGradeWorkspaceSelectorAnchor({
-                      top: r.top,
-                      right: r.right,
-                      bottom: r.bottom,
-                      left: r.left,
-                      width: r.width,
-                      height: r.height,
-                    })
-                    setGradeWorkspaceSelectorPreview(null)
-                    setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
-                    setGradeWorkspaceSelectorOpen(true)
+        <div
+          className={
+            `grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+              currentLessonCardCollapsed
+                ? 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                : 'grid-rows-[1fr] opacity-100'
+            }`
+          }
+        >
+          <div className="overflow-hidden">
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-white">Current lesson</div>
+                {sessionRole === 'admin' || sessionRole === 'teacher' ? (
+                  <div className="flex items-center gap-1 text-xs font-semibold text-white/70">
+                    <span>Grade</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white touch-none"
+                      onPointerDown={(e) => {
+                        // Touch/pen: allow press + slide to select in one gesture.
+                        if ((e as any).pointerType === 'mouse') return
+                        const el = e.currentTarget as HTMLElement
+                        const r = el.getBoundingClientRect()
+                        setGradeWorkspaceSelectorAnchor({
+                          top: r.top,
+                          right: r.right,
+                          bottom: r.bottom,
+                          left: r.left,
+                          width: r.width,
+                          height: r.height,
+                        })
+                        setGradeWorkspaceSelectorPreview(null)
+                        setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
+                        setGradeWorkspaceSelectorOpen(true)
 
-                    // Prevent the browser from treating this as a scroll gesture.
-                    e.preventDefault()
-                    e.stopPropagation()
-                  }}
-                  onClick={(e) => {
-                    // Mouse: keep simple click-to-open.
-                    const el = e.currentTarget as HTMLElement
-                    const r = el.getBoundingClientRect()
-                    setGradeWorkspaceSelectorAnchor({
-                      top: r.top,
-                      right: r.right,
-                      bottom: r.bottom,
-                      left: r.left,
-                      width: r.width,
-                      height: r.height,
-                    })
-                    setGradeWorkspaceSelectorPreview(null)
-                    setGradeWorkspaceSelectorOpen(true)
-                  }}
-                  aria-label="Select grade workspace"
-                  title="Select grade workspace"
-                >
-                  {(() => {
-                    const g = gradeWorkspaceSelectorPreview ?? selectedGrade
-                    return g ? String(g).replace('GRADE_', '') : '—'
-                  })()}
-                </button>
+                        // Prevent the browser from treating this as a scroll gesture.
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => {
+                        // Mouse: keep simple click-to-open.
+                        const el = e.currentTarget as HTMLElement
+                        const r = el.getBoundingClientRect()
+                        setGradeWorkspaceSelectorAnchor({
+                          top: r.top,
+                          right: r.right,
+                          bottom: r.bottom,
+                          left: r.left,
+                          width: r.width,
+                          height: r.height,
+                        })
+                        setGradeWorkspaceSelectorPreview(null)
+                        setGradeWorkspaceSelectorOpen(true)
+                      }}
+                      aria-label="Select grade workspace"
+                      title="Select grade workspace"
+                    >
+                      {(() => {
+                        const g = gradeWorkspaceSelectorPreview ?? selectedGrade
+                        return g ? String(g).replace('GRADE_', '') : '—'
+                      })()}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50 justify-self-end"
+                    onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
+                    disabled={sessionsLoading || !selectedGrade}
+                  >
+                    {sessionsLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                )}
               </div>
-            ) : (
-              <button
-                type="button"
-                className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50 justify-self-end"
-                onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
-                disabled={sessionsLoading || !selectedGrade}
-              >
-                {sessionsLoading ? 'Refreshing…' : 'Refresh'}
-              </button>
-            )}
-          </div>
 
-          {!resolvedCurrentLesson ? (
-            <div className="text-sm text-white/70">No current lesson right now.</div>
-          ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-              {lessonThumb ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
-              ) : null}
-
-              <div className="p-3 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
-                  {resolvedCurrentLesson.startsAt ? (
-                    <div className="text-xs text-white/60">
-                      {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
-                    </div>
+              {!resolvedCurrentLesson ? (
+                <div className="text-sm text-white/70">No current lesson right now.</div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+                  {lessonThumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={lessonThumb} alt="Lesson thumbnail" className="w-full h-40 object-cover" />
                   ) : null}
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
-                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                  >
-                    Enter class
-                  </button>
 
-                  <button
-                    type="button"
-                    className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
-                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                  >
-                    Quizzes
-                  </button>
+                  <div className="p-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
+                      {resolvedCurrentLesson.startsAt ? (
+                        <div className="text-xs text-white/60">
+                          {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
+                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                      >
+                        Enter class
+                      </button>
 
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                        onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
+                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                      >
+                        Quizzes
+                      </button>
+
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                        onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
+                        disabled={isSubscriptionBlocked}
+                      >
+                        Assignments
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold text-white">Past lessons</div>
                   <button
                     type="button"
-                    className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
-                    disabled={isSubscriptionBlocked}
+                    className="btn btn-ghost text-xs"
+                    onClick={() => openPastSessionsList(pastSessionIds)}
+                    disabled={pastSessionIds.length === 0}
                   >
-                    Assignments
+                    Open
                   </button>
                 </div>
+                {pastSessionIds.length === 0 ? (
+                  <div className="text-sm text-white/70">No past lessons yet.</div>
+                ) : (
+                  <div className="text-sm text-white/70">
+                    {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
+                  </div>
+                )}
               </div>
             </div>
-          )}
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="font-semibold text-white">Past lessons</div>
-              <button
-                type="button"
-                className="btn btn-ghost text-xs"
-                onClick={() => openPastSessionsList(pastSessionIds)}
-                disabled={pastSessionIds.length === 0}
-              >
-                Open
-              </button>
-            </div>
-            {pastSessionIds.length === 0 ? (
-              <div className="text-sm text-white/70">No past lessons yet.</div>
-            ) : (
-              <div className="text-sm text-white/70">
-                {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
-              </div>
-            )}
           </div>
         </div>
 

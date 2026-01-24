@@ -127,9 +127,9 @@ export default function Signup() {
           <section>
             <h3 className="font-semibold mb-2 text-slate-900">Learner details</h3>
             <div className="space-y-3">
-              <input className="input" placeholder="First name" value={firstName} onChange={e => setFirstName(e.target.value)} autoComplete="given-name" required />
-              <input className="input" placeholder="Last name" value={lastName} onChange={e => setLastName(e.target.value)} autoComplete="family-name" required />
-              <select className="input" value={grade} onChange={e => setGrade(e.target.value as GradeValue | '')} required>
+              <input className="input input-light" placeholder="First name" value={firstName} onChange={e => setFirstName(e.target.value)} autoComplete="given-name" required />
+              <input className="input input-light" placeholder="Last name" value={lastName} onChange={e => setLastName(e.target.value)} autoComplete="family-name" required />
+              <select className="input input-light" value={grade} onChange={e => setGrade(e.target.value as GradeValue | '')} required>
                 <option value="">Select your grade</option>
                 {gradeOptions.map(option => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -141,15 +141,15 @@ export default function Signup() {
           <section>
             <h3 className="font-semibold mb-2 text-slate-900">Contact details</h3>
             <div className="space-y-3">
-              <input className="input" type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required />
-              <input className="input" placeholder="Mobile number (e.g. 0821234567)" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} autoComplete="tel" required />
+              <input className="input input-light" type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required />
+              <input className="input input-light" placeholder="Mobile number (e.g. 0821234567)" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} autoComplete="tel" required />
             </div>
           </section>
 
           <section>
             <h3 className="font-semibold mb-2 text-slate-900">Security</h3>
             <div className="space-y-3">
-              <input className="input" type="password" placeholder="Password (min 8 characters)" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
+              <input className="input input-light" type="password" placeholder="Password (min 8 characters)" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
               <label className="flex items-start space-x-2 text-sm">
                 <input type="checkbox" checked={popiConsent} onChange={e => setPopiConsent(e.target.checked)} required />
                 <span>

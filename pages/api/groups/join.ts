@@ -35,5 +35,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   }
 
+  try {
+    const adminUsers = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } })
+    const notifyUserIds = new Set<string>()
+    if (group.createdById) notifyUserIds.add(String(group.createdById))
+    for (const a of adminUsers) notifyUserIds.add(a.id)
+
+    await prisma.notification.createMany({
+      data: Array.from(notifyUserIds)
+        .filter((id) => id && id !== userId)
+        .map((id) => ({
+          userId: id,
+          type: 'group_joined',
+          title: 'Group joined',
+          body: `A learner joined ${group.name}`,
+          data: { groupId: group.id, groupName: group.name, userId },
+        })),
+    })
+  } catch (notifyErr) {
+    if (process.env.DEBUG === '1') console.error('Failed to create group join notification', notifyErr)
+  }
+
   return res.status(200).json({ id: group.id, name: group.name, type: group.type, grade: group.grade })
 }

@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const sessionRecord = await prisma.sessionRecord.findUnique({
     where: { id: String(sessionIdParam) },
-    select: { grade: true, id: true },
+    select: { grade: true, id: true, createdBy: true },
   })
   if (!sessionRecord) return res.status(404).json({ message: 'Session not found' })
 
@@ -63,11 +63,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const assignment = await (prisma as any).assignment.findFirst({
     where: { id: assignmentId, sessionId: sessionRecord.id },
-    select: { id: true },
+    select: { id: true, title: true },
   })
   if (!assignment) return res.status(404).json({ message: 'Assignment not found' })
 
   const assignmentSubmission = (prisma as any).assignmentSubmission as any
+
+  const priorSubmission = await assignmentSubmission.findUnique({
+    where: {
+      assignmentId_userId: {
+        assignmentId,
+        userId: authUserId,
+      },
+    },
+    select: { submittedAt: true },
+  })
 
   const record = await assignmentSubmission.upsert({
     where: {
@@ -102,6 +112,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     } catch {
       // ignore (no grade yet)
+    }
+  }
+
+  if (!priorSubmission?.submittedAt) {
+    try {
+      const adminUsers = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } })
+      const notifyUserIds = new Set<string>()
+      if (sessionRecord.createdBy) notifyUserIds.add(String(sessionRecord.createdBy))
+      for (const a of adminUsers) notifyUserIds.add(a.id)
+
+      await prisma.notification.createMany({
+        data: Array.from(notifyUserIds)
+          .filter((id) => id && id !== authUserId)
+          .map((id) => ({
+            userId: id,
+            type: 'assignment_submitted',
+            title: 'Assignment submitted',
+            body: `A learner submitted ${assignment.title || 'an assignment'}`,
+            data: { assignmentId, sessionId: sessionRecord.id, userId: authUserId },
+          })),
+      })
+    } catch (notifyErr) {
+      if (process.env.DEBUG === '1') console.error('Failed to create assignment submission notification', notifyErr)
     }
   }
 

@@ -822,6 +822,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     })
 
+    try {
+      const notifyUserId = String(targetUserId || '')
+      if (notifyUserId) {
+        await prisma.notification.create({
+          data: {
+            userId: notifyUserId,
+            type: 'assignment_graded',
+            title: 'Assignment graded',
+            body: `Your assignment has been graded${assignment?.title ? `: ${assignment.title}` : ''}`,
+            data: { assignmentId: assignment.id, sessionId: sessionRecord.id },
+          },
+        })
+      }
+    } catch (notifyErr) {
+      if (process.env.DEBUG === '1') console.error('Failed to create assignment graded notification', notifyErr)
+    }
+
     return res.status(200).json({ graded: true, grade: created })
   } catch (err: any) {
     console.warn('Assignment grading failed', err?.message || err)

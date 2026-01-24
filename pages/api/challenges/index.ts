@@ -57,6 +57,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           maxAttempts,
         },
       })
+
+      if (audience === 'public') {
+        try {
+          const userFollow = (prisma as any).userFollow as any
+          if (userFollow) {
+            const followers = await userFollow.findMany({
+              where: { followingId: userId },
+              select: { followerId: true },
+            })
+            const creator = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
+            const followerIds = Array.from(new Set(followers.map((f: any) => String(f.followerId)).filter(Boolean)))
+            if (followerIds.length > 0) {
+              await prisma.notification.createMany({
+                data: followerIds.map((followerId) => ({
+                  userId: followerId,
+                  type: 'new_challenge',
+                  title: 'New challenge',
+                  body: `${creator?.name || 'A learner'} posted a new challenge`,
+                  data: { challengeId: created.id, createdById: userId },
+                })),
+              })
+            }
+          }
+        } catch (notifyErr) {
+          if (process.env.DEBUG === '1') console.error('Failed to notify followers of new challenge', notifyErr)
+        }
+      }
+
       return res.status(200).json(created)
     } catch (err: any) {
       console.error('Failed to create challenge', err)

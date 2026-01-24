@@ -39,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
     const challenge = await userChallenge.findUnique({
       where: { id: challengeId },
-      select: { id: true, attemptsOpen: true, createdById: true },
+      select: { id: true, title: true, attemptsOpen: true, createdById: true },
     })
 
     if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
@@ -84,7 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
     const challenge = await userChallenge.findUnique({
       where: { id: challengeId },
-      select: { id: true, createdById: true },
+      select: { id: true, title: true, createdById: true },
     })
     if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
     if (String(challenge.createdById) !== String(userId)) {
@@ -100,6 +100,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           feedback: typeof feedback === 'string' ? feedback : undefined,
         },
       })
+
+      try {
+        const gradedUserId = updated?.userId ? String(updated.userId) : ''
+        if (gradedUserId && gradedUserId !== userId) {
+          await prisma.notification.create({
+            data: {
+              userId: gradedUserId,
+              type: 'challenge_graded',
+              title: 'Challenge graded',
+              body: `Your response was graded${challenge?.title ? ` for ${challenge.title}` : ''}`,
+              data: { responseId: updated.id, challengeId, gradedById: userId },
+            },
+          })
+        }
+      } catch (notifyErr) {
+        if (process.env.DEBUG === '1') console.error('Failed to create challenge grade notification', notifyErr)
+      }
+
       return res.status(200).json(updated)
     } catch (err: any) {
       return res.status(500).json({ message: err?.message || 'Failed to update grading' })
@@ -142,6 +160,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? Math.max(0, Math.min(9999, Math.trunc(quizPointIndex)))
       : null
 
+    let shouldNotifyOwner = false
+    let challengeTitle: string | null = null
+    if (isChallengeSession && challengeId) {
+      const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
+      const challenge = await userChallenge.findUnique({
+        where: { id: challengeId },
+        select: { id: true, title: true, createdById: true },
+      })
+      if (challenge?.createdById) challengeOwnerId = String(challenge.createdById)
+      challengeTitle = challenge?.title ? String(challenge.title) : null
+      if (challengeOwnerId && challengeOwnerId !== userId) {
+        const existingCount = await learnerResponse.count({ where: { sessionKey, userId } }).catch(() => 0)
+        shouldNotifyOwner = existingCount === 0
+      }
+    }
+
+    const notifyOwner = async (responseId: string) => {
+      if (!shouldNotifyOwner || !challengeOwnerId || challengeOwnerId === userId) return
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: challengeOwnerId,
+            type: 'challenge_response',
+            title: 'New response',
+            body: `Someone attempted${challengeTitle ? ` ${challengeTitle}` : ' your challenge'}`,
+            data: { responseId, challengeId, responderId: userId },
+          },
+        })
+      } catch (notifyErr) {
+        if (process.env.DEBUG === '1') console.error('Failed to create challenge response notification', notifyErr)
+      }
+    }
+
     const createRecord = async (quizIdToUse: string) => {
       return await learnerResponse.create({
         data: {
@@ -163,6 +214,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
       const record = await createRecord(safeQuizId)
+      await notifyOwner(record?.id || '')
       return res.status(200).json(record)
     } catch (err: any) {
       const code = err?.code || err?.name
@@ -175,6 +227,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         try {
           const attemptId = `${safeQuizId}-${Date.now().toString(36)}`
           const record = await createRecord(attemptId)
+          await notifyOwner(record?.id || '')
           return res.status(200).json(record)
         } catch (retryErr) {
           console.error('Retry response save failed', retryErr)
@@ -206,6 +259,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 ownerId: challengeOwnerId,
               },
             })
+            await notifyOwner(updated?.id || '')
             return res.status(200).json(updated)
           }
         } catch (fallbackErr) {

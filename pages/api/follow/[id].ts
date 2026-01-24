@@ -41,6 +41,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // ignore duplicates
     }
 
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: targetId,
+          type: 'new_follower',
+          title: 'New follower',
+          body: 'Someone started following you',
+          data: { followerId: userId },
+        },
+      })
+    } catch (notifyErr) {
+      if (process.env.DEBUG === '1') console.error('Failed to create follow notification', notifyErr)
+    }
+
     const followerCount = await userFollow.count({ where: { followingId: targetId } }).catch(() => 0)
     const followingCount = await userFollow.count({ where: { followerId: targetId } }).catch(() => 0)
 

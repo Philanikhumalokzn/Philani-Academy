@@ -2,7 +2,7 @@ import { getSession, useSession } from 'next-auth/react'
 import type { GetServerSideProps } from 'next'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 
 type PublicUser = {
@@ -67,19 +67,6 @@ export default function PublicUserProfilePage() {
 
   const [viewerId, setViewerId] = useState<string>('')
   const [followBusy, setFollowBusy] = useState(false)
-
-  const [bellWobble, setBellWobble] = useState(0)
-  const wobbleTimeoutRef = useRef<number | null>(null)
-  const lastScrollRef = useRef(0)
-  const lastTouchRef = useRef<{ x: number; y: number } | null>(null)
-
-  const triggerBellWobble = useCallback((level: number) => {
-    if (typeof window === 'undefined') return
-    const next = Math.max(0.15, Math.min(level, 1))
-    setBellWobble(next)
-    if (wobbleTimeoutRef.current) window.clearTimeout(wobbleTimeoutRef.current)
-    wobbleTimeoutRef.current = window.setTimeout(() => setBellWobble(0), 650)
-  }, [])
 
   const role = ((session as any)?.user?.role as string | undefined) || 'student'
   const isPrivileged = role === 'admin' || role === 'teacher'
@@ -196,52 +183,6 @@ export default function PublicUserProfilePage() {
   }, [loadChallenges, loadMyGroups, loadProfile, status])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const onScroll = () => {
-      const y = window.scrollY || 0
-      const delta = Math.abs(y - lastScrollRef.current)
-      lastScrollRef.current = y
-      if (delta > 2) triggerBellWobble(Math.min(1, delta / 180))
-    }
-
-    const onWheel = (e: WheelEvent) => {
-      const delta = Math.abs(e.deltaY || 0)
-      if (delta > 2) triggerBellWobble(Math.min(1, delta / 240))
-    }
-
-    const onTouchMove = (e: TouchEvent) => {
-      const touch = e.touches?.[0]
-      if (!touch) return
-      const prev = lastTouchRef.current
-      if (prev) {
-        const dx = touch.clientX - prev.x
-        const dy = touch.clientY - prev.y
-        const dist = Math.hypot(dx, dy)
-        if (dist > 2) triggerBellWobble(Math.min(1, dist / 140))
-      }
-      lastTouchRef.current = { x: touch.clientX, y: touch.clientY }
-    }
-
-    const onResize = () => triggerBellWobble(0.4)
-
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('wheel', onWheel, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: true })
-    window.addEventListener('resize', onResize)
-
-    // Initial gentle wobble on load.
-    triggerBellWobble(0.35)
-
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('wheel', onWheel)
-      window.removeEventListener('touchmove', onTouchMove)
-      window.removeEventListener('resize', onResize)
-      if (wobbleTimeoutRef.current) window.clearTimeout(wobbleTimeoutRef.current)
-    }
-  }, [triggerBellWobble])
-
-  useEffect(() => {
     if (!selectedGroupId) {
       const first = canInviteGroups[0]?.group?.id
       if (first) setSelectedGroupId(first)
@@ -337,7 +278,7 @@ export default function PublicUserProfilePage() {
           ) : error ? (
             <div className="card p-4"><div className="text-sm text-red-200">{error}</div></div>
           ) : profile ? (
-            <div className="card p-4 space-y-3 relative">
+            <div className="card p-4 space-y-3">
               {profile.profileCoverUrl ? (
                 <div className="h-28 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -388,17 +329,6 @@ export default function PublicUserProfilePage() {
 
                   {profile.statusBio ? <div className="mt-2 text-sm text-white/90">{profile.statusBio}</div> : null}
                 </div>
-              </div>
-
-              <div
-                className={`absolute bottom-3 right-3 h-10 w-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center ${bellWobble > 0 ? 'bell-wobble' : ''}`}
-                style={{ ['--bell-wobble' as any]: bellWobble }}
-                aria-label="Notifications"
-                role="img"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white">
-                  <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
-                </svg>
               </div>
             </div>
           ) : null}
@@ -502,21 +432,6 @@ export default function PublicUserProfilePage() {
           </section>
         </div>
       </FullScreenGlassOverlay>
-      <style jsx>{`
-        .bell-wobble {
-          animation: bell-wobble 0.65s ease-in-out;
-          transform-origin: 50% 0%;
-        }
-
-        @keyframes bell-wobble {
-          0% { transform: rotate(calc(var(--bell-wobble) * 0deg)); }
-          15% { transform: rotate(calc(var(--bell-wobble) * -12deg)); }
-          35% { transform: rotate(calc(var(--bell-wobble) * 10deg)); }
-          55% { transform: rotate(calc(var(--bell-wobble) * -7deg)); }
-          75% { transform: rotate(calc(var(--bell-wobble) * 4deg)); }
-          100% { transform: rotate(calc(var(--bell-wobble) * 0deg)); }
-        }
-      `}</style>
     </main>
   )
 }

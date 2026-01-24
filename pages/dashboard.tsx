@@ -704,6 +704,9 @@ export default function Dashboard() {
   const [usersVerifiedFilter, setUsersVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all')
   const [usersSearch, setUsersSearch] = useState('')
   const [usersSort, setUsersSort] = useState<'newest' | 'oldest' | 'name'>('newest')
+  const [usersFiltersOpen, setUsersFiltersOpen] = useState(false)
+  const [usersCreateOpen, setUsersCreateOpen] = useState(false)
+  const [usersListOpen, setUsersListOpen] = useState(false)
   const [selectedUserDetail, setSelectedUserDetail] = useState<any | null>(null)
   const [userDetailOverlayOpen, setUserDetailOverlayOpen] = useState(false)
   const [userDetailLoading, setUserDetailLoading] = useState(false)
@@ -7216,55 +7219,65 @@ export default function Dashboard() {
         <p className="text-sm muted">Create learners and instructors, update their access, and remove accounts when needed.</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs muted">Role:</span>
-          {(['all', 'student', 'teacher', 'admin'] as const).map(role => (
-            <button
-              key={role}
-              type="button"
-              className={`btn btn-ghost text-xs ${usersRoleFilter === role ? 'bg-white/10 text-white' : ''}`}
-              onClick={() => setUsersRoleFilter(role)}
-            >
-              {role}
-            </button>
-          ))}
+      <button
+        type="button"
+        className="btn btn-ghost text-sm justify-between"
+        onClick={() => setUsersFiltersOpen(v => !v)}
+      >
+        Filters {usersFiltersOpen ? '▾' : '▸'}
+      </button>
+
+      {usersFiltersOpen ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs muted">Role:</span>
+            {(['all', 'student', 'teacher', 'admin'] as const).map(role => (
+              <button
+                key={role}
+                type="button"
+                className={`btn btn-ghost text-xs ${usersRoleFilter === role ? 'bg-white/10 text-white' : ''}`}
+                onClick={() => setUsersRoleFilter(role)}
+              >
+                {role}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs muted">Verification:</span>
+            {(['all', 'verified', 'unverified'] as const).map(state => (
+              <button
+                key={state}
+                type="button"
+                className={`btn btn-ghost text-xs ${usersVerifiedFilter === state ? 'bg-white/10 text-white' : ''}`}
+                onClick={() => setUsersVerifiedFilter(state)}
+              >
+                {state}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs muted">Sort:</span>
+            {(['newest', 'oldest', 'name'] as const).map(sort => (
+              <button
+                key={sort}
+                type="button"
+                className={`btn btn-ghost text-xs ${usersSort === sort ? 'bg-white/10 text-white' : ''}`}
+                onClick={() => setUsersSort(sort)}
+              >
+                {sort}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <input
+              className="input"
+              placeholder="Search name or email"
+              value={usersSearch}
+              onChange={(e) => setUsersSearch(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs muted">Verification:</span>
-          {(['all', 'verified', 'unverified'] as const).map(state => (
-            <button
-              key={state}
-              type="button"
-              className={`btn btn-ghost text-xs ${usersVerifiedFilter === state ? 'bg-white/10 text-white' : ''}`}
-              onClick={() => setUsersVerifiedFilter(state)}
-            >
-              {state}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs muted">Sort:</span>
-          {(['newest', 'oldest', 'name'] as const).map(sort => (
-            <button
-              key={sort}
-              type="button"
-              className={`btn btn-ghost text-xs ${usersSort === sort ? 'bg-white/10 text-white' : ''}`}
-              onClick={() => setUsersSort(sort)}
-            >
-              {sort}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 min-w-[200px]">
-          <input
-            className="input"
-            placeholder="Search name or email"
-            value={usersSearch}
-            onChange={(e) => setUsersSearch(e.target.value)}
-          />
-        </div>
-      </div>
+      ) : null}
 
       {(() => {
         const safeUsers = Array.isArray(users) ? users : []
@@ -7287,6 +7300,15 @@ export default function Dashboard() {
         )
       })()}
 
+      <button
+        type="button"
+        className="btn btn-ghost text-sm justify-between"
+        onClick={() => setUsersCreateOpen(v => !v)}
+      >
+        Create user {usersCreateOpen ? '▾' : '▸'}
+      </button>
+
+      {usersCreateOpen ? (
       <div className="space-y-2">
         <h3 className="font-medium">Create user</h3>
         <div className="grid gap-2 lg:grid-cols-2">
@@ -7348,7 +7370,18 @@ export default function Dashboard() {
           }}>Create user</button>
         </div>
       </div>
+      ) : null}
 
+      <button
+        type="button"
+        className="btn btn-ghost text-sm justify-between"
+        onClick={() => setUsersListOpen(v => !v)}
+      >
+        Users list {usersListOpen ? '▾' : '▸'}
+      </button>
+
+      {usersListOpen ? (
+      <>
       {usersLoading ? (
         <div className="text-sm muted">Loading users...</div>
       ) : usersError ? (
@@ -7357,14 +7390,12 @@ export default function Dashboard() {
         <div className="text-sm muted">No users found.</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left table-fixed">
             <thead>
               <tr>
-                <th className="px-2 py-1">#</th>
+                <th className="px-2 py-1 w-10">#</th>
                 <th className="px-2 py-1">Learner</th>
-                <th className="px-2 py-1">Email</th>
                 <th className="px-2 py-1">Verification</th>
-                <th className="px-2 py-1">Created</th>
                 <th className="px-2 py-1">Actions</th>
               </tr>
             </thead>
@@ -7393,7 +7424,15 @@ export default function Dashboard() {
                   return usersSort === 'oldest' ? ad - bd : bd - ad
                 })
                 .map((u, idx) => (
-                <tr key={u.id} className="border-t">
+                <tr
+                  key={u.id}
+                  className="border-t hover:bg-white/5 cursor-pointer"
+                  onClick={() => {
+                    setSelectedUserDetail(u)
+                    setUserTempPassword(null)
+                    setUserDetailOverlayOpen(true)
+                  }}
+                >
                   <td className="px-2 py-2 align-top text-xs text-white/60">{idx + 1}</td>
                   <td className="px-2 py-2 align-top">
                     <UserLink userId={u.id} className="font-medium hover:underline" title="View profile">
@@ -7402,7 +7441,6 @@ export default function Dashboard() {
                     <div className="text-xs muted">Grade: {u.grade ? gradeToLabel(u.grade) : 'Unassigned'}</div>
                     <div className="text-xs muted">School: {u.schoolName || '—'}</div>
                   </td>
-                  <td className="px-2 py-2 align-top">{u.email}</td>
                   <td className="px-2 py-2 align-top">
                     {u.emailVerifiedAt ? (
                       <span className="text-xs text-green-300">Verified</span>
@@ -7418,33 +7456,8 @@ export default function Dashboard() {
                       </label>
                     )}
                   </td>
-                  <td className="px-2 py-2 align-top">{new Date(u.createdAt).toLocaleString()}</td>
                   <td className="px-2 py-2">
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setSelectedUserDetail(u)
-                        setUserTempPassword(null)
-                        setUserDetailOverlayOpen(true)
-                      }}
-                    >Manage</button>
-                    <button
-                      className="btn btn-danger"
-                      onClick={async () => {
-                        if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
-                        try {
-                          const res = await fetch(`/api/users/${u.id}`, { method: 'DELETE', credentials: 'same-origin' })
-                          if (res.ok) {
-                            setUsers(prev => prev ? prev.filter(x => x.id !== u.id) : prev)
-                          } else {
-                            const data = await res.json().catch(() => ({}))
-                            alert(data?.message || `Failed to delete (${res.status})`)
-                          }
-                        } catch (err: any) {
-                          alert(err?.message || 'Network error')
-                        }
-                      }}
-                    >Delete</button>
+                    <button className="btn btn-ghost text-xs">Manage</button>
                   </td>
                 </tr>
               ))}
@@ -7452,6 +7465,8 @@ export default function Dashboard() {
           </table>
         </div>
       )}
+      </>
+      ) : null}
     </div>
   )
 
@@ -9970,6 +9985,30 @@ export default function Dashboard() {
                     {userTempPassword}
                   </div>
                 ) : null}
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={async () => {
+                    if (!confirm(`Delete user ${selectedUserDetail.email}? This cannot be undone.`)) return
+                    try {
+                      const res = await fetch(`/api/users/${selectedUserDetail.id}`, { method: 'DELETE', credentials: 'same-origin' })
+                      if (res.ok) {
+                        setUsers(prev => prev ? prev.filter(x => x.id !== selectedUserDetail.id) : prev)
+                        setUserDetailOverlayOpen(false)
+                        setSelectedUserDetail(null)
+                        setUserTempPassword(null)
+                      } else {
+                        const data = await res.json().catch(() => ({}))
+                        alert(data?.message || `Failed to delete (${res.status})`)
+                      }
+                    } catch (err: any) {
+                      alert(err?.message || 'Network error')
+                    }
+                  }}
+                >Delete user</button>
               </div>
             </div>
           </FullScreenGlassOverlay>

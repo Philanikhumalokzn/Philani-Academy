@@ -97,6 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           name: true,
           avatar: true,
           grade: true,
+          role: true,
         },
       },
     },

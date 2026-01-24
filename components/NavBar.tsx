@@ -161,7 +161,7 @@ export default function NavBar() {
                         onClick={() => setAvatarEditArmed(v => !v)}
                         disabled={avatarUploading}
                       >
-                        <img src={effectiveAvatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
+                        <img src={effectiveAvatarUrl} alt="avatar" className="h-8 w-8 rounded-full object-cover" />
                       </button>
                       <button
                         type="button"
@@ -182,7 +182,7 @@ export default function NavBar() {
                     </div>
                   ) : (
                     <Link href="/profile" className="flex items-center space-x-2">
-                      <img src={effectiveAvatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: 8 }} />
+                      <img src={effectiveAvatarUrl} alt="avatar" className="h-8 w-8 rounded-full object-cover" />
                     </Link>
                   )}
                   <button onClick={() => signOut({ callbackUrl: '/' })} className="btn btn-ghost border border-white/30">Sign out</button>

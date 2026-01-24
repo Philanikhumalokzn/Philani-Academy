@@ -3457,6 +3457,10 @@ export default function Dashboard() {
                 const title = (p?.title || '').trim() || 'Quiz'
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
+                const authorId = p?.createdBy?.id ? String(p.createdBy.id) : null
+                const authorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
+                const authorRole = String(p?.createdBy?.role || '').toLowerCase()
+                const authorVerified = authorRole === 'admin' || authorRole === 'teacher'
                 const prompt = (p?.prompt || '').trim()
                 const imageUrl = typeof p?.imageUrl === 'string' ? p.imageUrl.trim() : ''
                 const myAttemptCount = typeof p?.myAttemptCount === 'number' ? p.myAttemptCount : 0
@@ -3472,10 +3476,38 @@ export default function Dashboard() {
                   <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-medium text-white break-words">{title}</div>
-                        <div className="text-xs text-white/60">
-                          {authorName}{createdAt ? ` • ${createdAt}` : ''}
+                        <div className="flex items-center gap-3">
+                          <UserLink userId={authorId} className="shrink-0" title="View profile">
+                            <div className="h-9 w-9 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
+                              {authorAvatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={authorAvatar} alt={authorName} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-xs font-semibold text-white">{authorName.slice(0, 1).toUpperCase()}</span>
+                              )}
+                            </div>
+                          </UserLink>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <UserLink userId={authorId} className="text-sm font-semibold text-white hover:underline truncate" title="View profile">
+                                {authorName}
+                              </UserLink>
+                              {authorVerified ? (
+                                <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                  <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
+                                    <path
+                                      d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </span>
+                              ) : null}
+                            </div>
+                            {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+                          </div>
                         </div>
+
+                        <div className="mt-2 font-medium text-white break-words">{title}</div>
                         {prompt ? <div className="mt-1 text-sm text-white/70 break-words">{prompt.slice(0, 160)}{prompt.length > 160 ? '…' : ''}</div> : null}
                         {imageUrl ? (
                           <div className="mt-2">

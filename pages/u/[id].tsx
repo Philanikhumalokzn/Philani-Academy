@@ -279,15 +279,18 @@ export default function PublicUserProfilePage() {
             <div className="card p-4"><div className="text-sm text-red-200">{error}</div></div>
           ) : profile ? (
             <div className="card p-4 space-y-3">
-              {profile.profileCoverUrl ? (
-                <div className="h-28 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={profile.profileCoverUrl} alt="Cover" className="h-full w-full object-cover" />
-                </div>
-              ) : null}
+              <div className="h-28 rounded-2xl overflow-hidden border border-white/10 bg-white/5 relative">
+                {(profile.profileCoverUrl || profile.profileThemeBgUrl) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={profile.profileCoverUrl || profile.profileThemeBgUrl || ''} alt="Cover" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full w-full bg-white/5" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/5 to-black/25" aria-hidden="true" />
+              </div>
 
               <div className="flex items-start gap-4">
-                <div className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
+                <div className="h-14 w-14 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
                   {profile.avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={profile.avatar} alt={profile.name} className="h-full w-full object-cover" />
@@ -301,7 +304,14 @@ export default function PublicUserProfilePage() {
                       <div className="flex items-center gap-2">
                         <div className="text-lg font-semibold truncate">{profile.name}</div>
                         {profile.verified ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full border border-white/10 bg-white/5">Verified</span>
+                          <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                            <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
+                              <path
+                                d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                fill="currentColor"
+                              />
+                            </svg>
+                          </span>
                         ) : null}
                       </div>
                       <div className="text-sm muted">

@@ -8468,9 +8468,9 @@ export default function Dashboard() {
             onClose={closeCreateOverlay}
             onBackdropClick={closeCreateOverlay}
             zIndexClassName="z-[70]"
-            contentClassName="p-0"
+            contentClassName="p-0 flex flex-col overflow-hidden"
           >
-            <div className="card p-0 overflow-hidden">
+            <div className="card p-0 overflow-hidden flex flex-col flex-1 min-h-0">
               <input
                 ref={challengeUploadInputRef}
                 type="file"
@@ -8543,9 +8543,9 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="px-4 py-4 sm:px-6 sm:py-5 space-y-3">
+              <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                 <textarea
-                  className="w-full min-h-[220px] resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
+                  className="w-full flex-1 min-h-[320px] resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
                   placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
                   value={challengePromptDraft}
                   onChange={(e) => setChallengePromptDraft(e.target.value)}

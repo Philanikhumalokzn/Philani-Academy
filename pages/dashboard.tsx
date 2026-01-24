@@ -385,6 +385,7 @@ export default function Dashboard() {
   const [createOverlayOpen, setCreateOverlayOpen] = useState(false)
   const [createKind, setCreateKind] = useState<'quiz'>('quiz')
   const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null)
+  const [challengeAudiencePickerOpen, setChallengeAudiencePickerOpen] = useState(false)
   const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
   const [challengePromptDraft, setChallengePromptDraft] = useState('')
   const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
@@ -584,6 +585,7 @@ export default function Dashboard() {
   const closeCreateOverlay = useCallback(() => {
     setCreateOverlayOpen(false)
     setEditingChallengeId(null)
+    setChallengeAudiencePickerOpen(false)
   }, [])
 
   const postChallenge = useCallback(async () => {
@@ -8462,8 +8464,7 @@ export default function Dashboard() {
       {createOverlayOpen && (
         <OverlayPortal>
           <FullScreenGlassOverlay
-            title={editingChallengeId ? 'Edit' : 'Create'}
-            subtitle={editingChallengeId ? 'Update your quiz post.' : 'Post a quiz to your profile timeline.'}
+            title={editingChallengeId ? 'Challenge' : 'Challenge'}
             onClose={closeCreateOverlay}
             onBackdropClick={closeCreateOverlay}
             zIndexClassName="z-[70]"
@@ -8480,12 +8481,20 @@ export default function Dashboard() {
 
               <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-white/10 bg-white/5">
                 <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-sm font-semibold text-white/90 shrink-0">
-                    {String(session?.user?.name || session?.user?.email || 'P')[0]?.toUpperCase?.() || 'P'}
-                  </div>
+                  {learnerAvatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={learnerAvatarUrl}
+                      alt=""
+                      className="h-10 w-10 rounded-full object-cover border border-white/10 bg-white/10 shrink-0"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-sm font-semibold text-white/90 shrink-0">
+                      {String(session?.user?.name || session?.user?.email || 'P')[0]?.toUpperCase?.() || 'P'}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-white/90 font-semibold">Post a challenge</div>
-                    <div className="text-xs muted">Warm, social-style composer — quizzes still supported.</div>
                   </div>
                 </div>
 
@@ -8556,8 +8565,8 @@ export default function Dashboard() {
                 ) : null}
               </div>
 
-              <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-white/10 bg-white/5 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-white/10 bg-white/5 flex items-center justify-between gap-3 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
                   <button
                     type="button"
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
@@ -8618,53 +8627,101 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="relative">
                     <button
                       type="button"
-                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition ${challengeAudienceDraft === 'public' ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
-                      onClick={() => setChallengeAudienceDraft('public')}
-                      aria-label="Audience: Public"
-                      title="Public"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10"
+                      onClick={() => setChallengeAudiencePickerOpen((v) => !v)}
+                      aria-label="Change audience"
+                      title="Change audience"
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
-                        <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
+                      {challengeAudienceDraft === 'public' ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
+                          <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      ) : challengeAudienceDraft === 'grade' ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
+                          <path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
+                          <path d="M8 13c-2.76 0-5 1.79-5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M16 13c2.76 0 5 1.79 5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Z" stroke="currentColor" strokeWidth="2" />
+                          <path d="M12 14c-3.31 0-6 2.01-6 4.5V21h12v-2.5c0-2.49-2.69-4.5-6-4.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                          <path d="M12 15v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      )}
                     </button>
 
-                    <button
-                      type="button"
-                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition ${challengeAudienceDraft === 'grade' ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
-                      onClick={() => setChallengeAudienceDraft('grade')}
-                      aria-label="Audience: My grade"
-                      title="My grade"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
-                        <path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
-                        <path d="M8 13c-2.76 0-5 1.79-5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M16 13c2.76 0 5 1.79 5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Z" stroke="currentColor" strokeWidth="2" />
-                        <path d="M12 14c-3.31 0-6 2.01-6 4.5V21h12v-2.5c0-2.49-2.69-4.5-6-4.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                      </svg>
-                    </button>
+                    {challengeAudiencePickerOpen ? (
+                      <div className="absolute right-0 bottom-full mb-2 w-48 rounded-2xl border border-white/10 bg-[rgba(2,6,24,0.96)] shadow-[0_25px_70px_rgba(0,0,0,0.55)] overflow-hidden">
+                        <button
+                          type="button"
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/10 ${challengeAudienceDraft === 'public' ? 'bg-white/10' : ''}`}
+                          onClick={() => {
+                            setChallengeAudienceDraft('public')
+                            setChallengeAudiencePickerOpen(false)
+                          }}
+                        >
+                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
+                              <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                          </span>
+                          <span className="text-white/90">Public</span>
+                        </button>
 
-                    <button
-                      type="button"
-                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition ${challengeAudienceDraft === 'private' ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
-                      onClick={() => setChallengeAudienceDraft('private')}
-                      aria-label="Audience: Private"
-                      title="Private"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                        <path d="M12 15v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    </button>
+                        <button
+                          type="button"
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/10 ${challengeAudienceDraft === 'grade' ? 'bg-white/10' : ''}`}
+                          onClick={() => {
+                            setChallengeAudienceDraft('grade')
+                            setChallengeAudiencePickerOpen(false)
+                          }}
+                        >
+                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
+                              <path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
+                              <path d="M8 13c-2.76 0-5 1.79-5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <path d="M16 13c2.76 0 5 1.79 5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Z" stroke="currentColor" strokeWidth="2" />
+                              <path d="M12 14c-3.31 0-6 2.01-6 4.5V21h12v-2.5c0-2.49-2.69-4.5-6-4.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                            </svg>
+                          </span>
+                          <span className="text-white/90">My grade</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/10 ${challengeAudienceDraft === 'private' ? 'bg-white/10' : ''}`}
+                          onClick={() => {
+                            setChallengeAudienceDraft('private')
+                            setChallengeAudiencePickerOpen(false)
+                          }}
+                        >
+                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                              <path d="M12 15v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                          </span>
+                          <span className="text-white/90">Private</span>
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <button

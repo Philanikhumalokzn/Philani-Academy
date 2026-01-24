@@ -1073,6 +1073,7 @@ export default function Dashboard() {
   const [discoverLoading, setDiscoverLoading] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [discoverResults, setDiscoverResults] = useState<any[]>([])
+  const discoverLiveSearchTimeoutRef = useRef<number | null>(null)
 
   const discoverCacheKey = useMemo(() => {
     const id = String((session as any)?.user?.id || session?.user?.email || 'anon')
@@ -1266,11 +1267,8 @@ export default function Dashboard() {
     const role = ((session as any)?.user?.role as string | undefined) || 'student'
     const isPrivileged = role === 'admin' || role === 'teacher'
 
-    // Allow empty query for recommendations. Still block 1-char searches.
-    if (q.length > 0 && q.length < 2 && !isPrivileged) {
-      setDiscoverResults([])
-      return
-    }
+    // Allow empty query for recommendations and 1-char live search.
+    // Privileged users may still see more results due to server-side rules.
 
     setDiscoverLoading(true)
     setDiscoverError(null)
@@ -1280,7 +1278,7 @@ export default function Dashboard() {
         hint = (typeof window !== 'undefined' ? (window.localStorage.getItem(discoverLastQueryKey) || '') : '')
       } catch {}
 
-      const url = q.length >= 2
+      const url = q.length >= 1
         ? `/api/discover/users?q=${encodeURIComponent(q)}&hint=${encodeURIComponent(q)}`
         : `/api/discover/users?hint=${encodeURIComponent(hint)}`
       const res = await fetch(url, { credentials: 'same-origin' })
@@ -1290,7 +1288,7 @@ export default function Dashboard() {
 
       try {
         if (typeof window !== 'undefined') {
-          if (q.length >= 2) window.localStorage.setItem(discoverLastQueryKey, q)
+          if (q.length >= 1) window.localStorage.setItem(discoverLastQueryKey, q)
           if (q.length === 0) window.localStorage.setItem(discoverCacheKey, JSON.stringify(Array.isArray(data) ? data : []))
         }
       } catch {
@@ -1302,6 +1300,71 @@ export default function Dashboard() {
       setDiscoverLoading(false)
     }
   }, [discoverCacheKey, discoverLastQueryKey, session])
+
+  const discoverPanelActive = dashboardSectionOverlay === 'discover' || studentQuickOverlay === 'discover'
+  const discoverPanelActiveRef = useRef(false)
+
+  useEffect(() => {
+    // When opening Discover (either the full overlay or the mobile quick overlay),
+    // show cached recommendations instantly and reset the query.
+    if (!discoverPanelActive) {
+      discoverPanelActiveRef.current = false
+      return
+    }
+
+    if (discoverPanelActiveRef.current) return
+    discoverPanelActiveRef.current = true
+
+    setDiscoverError(null)
+    setDiscoverQuery('')
+
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem(discoverCacheKey)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) setDiscoverResults(parsed)
+        } else {
+          setDiscoverResults([])
+        }
+      }
+    } catch {
+      setDiscoverResults([])
+    }
+  }, [discoverCacheKey, discoverPanelActive])
+
+  useEffect(() => {
+    if (!discoverPanelActive) return
+    if (typeof window === 'undefined') return
+
+    if (discoverLiveSearchTimeoutRef.current) {
+      window.clearTimeout(discoverLiveSearchTimeoutRef.current)
+      discoverLiveSearchTimeoutRef.current = null
+    }
+
+    const q = discoverQuery
+    const trimmed = q.trim()
+
+    // Empty query: fetch recommendations immediately.
+    if (trimmed.length === 0) {
+      void searchDiscover('')
+      return
+    }
+
+    // Live refine from the first character with a small debounce.
+    const delayMs = trimmed.length <= 1 ? 120 : 180
+    discoverLiveSearchTimeoutRef.current = window.setTimeout(() => {
+      discoverLiveSearchTimeoutRef.current = null
+      void searchDiscover(q)
+    }, delayMs)
+
+    return () => {
+      if (discoverLiveSearchTimeoutRef.current) {
+        window.clearTimeout(discoverLiveSearchTimeoutRef.current)
+        discoverLiveSearchTimeoutRef.current = null
+      }
+    }
+  }, [discoverPanelActive, discoverQuery, searchDiscover])
 
   const respondInvite = useCallback(async (inviteId: string, action: 'accept' | 'decline') => {
     try {
@@ -1352,26 +1415,7 @@ export default function Dashboard() {
   }, [dashboardSectionOverlay, loadMyGroups, loadNotifications])
 
   useEffect(() => {
-    if (dashboardSectionOverlay !== 'discover') return
-    setDiscoverError(null)
-    setDiscoverQuery('')
-
-    // Instant UI: show cached recs, then refresh.
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = window.localStorage.getItem(discoverCacheKey)
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (Array.isArray(parsed)) setDiscoverResults(parsed)
-        } else {
-          setDiscoverResults([])
-        }
-      }
-    } catch {
-      setDiscoverResults([])
-    }
-
-    void searchDiscover('')
+    // Keep the legacy overlay effect as a no-op (behavior moved to discoverPanelActive effect).
   }, [dashboardSectionOverlay, searchDiscover, session])
 
   const createGroup = useCallback(async () => {
@@ -7648,7 +7692,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  disabled={discoverLoading || (discoverQuery.trim().length > 0 && discoverQuery.trim().length < 2)}
+                  disabled={discoverLoading}
                   onClick={() => void searchDiscover(discoverQuery)}
                 >
                   {discoverLoading ? 'Searching…' : 'Search'}

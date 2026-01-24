@@ -32,11 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return Math.max(5, Math.min(60, Math.trunc(raw)))
   })()
 
-  const hasQuery = Boolean(q && q.length >= 2)
-  if (!hasQuery && q.length > 0) {
-    // Ignore 1-char searches; client enforces this too.
-    return res.status(200).json([])
-  }
+  const hasQuery = Boolean(q && q.length >= 1)
 
   // Default experience: always return recommendations when there's no query.
   if (!hasQuery) {

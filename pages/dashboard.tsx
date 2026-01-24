@@ -8467,38 +8467,58 @@ export default function Dashboard() {
             onClose={closeCreateOverlay}
             onBackdropClick={closeCreateOverlay}
             zIndexClassName="z-[70]"
-            contentClassName="space-y-3"
+            contentClassName="p-0"
           >
+            <div className="card p-0 overflow-hidden">
+              <input
+                ref={challengeUploadInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => void onChallengeFilePicked(e)}
+              />
+
+              <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-white/10 bg-white/5">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-sm font-semibold text-white/90 shrink-0">
+                    {String(session?.user?.name || session?.user?.email || 'P')[0]?.toUpperCase?.() || 'P'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white/90 font-semibold">Post a challenge</div>
+                    <div className="text-xs muted">Warm, social-style composer — quizzes still supported.</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3">
                   <input
-                    className="input"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
                     placeholder="Title (optional)"
                     value={challengeTitleDraft}
                     onChange={(e) => setChallengeTitleDraft(e.target.value)}
                   />
 
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="space-y-1">
-                      <div className="text-xs muted">Type</div>
-                      <select className="input" value={createKind} onChange={(e) => setCreateKind(e.target.value as any)}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white/80">
+                        <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      <span className="text-xs text-white/70">Type</span>
+                      <select
+                        className="bg-transparent text-sm text-white focus:outline-none"
+                        value={createKind}
+                        onChange={(e) => setCreateKind(e.target.value as any)}
+                      >
                         <option value="quiz">Quiz</option>
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <div className="text-xs muted">Audience</div>
+
+                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white/80">
+                        <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      <span className="text-xs text-white/70">Max attempts</span>
                       <select
-                        className="input"
-                        value={challengeAudienceDraft}
-                        onChange={(e) => setChallengeAudienceDraft(e.target.value as any)}
-                      >
-                        <option value="public">Public</option>
-                        <option value="grade">My grade</option>
-                        <option value="private">Private</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-xs muted">Max Attempts</div>
-                      <select
-                        className="input"
+                        className="bg-transparent text-sm text-white focus:outline-none"
                         value={challengeMaxAttempts}
                         onChange={(e) => setChallengeMaxAttempts(e.target.value)}
                       >
@@ -8511,84 +8531,153 @@ export default function Dashboard() {
                       </select>
                     </div>
                   </div>
+                </div>
+              </div>
 
-                  <textarea
-                    className="input min-h-[140px]"
-                    placeholder="Write the question (LaTeX supported), or upload a screenshot below"
-                    value={challengePromptDraft}
-                    onChange={(e) => setChallengePromptDraft(e.target.value)}
-                  />
+              <div className="px-4 py-4 sm:px-6 sm:py-5 space-y-3">
+                <textarea
+                  className="w-full min-h-[220px] resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
+                  placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
+                  value={challengePromptDraft}
+                  onChange={(e) => setChallengePromptDraft(e.target.value)}
+                />
 
-                  <div className="space-y-2">
-                    <input
-                      ref={challengeUploadInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="hidden"
-                      onChange={(e) => void onChallengeFilePicked(e)}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <label className="flex items-center gap-2 text-sm text-white/90 select-none">
-                        <input
-                          type="checkbox"
-                          checked={challengeParseOnUpload}
-                          onChange={(e) => setChallengeParseOnUpload(e.target.checked)}
-                        />
-                        Parse
-                      </label>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => challengeUploadInputRef.current?.click()}
-                        disabled={challengeUploading}
-                      >
-                        {challengeUploading ? 'Uploading…' : 'Upload screenshot'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setChallengeParsedOpen((v) => !v)}
-                        disabled={!challengeParsedJsonText}
-                      >
-                        {challengeParsedOpen ? 'Hide parsed' : 'View parsed'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setChallengeImageUrl(null)
-                          setChallengeParsedJsonText(null)
-                          setChallengeParsedOpen(false)
-                        }}
-                        disabled={!challengeImageUrl || challengeUploading}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    {challengeImageUrl ? (
-                      <div className="border rounded p-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] rounded object-contain" />
-                      </div>
-                    ) : null}
-
-                    {challengeParsedOpen && challengeParsedJsonText ? (
-                      <div className="border rounded p-2">
-                        <pre className="whitespace-pre-wrap text-xs text-white/90">{challengeParsedJsonText}</pre>
-                      </div>
-                    ) : null}
+                {challengeImageUrl ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] w-full rounded-xl object-contain" />
                   </div>
+                ) : null}
 
-                  <div>
+                {challengeParsedOpen && challengeParsedJsonText ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <pre className="whitespace-pre-wrap text-xs text-white/90">{challengeParsedJsonText}</pre>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-white/10 bg-white/5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
+                    onClick={() => challengeUploadInputRef.current?.click()}
+                    disabled={challengeUploading}
+                    aria-label={challengeUploading ? 'Uploading screenshot' : 'Upload screenshot'}
+                    title={challengeUploading ? 'Uploading…' : 'Upload screenshot'}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M4 7a2 2 0 0 1 2-2h2l1-1h6l1 1h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" strokeWidth="2" />
+                      <path d="M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2" />
+                    </svg>
+                  </button>
+
+                  <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 select-none">
+                    <input
+                      type="checkbox"
+                      checked={challengeParseOnUpload}
+                      onChange={(e) => setChallengeParseOnUpload(e.target.checked)}
+                    />
+                    Parse
+                  </label>
+
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
+                    onClick={() => setChallengeParsedOpen((v) => !v)}
+                    disabled={!challengeParsedJsonText}
+                    aria-label={challengeParsedOpen ? 'Hide parsed content' : 'View parsed content'}
+                    title={challengeParsedOpen ? 'Hide parsed' : 'View parsed'}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M8 5H6a2 2 0 0 0-2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M16 5h2a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M8 19H6a2 2 0 0 1-2-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M16 19h2a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M9 9h6M9 12h6M9 15h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
+                    onClick={() => {
+                      setChallengeImageUrl(null)
+                      setChallengeParsedJsonText(null)
+                      setChallengeParsedOpen(false)
+                    }}
+                    disabled={!challengeImageUrl || challengeUploading}
+                    aria-label="Clear screenshot"
+                    title="Clear screenshot"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M8 6V4h8v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M7 6l1 16h8l1-16" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
                     <button
                       type="button"
-                      className="btn btn-primary"
-                      disabled={challengePosting || challengeUploading}
-                      onClick={() => void postChallenge()}
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition ${challengeAudienceDraft === 'public' ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                      onClick={() => setChallengeAudienceDraft('public')}
+                      aria-label="Audience: Public"
+                      title="Public"
                     >
-                      {challengePosting ? (editingChallengeId ? 'Saving…' : 'Posting…') : (editingChallengeId ? 'Save' : 'Post')}
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
+                        <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition ${challengeAudienceDraft === 'grade' ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                      onClick={() => setChallengeAudienceDraft('grade')}
+                      aria-label="Audience: My grade"
+                      title="My grade"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
+                        <path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
+                        <path d="M8 13c-2.76 0-5 1.79-5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M16 13c2.76 0 5 1.79 5 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Z" stroke="currentColor" strokeWidth="2" />
+                        <path d="M12 14c-3.31 0-6 2.01-6 4.5V21h12v-2.5c0-2.49-2.69-4.5-6-4.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition ${challengeAudienceDraft === 'private' ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                      onClick={() => setChallengeAudienceDraft('private')}
+                      aria-label="Audience: Private"
+                      title="Private"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                        <path d="M12 15v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={challengePosting || challengeUploading}
+                    onClick={() => void postChallenge()}
+                  >
+                    {challengePosting ? (editingChallengeId ? 'Saving…' : 'Posting…') : (editingChallengeId ? 'Save' : 'Post')}
+                  </button>
+                </div>
+              </div>
+            </div>
           </FullScreenGlassOverlay>
         </OverlayPortal>
       )}

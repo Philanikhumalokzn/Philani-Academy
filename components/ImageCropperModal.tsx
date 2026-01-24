@@ -127,7 +127,7 @@ export default function ImageCropperModal(props: {
       onClose={onCancel}
       onBackdropClick={onCancel}
       closeDisabled={saving}
-      zIndexClassName="z-[60]"
+      zIndexClassName="z-[90]"
       contentClassName="space-y-3"
     >
       {error ? <div className="text-sm text-red-300">{error}</div> : null}

@@ -426,6 +426,7 @@ export default function Dashboard() {
 
   const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
   const [challengeImageEditFile, setChallengeImageEditFile] = useState<File | null>(null)
+  const [challengeImageSourceFile, setChallengeImageSourceFile] = useState<File | null>(null)
 
   const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
     const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
@@ -647,6 +648,7 @@ export default function Dashboard() {
       setChallengeAudienceDraft('public')
       setChallengeMaxAttempts('unlimited')
       setChallengeImageUrl(null)
+      setChallengeImageSourceFile(null)
       setChallengeParsedJsonText(null)
       setChallengeParsedOpen(false)
       alert(editingChallengeId ? 'Saved' : 'Posted')
@@ -665,6 +667,7 @@ export default function Dashboard() {
   const confirmChallengeImageEdit = useCallback(async (file: File) => {
     try {
       closeChallengeImageEdit()
+      setChallengeImageSourceFile(file)
       await uploadChallengeImage(file)
     } catch (err: any) {
       alert(err?.message || 'Failed to upload image')
@@ -8544,19 +8547,31 @@ export default function Dashboard() {
               </div>
 
               <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
-                <textarea
-                  className="w-full flex-1 min-h-[260px] resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
-                  placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
-                  value={challengePromptDraft}
-                  onChange={(e) => setChallengePromptDraft(e.target.value)}
-                />
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 flex flex-col gap-3 flex-1 min-h-[240px]">
+                  <textarea
+                    className="w-full flex-1 min-h-[180px] resize-none bg-transparent text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none"
+                    placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
+                    value={challengePromptDraft}
+                    onChange={(e) => setChallengePromptDraft(e.target.value)}
+                  />
 
-                {challengeImageUrl ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] w-full rounded-xl object-contain" />
-                  </div>
-                ) : null}
+                  {challengeImageUrl ? (
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-white/10 bg-black/20 p-2 text-left"
+                      onClick={() => {
+                        if (!challengeImageSourceFile) return
+                        setChallengeImageEditFile(challengeImageSourceFile)
+                        setChallengeImageEditOpen(true)
+                      }}
+                      aria-label="Edit uploaded screenshot"
+                      title={challengeImageSourceFile ? 'Edit screenshot' : 'Screenshot'}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={challengeImageUrl} alt="Uploaded" className="max-h-[320px] w-full rounded-lg object-contain" />
+                    </button>
+                  ) : null}
+                </div>
 
                 {challengeParsedOpen && challengeParsedJsonText ? (
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -8612,6 +8627,7 @@ export default function Dashboard() {
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
                     onClick={() => {
                       setChallengeImageUrl(null)
+                      setChallengeImageSourceFile(null)
                       setChallengeParsedJsonText(null)
                       setChallengeParsedOpen(false)
                     }}

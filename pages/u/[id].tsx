@@ -250,8 +250,8 @@ export default function PublicUserProfilePage() {
       <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/55 via-[#041448]/35 to-[#031641]/55" aria-hidden="true" />
 
       <FullScreenGlassOverlay
-        title={profile?.name || 'Profile'}
-        subtitle={profile?.schoolName ? String(profile.schoolName) : 'Philani Academy'}
+        title=""
+        subtitle={undefined}
         onClose={() => {
           if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
           else void router.push('/dashboard?panel=discover')
@@ -265,16 +265,10 @@ export default function PublicUserProfilePage() {
         panelClassName="rounded-3xl bg-white/5"
         contentClassName="p-4"
         leftActions={
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
-              else void router.push('/dashboard?panel=discover')
-            }}
-          >
-            Back
-          </button>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-white truncate">{profile?.name || 'Profile'}</div>
+            <div className="text-xs text-white/70 truncate">Philani Academy</div>
+          </div>
         }
       >
         <section className="space-y-3">

@@ -8545,7 +8545,7 @@ export default function Dashboard() {
 
               <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                 <textarea
-                  className="w-full flex-1 min-h-[320px] resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
+                  className="w-full flex-1 min-h-[260px] resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
                   placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
                   value={challengePromptDraft}
                   onChange={(e) => setChallengePromptDraft(e.target.value)}

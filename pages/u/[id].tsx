@@ -82,7 +82,7 @@ export default function PublicUserProfilePage() {
     setError(null)
     try {
       const tryFetch = async (url: string) => {
-        const res = await fetch(url, { credentials: 'same-origin' })
+        const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' })
         const data = await res.json().catch(() => null)
         return { res, data }
       }
@@ -239,13 +239,24 @@ export default function PublicUserProfilePage() {
 
   if (status === 'loading') return null
 
-  const backgroundUrl = (profile?.profileThemeBgUrl || profile?.profileCoverUrl || '').trim()
+  const resolveProfileImageUrl = (value?: string | null) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    if (raw.startsWith('data:')) return raw
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
+    if (raw.startsWith('//')) return `https:${raw}`
+    if (raw.startsWith('/')) return raw
+    return `/${raw}`
+  }
+
+  const backgroundUrl = resolveProfileImageUrl(profile?.profileThemeBgUrl) || resolveProfileImageUrl(profile?.profileCoverUrl)
+  const heroCoverUrl = resolveProfileImageUrl(profile?.profileCoverUrl) || resolveProfileImageUrl(profile?.profileThemeBgUrl)
   const canFollow = Boolean(profile && viewerId && String(profile.id) !== String(viewerId))
 
   return (
     <main className="mobile-dashboard-theme profile-overlay-theme min-h-screen overflow-hidden text-white">
       {backgroundUrl ? (
-        <div className="absolute inset-0" style={{ backgroundImage: `url(${backgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+        <div className="absolute inset-0" style={{ backgroundImage: `url("${backgroundUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
       ) : null}
       <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/55 via-[#041448]/35 to-[#031641]/55" aria-hidden="true" />
 
@@ -283,7 +294,7 @@ export default function PublicUserProfilePage() {
                 <div
                   className="h-[160px] w-full"
                   style={{
-                    backgroundImage: `url(${(profile.profileCoverUrl || profile.profileThemeBgUrl || '').trim()})`,
+                    backgroundImage: heroCoverUrl ? `url("${heroCoverUrl}")` : undefined,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                   }}

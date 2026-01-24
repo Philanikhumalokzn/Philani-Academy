@@ -700,6 +700,14 @@ export default function Dashboard() {
   const [users, setUsers] = useState<any[] | null>(null)
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [usersRoleFilter, setUsersRoleFilter] = useState<'all' | 'student' | 'teacher' | 'admin'>('student')
+  const [usersVerifiedFilter, setUsersVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all')
+  const [usersSearch, setUsersSearch] = useState('')
+  const [usersSort, setUsersSort] = useState<'newest' | 'oldest' | 'name'>('newest')
+  const [selectedUserDetail, setSelectedUserDetail] = useState<any | null>(null)
+  const [userDetailOverlayOpen, setUserDetailOverlayOpen] = useState(false)
+  const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [userTempPassword, setUserTempPassword] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -4819,6 +4827,48 @@ export default function Dashboard() {
     }
   }
 
+  async function markUserVerified(userId: string) {
+    if (!userId) return
+    setUserDetailLoading(true)
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skipVerification: true })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to verify (${res.status})`)
+      setUsers(prev => prev ? prev.map(u => u.id === userId ? { ...u, emailVerifiedAt: data.emailVerifiedAt || new Date().toISOString() } : u) : prev)
+      setSelectedUserDetail(prev => prev && prev.id === userId ? { ...prev, emailVerifiedAt: data.emailVerifiedAt || new Date().toISOString() } : prev)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to verify user')
+    } finally {
+      setUserDetailLoading(false)
+    }
+  }
+
+  async function generateTempPassword(userId: string) {
+    if (!userId) return
+    setUserDetailLoading(true)
+    setUserTempPassword(null)
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetPassword: true })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to reset password (${res.status})`)
+      setUserTempPassword(data?.tempPassword || null)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to generate password')
+    } finally {
+      setUserDetailLoading(false)
+    }
+  }
+
   async function createAnnouncement(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedGrade) {
@@ -7166,6 +7216,77 @@ export default function Dashboard() {
         <p className="text-sm muted">Create learners and instructors, update their access, and remove accounts when needed.</p>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs muted">Role:</span>
+          {(['all', 'student', 'teacher', 'admin'] as const).map(role => (
+            <button
+              key={role}
+              type="button"
+              className={`btn btn-ghost text-xs ${usersRoleFilter === role ? 'bg-white/10 text-white' : ''}`}
+              onClick={() => setUsersRoleFilter(role)}
+            >
+              {role}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs muted">Verification:</span>
+          {(['all', 'verified', 'unverified'] as const).map(state => (
+            <button
+              key={state}
+              type="button"
+              className={`btn btn-ghost text-xs ${usersVerifiedFilter === state ? 'bg-white/10 text-white' : ''}`}
+              onClick={() => setUsersVerifiedFilter(state)}
+            >
+              {state}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs muted">Sort:</span>
+          {(['newest', 'oldest', 'name'] as const).map(sort => (
+            <button
+              key={sort}
+              type="button"
+              className={`btn btn-ghost text-xs ${usersSort === sort ? 'bg-white/10 text-white' : ''}`}
+              onClick={() => setUsersSort(sort)}
+            >
+              {sort}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <input
+            className="input"
+            placeholder="Search name or email"
+            value={usersSearch}
+            onChange={(e) => setUsersSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {(() => {
+        const safeUsers = Array.isArray(users) ? users : []
+        const totalCount = safeUsers.length
+        const verifiedCount = safeUsers.filter(u => Boolean(u?.emailVerifiedAt)).length
+        const unverifiedCount = totalCount - verifiedCount
+        const roleCount = safeUsers.filter(u => {
+          const role = String(u?.role || '') as 'student' | 'teacher' | 'admin' | ''
+          if (usersRoleFilter === 'all') return true
+          return role === usersRoleFilter
+        }).length
+
+        return (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-white/70">
+            <span>Total users: <strong className="text-white">{totalCount}</strong></span>
+            <span>Verified: <strong className="text-white">{verifiedCount}</strong></span>
+            <span>Unverified: <strong className="text-white">{unverifiedCount}</strong></span>
+            <span>In view: <strong className="text-white">{roleCount}</strong></span>
+          </div>
+        )
+      })()}
+
       <div className="space-y-2">
         <h3 className="font-medium">Create user</h3>
         <div className="grid gap-2 lg:grid-cols-2">
@@ -7239,44 +7360,74 @@ export default function Dashboard() {
           <table className="w-full text-left">
             <thead>
               <tr>
-                <th className="px-2 py-1">Email</th>
+                <th className="px-2 py-1">#</th>
                 <th className="px-2 py-1">Learner</th>
-                <th className="px-2 py-1">Contact</th>
-                <th className="px-2 py-1">Emergency</th>
-                <th className="px-2 py-1">Address</th>
+                <th className="px-2 py-1">Email</th>
+                <th className="px-2 py-1">Verification</th>
                 <th className="px-2 py-1">Created</th>
                 <th className="px-2 py-1">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users && users.map(u => (
+              {users && users
+                .filter(u => {
+                  const role = String(u?.role || '') as 'student' | 'teacher' | 'admin' | ''
+                  if (usersRoleFilter !== 'all' && role !== usersRoleFilter) return false
+                  const verified = Boolean(u?.emailVerifiedAt)
+                  if (usersVerifiedFilter === 'verified' && !verified) return false
+                  if (usersVerifiedFilter === 'unverified' && verified) return false
+                  const q = usersSearch.trim().toLowerCase()
+                  if (!q) return true
+                  const name = `${u?.firstName || ''} ${u?.lastName || ''} ${u?.name || ''}`.toLowerCase()
+                  const email = String(u?.email || '').toLowerCase()
+                  return name.includes(q) || email.includes(q)
+                })
+                .sort((a, b) => {
+                  if (usersSort === 'name') {
+                    const an = `${a?.firstName || ''} ${a?.lastName || ''} ${a?.name || ''}`.trim().toLowerCase()
+                    const bn = `${b?.firstName || ''} ${b?.lastName || ''} ${b?.name || ''}`.trim().toLowerCase()
+                    return an.localeCompare(bn)
+                  }
+                  const ad = new Date(a?.createdAt || 0).getTime()
+                  const bd = new Date(b?.createdAt || 0).getTime()
+                  return usersSort === 'oldest' ? ad - bd : bd - ad
+                })
+                .map((u, idx) => (
                 <tr key={u.id} className="border-t">
-                  <td className="px-2 py-2 align-top">{u.email}</td>
+                  <td className="px-2 py-2 align-top text-xs text-white/60">{idx + 1}</td>
                   <td className="px-2 py-2 align-top">
                     <UserLink userId={u.id} className="font-medium hover:underline" title="View profile">
                       {u.firstName || u.name || '—'} {u.lastName || ''}
                     </UserLink>
-                    <div className="text-xs muted capitalize">Role: {u.role}</div>
                     <div className="text-xs muted">Grade: {u.grade ? gradeToLabel(u.grade) : 'Unassigned'}</div>
                     <div className="text-xs muted">School: {u.schoolName || '—'}</div>
                   </td>
+                  <td className="px-2 py-2 align-top">{u.email}</td>
                   <td className="px-2 py-2 align-top">
-                    <div>{formatPhoneDisplay(u.phoneNumber)}</div>
-                    <div className="text-xs muted">Alt: {formatPhoneDisplay(u.alternatePhone)}</div>
-                    <div className="text-xs muted">Recovery: {u.recoveryEmail || '—'}</div>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <div>{u.emergencyContactName || '—'}</div>
-                    <div className="text-xs muted">{u.emergencyContactRelationship || ''}</div>
-                    <div className="text-xs muted">{u.emergencyContactPhone ? formatPhoneDisplay(u.emergencyContactPhone) : 'No number'}</div>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <div>{u.addressLine1 || '—'}</div>
-                    <div className="text-xs muted">{u.city || ''} {u.province ? `(${u.province})` : ''}</div>
-                    <div className="text-xs muted">{u.postalCode || ''}</div>
+                    {u.emailVerifiedAt ? (
+                      <span className="text-xs text-green-300">Verified</span>
+                    ) : (
+                      <label className="flex items-center gap-2 text-xs text-white/80">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={() => markUserVerified(String(u.id))}
+                          disabled={userDetailLoading}
+                        />
+                        Skip verification
+                      </label>
+                    )}
                   </td>
                   <td className="px-2 py-2 align-top">{new Date(u.createdAt).toLocaleString()}</td>
                   <td className="px-2 py-2">
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setSelectedUserDetail(u)
+                        setUserTempPassword(null)
+                        setUserDetailOverlayOpen(true)
+                      }}
+                    >Manage</button>
                     <button
                       className="btn btn-danger"
                       onClick={async () => {
@@ -9744,6 +9895,82 @@ export default function Dashboard() {
                   )}
                 </>
               )}
+            </div>
+          </FullScreenGlassOverlay>
+        </OverlayPortal>
+      )}
+
+      {userDetailOverlayOpen && selectedUserDetail && (
+        <OverlayPortal>
+          <FullScreenGlassOverlay
+            title="Learner"
+            subtitle="Admin management"
+            zIndexClassName="z-[60]"
+            onClose={() => {
+              setUserDetailOverlayOpen(false)
+              setSelectedUserDetail(null)
+              setUserTempPassword(null)
+            }}
+            onBackdropClick={() => {
+              setUserDetailOverlayOpen(false)
+              setSelectedUserDetail(null)
+              setUserTempPassword(null)
+            }}
+          >
+            <div className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
+                <div className="text-sm text-white/80">Name</div>
+                <div className="font-semibold">
+                  {selectedUserDetail.firstName || selectedUserDetail.name || '—'} {selectedUserDetail.lastName || ''}
+                </div>
+                <div className="text-sm text-white/80">Email</div>
+                <div className="font-medium">{selectedUserDetail.email}</div>
+                <div className="text-sm text-white/80">Grade</div>
+                <div>{selectedUserDetail.grade ? gradeToLabel(selectedUserDetail.grade) : 'Unassigned'}</div>
+                <div className="text-sm text-white/80">School</div>
+                <div>{selectedUserDetail.schoolName || '—'}</div>
+                <div className="text-sm text-white/80">Joined</div>
+                <div>{selectedUserDetail.createdAt ? new Date(selectedUserDetail.createdAt).toLocaleString() : '—'}</div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium">Verification</div>
+                  {selectedUserDetail.emailVerifiedAt ? (
+                    <span className="text-xs text-green-300">Verified</span>
+                  ) : (
+                    <span className="text-xs text-yellow-300">Unverified</span>
+                  )}
+                </div>
+                {!selectedUserDetail.emailVerifiedAt ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => markUserVerified(String(selectedUserDetail.id))}
+                    disabled={userDetailLoading}
+                  >
+                    {userDetailLoading ? 'Working…' : 'Skip verification'}
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="text-sm font-medium">Temporary bypass password</div>
+                <p className="text-xs text-white/70">Generates a new one-time password for the learner.</p>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => generateTempPassword(String(selectedUserDetail.id))}
+                  disabled={userDetailLoading}
+                >
+                  {userDetailLoading ? 'Generating…' : 'Generate password'}
+                </button>
+                {userTempPassword ? (
+                  <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm font-mono">
+                    {userTempPassword}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </FullScreenGlassOverlay>
         </OverlayPortal>

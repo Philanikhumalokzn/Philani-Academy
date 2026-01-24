@@ -271,7 +271,8 @@ export default function PublicUserProfilePage() {
           </div>
         }
       >
-        <section className="space-y-3">
+        <div className="space-y-4">
+          <section className="space-y-3">
           {loading ? (
             <div className="card p-4"><div className="text-sm muted">Loading…</div></div>
           ) : error ? (
@@ -331,9 +332,9 @@ export default function PublicUserProfilePage() {
               </div>
             </div>
           ) : null}
-        </section>
+          </section>
 
-        <section className="card p-4 space-y-3">
+          <section className="card p-4 space-y-3">
           <div className="text-sm font-semibold">Invite to your group</div>
           {myGroupsLoading ? (
             <div className="text-sm muted">Loading your groups…</div>
@@ -362,9 +363,9 @@ export default function PublicUserProfilePage() {
               </button>
             </div>
           )}
-        </section>
+          </section>
 
-        <section className="card p-4 space-y-3">
+          <section className="card p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold">Timeline</div>
           </div>
@@ -428,7 +429,8 @@ export default function PublicUserProfilePage() {
               })}
             </ul>
           )}
-        </section>
+          </section>
+        </div>
       </FullScreenGlassOverlay>
     </main>
   )

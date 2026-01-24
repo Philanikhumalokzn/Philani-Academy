@@ -8557,39 +8557,41 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 flex flex-col gap-3 flex-1 min-h-[240px]">
-                  <textarea
-                    className="w-full flex-1 min-h-[180px] resize-none bg-transparent text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none"
-                    placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
-                    value={challengePromptDraft}
-                    onChange={(e) => setChallengePromptDraft(e.target.value)}
-                  />
+              <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col gap-3 flex-1 min-h-0">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 flex flex-col min-h-[240px] overflow-hidden">
+                  <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
+                    <textarea
+                      className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none"
+                      placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
+                      value={challengePromptDraft}
+                      onChange={(e) => setChallengePromptDraft(e.target.value)}
+                    />
 
-                  {challengeImageUrl ? (
-                    <div
-                      className="w-full cursor-pointer"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        if (!challengeImageSourceFile) return
-                        setChallengeImageEditFile(challengeImageSourceFile)
-                        setChallengeImageEditOpen(true)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter' && e.key !== ' ') return
-                        if (!challengeImageSourceFile) return
-                        e.preventDefault()
-                        setChallengeImageEditFile(challengeImageSourceFile)
-                        setChallengeImageEditOpen(true)
-                      }}
-                      aria-label="Edit uploaded screenshot"
-                      title={challengeImageSourceFile ? 'Edit screenshot' : 'Screenshot'}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={challengeImageUrl} alt="Uploaded" className="max-h-[260px] w-full rounded-lg object-contain" />
-                    </div>
-                  ) : null}
+                    {challengeImageUrl ? (
+                      <div
+                        className="w-full cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          if (!challengeImageSourceFile) return
+                          setChallengeImageEditFile(challengeImageSourceFile)
+                          setChallengeImageEditOpen(true)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return
+                          if (!challengeImageSourceFile) return
+                          e.preventDefault()
+                          setChallengeImageEditFile(challengeImageSourceFile)
+                          setChallengeImageEditOpen(true)
+                        }}
+                        aria-label="Edit uploaded screenshot"
+                        title={challengeImageSourceFile ? 'Edit screenshot' : 'Screenshot'}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={challengeImageUrl} alt="Uploaded" className="max-h-[260px] w-full rounded-lg object-contain" />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 {challengeParsedOpen && challengeParsedJsonText ? (

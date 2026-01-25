@@ -74,6 +74,8 @@ export default function MobileTopChrome() {
   const [activityFeed, setActivityFeed] = useState<ActivityNotification[]>([])
   const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null)
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
+  const [newNotificationIds, setNewNotificationIds] = useState<string[]>([])
+  const notificationSessionRef = useRef<string>('')
 
   const userKey = useMemo(() => {
     if (!session) return 'anon'
@@ -82,6 +84,8 @@ export default function MobileTopChrome() {
   }, [session])
 
   const readStorageKey = useMemo(() => `pa:readAnnouncements:${userKey}`, [userKey])
+  const seenNotificationKey = useMemo(() => `pa:seenNotifications:${userKey}`, [userKey])
+  const claimedNotificationKey = useMemo(() => `pa:claimedNotifications:${userKey}`, [userKey])
 
   const readSet = useMemo(() => new Set(readIds), [readIds])
 
@@ -180,6 +184,15 @@ export default function MobileTopChrome() {
     if (!isVisible) return
     if (typeof window === 'undefined') return
 
+    const existingSessionId = window.sessionStorage.getItem('pa:notificationSessionId')
+    if (existingSessionId) {
+      notificationSessionRef.current = existingSessionId
+    } else {
+      const nextId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      notificationSessionRef.current = nextId
+      window.sessionStorage.setItem('pa:notificationSessionId', nextId)
+    }
+
     try {
       const raw = window.localStorage.getItem(readStorageKey)
       const parsed = raw ? JSON.parse(raw) : []
@@ -258,6 +271,66 @@ export default function MobileTopChrome() {
     setUnreadCount(announcementUnread + actionUnread + activityUnread)
   }, [actionInvites, actionJoinRequests, activityFeed, announcements, computeUnread, isVisible, readSet])
 
+  useEffect(() => {
+    if (!isVisible) return
+    if (typeof window === 'undefined') return
+    if (!notificationSessionRef.current) return
+
+    const collectIds = () => {
+      const ids: string[] = []
+      actionInvites.forEach(inv => inv?.id && ids.push(`invite:${String(inv.id)}`))
+      actionJoinRequests.forEach(req => req?.id && ids.push(`join:${String(req.id)}`))
+      activityFeed.forEach(act => act?.id && ids.push(`activity:${String(act.id)}`))
+      return ids
+    }
+
+    const readSetFromStorage = () => {
+      try {
+        const raw = window.localStorage.getItem(seenNotificationKey)
+        const parsed = raw ? JSON.parse(raw) : []
+        return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+      } catch {
+        return new Set<string>()
+      }
+    }
+
+    const readClaims = () => {
+      try {
+        const raw = window.localStorage.getItem(claimedNotificationKey)
+        const parsed = raw ? JSON.parse(raw) : {}
+        return parsed && typeof parsed === 'object' ? parsed : {}
+      } catch {
+        return {}
+      }
+    }
+
+    const writeClaims = (claims: Record<string, string>) => {
+      try {
+        window.localStorage.setItem(claimedNotificationKey, JSON.stringify(claims))
+      } catch {}
+    }
+
+    const ids = collectIds()
+    const seen = readSetFromStorage()
+    const claims = readClaims()
+    const nextNew: string[] = []
+    let claimsChanged = false
+
+    ids.forEach((id) => {
+      if (seen.has(id)) return
+      const claimedBy = claims[id]
+      if (claimedBy && claimedBy !== notificationSessionRef.current) return
+      if (!claimedBy) {
+        claims[id] = notificationSessionRef.current
+        claimsChanged = true
+      }
+      nextNew.push(id)
+    })
+
+    if (claimsChanged) writeClaims(claims)
+    setNewNotificationIds(nextNew)
+  }, [actionInvites, actionJoinRequests, activityFeed, claimedNotificationKey, isVisible, seenNotificationKey])
+
   const showChrome = useCallback(() => {
     setOpen(true)
     if (hideTimeoutRef.current) {
@@ -322,6 +395,29 @@ export default function MobileTopChrome() {
 
   if (!isVisible) return null
 
+  const acknowledgeNewNotifications = () => {
+    if (typeof window === 'undefined') return
+    if (newNotificationIds.length === 0) return
+    try {
+      const raw = window.localStorage.getItem(seenNotificationKey)
+      const parsed = raw ? JSON.parse(raw) : []
+      const seen = new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+      newNotificationIds.forEach(id => seen.add(id))
+      window.localStorage.setItem(seenNotificationKey, JSON.stringify(Array.from(seen)))
+    } catch {}
+
+    try {
+      const raw = window.localStorage.getItem(claimedNotificationKey)
+      const claims = raw ? JSON.parse(raw) : {}
+      if (claims && typeof claims === 'object') {
+        newNotificationIds.forEach(id => delete claims[id])
+        window.localStorage.setItem(claimedNotificationKey, JSON.stringify(claims))
+      }
+    } catch {}
+
+    setNewNotificationIds([])
+  }
+
   const openNotifications = () => {
     setNotificationsOpen(true)
     setOpen(true)
@@ -329,6 +425,7 @@ export default function MobileTopChrome() {
       clearTimeout(hideTimeoutRef.current)
       hideTimeoutRef.current = null
     }
+    acknowledgeNewNotifications()
     void loadActionNotifications()
   }
 
@@ -386,6 +483,30 @@ export default function MobileTopChrome() {
 
   return (
     <>
+      {newNotificationIds.length > 0 && !notificationsOpen && (
+        <div className="fixed top-2 left-2 right-2 z-50 md:hidden">
+          <div className="mx-auto w-fit">
+            <button
+              type="button"
+              aria-label={`${newNotificationIds.length} new notifications`}
+              className="relative inline-flex items-center justify-center h-10 w-10 text-white"
+              onClick={() => {
+                openNotifications()
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+              </svg>
+              <span
+                className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
+                aria-label={`${newNotificationIds.length} new notifications`}
+              >
+                {newNotificationIds.length > 99 ? '99+' : newNotificationIds.length}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
       <div
         data-mobile-top-chrome
         className={`fixed top-2 left-2 right-2 z-50 md:hidden transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}

@@ -130,6 +130,10 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
   const [postalCode, setPostalCode] = useState('')
   const [country, setCountry] = useState('South Africa')
   const [schoolName, setSchoolName] = useState('')
+  const [schoolMode, setSchoolMode] = useState<'list' | 'manual'>('list')
+  const [schoolSuggestions, setSchoolSuggestions] = useState<string[]>([])
+  const [schoolLoading, setSchoolLoading] = useState(false)
+  const [schoolSelectedFromList, setSchoolSelectedFromList] = useState(false)
   const [profileCoverUrl, setProfileCoverUrl] = useState('')
   const [profileThemeBgUrl, setProfileThemeBgUrl] = useState('')
   const [popiConsent, setPopiConsent] = useState(true)
@@ -151,6 +155,38 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
   useEffect(() => {
     void fetchProfile()
   }, [])
+
+  useEffect(() => {
+    if (schoolMode !== 'list') {
+      setSchoolSuggestions([])
+      setSchoolLoading(false)
+      return
+    }
+
+    const query = schoolName.trim()
+    if (query.length < 2) {
+      setSchoolSuggestions([])
+      setSchoolLoading(false)
+      return
+    }
+
+    const handle = setTimeout(async () => {
+      setSchoolLoading(true)
+      try {
+        const res = await fetch(`/api/schools?q=${encodeURIComponent(query)}`)
+        if (!res.ok) throw new Error('Failed to load schools')
+        const data = await res.json()
+        const next = Array.isArray(data?.schools) ? data.schools : []
+        setSchoolSuggestions(next)
+      } catch {
+        setSchoolSuggestions([])
+      } finally {
+        setSchoolLoading(false)
+      }
+    }, 200)
+
+    return () => clearTimeout(handle)
+  }, [schoolName, schoolMode])
 
   async function fetchProfile() {
     setLoading(true)
@@ -180,6 +216,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
       setPostalCode(data.postalCode || '')
       setCountry(data.country || 'South Africa')
       setSchoolName(data.schoolName || '')
+      setSchoolSelectedFromList(Boolean(data.schoolName))
       setProfileCoverUrl(String((data as any)?.profileCoverUrl || ''))
       setProfileThemeBgUrl(String((data as any)?.profileThemeBgUrl || ''))
       setPopiConsent(Boolean(data.consentToPolicies))
@@ -212,6 +249,9 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     const nextFirst = firstNameInput.value
     const nextLast = lastNameInput.value
     const nextMiddle = middleNamesInput.value
+    const nextSchool = normalizeSchoolInput(schoolName)
+    const matchedSchool = schoolSuggestions.find(s => s.toLowerCase() === nextSchool.toLowerCase())
+    const finalSchool = matchedSchool || nextSchool
 
     if (!nextFirst) {
       setError('First name is required')
@@ -291,6 +331,16 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     if ((original.emergencyContactRelationship || '') !== nextEmergencyRel) payload.emergencyContactRelationship = nextEmergencyRel
 
     const nextEmergencyPhone = emergencyContactPhone.trim()
+        if (!finalSchool) {
+          setError('School or institution is required')
+          return
+        }
+        if (schoolMode === 'list' && !schoolSelectedFromList && !matchedSchool) {
+          setError('Please select your school from the list or choose manual entry')
+          return
+        }
+        if ((original.schoolName || '') !== finalSchool) payload.schoolName = finalSchool
+        payload.schoolSelectionMode = schoolMode
     const originalEmergencyPhone = toLocalMobile(original.emergencyContactPhone) || ''
     if (originalEmergencyPhone !== nextEmergencyPhone) {
       if (nextEmergencyPhone && !normalisePhone(nextEmergencyPhone)) {
@@ -445,7 +495,59 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-white/90">School / institution</label>
-                        <input className="input" value={schoolName} onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))} />
+                        <input
+                          className="input"
+                          value={schoolName}
+                          onChange={e => {
+                            setSchoolName(normalizeSchoolInput(e.target.value))
+                            setSchoolSelectedFromList(false)
+                          }}
+                        />
+                        {schoolMode === 'list' ? (
+                          <div className="mt-2 rounded-xl border border-white/10 bg-white/5 p-2">
+                            {schoolLoading ? (
+                              <div className="text-xs text-white/70">Searching schools…</div>
+                            ) : schoolSuggestions.length > 0 ? (
+                              <div className="flex flex-col gap-1 max-h-40 overflow-auto">
+                                {schoolSuggestions.map(school => (
+                                  <button
+                                    key={school}
+                                    type="button"
+                                    className="text-left px-2 py-1 rounded-lg hover:bg-white/5 text-sm"
+                                    onClick={() => {
+                                      setSchoolName(school)
+                                      setSchoolSelectedFromList(true)
+                                    }}
+                                  >
+                                    {school}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-white/70">No matching schools found.</div>
+                            )}
+                          </div>
+                        ) : null}
+                        <div className="mt-2 flex items-center gap-3 text-xs text-white/70">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="schoolModeOverlay"
+                              checked={schoolMode === 'list'}
+                              onChange={() => setSchoolMode('list')}
+                            />
+                            Select from list
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="schoolModeOverlay"
+                              checked={schoolMode === 'manual'}
+                              onChange={() => setSchoolMode('manual')}
+                            />
+                            School not listed
+                          </label>
+                        </div>
                       </div>
                     </div>
                   </div>

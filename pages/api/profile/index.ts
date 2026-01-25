@@ -37,6 +37,11 @@ function titleCaseName(value: string) {
     .join(' ')
 }
 
+function normalizeSchoolName(value: string) {
+  const collapsed = value.replace(/\s+/g, ' ').trim()
+  return titleCaseName(collapsed)
+}
+
 function normalizeNameField(value: unknown) {
   const raw = asString(value)
   const collapsed = raw.replace(/\s+/g, ' ').trim()
@@ -268,7 +273,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data.postalCode = postalCode
     }
     if (hasKey(body, 'country')) data.country = asString(body.country)
-    if (hasKey(body, 'schoolName')) data.schoolName = asString(body.schoolName)
+    const schoolSelectionModeRaw = hasKey(body, 'schoolSelectionMode') ? asString(body.schoolSelectionMode).toLowerCase() : ''
+    const schoolSelectionMode = schoolSelectionModeRaw === 'manual' ? 'manual' : 'list'
+    if (hasKey(body, 'schoolName')) {
+      const nextSchoolName = normalizeSchoolName(asString(body.schoolName))
+      if (!nextSchoolName) {
+        errors.push('School or institution is required')
+      } else if (schoolSelectionMode === 'list') {
+        const schoolModel = (prisma as any).school as typeof prisma extends { school: infer T } ? T : any
+        const matched = await schoolModel.findFirst({
+          where: { name: { equals: nextSchoolName, mode: 'insensitive' } },
+          select: { name: true }
+        })
+        if (!matched?.name) {
+          errors.push('Please select your school from the list or choose manual entry')
+        } else {
+          data.schoolName = normalizeSchoolName(String(matched.name))
+        }
+      } else {
+        data.schoolName = nextSchoolName
+      }
+    }
     if (hasKey(body, 'avatar')) {
       const avatar = asString(body.avatar)
       data.avatar = avatar ? avatar : null
@@ -349,6 +374,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     }
 
+    const manualSchoolRequested = hasKey(body, 'schoolSelectionMode') && asString(body.schoolSelectionMode).toLowerCase() === 'manual'
+    const requestedSchoolName = hasKey(body, 'schoolName') ? normalizeSchoolName(asString(body.schoolName)) : null
+    const schoolChanged = Boolean(requestedSchoolName && requestedSchoolName !== existing.schoolName)
+
     try {
       const updated = await prisma.user.update({
         where: { id: userId },
@@ -375,6 +404,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         password: undefined
       }
       delete (safeUser as any).password
+
+      if (manualSchoolRequested && schoolChanged && requestedSchoolName) {
+        try {
+          const admins = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } })
+          if (admins.length > 0) {
+            await prisma.notification.createMany({
+              data: admins.map(admin => ({
+                userId: admin.id,
+                type: 'school_manual_entry',
+                title: 'School needs review',
+                body: `Manual school entry submitted: ${requestedSchoolName}`,
+                data: { schoolName: requestedSchoolName, updatedById: userId, updatedByEmail: existing.email }
+              }))
+            })
+          }
+        } catch (notifyErr) {
+          if (process.env.DEBUG === '1') console.error('Failed to create school review notification', notifyErr)
+        }
+      }
+
       return res.status(200).json(safeUser)
     } catch (err) {
       console.error('PUT /api/profile error', err)

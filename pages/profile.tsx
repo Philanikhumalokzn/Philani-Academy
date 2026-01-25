@@ -121,6 +121,10 @@ export default function ProfilePage() {
   const [postalCode, setPostalCode] = useState('')
   const [country, setCountry] = useState('South Africa')
   const [schoolName, setSchoolName] = useState('')
+  const [schoolMode, setSchoolMode] = useState<'list' | 'manual'>('list')
+  const [schoolSuggestions, setSchoolSuggestions] = useState<string[]>([])
+  const [schoolLoading, setSchoolLoading] = useState(false)
+  const [schoolSelectedFromList, setSchoolSelectedFromList] = useState(false)
   const [avatar, setAvatar] = useState('')
   const [profileCoverUrl, setProfileCoverUrl] = useState('')
   const [uiHandedness, setUiHandedness] = useState<'left' | 'right'>('right')
@@ -156,6 +160,38 @@ export default function ProfilePage() {
       if (raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
     } catch {}
   }, [profile?.profileThemeBgUrl, session])
+
+  useEffect(() => {
+    if (schoolMode !== 'list') {
+      setSchoolSuggestions([])
+      setSchoolLoading(false)
+      return
+    }
+
+    const query = schoolName.trim()
+    if (query.length < 2) {
+      setSchoolSuggestions([])
+      setSchoolLoading(false)
+      return
+    }
+
+    const handle = setTimeout(async () => {
+      setSchoolLoading(true)
+      try {
+        const res = await fetch(`/api/schools?q=${encodeURIComponent(query)}`)
+        if (!res.ok) throw new Error('Failed to load schools')
+        const data = await res.json()
+        const next = Array.isArray(data?.schools) ? data.schools : []
+        setSchoolSuggestions(next)
+      } catch {
+        setSchoolSuggestions([])
+      } finally {
+        setSchoolLoading(false)
+      }
+    }, 200)
+
+    return () => clearTimeout(handle)
+  }, [schoolName, schoolMode])
 
   const gradeLabel = useMemo(() => {
     if (!profile?.grade) return 'Unassigned'
@@ -301,6 +337,7 @@ export default function ProfilePage() {
         setPostalCode(data.postalCode || '')
         setCountry(data.country || 'South Africa')
         setSchoolName(data.schoolName || '')
+        setSchoolSelectedFromList(Boolean(data.schoolName))
         setAvatar(data.avatar || '')
         setProfileCoverUrl(data.profileCoverUrl || '')
         setUiHandedness(data.uiHandedness === 'left' ? 'left' : 'right')
@@ -331,7 +368,9 @@ export default function ProfilePage() {
     const cleanedCity = city.trim()
     const cleanedPostal = postalCode.trim()
     const cleanedCountry = country.trim()
-    const cleanedSchool = schoolName.trim()
+    const cleanedSchool = normalizeSchoolInput(schoolName)
+    const matchedSchool = schoolSuggestions.find(s => s.toLowerCase() === cleanedSchool.toLowerCase())
+    const finalSchool = matchedSchool || cleanedSchool
     const cleanedId = idNumber.trim().replace(/[^0-9]/g, '')
 
     const primaryPhoneFormatted = normalisePhone(cleanedPhone)
@@ -363,7 +402,10 @@ export default function ProfilePage() {
     if (!province || !provinceOptions.includes(province)) errors.push('Please select your province')
     if (!cleanedPostal || !/^\d{4}$/.test(cleanedPostal)) errors.push('Postal code must be 4 digits')
     if (!cleanedCountry) errors.push('Country is required')
-    if (!cleanedSchool) errors.push('School or institution is required')
+    if (!finalSchool) errors.push('School or institution is required')
+    if (schoolMode === 'list' && !schoolSelectedFromList && !matchedSchool) {
+      errors.push('Please select your school from the list or choose manual entry')
+    }
     if (cleanedId && !/^\d{13}$/.test(cleanedId)) errors.push('South African ID numbers must be exactly 13 digits')
     if (!popiConsent) errors.push('POPIA consent must remain active to keep your account')
 
@@ -397,7 +439,8 @@ export default function ProfilePage() {
           province,
           postalCode: cleanedPostal,
           country: cleanedCountry,
-          schoolName: cleanedSchool,
+          schoolName: finalSchool,
+          schoolSelectionMode: schoolMode,
           uiHandedness,
           popiConsent: true,
           avatar: avatar.trim() || undefined
@@ -541,7 +584,59 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium">School / institution</label>
-                    <input className="input" value={schoolName} onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))} />
+                    <input
+                      className="input"
+                      value={schoolName}
+                      onChange={e => {
+                        setSchoolName(normalizeSchoolInput(e.target.value))
+                        setSchoolSelectedFromList(false)
+                      }}
+                    />
+                    {schoolMode === 'list' ? (
+                      <div className="mt-2 rounded-xl border border-white/10 bg-white/5 p-2">
+                        {schoolLoading ? (
+                          <div className="text-xs muted">Searching schools…</div>
+                        ) : schoolSuggestions.length > 0 ? (
+                          <div className="flex flex-col gap-1 max-h-40 overflow-auto">
+                            {schoolSuggestions.map(school => (
+                              <button
+                                key={school}
+                                type="button"
+                                className="text-left px-2 py-1 rounded-lg hover:bg-white/5 text-sm"
+                                onClick={() => {
+                                  setSchoolName(school)
+                                  setSchoolSelectedFromList(true)
+                                }}
+                              >
+                                {school}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs muted">No matching schools found.</div>
+                        )}
+                      </div>
+                    ) : null}
+                    <div className="mt-2 flex items-center gap-3 text-xs muted">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="schoolMode"
+                          checked={schoolMode === 'list'}
+                          onChange={() => setSchoolMode('list')}
+                        />
+                        Select from list
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="schoolMode"
+                          checked={schoolMode === 'manual'}
+                          onChange={() => setSchoolMode('manual')}
+                        />
+                        School not listed
+                      </label>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -859,7 +954,59 @@ export default function ProfilePage() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium">School / institution</label>
-                          <input className="input" value={schoolName} onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))} />
+                          <input
+                            className="input"
+                            value={schoolName}
+                            onChange={e => {
+                              setSchoolName(normalizeSchoolInput(e.target.value))
+                              setSchoolSelectedFromList(false)
+                            }}
+                          />
+                          {schoolMode === 'list' ? (
+                            <div className="mt-2 rounded-xl border border-white/10 bg-white/5 p-2">
+                              {schoolLoading ? (
+                                <div className="text-xs muted">Searching schools…</div>
+                              ) : schoolSuggestions.length > 0 ? (
+                                <div className="flex flex-col gap-1 max-h-40 overflow-auto">
+                                  {schoolSuggestions.map(school => (
+                                    <button
+                                      key={school}
+                                      type="button"
+                                      className="text-left px-2 py-1 rounded-lg hover:bg-white/5 text-sm"
+                                      onClick={() => {
+                                        setSchoolName(school)
+                                        setSchoolSelectedFromList(true)
+                                      }}
+                                    >
+                                      {school}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-xs muted">No matching schools found.</div>
+                              )}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex items-center gap-3 text-xs muted">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name="schoolModeMobile"
+                                checked={schoolMode === 'list'}
+                                onChange={() => setSchoolMode('list')}
+                              />
+                              Select from list
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name="schoolModeMobile"
+                                checked={schoolMode === 'manual'}
+                                onChange={() => setSchoolMode('manual')}
+                              />
+                              School not listed
+                            </label>
+                          </div>
                         </div>
                       </div>
                     </section>

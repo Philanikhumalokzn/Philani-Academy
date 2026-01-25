@@ -385,7 +385,6 @@ export default function PublicUserProfilePage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-[12px] uppercase tracking-[0.35em] text-blue-200">Account control</p>
                     <h1 className="text-3xl font-semibold">{displayName}</h1>
                     <p className="text-sm text-blue-100/80">
                       {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}

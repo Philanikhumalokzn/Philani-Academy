@@ -2829,6 +2829,26 @@ export default function Dashboard() {
     }
   }, [viewerId, currentUserId])
 
+  const displayChallengeResponses = useMemo(() => {
+    if (!Array.isArray(challengeMyResponses) || challengeMyResponses.length === 0) return []
+    if (challengeMyResponses.length === 1) return challengeMyResponses
+
+    const getTs = (resp: any) => {
+      const updated = resp?.updatedAt ? new Date(resp.updatedAt).getTime() : 0
+      const created = resp?.createdAt ? new Date(resp.createdAt).getTime() : 0
+      return Math.max(updated || 0, created || 0)
+    }
+
+    const graded = challengeMyResponses.filter(r => r?.gradingJson || r?.feedback)
+    if (graded.length > 0) {
+      const latestGraded = graded.slice().sort((a, b) => getTs(b) - getTs(a))[0]
+      return latestGraded ? [latestGraded] : [challengeMyResponses[0]]
+    }
+
+    const latest = challengeMyResponses.slice().sort((a, b) => getTs(b) - getTs(a))[0]
+    return latest ? [latest] : [challengeMyResponses[0]]
+  }, [challengeMyResponses])
+
   useEffect(() => {
     if (!challengeGradingOverlayOpen || !selectedChallengeId) return
     void fetchChallengeSubmissions(selectedChallengeId)
@@ -9848,7 +9868,7 @@ export default function Dashboard() {
                     </div>
                   ) : null}
 
-                  {challengeMyResponses.length === 0 ? (
+                  {displayChallengeResponses.length === 0 ? (
                     <div className="border border-white/10 rounded bg-white/5 p-3">
                       <div className="text-sm muted">No submission found yet.</div>
                     </div>
@@ -9867,12 +9887,11 @@ export default function Dashboard() {
                       </div>
 
                       <div className="text-sm">
-                        Submitted: <span className="font-medium">{new Date(String(challengeMyResponses[0]?.createdAt)).toLocaleString()}</span>
-                        {challengeMyResponses.length > 1 ? ` • ${challengeMyResponses.length} attempts` : ''}
+                        Submitted: <span className="font-medium">{new Date(String(displayChallengeResponses[0]?.createdAt)).toLocaleString()}</span>
                       </div>
 
                       <div className="space-y-2">
-                        {challengeMyResponses.map((resp: any, idx: number) => {
+                        {displayChallengeResponses.map((resp: any, idx: number) => {
                           const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
                           const latex = String(resp?.latex || '')
                           const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''

@@ -9895,21 +9895,27 @@ export default function Dashboard() {
                           const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
                           const latex = String(resp?.latex || '')
                           const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                          const steps = splitLatexIntoSteps(latex)
+                          const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
+
                           return (
                             <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                               {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
-                              <div>
-                                <div className="text-xs muted mb-1">Your answer</div>
-                                {latex.trim() ? (
-                                  html ? (
-                                    <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+
+                              {!grade ? (
+                                <div>
+                                  <div className="text-xs muted mb-1">Your answer</div>
+                                  {latex.trim() ? (
+                                    html ? (
+                                      <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                                    ) : (
+                                      <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
+                                    )
                                   ) : (
-                                    <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
-                                  )
-                                ) : (
-                                  <div className="text-sm muted">(empty)</div>
-                                )}
-                              </div>
+                                    <div className="text-sm muted">(empty)</div>
+                                  )}
+                                </div>
+                              ) : null}
 
                               {String(resp?.studentText || '').trim() ? (
                                 <div>
@@ -9919,8 +9925,6 @@ export default function Dashboard() {
                               ) : null}
 
                               {(() => {
-                                const steps = splitLatexIntoSteps(latex)
-                                const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
                                 if (!grade) {
                                   return <div className="text-xs text-white/60">Not graded yet.</div>
                                 }

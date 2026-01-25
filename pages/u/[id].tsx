@@ -359,51 +359,51 @@ export default function PublicUserProfilePage() {
       >
         <div className="mx-auto max-w-5xl space-y-6">
           <section className="hero flex-col gap-5">
-            <div className="space-y-4 rounded-3xl border border-white/10 bg-white/3 p-5">
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5">
-                <div
-                  className="h-[160px] w-full"
-                  style={{
-                    backgroundImage: `url(\"${heroCoverUrl}\")`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                  }}
-                  aria-hidden="true"
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/5 to-black/40" aria-hidden="true" />
-              </div>
+            <div className="relative overflow-hidden rounded-3xl bg-white/3">
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `url(\"${heroCoverUrl}\")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+                aria-hidden="true"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/10 to-black/45" aria-hidden="true" />
 
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden">
-                    {profile?.avatar ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={profile.avatar} alt={displayName} className="h-full w-full object-cover" />
-                    ) : (
-                      <span>{displayName.slice(0, 1).toUpperCase()}</span>
-                    )}
-                  </div>
-                  <div>
-                    <h1 className="text-3xl font-semibold">{displayName}</h1>
-                    <p className="text-sm text-blue-100/80">
-                      {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
-                      {profile?.grade ? ` • ${gradeLabel}` : ''}
-                      {profile?.verified ? (
-                        <span
-                          className="ml-2 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white align-middle"
-                          aria-label="Verified"
-                          title="Verified"
-                        >
-                          <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
-                            <path
-                              d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
-                              fill="currentColor"
-                            />
-                          </svg>
-                        </span>
-                      ) : null}
-                    </p>
-                    {profile?.statusBio ? <p className="mt-2 text-sm text-white/90">{profile.statusBio}</p> : null}
+              <div className="relative z-10 p-5">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden">
+                      {profile?.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={profile.avatar} alt={displayName} className="h-full w-full object-cover" />
+                      ) : (
+                        <span>{displayName.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div>
+                      <h1 className="text-3xl font-semibold">{displayName}</h1>
+                      <p className="text-sm text-blue-100/80">
+                        {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
+                        {profile?.grade ? ` • ${gradeLabel}` : ''}
+                        {profile?.verified ? (
+                          <span
+                            className="ml-2 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white align-middle"
+                            aria-label="Verified"
+                            title="Verified"
+                          >
+                            <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
+                              <path
+                                d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                                fill="currentColor"
+                              />
+                            </svg>
+                          </span>
+                        ) : null}
+                      </p>
+                      {profile?.statusBio ? <p className="mt-2 text-sm text-white/90">{profile.statusBio}</p> : null}
+                    </div>
                   </div>
                 </div>
               </div>

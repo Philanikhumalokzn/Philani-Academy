@@ -21,6 +21,22 @@ function asString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function titleCaseName(value: string) {
+  const cleaned = value.trim()
+  if (!cleaned) return ''
+  return cleaned
+    .split(/\s+/)
+    .map(word => word
+      .split(/([-'])/)
+      .map(part => {
+        if (!part || part === '-' || part === "'") return part
+        return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+      })
+      .join('')
+    )
+    .join(' ')
+}
+
 function hasKey(obj: any, key: string) {
   return obj != null && Object.prototype.hasOwnProperty.call(obj, key)
 }
@@ -114,9 +130,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let emailChanged = false
     let nextEmail = existing.email
 
-    const nextFirstName = hasKey(body, 'firstName') ? asString(body.firstName) : existing.firstName
-    const nextLastName = hasKey(body, 'lastName') ? asString(body.lastName) : existing.lastName
-    const nextMiddleNames = hasKey(body, 'middleNames') ? asString(body.middleNames) : (existing.middleNames || '')
+    const nextFirstName = hasKey(body, 'firstName') ? titleCaseName(asString(body.firstName)) : existing.firstName
+    const nextLastName = hasKey(body, 'lastName') ? titleCaseName(asString(body.lastName)) : existing.lastName
+    const nextMiddleNames = hasKey(body, 'middleNames') ? titleCaseName(asString(body.middleNames)) : (existing.middleNames || '')
     const nextDisplayName = `${nextFirstName} ${nextMiddleNames ? `${nextMiddleNames} ` : ''}${nextLastName}`.trim()
 
     if (hasKey(body, 'firstName')) data.firstName = nextFirstName

@@ -6305,49 +6305,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     { active: false, pointerId: null, startY: 0, startValue: 3.5, trackHeight: 1 }
   )
 
-  const canShowSliders = Boolean(useStackedStudentLayout && isCompactViewport)
-  const SLIDER_AUTO_HIDE_MS = 2500
-  const [slidersVisible, setSlidersVisible] = useState(false)
-  const sliderHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const bumpSlidersVisibility = useCallback(() => {
-    if (!canShowSliders) return
-    setSlidersVisible(true)
-    if (sliderHideTimeoutRef.current) {
-      clearTimeout(sliderHideTimeoutRef.current)
-    }
-    sliderHideTimeoutRef.current = setTimeout(() => {
-      setSlidersVisible(false)
-      sliderHideTimeoutRef.current = null
-    }, SLIDER_AUTO_HIDE_MS)
-  }, [canShowSliders])
-
-  useEffect(() => {
-    if (!canShowSliders) {
-      setSlidersVisible(false)
-      if (sliderHideTimeoutRef.current) {
-        clearTimeout(sliderHideTimeoutRef.current)
-        sliderHideTimeoutRef.current = null
-      }
-      return
-    }
-    const viewport = studentViewportRef.current
-    if (!viewport) return
-
-    const handle = () => bumpSlidersVisibility()
-    viewport.addEventListener('scroll', handle, { passive: true })
-    viewport.addEventListener('pointerdown', handle, { passive: true })
-    viewport.addEventListener('wheel', handle, { passive: true })
-    viewport.addEventListener('touchstart', handle, { passive: true })
-
-    return () => {
-      viewport.removeEventListener('scroll', handle)
-      viewport.removeEventListener('pointerdown', handle)
-      viewport.removeEventListener('wheel', handle)
-      viewport.removeEventListener('touchstart', handle)
-    }
-  }, [bumpSlidersVisibility, canShowSliders])
-
   // Mobile: prevent the canvas engine from treating slider interactions as ink taps (which can
   // focus hidden inputs and open the on-screen keyboard). We do this with DOM-level capture
   // listeners and implement the drag interactions there.
@@ -6385,7 +6342,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const beginHorizontal = (event: PointerEvent) => {
       if (!viewport || !horizontalTrack) return
-      bumpSlidersVisibility()
       stop(event)
       const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
       const rect = horizontalTrack.getBoundingClientRect()
@@ -6440,7 +6396,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const beginVertical = (event: PointerEvent) => {
       if (!viewport || !verticalTrack) return
-      bumpSlidersVisibility()
       stop(event)
       const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
       const rect = verticalTrack.getBoundingClientRect()
@@ -6494,7 +6449,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const beginGain = (event: PointerEvent) => {
       if (!gainTrack) return
-      bumpSlidersVisibility()
       stop(event)
       const rect = gainTrack.getBoundingClientRect()
       const trackHeight = Math.max(1, rect.height)
@@ -6573,7 +6527,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         gainTrack.removeEventListener('touchstart', stop as any, optsCaptureActive)
       }
     }
-  }, [bumpSlidersVisibility, horizontalPanThumbRatio, manualScrollGain, verticalPanThumbRatio])
+  }, [horizontalPanThumbRatio, manualScrollGain, verticalPanThumbRatio])
 
   const suggestQuizPromptAndLabel = useCallback(async (previousPrompt?: string) => {
     const phaseKey = lessonScriptPhaseKey
@@ -8104,7 +8058,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     viewport.scrollTop = Math.max(0, Math.min(target, maxScroll))
   }, [manualScrollGain])
 
-  const showSideSliders = canShowSliders
+  const showSideSliders = Boolean(useStackedStudentLayout && isCompactViewport)
 
   // Keep side sliders short and docked above the bottom horizontal scrollbar.
   // Also reserve the same amount of space in the stacked scroll viewport so the fixed bar
@@ -8116,7 +8070,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const leftVerticalScrollbar = showSideSliders ? (
     <div
-      className={`fixed left-0 z-[520] pointer-events-none transition-opacity duration-200 ${slidersVisible ? 'opacity-100' : 'opacity-0'}`}
+      className="fixed left-0 z-[520] pointer-events-none"
       style={{ bottom: sideSliderBottomCss, height: '40vh', maxHeight: '45vh' } as any}
     >
       <div
@@ -8185,7 +8139,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const rightMasterGainSlider = showSideSliders ? (
     <div
-      className={`fixed right-0 z-[520] pointer-events-none transition-opacity duration-200 ${slidersVisible ? 'opacity-100' : 'opacity-0'}`}
+      className="fixed right-0 z-[520] pointer-events-none"
       style={{ bottom: sideSliderBottomCss, height: '40vh', maxHeight: '45vh' } as any}
     >
       <div
@@ -8208,11 +8162,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     </div>
   ) : null
 
-  const showBottomHorizontalScrollbar = canShowSliders
+  const showBottomHorizontalScrollbar = Boolean(useStackedStudentLayout && isCompactViewport)
 
   const horizontalScrollbar = showBottomHorizontalScrollbar ? (
     <div
-      className={`fixed left-0 right-0 z-[500] pointer-events-none transition-opacity duration-200 ${slidersVisible ? 'opacity-100' : 'opacity-0'}`}
+      className="fixed left-0 right-0 z-[500] pointer-events-none"
       style={{ bottom: `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px)` } as any}
     >
       <div className="px-3 pb-1 flex items-end justify-center">

@@ -331,16 +331,6 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
     if ((original.emergencyContactRelationship || '') !== nextEmergencyRel) payload.emergencyContactRelationship = nextEmergencyRel
 
     const nextEmergencyPhone = emergencyContactPhone.trim()
-        if (!finalSchool) {
-          setError('School or institution is required')
-          return
-        }
-        if (schoolMode === 'list' && !schoolSelectedFromList && !matchedSchool) {
-          setError('Please select your school from the list or choose manual entry')
-          return
-        }
-        if ((original.schoolName || '') !== finalSchool) payload.schoolName = finalSchool
-        payload.schoolSelectionMode = schoolMode
     const originalEmergencyPhone = toLocalMobile(original.emergencyContactPhone) || ''
     if (originalEmergencyPhone !== nextEmergencyPhone) {
       if (nextEmergencyPhone && !normalisePhone(nextEmergencyPhone)) {
@@ -349,6 +339,18 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
       }
       payload.emergencyContactPhone = nextEmergencyPhone
     }
+
+    if (!finalSchool) {
+      setError('School or institution is required')
+      return
+    }
+    if (schoolMode === 'list' && !schoolSelectedFromList && !matchedSchool) {
+      setError('Please select your school from the list or choose manual entry')
+      return
+    }
+    if ((original.schoolName || '') !== finalSchool) payload.schoolName = finalSchool
+    const originalSchoolMode = String((original as any)?.schoolSelectionMode || '')
+    if (originalSchoolMode !== schoolMode) payload.schoolSelectionMode = schoolMode
 
     const nextAddress1 = addressLine1.trim()
     if ((original.addressLine1 || '') !== nextAddress1) payload.addressLine1 = nextAddress1
@@ -379,9 +381,6 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
 
     const nextCountry = country.trim()
     if ((original.country || '') !== nextCountry) payload.country = nextCountry
-
-    const nextSchool = schoolName.trim()
-    if ((original.schoolName || '') !== nextSchool) payload.schoolName = nextSchool
 
     const nextCover = profileCoverUrl.trim()
     const originalCover = String((original as any)?.profileCoverUrl || '')

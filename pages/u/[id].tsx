@@ -358,7 +358,7 @@ export default function PublicUserProfilePage() {
         contentClassName="p-4"
       >
         <div className="mx-auto max-w-5xl space-y-6">
-          <section className="hero flex-col gap-5">
+          <section className="flex flex-col gap-5">
             <div className="relative overflow-hidden rounded-3xl min-h-[220px]">
               <div
                 className="absolute inset-0"

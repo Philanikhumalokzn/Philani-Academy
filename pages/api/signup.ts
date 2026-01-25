@@ -52,6 +52,11 @@ function normalizeNameField(value: unknown) {
   return { raw: collapsed, value: trimmed, valid, changed }
 }
 
+function normalizeSchoolName(value: string) {
+  const collapsed = value.replace(/\s+/g, ' ').trim()
+  return titleCaseName(collapsed)
+}
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -75,6 +80,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const firstName = firstNameInput.value
   const lastName = lastNameInput.value
   const schoolName = asString(body.schoolName)
+  const schoolSelectionModeRaw = asString(body.schoolSelectionMode).toLowerCase()
+  const schoolSelectionMode = schoolSelectionModeRaw === 'manual' ? 'manual' : 'list'
   const email = asString(body.email).toLowerCase()
   const password = typeof body.password === 'string' ? body.password : ''
   const gradeInput = asString(body.grade)
@@ -121,6 +128,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: 'Validation failed', errors: ['Please select a grade'] })
     }
 
+    const normalizedSchoolName = normalizeSchoolName(schoolName)
+    let storedSchoolName = normalizedSchoolName
+    if (schoolSelectionMode === 'list') {
+      const schoolModel = (prisma as any).school as typeof prisma extends { school: infer T } ? T : any
+      const matchedSchool = await schoolModel.findFirst({
+        where: {
+          name: {
+            equals: schoolName,
+            mode: 'insensitive'
+          }
+        },
+        select: { name: true }
+      })
+
+      if (!matchedSchool?.name) {
+        return res.status(400).json({ message: 'Validation failed', errors: ['Please select your school from the list or choose manual entry'] })
+      }
+      storedSchoolName = normalizeSchoolName(String(matchedSchool.name))
+    }
+
     const hashed = await bcrypt.hash(password, 10)
 
     const safeFirstName = titleCaseName(firstName)
@@ -131,7 +158,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         name: `${safeFirstName} ${safeLastName}`.trim(),
         firstName: safeFirstName,
         lastName: safeLastName,
-        schoolName,
+        schoolName: storedSchoolName,
         email,
         password: hashed,
         role,
@@ -150,6 +177,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await issueEmailVerification(user.id, email)
       } catch (notificationErr) {
         console.error('Failed to deliver verification code after signup', notificationErr)
+      }
+    }
+
+    if (schoolSelectionMode === 'manual') {
+      try {
+        const admins = await prisma.user.findMany({
+          where: { role: 'admin' },
+          select: { id: true }
+        })
+
+        if (admins.length > 0) {
+          await prisma.notification.createMany({
+            data: admins.map(admin => ({
+              userId: admin.id,
+              type: 'school_manual_entry',
+              title: 'School needs review',
+              body: `Manual school entry submitted: ${storedSchoolName}`,
+              data: { schoolName: storedSchoolName, newUserId: user.id, newUserEmail: email }
+            }))
+          })
+        }
+      } catch (notifyErr) {
+        if (process.env.DEBUG === '1') console.error('Failed to create school review notification', notifyErr)
       }
     }
 

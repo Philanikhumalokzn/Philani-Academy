@@ -83,6 +83,12 @@ model User {
   resourceBankItems ResourceBankItem[]
 }
 
+model School {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
 model UserFollow {
   id          String   @id @default(cuid())
   followerId  String

@@ -25,6 +25,22 @@ function normalizeNameField(value: string) {
   return { raw: collapsed, value: trimmed, valid, changed }
 }
 
+function titleCaseWords(value: string) {
+  const cleaned = value.replace(/\s+/g, ' ').trim()
+  if (!cleaned) return ''
+  return cleaned
+    .split(/\s+/)
+    .map(word => word
+      .split(/([-'])/)
+      .map(part => {
+        if (!part || part === '-' || part === "'") return part
+        return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+      })
+      .join('')
+    )
+    .join(' ')
+}
+
 function normalizeEmailInput(value: string) {
   return value.replace(/\s+/g, '').toLowerCase()
 }
@@ -36,7 +52,7 @@ function normalizePhoneInput(value: string) {
 }
 
 function normalizeSchoolInput(value: string) {
-  return value.replace(/\s+/g, ' ').trim()
+  return titleCaseWords(value)
 }
 
 export default function Signup() {
@@ -45,6 +61,10 @@ export default function Signup() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [schoolName, setSchoolName] = useState('')
+  const [schoolMode, setSchoolMode] = useState<'list' | 'manual'>('list')
+  const [schoolSuggestions, setSchoolSuggestions] = useState<string[]>([])
+  const [schoolLoading, setSchoolLoading] = useState(false)
+  const [schoolSelectedFromList, setSchoolSelectedFromList] = useState(false)
   const [email, setEmail] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [grade, setGrade] = useState<GradeValue | ''>('')
@@ -57,6 +77,45 @@ export default function Signup() {
     setHydrated(true)
   }, [])
 
+  useEffect(() => {
+    if (schoolMode === 'manual') {
+      setSchoolSelectedFromList(false)
+      setSchoolSuggestions([])
+    }
+  }, [schoolMode])
+
+  useEffect(() => {
+    if (schoolMode !== 'list') {
+      setSchoolSuggestions([])
+      setSchoolLoading(false)
+      return
+    }
+
+    const query = schoolName.trim()
+    if (query.length < 2) {
+      setSchoolSuggestions([])
+      setSchoolLoading(false)
+      return
+    }
+
+    const handle = setTimeout(async () => {
+      setSchoolLoading(true)
+      try {
+        const res = await fetch(`/api/schools?q=${encodeURIComponent(query)}`)
+        if (!res.ok) throw new Error('Failed to load schools')
+        const data = await res.json()
+        const next = Array.isArray(data?.schools) ? data.schools : []
+        setSchoolSuggestions(next)
+      } catch {
+        setSchoolSuggestions([])
+      } finally {
+        setSchoolLoading(false)
+      }
+    }, 200)
+
+    return () => clearTimeout(handle)
+  }, [schoolName, schoolMode])
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
@@ -65,7 +124,9 @@ export default function Signup() {
     const lastNameInput = normalizeNameField(lastName)
     const cleanedFirst = firstNameInput.value
     const cleanedLast = lastNameInput.value
-    const cleanedSchool = schoolName.replace(/\s+/g, ' ').trim()
+    const cleanedSchool = normalizeSchoolInput(schoolName)
+    const matchedSchool = schoolSuggestions.find(s => s.toLowerCase() === cleanedSchool.toLowerCase())
+    const finalSchool = matchedSchool || cleanedSchool
     const cleanedEmail = email.trim().toLowerCase()
     const cleanedPhone = phoneNumber.trim()
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -80,7 +141,10 @@ export default function Signup() {
     if (lastNameInput.raw && (!lastNameInput.valid || lastNameInput.changed)) {
       errors.push('Last name contains invalid characters or spacing')
     }
-    if (!cleanedSchool) errors.push('School or institution is required')
+    if (!finalSchool) errors.push('School or institution is required')
+    if (schoolMode === 'list' && !schoolSelectedFromList && !matchedSchool) {
+      errors.push('Please select your school from the list or choose manual entry')
+    }
     if (!cleanedEmail || !emailRegex.test(cleanedEmail)) errors.push('Valid email is required')
     if (!password || password.length < 8) errors.push('Password must be at least 8 characters long')
     if (!grade) errors.push('Please select your grade')
@@ -101,7 +165,8 @@ export default function Signup() {
         body: JSON.stringify({
           firstName: cleanedFirst,
           lastName: cleanedLast,
-          schoolName: cleanedSchool,
+          schoolName: finalSchool,
+          schoolSelectionMode: schoolMode,
           email: cleanedEmail,
           password,
           grade,
@@ -128,6 +193,9 @@ export default function Signup() {
       setFirstName('')
       setLastName('')
       setSchoolName('')
+      setSchoolMode('list')
+      setSchoolSelectedFromList(false)
+      setSchoolSuggestions([])
       setEmail('')
       setPhoneNumber('')
       setGrade('')
@@ -183,10 +251,58 @@ export default function Signup() {
                 className="input input-light"
                 placeholder="School / institution"
                 value={schoolName}
-                onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))}
+                onChange={e => {
+                  setSchoolName(normalizeSchoolInput(e.target.value))
+                  setSchoolSelectedFromList(false)
+                }}
                 autoComplete="organization"
                 required
               />
+              {schoolMode === 'list' ? (
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-2">
+                  {schoolLoading ? (
+                    <div className="text-xs text-slate-500">Searching schools…</div>
+                  ) : schoolSuggestions.length > 0 ? (
+                    <div className="flex flex-col gap-1 max-h-40 overflow-auto">
+                      {schoolSuggestions.map(school => (
+                        <button
+                          key={school}
+                          type="button"
+                          className="text-left px-2 py-1 rounded-lg hover:bg-slate-100 text-sm"
+                          onClick={() => {
+                            setSchoolName(school)
+                            setSchoolSelectedFromList(true)
+                          }}
+                        >
+                          {school}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500">No matching schools found.</div>
+                  )}
+                </div>
+              ) : null}
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="schoolMode"
+                    checked={schoolMode === 'list'}
+                    onChange={() => setSchoolMode('list')}
+                  />
+                  Select from list
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="schoolMode"
+                    checked={schoolMode === 'manual'}
+                    onChange={() => setSchoolMode('manual')}
+                  />
+                  School not listed
+                </label>
+              </div>
               <select className="input input-light" value={grade} onChange={e => setGrade(e.target.value as GradeValue | '')} required>
                 <option value="">Select your grade</option>
                 {gradeOptions.map(option => (

@@ -42,6 +42,22 @@ const normalizeNameField = (value: string) => {
   return { raw: collapsed, value: trimmed, valid, changed }
 }
 
+const titleCaseWords = (value: string) => {
+  const cleaned = value.replace(/\s+/g, ' ').trim()
+  if (!cleaned) return ''
+  return cleaned
+    .split(/\s+/)
+    .map(word => word
+      .split(/([-'])/)
+      .map(part => {
+        if (!part || part === '-' || part === "'") return part
+        return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+      })
+      .join('')
+    )
+    .join(' ')
+}
+
 const normalizeEmailInput = (value: string) => value.replace(/\s+/g, '').toLowerCase()
 
 const normalizePhoneInput = (value: string) => {
@@ -50,7 +66,7 @@ const normalizePhoneInput = (value: string) => {
   return digits.slice(0, 10)
 }
 
-const normalizeSchoolInput = (value: string) => value.replace(/\s+/g, ' ').trim()
+const normalizeSchoolInput = (value: string) => titleCaseWords(value)
 
 type ProfileSnapshot = {
   firstName?: string

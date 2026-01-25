@@ -3192,8 +3192,8 @@ export default function Dashboard() {
     return (
       <section className={
         isAdmin
-          ? 'mobile-row-width w-full grid grid-cols-5 items-center gap-2 rounded-3xl border border-white/10 bg-white/5 p-3'
-          : 'mobile-row-width w-full flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3'
+          ? 'mobile-row-width w-full grid grid-cols-5 items-center gap-2'
+          : 'mobile-row-width w-full flex items-center justify-between gap-3'
       }>
         <button
           type="button"
@@ -8481,7 +8481,7 @@ export default function Dashboard() {
                 <div
                   ref={studentMobilePanelsRef}
                   onScroll={onStudentPanelsScroll}
-                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
+                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory"
                   style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
                 >
                   <div
@@ -8765,7 +8765,7 @@ export default function Dashboard() {
               <div
                 ref={studentMobilePanelsRef}
                 onScroll={onStudentPanelsScroll}
-                className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
+                className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory"
                 style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
               >
                 <div

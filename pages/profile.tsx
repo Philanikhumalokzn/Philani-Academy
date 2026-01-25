@@ -61,6 +61,25 @@ const toLocalMobile = (input?: string | null) => {
   return input
 }
 
+const normalizeNameField = (value: string) => {
+  const collapsed = value.replace(/\s+/g, ' ').trim()
+  const stripped = collapsed.replace(/[^\p{L}\s'-]/gu, '')
+  const trimmed = stripped.replace(/^[-']+|[-']+$/g, '').replace(/\s+/g, ' ').trim()
+  const valid = trimmed ? /^[\p{L}]+([\s'-][\p{L}]+)*$/u.test(trimmed) : false
+  const changed = trimmed !== collapsed
+  return { raw: collapsed, value: trimmed, valid, changed }
+}
+
+const normalizeEmailInput = (value: string) => value.replace(/\s+/g, '').toLowerCase()
+
+const normalizePhoneInput = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (digits.startsWith('27')) return digits.slice(0, 11)
+  return digits.slice(0, 10)
+}
+
+const normalizeSchoolInput = (value: string) => value.replace(/\s+/g, ' ').trim()
+
 export default function ProfilePage() {
   const router = useRouter()
   const { data: session } = useSession()
@@ -281,9 +300,12 @@ export default function ProfilePage() {
 
   async function saveProfile() {
     setError(null)
-    const cleanedFirst = firstName.trim()
-    const cleanedLast = lastName.trim()
-    const cleanedMiddle = middleNames.trim()
+    const firstNameInput = normalizeNameField(firstName)
+    const lastNameInput = normalizeNameField(lastName)
+    const middleNamesInput = normalizeNameField(middleNames)
+    const cleanedFirst = firstNameInput.value
+    const cleanedLast = lastNameInput.value
+    const cleanedMiddle = middleNamesInput.value
     const cleanedEmail = primaryEmail.trim().toLowerCase()
     const cleanedRecovery = recoveryEmail.trim().toLowerCase()
     const cleanedPhone = phoneNumber.trim()
@@ -303,6 +325,15 @@ export default function ProfilePage() {
     const errors: string[] = []
     if (!cleanedFirst) errors.push('First name is required')
     if (!cleanedLast) errors.push('Last name is required')
+    if (firstNameInput.raw && (!firstNameInput.valid || firstNameInput.changed)) {
+      errors.push('First name contains invalid characters or spacing')
+    }
+    if (lastNameInput.raw && (!lastNameInput.valid || lastNameInput.changed)) {
+      errors.push('Last name contains invalid characters or spacing')
+    }
+    if (middleNamesInput.raw && (!middleNamesInput.valid || middleNamesInput.changed)) {
+      errors.push('Other names contain invalid characters or spacing')
+    }
     if (!cleanedEmail || !emailRegex.test(cleanedEmail)) errors.push('Primary email must be valid')
     if (!cleanedRecovery || !emailRegex.test(cleanedRecovery)) errors.push('Recovery email must be valid')
     if (!dateOfBirth) errors.push('Date of birth is required')
@@ -470,15 +501,15 @@ export default function ProfilePage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium">First name</label>
-                    <input className="input" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                    <input className="input" value={firstName} onChange={e => setFirstName(normalizeNameField(e.target.value).value)} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Last name</label>
-                    <input className="input" value={lastName} onChange={e => setLastName(e.target.value)} />
+                    <input className="input" value={lastName} onChange={e => setLastName(normalizeNameField(e.target.value).value)} />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium">Other names</label>
-                    <input className="input" value={middleNames} onChange={e => setMiddleNames(e.target.value)} placeholder="Optional" />
+                    <input className="input" value={middleNames} onChange={e => setMiddleNames(normalizeNameField(e.target.value).value)} placeholder="Optional" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Date of birth</label>
@@ -494,7 +525,7 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium">School / institution</label>
-                    <input className="input" value={schoolName} onChange={e => setSchoolName(e.target.value)} />
+                    <input className="input" value={schoolName} onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))} />
                   </div>
                 </div>
               </section>
@@ -504,19 +535,19 @@ export default function ProfilePage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium">Primary email</label>
-                    <input className="input" value={primaryEmail} onChange={e => setPrimaryEmail(e.target.value)} />
+                    <input className="input" value={primaryEmail} onChange={e => setPrimaryEmail(normalizeEmailInput(e.target.value))} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Recovery email</label>
-                    <input className="input" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} />
+                    <input className="input" value={recoveryEmail} onChange={e => setRecoveryEmail(normalizeEmailInput(e.target.value))} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Mobile number</label>
-                    <input className="input" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="e.g. 0821234567" />
+                    <input className="input" value={phoneNumber} onChange={e => setPhoneNumber(normalizePhoneInput(e.target.value))} placeholder="e.g. 0821234567" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Alternate phone (optional)</label>
-                    <input className="input" value={alternatePhone} onChange={e => setAlternatePhone(e.target.value)} placeholder="e.g. 0612345678" />
+                    <input className="input" value={alternatePhone} onChange={e => setAlternatePhone(normalizePhoneInput(e.target.value))} placeholder="e.g. 0612345678" />
                   </div>
                 </div>
               </section>
@@ -534,7 +565,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium">Emergency phone</label>
-                    <input className="input" value={emergencyContactPhone} onChange={e => setEmergencyContactPhone(e.target.value)} placeholder="e.g. 0831234567" />
+                    <input className="input" value={emergencyContactPhone} onChange={e => setEmergencyContactPhone(normalizePhoneInput(e.target.value))} placeholder="e.g. 0831234567" />
                   </div>
                 </div>
               </section>
@@ -788,15 +819,15 @@ export default function ProfilePage() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <div>
                           <label className="block text-sm font-medium">First name</label>
-                          <input className="input" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                          <input className="input" value={firstName} onChange={e => setFirstName(normalizeNameField(e.target.value).value)} />
                         </div>
                         <div>
                           <label className="block text-sm font-medium">Last name</label>
-                          <input className="input" value={lastName} onChange={e => setLastName(e.target.value)} />
+                          <input className="input" value={lastName} onChange={e => setLastName(normalizeNameField(e.target.value).value)} />
                         </div>
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium">Other names</label>
-                          <input className="input" value={middleNames} onChange={e => setMiddleNames(e.target.value)} placeholder="Optional" />
+                          <input className="input" value={middleNames} onChange={e => setMiddleNames(normalizeNameField(e.target.value).value)} placeholder="Optional" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium">Date of birth</label>
@@ -812,7 +843,7 @@ export default function ProfilePage() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium">School / institution</label>
-                          <input className="input" value={schoolName} onChange={e => setSchoolName(e.target.value)} />
+                          <input className="input" value={schoolName} onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))} />
                         </div>
                       </div>
                     </section>
@@ -822,19 +853,19 @@ export default function ProfilePage() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <div>
                           <label className="block text-sm font-medium">Primary email</label>
-                          <input className="input" value={primaryEmail} onChange={e => setPrimaryEmail(e.target.value)} />
+                          <input className="input" value={primaryEmail} onChange={e => setPrimaryEmail(normalizeEmailInput(e.target.value))} />
                         </div>
                         <div>
                           <label className="block text-sm font-medium">Recovery email</label>
-                          <input className="input" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} />
+                          <input className="input" value={recoveryEmail} onChange={e => setRecoveryEmail(normalizeEmailInput(e.target.value))} />
                         </div>
                         <div>
                           <label className="block text-sm font-medium">Mobile number</label>
-                          <input className="input" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="e.g. 0821234567" />
+                          <input className="input" value={phoneNumber} onChange={e => setPhoneNumber(normalizePhoneInput(e.target.value))} placeholder="e.g. 0821234567" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium">Alternate phone (optional)</label>
-                          <input className="input" value={alternatePhone} onChange={e => setAlternatePhone(e.target.value)} placeholder="e.g. 0612345678" />
+                          <input className="input" value={alternatePhone} onChange={e => setAlternatePhone(normalizePhoneInput(e.target.value))} placeholder="e.g. 0612345678" />
                         </div>
                       </div>
                     </section>
@@ -852,7 +883,7 @@ export default function ProfilePage() {
                         </div>
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium">Emergency phone</label>
-                          <input className="input" value={emergencyContactPhone} onChange={e => setEmergencyContactPhone(e.target.value)} placeholder="e.g. 0831234567" />
+                          <input className="input" value={emergencyContactPhone} onChange={e => setEmergencyContactPhone(normalizePhoneInput(e.target.value))} placeholder="e.g. 0831234567" />
                         </div>
                       </div>
                     </section>

@@ -37,6 +37,16 @@ function titleCaseName(value: string) {
     .join(' ')
 }
 
+function normalizeNameField(value: unknown) {
+  const raw = asString(value)
+  const collapsed = raw.replace(/\s+/g, ' ').trim()
+  const stripped = collapsed.replace(/[^\p{L}\s'-]/gu, '')
+  const trimmed = stripped.replace(/^[-']+|[-']+$/g, '').replace(/\s+/g, ' ').trim()
+  const valid = trimmed ? /^[\p{L}]+([\s'-][\p{L}]+)*$/u.test(trimmed) : false
+  const changed = trimmed !== collapsed
+  return { raw: collapsed, value: trimmed, valid, changed }
+}
+
 function hasKey(obj: any, key: string) {
   return obj != null && Object.prototype.hasOwnProperty.call(obj, key)
 }
@@ -130,9 +140,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let emailChanged = false
     let nextEmail = existing.email
 
-    const nextFirstName = hasKey(body, 'firstName') ? titleCaseName(asString(body.firstName)) : existing.firstName
-    const nextLastName = hasKey(body, 'lastName') ? titleCaseName(asString(body.lastName)) : existing.lastName
-    const nextMiddleNames = hasKey(body, 'middleNames') ? titleCaseName(asString(body.middleNames)) : (existing.middleNames || '')
+    const firstNameInput = hasKey(body, 'firstName') ? normalizeNameField(body.firstName) : null
+    const lastNameInput = hasKey(body, 'lastName') ? normalizeNameField(body.lastName) : null
+    const middleNamesInput = hasKey(body, 'middleNames') ? normalizeNameField(body.middleNames) : null
+
+    if (firstNameInput) {
+      if (!firstNameInput.value) errors.push('First name is required')
+      if (firstNameInput.raw && (!firstNameInput.valid || firstNameInput.changed)) {
+        errors.push('First name contains invalid characters or spacing')
+      }
+    }
+    if (lastNameInput) {
+      if (!lastNameInput.value) errors.push('Last name is required')
+      if (lastNameInput.raw && (!lastNameInput.valid || lastNameInput.changed)) {
+        errors.push('Last name contains invalid characters or spacing')
+      }
+    }
+    if (middleNamesInput?.raw && (!middleNamesInput.valid || middleNamesInput.changed)) {
+      errors.push('Middle names contain invalid characters or spacing')
+    }
+
+    const nextFirstName = firstNameInput ? titleCaseName(firstNameInput.value) : existing.firstName
+    const nextLastName = lastNameInput ? titleCaseName(lastNameInput.value) : existing.lastName
+    const nextMiddleNames = middleNamesInput
+      ? titleCaseName(middleNamesInput.value)
+      : (existing.middleNames || '')
     const nextDisplayName = `${nextFirstName} ${nextMiddleNames ? `${nextMiddleNames} ` : ''}${nextLastName}`.trim()
 
     if (hasKey(body, 'firstName')) data.firstName = nextFirstName

@@ -26,6 +26,32 @@ function normalisePhoneNumber(input: string) {
   return ''
 }
 
+function titleCaseName(value: string) {
+  const cleaned = value.trim()
+  if (!cleaned) return ''
+  return cleaned
+    .split(/\s+/)
+    .map(word => word
+      .split(/([-'])/)
+      .map(part => {
+        if (!part || part === '-' || part === "'") return part
+        return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+      })
+      .join('')
+    )
+    .join(' ')
+}
+
+function normalizeNameField(value: unknown) {
+  const raw = asString(value)
+  const collapsed = raw.replace(/\s+/g, ' ').trim()
+  const stripped = collapsed.replace(/[^\p{L}\s'-]/gu, '')
+  const trimmed = stripped.replace(/^[-']+|[-']+$/g, '').replace(/\s+/g, ' ').trim()
+  const valid = trimmed ? /^[\p{L}]+([\s'-][\p{L}]+)*$/u.test(trimmed) : false
+  const changed = trimmed !== collapsed
+  return { raw: collapsed, value: trimmed, valid, changed }
+}
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -44,8 +70,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const body = req.body ?? {}
 
-  const firstName = asString(body.firstName)
-  const lastName = asString(body.lastName)
+  const firstNameInput = normalizeNameField(body.firstName)
+  const lastNameInput = normalizeNameField(body.lastName)
+  const firstName = firstNameInput.value
+  const lastName = lastNameInput.value
+  const schoolName = asString(body.schoolName)
   const email = asString(body.email).toLowerCase()
   const password = typeof body.password === 'string' ? body.password : ''
   const gradeInput = asString(body.grade)
@@ -55,6 +84,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const errors: string[] = []
   if (!firstName) errors.push('First name is required')
   if (!lastName) errors.push('Last name is required')
+  if (firstNameInput.raw && (!firstNameInput.valid || firstNameInput.changed)) {
+    errors.push('First name contains invalid characters or spacing')
+  }
+  if (lastNameInput.raw && (!lastNameInput.valid || lastNameInput.changed)) {
+    errors.push('Last name contains invalid characters or spacing')
+  }
+  if (!schoolName) errors.push('School or institution is required')
   if (!email || !emailRegex.test(email)) errors.push('Valid email is required')
   if (!password || password.length < 8) errors.push('Password must be at least 8 characters long')
 
@@ -87,11 +123,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const hashed = await bcrypt.hash(password, 10)
 
+    const safeFirstName = titleCaseName(firstName)
+    const safeLastName = titleCaseName(lastName)
+
     const user = await prisma.user.create({
       data: {
-        name: `${firstName} ${lastName}`.trim(),
-        firstName,
-        lastName,
+        name: `${safeFirstName} ${safeLastName}`.trim(),
+        firstName: safeFirstName,
+        lastName: safeLastName,
+        schoolName,
         email,
         password: hashed,
         role,

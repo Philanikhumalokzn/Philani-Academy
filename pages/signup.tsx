@@ -16,11 +16,35 @@ function normalisePhoneNumber(input: string) {
   return ''
 }
 
+function normalizeNameField(value: string) {
+  const collapsed = value.replace(/\s+/g, ' ').trim()
+  const stripped = collapsed.replace(/[^\p{L}\s'-]/gu, '')
+  const trimmed = stripped.replace(/^[-']+|[-']+$/g, '').replace(/\s+/g, ' ').trim()
+  const valid = trimmed ? /^[\p{L}]+([\s'-][\p{L}]+)*$/u.test(trimmed) : false
+  const changed = trimmed !== collapsed
+  return { raw: collapsed, value: trimmed, valid, changed }
+}
+
+function normalizeEmailInput(value: string) {
+  return value.replace(/\s+/g, '').toLowerCase()
+}
+
+function normalizePhoneInput(value: string) {
+  const digits = value.replace(/\D/g, '')
+  if (digits.startsWith('27')) return digits.slice(0, 11)
+  return digits.slice(0, 10)
+}
+
+function normalizeSchoolInput(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
 export default function Signup() {
   const router = useRouter()
   const [hydrated, setHydrated] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
+  const [schoolName, setSchoolName] = useState('')
   const [email, setEmail] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [grade, setGrade] = useState<GradeValue | ''>('')
@@ -37,8 +61,11 @@ export default function Signup() {
     event.preventDefault()
     setError(null)
 
-    const cleanedFirst = firstName.trim()
-    const cleanedLast = lastName.trim()
+    const firstNameInput = normalizeNameField(firstName)
+    const lastNameInput = normalizeNameField(lastName)
+    const cleanedFirst = firstNameInput.value
+    const cleanedLast = lastNameInput.value
+    const cleanedSchool = schoolName.replace(/\s+/g, ' ').trim()
     const cleanedEmail = email.trim().toLowerCase()
     const cleanedPhone = phoneNumber.trim()
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -47,6 +74,13 @@ export default function Signup() {
 
     if (!cleanedFirst) errors.push('First name is required')
     if (!cleanedLast) errors.push('Last name is required')
+    if (firstNameInput.raw && (!firstNameInput.valid || firstNameInput.changed)) {
+      errors.push('First name contains invalid characters or spacing')
+    }
+    if (lastNameInput.raw && (!lastNameInput.valid || lastNameInput.changed)) {
+      errors.push('Last name contains invalid characters or spacing')
+    }
+    if (!cleanedSchool) errors.push('School or institution is required')
     if (!cleanedEmail || !emailRegex.test(cleanedEmail)) errors.push('Valid email is required')
     if (!password || password.length < 8) errors.push('Password must be at least 8 characters long')
     if (!grade) errors.push('Please select your grade')
@@ -67,6 +101,7 @@ export default function Signup() {
         body: JSON.stringify({
           firstName: cleanedFirst,
           lastName: cleanedLast,
+          schoolName: cleanedSchool,
           email: cleanedEmail,
           password,
           grade,
@@ -92,6 +127,7 @@ export default function Signup() {
 
       setFirstName('')
       setLastName('')
+      setSchoolName('')
       setEmail('')
       setPhoneNumber('')
       setGrade('')
@@ -127,8 +163,30 @@ export default function Signup() {
           <section>
             <h3 className="font-semibold mb-2 text-slate-900">Learner details</h3>
             <div className="space-y-3">
-              <input className="input input-light" placeholder="First name" value={firstName} onChange={e => setFirstName(e.target.value)} autoComplete="given-name" required />
-              <input className="input input-light" placeholder="Last name" value={lastName} onChange={e => setLastName(e.target.value)} autoComplete="family-name" required />
+              <input
+                className="input input-light"
+                placeholder="First name"
+                value={firstName}
+                onChange={e => setFirstName(normalizeNameField(e.target.value).value)}
+                autoComplete="given-name"
+                required
+              />
+              <input
+                className="input input-light"
+                placeholder="Last name"
+                value={lastName}
+                onChange={e => setLastName(normalizeNameField(e.target.value).value)}
+                autoComplete="family-name"
+                required
+              />
+              <input
+                className="input input-light"
+                placeholder="School / institution"
+                value={schoolName}
+                onChange={e => setSchoolName(normalizeSchoolInput(e.target.value))}
+                autoComplete="organization"
+                required
+              />
               <select className="input input-light" value={grade} onChange={e => setGrade(e.target.value as GradeValue | '')} required>
                 <option value="">Select your grade</option>
                 {gradeOptions.map(option => (
@@ -141,8 +199,23 @@ export default function Signup() {
           <section>
             <h3 className="font-semibold mb-2 text-slate-900">Contact details</h3>
             <div className="space-y-3">
-              <input className="input input-light" type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required />
-              <input className="input input-light" placeholder="Mobile number (e.g. 0821234567)" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} autoComplete="tel" required />
+              <input
+                className="input input-light"
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={e => setEmail(normalizeEmailInput(e.target.value))}
+                autoComplete="email"
+                required
+              />
+              <input
+                className="input input-light"
+                placeholder="Mobile number (e.g. 0821234567)"
+                value={phoneNumber}
+                onChange={e => setPhoneNumber(normalizePhoneInput(e.target.value))}
+                autoComplete="tel"
+                required
+              />
             </div>
           </section>
 

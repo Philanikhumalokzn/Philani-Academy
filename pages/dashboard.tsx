@@ -3680,8 +3680,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const isMobileViewport = () => {
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+      const isMobileUa = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+      const isCoarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+      return window.innerWidth < 768 || isMobileUa || isCoarse
+    }
     const updateViewport = () => {
-      setIsMobile(window.innerWidth < 768)
+      setIsMobile(isMobileViewport())
     }
     updateViewport()
     window.addEventListener('resize', updateViewport)

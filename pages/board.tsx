@@ -19,13 +19,19 @@ const makeChannelName = (boardId: string) => `myscript:${sanitizeIdentifier(boar
 const useIsMobile = (maxWidth = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false
-    return window.innerWidth < maxWidth
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+    const isMobileUa = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+    const isCoarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+    return window.innerWidth < maxWidth || isMobileUa || isCoarse
   })
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     const handleResize = () => {
-      setIsMobile(window.innerWidth < maxWidth)
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+      const isMobileUa = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+      const isCoarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+      setIsMobile(window.innerWidth < maxWidth || isMobileUa || isCoarse)
     }
     handleResize()
     window.addEventListener('resize', handleResize)

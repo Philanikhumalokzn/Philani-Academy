@@ -374,7 +374,7 @@ export default function PublicUserProfilePage() {
               </div>
 
               <div className="flex flex-col gap-4">
-                <div className="flex items-start gap-4">
+                <div className="flex items-center gap-4">
                   <div className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden">
                     {profile?.avatar ? (
                       // eslint-disable-next-line @next/next/no-img-element

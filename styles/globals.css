@@ -69,6 +69,7 @@
   --text: #e9f1ff;
   --card-radius: 12px;
   --card-padding: 1rem;
+  --section-line: rgba(255,255,255,0.12);
 }
 
 html,body,#__next{
@@ -94,9 +95,9 @@ body{
   }
 
   .mobile-row-width{
-    width:calc(100% - 1rem) !important;
-    margin-left:0.5rem !important;
-    margin-right:0.5rem !important;
+    width:100vw !important;
+    margin-left:calc(50% - 50vw) !important;
+    margin-right:calc(50% - 50vw) !important;
     box-sizing:border-box !important;
   }
 }
@@ -196,13 +197,14 @@ body{
 
 /* Cards */
 .card{
-  background:var(--card);
+  background:transparent !important;
   color:#f8fafc;
-  border-radius:var(--card-radius);
+  border-radius:0 !important;
   padding:var(--card-padding);
-  border:1px solid var(--card-border);
-  box-shadow:0 25px 45px rgba(0,0,0,0.35);
-  backdrop-filter:blur(14px);
+  border:0 !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  position:relative;
 }
 
 /* Normalize rounded utilities to the global card radius */
@@ -221,10 +223,32 @@ body{
 }
 
 .dashboard-card{
-  background:linear-gradient(160deg, rgba(9,18,60,0.92), rgba(2,6,24,0.88));
-  border:1px solid rgba(124,172,255,0.18);
-  box-shadow:0 25px 60px rgba(3,8,32,0.6);
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  border-radius:0;
+  position:relative;
 }
+
+.card::before,
+.card::after,
+.dashboard-card::before,
+.dashboard-card::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  width:100vw;
+  height:1px;
+  background:var(--section-line);
+  pointer-events:none;
+}
+
+.card::before,
+.dashboard-card::before{top:0;}
+
+.card::after,
+.dashboard-card::after{bottom:0;}
 
 /* Flatten nested panels that use bg-white/5 to avoid overly tight content */
 .bg-white\/5 .bg-white\/5{
@@ -292,7 +316,7 @@ body{
 
   .mobile-dashboard-theme .card,
   .mobile-dashboard-theme .dashboard-card{
-    border-radius:var(--card-radius);
+    border-radius:0;
   }
 
   /* Mobile dashboard: override Tailwind rounded/padding on stacked cards */
@@ -425,7 +449,7 @@ body{
 
 /* Make profile overlay feel like the dashboard glass (less opaque than deep-page cards). */
 .profile-overlay-theme .card{
-  background: rgba(8,14,30,0.65);
+  background: transparent;
 }
 
 
@@ -1207,10 +1231,10 @@ td{color:#f8fafc;}
 }
 
 .mobile-dashboard-theme .card{
-  background:rgba(255,255,255,0.08);
-  border:1px solid rgba(255,255,255,0.1);
+  background:transparent;
+  border:0;
   color:#f8fafc;
-  box-shadow:0 25px 45px rgba(2,8,32,0.45);
+  box-shadow:none;
 }
 
 .mobile-dashboard-theme .card .muted,

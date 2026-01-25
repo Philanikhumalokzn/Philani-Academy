@@ -2937,16 +2937,19 @@ export default function Dashboard() {
   useEffect(() => {
     const viewUserChallenge = typeof router.query.viewUserChallenge === 'string' ? router.query.viewUserChallenge : ''
     const targetUserId = typeof router.query.userId === 'string' ? router.query.userId : ''
+    const targetResponseId = typeof router.query.responseId === 'string' ? router.query.responseId : ''
     if (!viewUserChallenge || !targetUserId) return
     if (selectedChallengeId === viewUserChallenge && selectedSubmissionUserId === targetUserId && challengeGradingOverlayOpen) return
 
     setSelectedChallengeId(viewUserChallenge)
     setSelectedSubmissionUserId(targetUserId)
+    if (targetResponseId) setChallengeGradingResponseId(targetResponseId)
     setChallengeGradingOverlayOpen(true)
 
     const nextQuery: Record<string, any> = { ...router.query }
     delete nextQuery.viewUserChallenge
     delete nextQuery.userId
+    delete nextQuery.responseId
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router, router.query, selectedChallengeId, selectedSubmissionUserId, challengeGradingOverlayOpen])
 

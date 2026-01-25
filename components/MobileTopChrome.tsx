@@ -462,6 +462,42 @@ export default function MobileTopChrome() {
     setExpandedRequestId(null)
   }
 
+  const openNotificationTarget = useCallback((n: ActivityNotification) => {
+    const type = String(n?.type || '')
+    const payload = (n as any)?.data || {}
+    const challengeId = typeof payload?.challengeId === 'string' ? payload.challengeId : ''
+    const responderId = typeof payload?.responderId === 'string' ? payload.responderId : ''
+    const responseId = typeof payload?.responseId === 'string' ? payload.responseId : ''
+
+    if (type === 'challenge_response') {
+      const query: Record<string, string> = {
+        viewUserChallenge: challengeId || '',
+        userId: responderId || '',
+      }
+      if (responseId) query.responseId = responseId
+      if (query.viewUserChallenge && query.userId) {
+        closeNotifications()
+        void router.push({ pathname: '/dashboard', query })
+        return true
+      }
+    }
+
+    if (type === 'challenge_graded') {
+      if (responseId) {
+        closeNotifications()
+        void router.push({ pathname: '/dashboard', query: { viewChallengeResponse: responseId } })
+        return true
+      }
+      if (challengeId) {
+        closeNotifications()
+        void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
+        return true
+      }
+    }
+
+    return false
+  }, [router])
+
   const closeAccountControl = () => {
     setAccountControlOpen(false)
   }
@@ -731,6 +767,17 @@ export default function MobileTopChrome() {
                           <div
                             key={id}
                             className={`rounded-2xl border backdrop-blur p-3 ${isUnread ? 'border-blue-300/40 bg-white/10' : 'border-white/10 bg-white/5'}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              openNotificationTarget(n)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                openNotificationTarget(n)
+                              }
+                            }}
                           >
                             <div className="text-sm font-semibold text-white">{title}</div>
                             {body ? <div className="text-xs text-white/80 mt-1 whitespace-pre-wrap break-words">{body}</div> : null}

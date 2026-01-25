@@ -362,30 +362,6 @@ export default function MobileTopChrome() {
     }
   }, [notificationsOpen])
 
-  useEffect(() => {
-    if (!isVisible) return
-    if (typeof window === 'undefined') return
-
-    const onAnyPointer = (e: PointerEvent) => {
-      const target = e.target as HTMLElement | null
-      if (!target) return
-
-      // Ignore taps inside the chrome itself.
-      if (target.closest('[data-mobile-top-chrome]')) return
-
-      // Ignore taps inside regions that should not toggle the chrome.
-      if (target.closest('[data-mobile-chrome-ignore]')) return
-
-      // "Empty" means: not an interactive element.
-      if (target.closest('a,button,input,textarea,select,[role="button"],[data-mobile-chrome-interactive]')) return
-
-      showChrome()
-    }
-
-    // Use pointerdown + capture so it works reliably on mobile (before routing/link clicks).
-    window.addEventListener('pointerdown', onAnyPointer, { capture: true })
-    return () => window.removeEventListener('pointerdown', onAnyPointer, { capture: true } as any)
-  }, [isVisible, showChrome])
 
   useEffect(() => {
     const handleRoute = () => setOpen(false)

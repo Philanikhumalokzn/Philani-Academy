@@ -374,10 +374,10 @@ export default function PublicUserProfilePage() {
               <div className="relative z-10 p-5">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden">
+                    <div className="relative w-24 h-24 aspect-square rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden flex-shrink-0 profile-avatar-container">
                       {profile?.avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={profile.avatar} alt={displayName} className="h-full w-full object-cover" />
+                        <img src={profile.avatar} alt={displayName} className="w-full h-full object-cover" />
                       ) : (
                         <span>{displayName.slice(0, 1).toUpperCase()}</span>
                       )}

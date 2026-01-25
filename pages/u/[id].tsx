@@ -359,7 +359,7 @@ export default function PublicUserProfilePage() {
       >
         <div className="mx-auto max-w-5xl space-y-6">
           <section className="hero flex-col gap-5">
-            <div className="relative overflow-hidden rounded-3xl bg-white/3">
+            <div className="relative overflow-hidden rounded-3xl min-h-[220px]">
               <div
                 className="absolute inset-0"
                 style={{

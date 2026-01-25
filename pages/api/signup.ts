@@ -57,14 +57,23 @@ function normalizeSchoolName(value: string) {
   if (!collapsed) return ''
   return collapsed
     .split(/\s+/)
-    .map(word => word
-      .split(/([-'])/)
-      .map(part => {
-        if (!part || part === '-' || part === "'") return part
-        return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
-      })
-      .join('')
-    )
+    .map(word => {
+      const parts = word.split(/([-'’])/)
+      let lastSep = ''
+      return parts
+        .map(part => {
+          if (!part) return part
+          if (part === '-' || part === "'" || part === '’') {
+            lastSep = part
+            return part
+          }
+          const lower = part.toLowerCase()
+          const isPossessive = (lastSep === "'" || lastSep === '’') && lower.length === 1
+          lastSep = ''
+          return isPossessive ? lower : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`
+        })
+        .join('')
+    })
     .join(' ')
 }
 
@@ -146,7 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const matchedSchool = await schoolModel.findFirst({
         where: {
           name: {
-            equals: schoolName,
+            equals: normalizedSchoolName,
             mode: 'insensitive'
           }
         },

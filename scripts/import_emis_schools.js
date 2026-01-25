@@ -8,14 +8,23 @@ function titleCaseWords(value) {
   if (!cleaned) return ''
   return cleaned
     .split(/\s+/)
-    .map(word => word
-      .split(/([-'])/)
-      .map(part => {
-        if (!part || part === '-' || part === "'") return part
-        return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
-      })
-      .join('')
-    )
+    .map(word => {
+      const parts = word.split(/([-'’])/)
+      let lastSep = ''
+      return parts
+        .map(part => {
+          if (!part) return part
+          if (part === '-' || part === "'" || part === '’') {
+            lastSep = part
+            return part
+          }
+          const lower = String(part).toLowerCase()
+          const isPossessive = (lastSep === "'" || lastSep === '’') && lower.length === 1
+          lastSep = ''
+          return isPossessive ? lower : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`
+        })
+        .join('')
+    })
     .join(' ')
 }
 

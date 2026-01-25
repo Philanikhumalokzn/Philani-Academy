@@ -11,6 +11,10 @@ function normalizeError(error?: string | null) {
   return error
 }
 
+function normalizeEmailInput(value: string) {
+  return value.replace(/\s+/g, '').toLowerCase()
+}
+
 type SignInScreenProps = {
   
   title?: string
@@ -42,9 +46,11 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
     setError(null)
     setInfo(null)
 
+    const safeEmail = normalizeEmailInput(email)
+
     const result = await signIn('credentials', {
       redirect: false,
-      email,
+      email: safeEmail,
       password,
       callbackUrl
     })
@@ -65,7 +71,8 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
   }, [email, password, callbackUrl, router])
 
   const handleResend = useCallback(async () => {
-    if (!email) {
+    const safeEmail = normalizeEmailInput(email)
+    if (!safeEmail) {
       setError('Enter your email first so we know where to send the code.')
       return
     }
@@ -78,7 +85,7 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
       const response = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: safeEmail })
       })
       const data = await response.json()
       if (!response.ok) {
@@ -86,8 +93,8 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
       }
       setResendStatus('sent')
       setInfo(data?.message || 'Check your inbox for the new verification code.')
-      setLastOtpEmail(email)
-      router.push({ pathname: '/verify-email', query: { email } })
+      setLastOtpEmail(safeEmail)
+      router.push({ pathname: '/verify-email', query: { email: safeEmail } })
     } catch (err: any) {
       setResendStatus('error')
       setError(err?.message || 'Something went wrong. Please try again later.')
@@ -140,7 +147,7 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
                 autoComplete="email"
                 className="input input-light mt-1"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setEmail(normalizeEmailInput(e.target.value))}
               />
             </div>
 

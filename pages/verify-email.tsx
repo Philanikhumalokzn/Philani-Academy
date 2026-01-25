@@ -6,6 +6,8 @@ import NavArrows from '../components/NavArrows'
 type VerifyState = 'idle' | 'submitting' | 'success' | 'error'
 type ResendState = 'idle' | 'sending' | 'sent' | 'error'
 
+const normalizeEmailInput = (value: string) => value.replace(/\s+/g, '').toLowerCase()
+
 export default function VerifyEmailPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -21,7 +23,7 @@ export default function VerifyEmailPage() {
     const emailParam = router.query.email
     const initialEmail = Array.isArray(emailParam) ? emailParam[0] : emailParam
     if (initialEmail) {
-      setEmail(initialEmail)
+      setEmail(normalizeEmailInput(initialEmail))
     }
   }, [router.isReady, router.query.email])
 
@@ -37,11 +39,13 @@ export default function VerifyEmailPage() {
     setStatus('submitting')
     setMessage('Verifying code…')
 
+    const safeEmail = normalizeEmailInput(email)
+
     try {
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), code: code.trim() })
+        body: JSON.stringify({ email: safeEmail, code: code.trim() })
       })
 
       const data = await response.json()
@@ -62,7 +66,8 @@ export default function VerifyEmailPage() {
   }
 
   async function handleResend() {
-    if (!email.trim()) {
+    const safeEmail = normalizeEmailInput(email)
+    if (!safeEmail) {
       setResendStatus('error')
       setResendMessage('Enter your email first')
       return
@@ -75,7 +80,7 @@ export default function VerifyEmailPage() {
       const response = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
+        body: JSON.stringify({ email: safeEmail })
       })
 
       const data = await response.json()
@@ -85,7 +90,7 @@ export default function VerifyEmailPage() {
 
       setResendStatus('sent')
       setResendMessage('If your email is registered, you will receive a new verification code shortly.')
-      setLastOtpEmail(email.trim())
+      setLastOtpEmail(safeEmail)
     } catch (err: any) {
       setResendStatus('error')
       setResendMessage(err?.message || 'Could not resend code')
@@ -113,7 +118,7 @@ export default function VerifyEmailPage() {
                 className="input input-light"
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={e => setEmail(normalizeEmailInput(e.target.value))}
                 placeholder="you@example.com"
                 required
               />

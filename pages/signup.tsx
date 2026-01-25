@@ -25,19 +25,44 @@ function normalizeNameField(value: string) {
   return { raw: collapsed, value: trimmed, valid, changed }
 }
 
-function titleCaseWords(value: string) {
+function titleCasePersonName(value: string) {
   const cleaned = value.replace(/\s+/g, ' ').trim()
   if (!cleaned) return ''
   return cleaned
     .split(/\s+/)
     .map(word => word
-      .split(/([-'])/)
+      .split(/([-'’])/)
       .map(part => {
-        if (!part || part === '-' || part === "'") return part
+        if (!part || part === '-' || part === "'" || part === '’') return part
         return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
       })
       .join('')
     )
+    .join(' ')
+}
+
+function titleCaseSchoolName(value: string) {
+  const cleaned = value.replace(/\s+/g, ' ').trim()
+  if (!cleaned) return ''
+  return cleaned
+    .split(/\s+/)
+    .map(word => {
+      const parts = word.split(/([-'’])/)
+      let lastSep = ''
+      return parts
+        .map(part => {
+          if (!part) return part
+          if (part === '-' || part === "'" || part === '’') {
+            lastSep = part
+            return part
+          }
+          const lower = part.toLowerCase()
+          const isPossessive = (lastSep === "'" || lastSep === '’') && lower.length === 1
+          lastSep = ''
+          return isPossessive ? lower : `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`
+        })
+        .join('')
+    })
     .join(' ')
 }
 
@@ -52,7 +77,7 @@ function normalizePhoneInput(value: string) {
 }
 
 function normalizeSchoolInput(value: string) {
-  return titleCaseWords(value)
+  return titleCaseSchoolName(value)
 }
 
 export default function Signup() {
@@ -122,8 +147,8 @@ export default function Signup() {
 
     const firstNameInput = normalizeNameField(firstName)
     const lastNameInput = normalizeNameField(lastName)
-    const cleanedFirst = firstNameInput.value
-    const cleanedLast = lastNameInput.value
+    const cleanedFirst = titleCasePersonName(firstNameInput.value)
+    const cleanedLast = titleCasePersonName(lastNameInput.value)
     const cleanedSchool = normalizeSchoolInput(schoolName)
     const matchedSchool = schoolSuggestions.find(s => s.toLowerCase() === cleanedSchool.toLowerCase())
     const finalSchool = matchedSchool || cleanedSchool
@@ -235,7 +260,7 @@ export default function Signup() {
                 className="input input-light"
                 placeholder="First name"
                 value={firstName}
-                onChange={e => setFirstName(normalizeNameField(e.target.value).value)}
+                onChange={e => setFirstName(titleCasePersonName(normalizeNameField(e.target.value).value))}
                 autoComplete="given-name"
                 required
               />
@@ -243,7 +268,7 @@ export default function Signup() {
                 className="input input-light"
                 placeholder="Last name"
                 value={lastName}
-                onChange={e => setLastName(normalizeNameField(e.target.value).value)}
+                onChange={e => setLastName(titleCasePersonName(normalizeNameField(e.target.value).value))}
                 autoComplete="family-name"
                 required
               />

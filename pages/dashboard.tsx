@@ -8481,7 +8481,7 @@ export default function Dashboard() {
                 <div
                   ref={studentMobilePanelsRef}
                   onScroll={onStudentPanelsScroll}
-                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory"
+                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
                   style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
                 >
                   <div

@@ -199,8 +199,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
       if (challengeOwnerId && challengeOwnerId !== userId) {
-        const existingCount = await learnerResponse.count({ where: { sessionKey, userId } }).catch(() => 0)
-        shouldNotifyOwner = existingCount === 0
+        shouldNotifyOwner = true
       }
     }
 

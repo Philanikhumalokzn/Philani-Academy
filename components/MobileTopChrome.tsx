@@ -278,6 +278,7 @@ export default function MobileTopChrome() {
 
     const collectIds = () => {
       const ids: string[] = []
+      announcements.forEach(a => a?.id != null && ids.push(`announcement:${String(a.id)}`))
       actionInvites.forEach(inv => inv?.id && ids.push(`invite:${String(inv.id)}`))
       actionJoinRequests.forEach(req => req?.id && ids.push(`join:${String(req.id)}`))
       activityFeed.forEach(act => act?.id && ids.push(`activity:${String(act.id)}`))
@@ -312,6 +313,11 @@ export default function MobileTopChrome() {
 
     const ids = collectIds()
     const seen = readSetFromStorage()
+    announcements.forEach(a => {
+      const id = a?.id == null ? '' : String(a.id)
+      if (!id) return
+      if (readSet.has(id)) seen.add(`announcement:${id}`)
+    })
     const claims = readClaims()
     const nextNew: string[] = []
     let claimsChanged = false
@@ -329,7 +335,7 @@ export default function MobileTopChrome() {
 
     if (claimsChanged) writeClaims(claims)
     setNewNotificationIds(nextNew)
-  }, [actionInvites, actionJoinRequests, activityFeed, claimedNotificationKey, isVisible, seenNotificationKey])
+  }, [actionInvites, actionJoinRequests, activityFeed, announcements, claimedNotificationKey, isVisible, readSet, seenNotificationKey])
 
   const showChrome = useCallback(() => {
     setOpen(true)

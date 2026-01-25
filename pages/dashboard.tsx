@@ -27,6 +27,29 @@ const MOBILE_HERO_BG_MAX_WIDTH = 2000
 const WINDOW_PADDING_X = 24
 const WINDOW_PADDING_Y = 24
 
+const buildDefaultMobileHeroSvg = () => {
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020b35"/>
+      <stop offset="0.55" stop-color="#041448"/>
+      <stop offset="1" stop-color="#031641"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <circle cx="1540" cy="260" r="220" fill="url(#glow)"/>
+  <path d="M0 850 L420 620 L720 760 L980 560 L1280 720 L1600 600 L1920 760 L1920 1080 L0 1080 Z" fill="#041a5a" opacity="0.9"/>
+  <path d="M0 910 L360 740 L660 860 L920 720 L1220 860 L1500 760 L1920 900 L1920 1080 L0 1080 Z" fill="#052a7a" opacity="0.55"/>
+  <path d="M0 980 L420 920 L860 1000 L1220 940 L1580 1010 L1920 960 L1920 1080 L0 1080 Z" fill="#00122f" opacity="0.65"/>
+</svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
@@ -793,28 +816,8 @@ export default function Dashboard() {
   const [mobilePanels, setMobilePanels] = useState<{ announcements: boolean; sessions: boolean }>({ announcements: false, sessions: false })
   const [stageBounds, setStageBounds] = useState({ width: 0, height: 0 })
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([])
-  const [mobileHeroBgUrl, setMobileHeroBgUrl] = useState<string>(() => {
-    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#020b35"/>
-      <stop offset="0.55" stop-color="#041448"/>
-      <stop offset="1" stop-color="#031641"/>
-    </linearGradient>
-    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#60a5fa" stop-opacity="0.15"/>
-    </linearGradient>
-  </defs>
-  <rect width="1920" height="1080" fill="url(#sky)"/>
-  <circle cx="1540" cy="260" r="220" fill="url(#glow)"/>
-  <path d="M0 850 L420 620 L720 760 L980 560 L1280 720 L1600 600 L1920 760 L1920 1080 L0 1080 Z" fill="#041a5a" opacity="0.9"/>
-  <path d="M0 910 L360 740 L660 860 L920 720 L1220 860 L1500 760 L1920 900 L1920 1080 L0 1080 Z" fill="#052a7a" opacity="0.55"/>
-  <path d="M0 980 L420 920 L860 1000 L1220 940 L1580 1010 L1920 960 L1920 1080 L0 1080 Z" fill="#00122f" opacity="0.65"/>
-</svg>`
-    return `data:image/svg+xml,${encodeURIComponent(svg)}`
-  })
+  const [mobileHeroBgUrl, setMobileHeroBgUrl] = useState<string>(() => buildDefaultMobileHeroSvg())
+  const [mobileThemeBgUrl, setMobileThemeBgUrl] = useState<string>(() => buildDefaultMobileHeroSvg())
   const mobileHeroHasCustom = useMemo(() => {
     if (!mobileHeroBgUrl) return false
     // Default hero is an inline SVG data URL; user-uploaded images will be image/jpeg, image/png, etc.
@@ -824,6 +827,7 @@ export default function Dashboard() {
   const [mobileHeroBgEditVisible, setMobileHeroBgEditVisible] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const heroBgInputRef = useRef<HTMLInputElement | null>(null)
+  const themeBgInputRef = useRef<HTMLInputElement | null>(null)
   const heroBgEditHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -1752,6 +1756,11 @@ export default function Dashboard() {
     return `pa:mobileHeroCover:${userKey}`
   }, [session])
 
+  const mobileThemeBgStorageKey = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:mobileThemeBg:${userKey}`
+  }, [session])
+
   const roleLabel = useCallback((raw: unknown) => {
     const v = String(raw || '').trim().toLowerCase()
     if (!v) return ''
@@ -1768,11 +1777,21 @@ export default function Dashboard() {
       try {
         const res = await fetch('/api/profile', { credentials: 'same-origin' })
         const data = await res.json().catch(() => ({}))
-        const next = typeof (data as any)?.profileCoverUrl === 'string' ? String((data as any).profileCoverUrl).trim() : ''
-        if (!cancelled && next) {
-          setMobileHeroBgUrl(next)
-          return
+        const nextCover = typeof (data as any)?.profileCoverUrl === 'string' ? String((data as any).profileCoverUrl).trim() : ''
+        const nextTheme = typeof (data as any)?.profileThemeBgUrl === 'string' ? String((data as any).profileThemeBgUrl).trim() : ''
+        let hasCover = false
+        let hasTheme = false
+        if (!cancelled && nextCover) {
+          setMobileHeroBgUrl(nextCover)
+          hasCover = true
+        } else if (!cancelled && nextTheme) {
+          setMobileHeroBgUrl(nextTheme)
         }
+        if (!cancelled && nextTheme) {
+          setMobileThemeBgUrl(nextTheme)
+          hasTheme = true
+        }
+        if (hasCover && hasTheme) return
       } catch {
         // ignore
       }
@@ -1780,21 +1799,28 @@ export default function Dashboard() {
       // Backwards-compat fallback: previously this was stored in localStorage as a data URL.
       if (typeof window === 'undefined') return
       try {
-        const raw = window.localStorage.getItem(mobileHeroBgStorageKey)
-        if (!cancelled && raw && typeof raw === 'string') {
-          setMobileHeroBgUrl(raw)
-          return
+        const rawCover = window.localStorage.getItem(mobileHeroBgStorageKey)
+        if (!cancelled && rawCover && typeof rawCover === 'string') {
+          setMobileHeroBgUrl(rawCover)
         }
+        const rawTheme = window.localStorage.getItem(mobileThemeBgStorageKey)
+        if (!cancelled && rawTheme && typeof rawTheme === 'string') {
+          setMobileThemeBgUrl(rawTheme)
+        }
+
         const legacyKey = mobileHeroBgStorageKey.replace('pa:mobileHeroCover:', 'pa:mobileHeroBg:')
         const legacyRaw = window.localStorage.getItem(legacyKey)
-        if (!cancelled && legacyRaw && typeof legacyRaw === 'string') setMobileHeroBgUrl(legacyRaw)
+        if (!cancelled && legacyRaw && typeof legacyRaw === 'string') {
+          setMobileThemeBgUrl(legacyRaw)
+          if (!rawCover) setMobileHeroBgUrl(legacyRaw)
+        }
       } catch {}
     })()
 
     return () => {
       cancelled = true
     }
-  }, [mobileHeroBgStorageKey, status])
+  }, [mobileHeroBgStorageKey, mobileThemeBgStorageKey, status])
 
   const applyMobileHeroBackgroundFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -1823,6 +1849,36 @@ export default function Dashboard() {
       setMobileHeroBgUrl(url)
     } catch (err: any) {
       alert(err?.message || 'Failed to upload background')
+    }
+  }, [])
+
+  const applyMobileThemeBackgroundFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please choose an image file.')
+      return
+    }
+
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/profile/theme-bg', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to upload theme (${res.status})`)
+        return
+      }
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!url) {
+        alert('Upload succeeded but returned no URL')
+        return
+      }
+      setMobileThemeBgUrl(url)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload theme')
     }
   }, [])
 
@@ -8199,7 +8255,7 @@ export default function Dashboard() {
         <>
           <div
             className="fixed inset-0 opacity-30 scale-110"
-            style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+            style={{ backgroundImage: `url(${mobileThemeBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
             aria-hidden="true"
           />
           <div className="fixed inset-0 bg-gradient-to-b from-[#020b35]/40 via-[#041448]/30 to-[#031641]/45" aria-hidden="true" />
@@ -8264,6 +8320,31 @@ export default function Dashboard() {
                       e.target.value = ''
                     }}
                   />
+                  <input
+                    ref={themeBgInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) applyMobileThemeBackgroundFile(file)
+                      e.target.value = ''
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    aria-label="Edit theme background"
+                    className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      themeBgInputRef.current?.click()
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                    </svg>
+                  </button>
 
                   <button
                     type="button"
@@ -8523,6 +8604,31 @@ export default function Dashboard() {
                     e.target.value = ''
                   }}
                 />
+                <input
+                  ref={themeBgInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) applyMobileThemeBackgroundFile(file)
+                    e.target.value = ''
+                  }}
+                />
+
+                <button
+                  type="button"
+                  aria-label="Edit theme background"
+                  className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    themeBgInputRef.current?.click()
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+                  </svg>
+                </button>
 
                 <button
                   type="button"

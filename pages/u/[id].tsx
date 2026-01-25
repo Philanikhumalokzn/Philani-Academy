@@ -389,6 +389,20 @@ export default function PublicUserProfilePage() {
                     <p className="text-sm text-blue-100/80">
                       {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
                       {profile?.grade ? ` • ${gradeLabel}` : ''}
+                      {profile?.verified ? (
+                        <span
+                          className="ml-2 inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white align-middle"
+                          aria-label="Verified"
+                          title="Verified"
+                        >
+                          <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
+                            <path
+                              d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 </div>

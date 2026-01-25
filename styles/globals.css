@@ -109,14 +109,7 @@ body{
 /* Also remove the visible modal "shell" styling so the diagram editor feels standalone. */
 .live-call-overlay--dim-backdrop .live-call-overlay__panel{background:transparent;box-shadow:none;border:none;padding:0;width:min(1200px,96vw);height:min(92vh,820px);}
 .live-call-overlay--dim-backdrop .live-call-overlay__video{background:transparent;box-shadow:none;border-radius:24px;}
-.container-card{
-  background: linear-gradient(150deg, rgba(10,16,32,0.95), rgba(5,9,22,0.9));
-  color: var(--text);
-  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
-  border-radius:var(--card-radius);
-  padding:1.25rem;
-  border:1px solid var(--card-border);
-}
+
 
 /* Hero */
 
@@ -249,16 +242,7 @@ body{
 }
 
 /* Reduce nested card inset to be very subtle */
-.card .card,
-.card .dashboard-card,
-.dashboard-card .card,
-.dashboard-card .dashboard-card{
-  padding:var(--card-padding);
-  border-radius:var(--card-radius);
-  box-shadow:0 12px 28px rgba(0,0,0,0.26);
-  margin-left:calc(-1 * var(--card-padding));
-  margin-right:calc(-1 * var(--card-padding));
-}
+
 
 /* Flatten 3+ level nested cards to avoid cramped content */
 .card .card .card,
@@ -444,17 +428,9 @@ body{
   background: rgba(8,14,30,0.65);
 }
 
-.mobile-dashboard-theme .card{
-  background:rgba(255,255,255,0.08);
-  border:1px solid rgba(255,255,255,0.1);
-  color:#f8fafc;
-  box-shadow:0 25px 45px rgba(2,8,32,0.45);
-}
 
-.mobile-dashboard-theme .card .muted,
-.mobile-dashboard-theme .muted{
-  color:rgba(226,232,255,0.75);
-}
+
+
 
 .mobile-dashboard-theme .btn-primary{
   background:linear-gradient(135deg,#4c6ef5,#1d4ed8);
@@ -490,14 +466,6 @@ body{
   }
 }
 
-.mobile-dashboard-theme .dashboard-shell{
-  background:transparent;
-  border:0;
-  box-shadow:none;
-  border-radius:0;
-  padding-left:0;
-  padding-right:0;
-}
 
 .deep-page{
   background:var(--bg-gradient);

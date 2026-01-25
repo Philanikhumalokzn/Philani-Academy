@@ -314,12 +314,11 @@ export default function PublicUserProfilePage() {
     return `/${raw}`
   }
 
-  const backgroundUrl = resolveProfileImageUrl(profile?.profileThemeBgUrl)
-    || resolveProfileImageUrl(profile?.profileCoverUrl)
-    || defaultMobileHeroBg
-  const heroCoverUrl = resolveProfileImageUrl(profile?.profileCoverUrl)
+  const preferredProfileImage = resolveProfileImageUrl(profile?.profileCoverUrl)
     || resolveProfileImageUrl(profile?.profileThemeBgUrl)
     || defaultMobileHeroBg
+  const backgroundUrl = preferredProfileImage
+  const heroCoverUrl = preferredProfileImage
   const canFollow = Boolean(profile && viewerId && String(profile.id) !== String(viewerId))
 
   const safeInputValue = (value?: string | null) => String(value || '')

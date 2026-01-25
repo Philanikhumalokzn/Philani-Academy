@@ -403,9 +403,9 @@ export default function PublicUserProfilePage() {
                         </span>
                       ) : null}
                     </p>
+                    {profile?.statusBio ? <p className="mt-2 text-sm text-white/90">{profile.statusBio}</p> : null}
                   </div>
                 </div>
-                {profile?.statusBio ? <p className="text-sm text-white/90">{profile.statusBio}</p> : null}
               </div>
             </div>
           </section>

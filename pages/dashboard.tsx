@@ -3472,7 +3472,7 @@ export default function Dashboard() {
           <div className="space-y-3">
             <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
+                <div className="h-10 w-10 aspect-square shrink-0 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
                   {effectiveAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
@@ -3560,7 +3560,7 @@ export default function Dashboard() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
                           <UserLink userId={authorId} className="shrink-0" title="View profile">
-                            <div className="h-9 w-9 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center">
+                            <div className="h-9 w-9 aspect-square rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
                               {authorAvatar ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={authorAvatar} alt={authorName} className="h-full w-full object-cover" />
@@ -7975,7 +7975,7 @@ export default function Dashboard() {
                           <div className="flex items-center gap-3">
                             <UserLink
                               userId={m.user.id}
-                              className="h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0"
+                              className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0 profile-avatar-container"
                               title="View profile"
                             >
                               {m.user.avatar ? (
@@ -8019,12 +8019,12 @@ export default function Dashboard() {
                     <div className="flex items-start gap-3">
                       <UserLink
                         userId={profilePeek.id}
-                        className="h-12 w-12 rounded-2xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0"
+                        className="h-12 w-12 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0 profile-avatar-container"
                         title="View profile"
                       >
                         {profilePeek.avatar ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={profilePeek.avatar} alt={profilePeek.name} className="h-full w-full object-cover" />
+                          <img src={profilePeek.avatar} alt={profilePeek.name} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
                         )}
@@ -8111,7 +8111,7 @@ export default function Dashboard() {
                         title="View profile"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="relative h-10 w-10 rounded-xl border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90">
+                          <div className="relative h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
                             {u.avatar ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={u.avatar} alt={u.name} className="h-full w-full object-cover" />

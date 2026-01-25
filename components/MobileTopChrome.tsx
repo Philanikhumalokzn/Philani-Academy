@@ -272,7 +272,17 @@ export default function MobileTopChrome() {
       void loadActionNotifications()
     }, 30000)
 
-    return () => window.clearInterval(intervalId)
+    const handleFocus = () => {
+      void loadActionNotifications()
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
   }, [isVisible, loadActionNotifications, status])
 
   useEffect(() => {

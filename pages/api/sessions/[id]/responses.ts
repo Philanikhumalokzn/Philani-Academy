@@ -73,6 +73,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'GET') {
     // Learners only fetch their own responses.
+    if (isChallengeSession && challengeId) {
+      try {
+        const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
+        const challenge = await userChallenge.findUnique({
+          where: { id: challengeId },
+          select: { maxAttempts: true },
+        })
+        const maxAttempts = typeof challenge?.maxAttempts === 'number' ? challenge.maxAttempts : null
+        if (maxAttempts === null) {
+          const latest = await learnerResponse.findFirst({
+            where: { sessionKey, userId },
+            orderBy: { updatedAt: 'desc' },
+          })
+          return res.status(200).json({ responses: latest ? [latest] : [] })
+        }
+      } catch {
+        // Fall back to standard listing if challenge lookup fails.
+      }
+    }
+
     const records = await learnerResponse.findMany({
       where: { sessionKey, userId },
       orderBy: { createdAt: 'desc' },

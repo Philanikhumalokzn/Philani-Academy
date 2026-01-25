@@ -11,12 +11,18 @@ import AppErrorBoundary from '../components/AppErrorBoundary'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   const router = useRouter()
-  const hideGlobalChrome = router.pathname === '/board'
+  const hideNavBar = router.pathname === '/board'
     || router.pathname === '/diagram'
     || router.pathname === '/jaas-demo'
     || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/q/[questionId]'
     || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId]'
     || router.pathname === '/challenges/[id]'
+
+  const hideMobileTopChrome = router.pathname === '/board'
+    || router.pathname === '/diagram'
+    || router.pathname === '/jaas-demo'
+    || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/q/[questionId]'
+    || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId]'
 
   return (
     <SessionProvider session={session}>
@@ -40,8 +46,8 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <meta name="twitter:description" content="Philani Academy — online sessions and learning for your community." />
       </Head>
       <div className="app-shell">
-        {!hideGlobalChrome && <NavBar />}
-        {!hideGlobalChrome && <MobileTopChrome />}
+        {!hideNavBar && <NavBar />}
+        {!hideMobileTopChrome && <MobileTopChrome />}
         <AppErrorBoundary key={router.asPath}>
           <Component {...pageProps} />
         </AppErrorBoundary>

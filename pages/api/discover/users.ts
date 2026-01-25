@@ -73,14 +73,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  const searchOr: any[] = [
+    { name: { contains: q, mode: 'insensitive' as const } },
+    { email: { contains: q, mode: 'insensitive' as const } },
+    { schoolName: { contains: q, mode: 'insensitive' as const } },
+  ]
+
+  const visibilityFilter = isPrivileged
+    ? {}
+    : {
+        OR: [
+          { profileVisibility: { not: 'private' } },
+          { role: 'admin' },
+        ],
+      }
+
   const users = await prisma.user.findMany({
     where: {
-      id: { not: userId },
-      ...(isPrivileged ? {} : { profileVisibility: { not: 'private' } }),
-      OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-        { schoolName: { contains: q, mode: 'insensitive' } },
+      AND: [
+        { id: { not: userId } },
+        visibilityFilter,
+        { OR: searchOr },
       ],
     },
     select: {
@@ -134,6 +147,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (requesterGrade && targetGrade && requesterGrade === targetGrade) score += 25
       if (requesterInfo.schoolName && u.schoolName && requesterInfo.schoolName === u.schoolName) score += 10
       if (requesterInfo.province && u.province && requesterInfo.province === u.province) score += 5
+      if (u.role === 'admin') score += 40
 
       const n = String(u.name || u.email || '').toLowerCase()
       const e = String(u.email || '').toLowerCase()

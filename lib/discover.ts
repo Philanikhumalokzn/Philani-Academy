@@ -62,6 +62,7 @@ export function canViewOrDiscoverTarget(params: {
   const { requester, target, sharedGroupsCount, isPrivileged } = params
   if (isPrivileged) return true
   if (requester.id === target.id) return true
+  if (target.role === 'admin') return true
 
   const visibility = normalizeVisibility(target.profileVisibility)
   if (visibility === 'private') return false
@@ -140,28 +141,33 @@ export async function getDiscoverRecommendations(params: {
     id: { not: requesterId },
   }
 
-  // For non-privileged, never include private profiles.
+  // For non-privileged, include admins even if private, otherwise exclude private profiles.
   if (!isPrivileged) {
-    baseWhere.profileVisibility = { not: 'private' }
+    baseWhere.OR = [
+      { profileVisibility: { not: 'private' } },
+      { role: 'admin' },
+    ]
   }
+
+  const candidateOr = [
+    ...(classmateWhere ? [classmateWhere] : []),
+    ...(groupIds.length > 0
+      ? [
+          {
+            groupMemberships: {
+              some: { groupId: { in: groupIds } },
+            },
+          },
+        ]
+      : []),
+    // Privileged users may see wider results.
+    ...(isPrivileged ? [{}] : []),
+  ]
 
   const candidates = await prisma.user.findMany({
     where: {
       ...baseWhere,
-      OR: [
-        ...(classmateWhere ? [classmateWhere] : []),
-        ...(groupIds.length > 0
-          ? [
-              {
-                groupMemberships: {
-                  some: { groupId: { in: groupIds } },
-                },
-              },
-            ]
-          : []),
-        // Small fallback: newest users
-        ...(isPrivileged ? [{}] : []),
-      ],
+      ...(candidateOr.length > 0 ? { OR: candidateOr } : {}),
     },
     select: {
       id: true,
@@ -206,6 +212,7 @@ export async function getDiscoverRecommendations(params: {
 
     if (requesterInfo.schoolName && u.schoolName && requesterInfo.schoolName === u.schoolName) score += 10
     if (requesterInfo.province && u.province && requesterInfo.province === u.province) score += 5
+    if (u.role === 'admin') score += 40
 
     // Lightweight "interaction" heuristic using group invites (if any).
     // Keep it cheap: only if we have a small candidate set.
@@ -272,6 +279,79 @@ export async function getDiscoverRecommendations(params: {
     if (g) return g
     return String(a.name || '').localeCompare(String(b.name || ''))
   })
+
+  if (scored.length === 0) {
+    const adminFallback = await prisma.user.findMany({
+      where: { id: { not: requesterId }, role: 'admin' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        grade: true,
+        avatar: true,
+        statusBio: true,
+        schoolName: true,
+        province: true,
+        profileVisibility: true,
+        discoverabilityScope: true,
+        profileCoverUrl: true,
+        profileThemeBgUrl: true,
+      },
+      take: Math.max(5, limit),
+    })
+
+    for (const u of adminFallback as any as TargetInfo[]) {
+      scored.push({
+        id: u.id,
+        name: u.name || u.email,
+        role: u.role,
+        grade: u.grade ? String(u.grade) : null,
+        avatar: u.avatar,
+        statusBio: u.statusBio,
+        schoolName: u.schoolName,
+        verified: true,
+        profileCoverUrl: u.profileCoverUrl,
+        profileThemeBgUrl: u.profileThemeBgUrl,
+        score: 100,
+        sharedGroupsCount: 0,
+      })
+    }
+  }
+
+  if (scored.length === 0) {
+    const self = await prisma.user.findUnique({
+      where: { id: requesterId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        grade: true,
+        avatar: true,
+        statusBio: true,
+        schoolName: true,
+        profileCoverUrl: true,
+        profileThemeBgUrl: true,
+      },
+    })
+    if (self) {
+      scored.push({
+        id: self.id,
+        name: self.name || self.email,
+        role: self.role,
+        grade: self.grade ? String(self.grade) : null,
+        avatar: self.avatar,
+        statusBio: self.statusBio,
+        schoolName: self.schoolName,
+        verified: self.role === 'admin' || self.role === 'teacher',
+        profileCoverUrl: self.profileCoverUrl,
+        profileThemeBgUrl: self.profileThemeBgUrl,
+        score: 1,
+        sharedGroupsCount: 0,
+      })
+    }
+  }
 
   const out = scored.slice(0, limit)
   cacheSet(cacheKey, out, 2 * 60 * 1000)

@@ -33,13 +33,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const isChallengeSession = sessionKey.startsWith('challenge:')
   const challengeId = isChallengeSession ? sessionKey.slice('challenge:'.length).trim() : ''
   let challengeOwnerId: string | null = null
+  let challengeMaxAttempts: number | null = null
+  let challengeTitle: string | null = null
   if (req.method === 'POST' && isChallengeSession) {
     if (!challengeId) return res.status(400).json({ message: 'Invalid challenge session id' })
 
     const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
     const challenge = await userChallenge.findUnique({
       where: { id: challengeId },
-      select: { id: true, title: true, attemptsOpen: true, createdById: true },
+      select: { id: true, title: true, attemptsOpen: true, createdById: true, maxAttempts: true },
     })
 
     if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
@@ -48,6 +50,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     challengeOwnerId = (challenge?.createdById ? String(challenge.createdById) : null)
+    challengeMaxAttempts = typeof challenge?.maxAttempts === 'number' ? challenge.maxAttempts : null
+    challengeTitle = challenge?.title ? String(challenge.title) : null
   }
 
   // Subscription gating: learners must be subscribed to access session content.
@@ -161,15 +165,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : null
 
     let shouldNotifyOwner = false
-    let challengeTitle: string | null = null
     if (isChallengeSession && challengeId) {
-      const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
-      const challenge = await userChallenge.findUnique({
-        where: { id: challengeId },
-        select: { id: true, title: true, createdById: true },
-      })
-      if (challenge?.createdById) challengeOwnerId = String(challenge.createdById)
-      challengeTitle = challenge?.title ? String(challenge.title) : null
+      if (!challengeOwnerId || challengeTitle == null) {
+        const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
+        const challenge = await userChallenge.findUnique({
+          where: { id: challengeId },
+          select: { id: true, title: true, createdById: true, maxAttempts: true },
+        })
+        if (challenge?.createdById) challengeOwnerId = String(challenge.createdById)
+        if (challengeTitle == null) challengeTitle = challenge?.title ? String(challenge.title) : null
+        if (challengeMaxAttempts == null && typeof challenge?.maxAttempts === 'number') {
+          challengeMaxAttempts = challenge.maxAttempts
+        }
+      }
       if (challengeOwnerId && challengeOwnerId !== userId) {
         const existingCount = await learnerResponse.count({ where: { sessionKey, userId } }).catch(() => 0)
         shouldNotifyOwner = existingCount === 0
@@ -213,6 +221,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
+      // Unlimited attempts: overwrite the latest response instead of appending.
+      if (isChallengeSession && challengeMaxAttempts === null) {
+        const existing = await learnerResponse.findFirst({
+          where: { sessionKey, userId },
+          orderBy: { updatedAt: 'desc' },
+        })
+        if (existing?.id) {
+          const updated = await learnerResponse.update({
+            where: { id: existing.id },
+            data: {
+              latex,
+              studentText: safeStudentText,
+              userEmail,
+              quizId: safeQuizId,
+              prompt: safePrompt,
+              quizLabel: safeQuizLabel,
+              quizPhaseKey: safeQuizPhaseKey,
+              quizPointId: safeQuizPointId,
+              quizPointIndex: safeQuizPointIndex,
+              ownerId: challengeOwnerId,
+              gradingJson: null,
+              feedback: null,
+              createdAt: new Date(),
+            },
+          })
+          await learnerResponse.deleteMany({
+            where: { sessionKey, userId, id: { not: existing.id } },
+          }).catch(() => null)
+          await notifyOwner(updated?.id || '')
+          return res.status(200).json(updated)
+        }
+      }
+
       const record = await createRecord(safeQuizId)
       await notifyOwner(record?.id || '')
       return res.status(200).json(record)

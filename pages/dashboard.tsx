@@ -1749,7 +1749,7 @@ export default function Dashboard() {
 
   const mobileHeroBgStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
-    return `pa:mobileHeroBg:${userKey}`
+    return `pa:mobileHeroCover:${userKey}`
   }, [session])
 
   const roleLabel = useCallback((raw: unknown) => {
@@ -1768,7 +1768,7 @@ export default function Dashboard() {
       try {
         const res = await fetch('/api/profile', { credentials: 'same-origin' })
         const data = await res.json().catch(() => ({}))
-        const next = typeof (data as any)?.profileThemeBgUrl === 'string' ? String((data as any).profileThemeBgUrl).trim() : ''
+        const next = typeof (data as any)?.profileCoverUrl === 'string' ? String((data as any).profileCoverUrl).trim() : ''
         if (!cancelled && next) {
           setMobileHeroBgUrl(next)
           return
@@ -1781,7 +1781,13 @@ export default function Dashboard() {
       if (typeof window === 'undefined') return
       try {
         const raw = window.localStorage.getItem(mobileHeroBgStorageKey)
-        if (!cancelled && raw && typeof raw === 'string') setMobileHeroBgUrl(raw)
+        if (!cancelled && raw && typeof raw === 'string') {
+          setMobileHeroBgUrl(raw)
+          return
+        }
+        const legacyKey = mobileHeroBgStorageKey.replace('pa:mobileHeroCover:', 'pa:mobileHeroBg:')
+        const legacyRaw = window.localStorage.getItem(legacyKey)
+        if (!cancelled && legacyRaw && typeof legacyRaw === 'string') setMobileHeroBgUrl(legacyRaw)
       } catch {}
     })()
 
@@ -1799,7 +1805,7 @@ export default function Dashboard() {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/profile/theme-bg', {
+      const res = await fetch('/api/profile/cover', {
         method: 'POST',
         credentials: 'same-origin',
         body: form,

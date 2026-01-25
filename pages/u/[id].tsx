@@ -405,7 +405,6 @@ export default function PublicUserProfilePage() {
           ) : profile ? (
             <div className="space-y-6">
               <section className="card p-6 space-y-4">
-                <h2 className="text-xl font-semibold">Visitor actions</h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2 py-1 rounded-full border border-white/10 bg-white/5 text-xs">
                     {typeof profile.followerCount === 'number' ? profile.followerCount : 0} followers

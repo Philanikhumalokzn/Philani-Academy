@@ -801,6 +801,26 @@ export default function ChallengeAttemptPage() {
     return attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
   }, [challenge])
 
+  const displayResponses = useMemo(() => {
+    if (!Array.isArray(myResponses) || myResponses.length === 0) return []
+    if (myResponses.length === 1) return myResponses
+
+    const getTs = (resp: any) => {
+      const updated = resp?.updatedAt ? new Date(resp.updatedAt).getTime() : 0
+      const created = resp?.createdAt ? new Date(resp.createdAt).getTime() : 0
+      return Math.max(updated || 0, created || 0)
+    }
+
+    const graded = myResponses.filter(r => r?.gradingJson || r?.feedback)
+    if (graded.length > 0) {
+      const latestGraded = graded.slice().sort((a, b) => getTs(b) - getTs(a))[0]
+      return latestGraded ? [latestGraded] : [myResponses[0]]
+    }
+
+    const latest = myResponses.slice().sort((a, b) => getTs(b) - getTs(a))[0]
+    return latest ? [latest] : [myResponses[0]]
+  }, [myResponses])
+
   return (
     <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
       {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
@@ -877,11 +897,11 @@ export default function ChallengeAttemptPage() {
                   <div className="text-sm text-white/70">No responses yet.</div>
                 )}
               </div>
-            ) : myResponses.length > 0 ? (
+            ) : displayResponses.length > 0 ? (
               // Student view: show their own responses
               <div className="space-y-3">
-                <h2 className="text-lg font-semibold">Your Submissions ({myResponses.length})</h2>
-                {myResponses.map((resp: any, idx: number) => (
+                <h2 className="text-lg font-semibold">Your Submissions ({displayResponses.length})</h2>
+                {displayResponses.map((resp: any, idx: number) => (
                   <div key={resp.id || idx} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
                     <div className="text-xs text-white/60">
                       Submitted: {resp.createdAt ? new Date(resp.createdAt).toLocaleString() : 'Unknown'}

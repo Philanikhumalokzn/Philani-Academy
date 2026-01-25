@@ -12,7 +12,7 @@ function titleCaseWords(value) {
       .split(/([-'])/)
       .map(part => {
         if (!part || part === '-' || part === "'") return part
-        return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+        return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
       })
       .join('')
     )
@@ -20,12 +20,17 @@ function titleCaseWords(value) {
 }
 
 function normalizeSchoolName(value) {
-  return titleCaseWords(String(value || '').replace(/\s+/g, ' ').trim())
+  const normalized = titleCaseWords(String(value || '').replace(/\s+/g, ' ').trim())
+  if (!normalized) return ''
+  if (/^\d+$/.test(normalized)) return ''
+  return normalized
 }
 
 function pickNameColumn(columns) {
   const lowered = columns.map(c => String(c || '').toLowerCase().trim())
   const priorities = [
+    'official_institution_name',
+    'official institution name',
     'institution name',
     'school name',
     'name of school',
@@ -37,6 +42,10 @@ function pickNameColumn(columns) {
     const idx = lowered.indexOf(p)
     if (idx >= 0) return columns[idx]
   }
+  const fuzzyIdx = lowered.findIndex(c => c.includes('institution') && c.includes('name'))
+  if (fuzzyIdx >= 0) return columns[fuzzyIdx]
+  const schoolIdx = lowered.findIndex(c => c.includes('school') && c.includes('name'))
+  if (schoolIdx >= 0) return columns[schoolIdx]
   // fallback to first string-ish column
   return columns[0]
 }

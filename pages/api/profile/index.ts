@@ -39,7 +39,18 @@ function titleCaseName(value: string) {
 
 function normalizeSchoolName(value: string) {
   const collapsed = value.replace(/\s+/g, ' ').trim()
-  return titleCaseName(collapsed)
+  if (!collapsed) return ''
+  return collapsed
+    .split(/\s+/)
+    .map(word => word
+      .split(/([-'])/)
+      .map(part => {
+        if (!part || part === '-' || part === "'") return part
+        return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
+      })
+      .join('')
+    )
+    .join(' ')
 }
 
 function normalizeNameField(value: unknown) {

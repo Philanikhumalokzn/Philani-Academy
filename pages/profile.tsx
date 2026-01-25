@@ -6,6 +6,7 @@ import { gradeToLabel } from '../lib/grades'
 
 import NavArrows from '../components/NavArrows'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
+import ImageCropperModal from '../components/ImageCropperModal'
 
 const defaultMobileHeroBg = (() => {
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -95,6 +96,8 @@ export default function ProfilePage() {
   const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null)
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null)
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null)
+  const [coverCropFile, setCoverCropFile] = useState<File | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
@@ -164,11 +167,17 @@ export default function ProfilePage() {
       setAvatarUploadError('Please keep images under 4 MB.')
       return
     }
+    setAvatarUploadError(null)
+    setAvatarCropFile(file)
+  }
+
+  const handleAvatarCropConfirm = async (croppedFile: File) => {
+    setAvatarCropFile(null)
     setUploadingAvatar(true)
     setAvatarUploadError(null)
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', croppedFile)
       const response = await fetch('/api/profile/avatar', {
         method: 'POST',
         body: formData
@@ -198,12 +207,17 @@ export default function ProfilePage() {
       setCoverUploadError('Please keep images under 8 MB.')
       return
     }
+    setCoverUploadError(null)
+    setCoverCropFile(file)
+  }
 
+  const handleCoverCropConfirm = async (croppedFile: File) => {
+    setCoverCropFile(null)
     setUploadingCover(true)
     setCoverUploadError(null)
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', croppedFile)
       const response = await fetch('/api/profile/cover', {
         method: 'POST',
         credentials: 'same-origin',
@@ -404,12 +418,12 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={handleAvatarButtonClick}
-                    className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden"
+                    className="relative w-24 h-24 aspect-square rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden flex-shrink-0"
                     aria-label="Update profile photo"
                     disabled={uploadingAvatar}
                   >
                     {avatar ? (
-                      <img src={avatar} alt="Profile avatar" className="h-full w-full object-cover" />
+                      <img src={avatar} alt="Profile avatar" className="w-full h-full object-cover" />
                     ) : (
                       <span>{avatarInitials}</span>
                     )}
@@ -722,12 +736,12 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={handleAvatarButtonClick}
-                          className="relative h-24 w-24 rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden"
+                          className="relative w-24 h-24 aspect-square rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden flex-shrink-0"
                           aria-label="Update profile photo"
                           disabled={uploadingAvatar}
                         >
                           {avatar ? (
-                            <img src={avatar} alt="Profile avatar" className="h-full w-full object-cover" />
+                            <img src={avatar} alt="Profile avatar" className="w-full h-full object-cover" />
                           ) : (
                             <span>{avatarInitials}</span>
                           )}
@@ -945,6 +959,30 @@ export default function ProfilePage() {
           </div>
         </FullScreenGlassOverlay>
       </main>
+
+      <ImageCropperModal
+        open={!!avatarCropFile}
+        file={avatarCropFile}
+        title="Crop profile photo"
+        aspectRatio={1}
+        circularCrop={true}
+        onCancel={() => setAvatarCropFile(null)}
+        onUseOriginal={handleAvatarCropConfirm}
+        onConfirm={handleAvatarCropConfirm}
+        confirmLabel="Set as avatar"
+      />
+
+      <ImageCropperModal
+        open={!!coverCropFile}
+        file={coverCropFile}
+        title="Crop cover image"
+        aspectRatio={16 / 9}
+        circularCrop={false}
+        onCancel={() => setCoverCropFile(null)}
+        onUseOriginal={handleCoverCropConfirm}
+        onConfirm={handleCoverCropConfirm}
+        confirmLabel="Set as cover"
+      />
     </>
   )
 }

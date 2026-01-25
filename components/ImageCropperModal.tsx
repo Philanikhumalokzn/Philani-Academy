@@ -7,18 +7,28 @@ export default function ImageCropperModal(props: {
   open: boolean
   file: File | null
   title?: string
+  aspectRatio?: number
+  circularCrop?: boolean
   onCancel: () => void
   onUseOriginal: (file: File) => void
   onConfirm: (file: File) => void
   confirmLabel?: string
 }) {
-  const { open, file, title, onCancel, onUseOriginal, onConfirm, confirmLabel } = props
+  const { open, file, title, aspectRatio, circularCrop = false, onCancel, onUseOriginal, onConfirm, confirmLabel } = props
 
   const imgRef = useRef<HTMLImageElement | null>(null)
 
   const [workingFile, setWorkingFile] = useState<File | null>(null)
 
-  const [crop, setCrop] = useState<Crop>({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+  const initialCrop = useMemo(() => {
+    const baseWidth = 80
+    const baseHeight = aspectRatio ? baseWidth / aspectRatio : 80
+    const x = 10
+    const y = aspectRatio ? (100 - baseHeight) / 2 : 10
+    return { unit: '%' as const, x, y, width: baseWidth, height: baseHeight }
+  }, [aspectRatio])
+
+  const [crop, setCrop] = useState<Crop>(initialCrop)
   const [completedCropPx, setCompletedCropPx] = useState<PixelCrop | null>(null)
 
   const [rotating, setRotating] = useState(false)
@@ -49,12 +59,12 @@ export default function ImageCropperModal(props: {
   useEffect(() => {
     if (!open) return
     setWorkingFile(file)
-    setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+    setCrop(initialCrop)
     setCompletedCropPx(null)
     setRotating(false)
     setSaving(false)
     setError(null)
-  }, [open, file])
+  }, [open, file, initialCrop])
 
   const rotateBy = useCallback(async (deltaDeg: number) => {
     if (!workingFile) return
@@ -63,14 +73,14 @@ export default function ImageCropperModal(props: {
     try {
       const rotated = await rotateImageFile({ file: workingFile, rotation: deltaDeg })
       setWorkingFile(rotated)
-      setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+      setCrop(initialCrop)
       setCompletedCropPx(null)
     } catch (e: any) {
       setError(e?.message || 'Failed to rotate image')
     } finally {
       setRotating(false)
     }
-  }, [workingFile])
+  }, [workingFile, initialCrop])
 
   const doConfirm = useCallback(async () => {
     if (!workingFile) return
@@ -134,22 +144,23 @@ export default function ImageCropperModal(props: {
 
       <div className="relative w-full h-[50vh] rounded overflow-hidden border border-white/10 bg-black">
         {objectUrl ? (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 flex items-center justify-center">
             <ReactCrop
               crop={crop}
               onChange={(_, percentCrop) => setCrop(percentCrop)}
               onComplete={(px) => setCompletedCropPx(px)}
               keepSelection
-              ruleOfThirds
+              aspect={aspectRatio}
+              circularCrop={circularCrop}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 ref={imgRef}
                 alt="Crop preview"
                 src={objectUrl}
-                style={{ maxHeight: '50vh', width: '100%', objectFit: 'contain' }}
+                style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
                 onLoad={() => {
-                  setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+                  setCrop(initialCrop)
                   setCompletedCropPx(null)
                 }}
               />
@@ -162,13 +173,13 @@ export default function ImageCropperModal(props: {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-2">
-          <div className="text-xs muted">Crop</div>
-          <div className="text-sm text-white/80">Drag to move. Drag handles to resize.</div>
+          <div className="text-xs muted">Crop & Position</div>
+          <div className="text-sm text-white/80">Drag to move. Drag handles to zoom.</div>
           <button
             type="button"
             className="btn btn-ghost w-fit"
             onClick={() => {
-              setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 })
+              setCrop(initialCrop)
               setCompletedCropPx(null)
             }}
             disabled={saving || rotating}

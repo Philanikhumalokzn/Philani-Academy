@@ -265,6 +265,18 @@ export default function MobileTopChrome() {
 
   useEffect(() => {
     if (!isVisible) return
+    if (status !== 'authenticated') return
+
+    void loadActionNotifications()
+    const intervalId = window.setInterval(() => {
+      void loadActionNotifications()
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  }, [isVisible, loadActionNotifications, status])
+
+  useEffect(() => {
+    if (!isVisible) return
     const announcementUnread = computeUnread(announcements, readSet)
     const actionUnread = (actionInvites?.length || 0) + (actionJoinRequests?.length || 0)
     const activityUnread = activityFeed.filter((n) => !n?.readAt).length

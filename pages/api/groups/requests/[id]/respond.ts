@@ -71,7 +71,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         type: 'group_join_request_response',
         title: 'Join request response',
         body: `Join request was ${nextStatus} for ${joinRequest.group.name}`,
-        data: { requestId: updated.id, groupId: joinRequest.groupId, status: nextStatus, requestedById: joinRequest.requestedById }
+        data: { requestId: updated.id, groupId: joinRequest.groupId, status: nextStatus, requestedById: joinRequest.requestedById, respondedById: userId }
       }))
   })
 

@@ -66,7 +66,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               where: { followingId: userId },
               select: { followerId: true },
             })
-            const creator = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
             const followerIds = Array.from(new Set(followers.map((f: any) => String(f.followerId)).filter(Boolean))) as string[]
             if (followerIds.length > 0) {
               await prisma.notification.createMany({
@@ -74,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   userId: String(followerId),
                   type: 'new_challenge',
                   title: 'New challenge',
-                  body: `${creator?.name || 'A learner'} posted a new challenge`,
+                  body: 'Posted a new challenge',
                   data: { challengeId: created.id, createdById: userId },
                 })),
               })

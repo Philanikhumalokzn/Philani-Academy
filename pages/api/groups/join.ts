@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           userId: id,
           type: 'group_joined',
           title: 'Group joined',
-          body: `A learner joined ${group.name}`,
+          body: `Joined ${group.name}`,
           data: { groupId: group.id, groupName: group.name, userId },
         })),
     })

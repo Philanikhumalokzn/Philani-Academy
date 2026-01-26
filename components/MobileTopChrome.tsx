@@ -37,6 +37,7 @@ type ActivityNotification = {
   createdAt?: string | null
   readAt?: string | null
   data?: any
+  actor?: { id: string; name?: string | null; email?: string | null; avatar?: string | null; role?: string | null } | null
 }
 
 const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: boolean) => {
@@ -433,27 +434,24 @@ export default function MobileTopChrome() {
     void loadActionNotifications()
   }
 
-  const markActivityRead = useCallback(async () => {
-    const unreadIds = activityFeed.filter((n) => !n?.readAt).map((n) => String(n.id)).filter(Boolean)
-    if (unreadIds.length === 0) return
+  const markActivityNotificationRead = useCallback(async (id: string) => {
+    const targetId = String(id || '')
+    if (!targetId) return
+    const match = activityFeed.find((n) => String(n.id) === targetId)
+    if (match?.readAt) return
     try {
       await fetch('/api/notifications', {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: unreadIds }),
+        body: JSON.stringify({ ids: [targetId] }),
       })
       const nowIso = new Date().toISOString()
-      setActivityFeed((prev) => prev.map((n) => unreadIds.includes(String(n.id)) ? { ...n, readAt: nowIso } : n))
+      setActivityFeed((prev) => prev.map((n) => String(n.id) === targetId ? { ...n, readAt: nowIso } : n))
     } catch {
       // ignore
     }
   }, [activityFeed])
-
-  useEffect(() => {
-    if (!notificationsOpen) return
-    void markActivityRead()
-  }, [notificationsOpen, activityFeed, markActivityRead])
 
   const closeNotifications = () => {
     setNotificationsOpen(false)
@@ -574,6 +572,73 @@ export default function MobileTopChrome() {
 
     return false
   }, [router])
+
+  const notificationTypeMeta = (rawType: string) => {
+    const type = String(rawType || '')
+    if (type === 'new_follower') {
+      return {
+        badgeClass: 'bg-emerald-500',
+        icon: (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" fill="currentColor" />
+            <path d="M4 20a8 8 0 0 1 16 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        ),
+      }
+    }
+    if (type === 'challenge_response' || type === 'new_challenge') {
+      return {
+        badgeClass: 'bg-blue-500',
+        icon: (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          </svg>
+        ),
+      }
+    }
+    if (type === 'challenge_graded' || type === 'assignment_graded' || type === 'assignment_submitted') {
+      return {
+        badgeClass: 'bg-amber-500',
+        icon: (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 12l4 4 12-12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      }
+    }
+    if (type === 'group_invite' || type === 'group_invite_response' || type === 'group_join_request' || type === 'group_join_request_response' || type === 'group_joined') {
+      return {
+        badgeClass: 'bg-purple-500',
+        icon: (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M16 11a3 3 0 1 0-2.999-3A3 3 0 0 0 16 11Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M16 13c2.761 0 5 1.567 5 3.5V19H11v-2.5C11 14.567 13.239 13 16 13Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M8 13c2.761 0 5 1.567 5 3.5V19H3v-2.5C3 14.567 5.239 13 8 13Z" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        ),
+      }
+    }
+    if (type === 'account_verified') {
+      return {
+        badgeClass: 'bg-sky-500',
+        icon: (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+          </svg>
+        ),
+      }
+    }
+    return {
+      badgeClass: 'bg-white/40',
+      icon: (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+        </svg>
+      ),
+    }
+  }
 
   const closeAccountControl = () => {
     setAccountControlOpen(false)
@@ -840,6 +905,10 @@ export default function MobileTopChrome() {
                         const title = String(n.title || 'Notification')
                         const body = String(n.body || '')
                         const createdAt = n.createdAt ? new Date(n.createdAt).toLocaleString() : ''
+                        const actor = n.actor || null
+                        const actorName = (actor?.name || actor?.email || 'System').trim()
+                        const actorInitial = actorName ? actorName.slice(0, 1).toUpperCase() : 'U'
+                        const meta = notificationTypeMeta(String(n.type || ''))
                         return (
                           <div
                             key={id}
@@ -847,18 +916,38 @@ export default function MobileTopChrome() {
                             role="button"
                             tabIndex={0}
                             onClick={() => {
+                              void markActivityNotificationRead(id)
                               openNotificationTarget(n)
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault()
+                                void markActivityNotificationRead(id)
                                 openNotificationTarget(n)
                               }
                             }}
                           >
-                            <div className="text-sm font-semibold text-white">{title}</div>
-                            {body ? <div className="text-xs text-white/80 mt-1 whitespace-pre-wrap break-words">{body}</div> : null}
-                            {createdAt ? <div className="text-[11px] text-white/60 mt-1">{createdAt}</div> : null}
+                            <div className="flex items-start gap-3">
+                              <div className="relative h-10 w-10 rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0">
+                                {actor?.avatar ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={actor.avatar} alt={actorName} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="text-sm font-semibold">{actorInitial}</span>
+                                )}
+                                <span className={`absolute -bottom-1 -right-1 h-5 w-5 rounded-full border border-white/20 text-white flex items-center justify-center ${meta.badgeClass}`}>
+                                  {meta.icon}
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="text-sm font-semibold text-white truncate">{actorName}</div>
+                                  {createdAt ? <div className="text-[11px] text-white/60 shrink-0">{createdAt}</div> : null}
+                                </div>
+                                <div className="text-xs text-white/80 mt-1 whitespace-pre-wrap break-words">{title}</div>
+                                {body ? <div className="text-xs text-white/70 mt-1 whitespace-pre-wrap break-words">{body}</div> : null}
+                              </div>
+                            </div>
                           </div>
                         )
                       })}

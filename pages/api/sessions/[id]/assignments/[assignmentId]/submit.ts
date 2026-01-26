@@ -129,7 +129,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             userId: id,
             type: 'assignment_submitted',
             title: 'Assignment submitted',
-            body: `A learner submitted ${assignment.title || 'an assignment'}`,
+            body: `Submitted ${assignment.title || 'an assignment'}`,
             data: { assignmentId, sessionId: sessionRecord.id, userId: authUserId },
           })),
       })

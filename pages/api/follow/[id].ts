@@ -42,12 +42,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
+      const follower = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
+      const followerLabel = follower?.name || follower?.email || 'A user'
       await prisma.notification.create({
         data: {
           userId: targetId,
           type: 'new_follower',
           title: 'New follower',
-          body: 'Someone started following you',
+          body: `${followerLabel} started following you`,
           data: { followerId: userId },
         },
       })

@@ -47,13 +47,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   for (const a of adminUsers) notifyUserIds.add(a.id)
 
   await prisma.notification.createMany({
-    data: Array.from(notifyUserIds)
+        data: Array.from(notifyUserIds)
       .filter((id) => id && id !== userId)
       .map((id) => ({
         userId: id,
         type: 'group_join_request',
         title: 'Join request',
-        body: `A learner requested to join ${group.name}`,
+        body: `Requested to join ${group.name}`,
         data: { requestId: request.id, groupId: group.id, groupName: group.name, requestedById: userId }
       }))
   })

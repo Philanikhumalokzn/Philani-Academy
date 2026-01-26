@@ -211,7 +211,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             userId: challengeOwnerId,
             type: 'challenge_response',
             title: 'New response',
-            body: `Someone attempted${challengeTitle ? ` ${challengeTitle}` : ' your challenge'}`,
+            body: `Attempted${challengeTitle ? ` ${challengeTitle}` : ' your challenge'}`,
             data: { responseId, challengeId, responderId: userId },
           },
         })

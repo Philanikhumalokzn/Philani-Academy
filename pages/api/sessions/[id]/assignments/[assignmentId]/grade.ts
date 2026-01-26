@@ -831,7 +831,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             type: 'assignment_graded',
             title: 'Assignment graded',
             body: `Your assignment has been graded${assignment?.title ? `: ${assignment.title}` : ''}`,
-            data: { assignmentId: assignment.id, sessionId: sessionRecord.id },
+            data: { assignmentId: assignment.id, sessionId: sessionRecord.id, gradedById: authUserId },
           },
         })
       }

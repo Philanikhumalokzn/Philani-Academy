@@ -55,6 +55,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   ])
 
+  const activityWithActorId = activity.map((n: any) => {
+    const data = n?.data && typeof n.data === 'object' ? n.data : {}
+    const type = String(n?.type || '')
+    const actorId = (() => {
+      if (type === 'new_follower') return data.followerId
+      if (type === 'challenge_response') return data.responderId
+      if (type === 'challenge_graded') return data.gradedById
+      if (type === 'assignment_graded') return data.gradedById
+      if (type === 'new_challenge') return data.createdById
+      if (type === 'group_invite') return data.invitedById
+      if (type === 'group_invite_response') return data.invitedUserId
+      if (type === 'group_join_request') return data.requestedById
+      if (type === 'group_join_request_response') return data.respondedById || data.requestedById
+      if (type === 'account_verified') return data.verifiedBy
+      return data.actorId || data.userId
+    })()
+    return { ...n, actorId: actorId ? String(actorId) : null }
+  })
+
+  const actorIds = Array.from(new Set(activityWithActorId.map((n: any) => n.actorId).filter(Boolean)))
+  const actors = actorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, name: true, email: true, avatar: true, role: true },
+      })
+    : []
+  const actorMap = new Map(actors.map((a) => [String(a.id), a]))
+
+  const activityWithActors = activityWithActorId.map((n: any) => ({
+    ...n,
+    actor: n.actorId ? actorMap.get(String(n.actorId)) || null : null,
+  }))
+
   const ownedGroupIds = new Set<string>()
   for (const m of myMemberships) {
     if (m.memberRole === 'owner' || m.memberRole === 'instructor') ownedGroupIds.add(m.groupId)
@@ -76,5 +109,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     take: isPrivileged ? 50 : 25
   })
 
-  return res.status(200).json({ invites, joinRequests, activity })
+  return res.status(200).json({ invites, joinRequests, activity: activityWithActors })
 }

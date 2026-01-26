@@ -1197,6 +1197,7 @@ export default function Dashboard() {
   const isAdmin = normalizedRole === 'admin'
   const isInstructor = normalizedRole === 'teacher'
   const isVerifiedAccount = isAdmin || isInstructor
+  const canCreateChallenges = isAdmin || isInstructor
   const roleFlagText = useMemo(() => {
     if (normalizedRole === 'admin') return 'Admin'
     if (normalizedRole === 'teacher') return 'Instructor'
@@ -3492,54 +3493,56 @@ export default function Dashboard() {
         </div>
 
           <div className="space-y-3">
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 aspect-square shrink-0 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
-                  {effectiveAvatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
-                  )}
+            {canCreateChallenges ? (
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 aspect-square shrink-0 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
+                    {effectiveAvatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="group flex-1 h-10 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-4 text-left"
+                    onClick={openCreateChallengeComposer}
+                  >
+                    <span className="w-full h-8 inline-flex items-center justify-between gap-3 rounded-full border border-white/20 px-4 text-sm text-white/70 group-hover:text-white/80">
+                      <span>Post a challenge</span>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="text-white/70 group-hover:text-white/90">
+                        <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                    aria-label="Upload screenshot"
+                    onClick={openCreateChallengeScreenshotPicker}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M4 7.5C4 6.11929 5.11929 5 6.5 5H8.5L9.2 3.6C9.538 2.924 10.229 2.5 10.985 2.5H13.015C13.771 2.5 14.462 2.924 14.8 3.6L15.5 5H17.5C18.8807 5 20 6.11929 20 7.5V18.5C20 19.8807 18.8807 21 17.5 21H6.5C5.11929 21 4 19.8807 4 18.5V7.5Z" stroke="currentColor" strokeWidth="1.6" />
+                      <path d="M12 17.5C14.2091 17.5 16 15.7091 16 13.5C16 11.2909 14.2091 9.5 12 9.5C9.79086 9.5 8 11.2909 8 13.5C8 15.7091 9.79086 17.5 12 17.5Z" stroke="currentColor" strokeWidth="1.6" />
+                    </svg>
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  className="group flex-1 h-10 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-4 text-left"
-                  onClick={openCreateChallengeComposer}
-                >
-                  <span className="w-full h-8 inline-flex items-center justify-between gap-3 rounded-full border border-white/20 px-4 text-sm text-white/70 group-hover:text-white/80">
-                    <span>Post a challenge</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="text-white/70 group-hover:text-white/90">
-                      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center"
-                  aria-label="Upload screenshot"
-                  onClick={openCreateChallengeScreenshotPicker}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M4 7.5C4 6.11929 5.11929 5 6.5 5H8.5L9.2 3.6C9.538 2.924 10.229 2.5 10.985 2.5H13.015C13.771 2.5 14.462 2.924 14.8 3.6L15.5 5H17.5C18.8807 5 20 6.11929 20 7.5V18.5C20 19.8807 18.8807 21 17.5 21H6.5C5.11929 21 4 19.8807 4 18.5V7.5Z" stroke="currentColor" strokeWidth="1.6" />
-                    <path d="M12 17.5C14.2091 17.5 16 15.7091 16 13.5C16 11.2909 14.2091 9.5 12 9.5C9.79086 9.5 8 11.2909 8 13.5C8 15.7091 9.79086 17.5 12 17.5Z" stroke="currentColor" strokeWidth="1.6" />
-                  </svg>
-                </button>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-ghost text-xs"
+                    onClick={() => setTimelineOpen(true)}
+                  >
+                    My posts
+                  </button>
+                </div>
               </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn btn-ghost text-xs"
-                  onClick={() => setTimelineOpen(true)}
-                >
-                  My posts
-                </button>
-              </div>
-            </div>
+            ) : null}
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">

@@ -3508,7 +3508,7 @@ export default function Dashboard() {
                   className="group flex-1 h-10 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-4 text-left"
                   onClick={openCreateChallengeComposer}
                 >
-                  <span className="w-full h-8 inline-flex items-center justify-between gap-3 rounded-full border border-white/20 px-4 text-sm text-white/70 group-hover:text-white/80">
+                  <span className="w-full inline-flex items-center justify-between gap-3 text-sm text-white/70 group-hover:text-white/80">
                     <span>Post a challenge</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="text-white/70 group-hover:text-white/90">
                       <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

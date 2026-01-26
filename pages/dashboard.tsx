@@ -3263,14 +3263,14 @@ export default function Dashboard() {
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
     return (
-      <section className={
-        isAdmin
-          ? 'mobile-row-width w-full grid grid-cols-5 items-center gap-2'
-          : 'mobile-row-width w-full flex items-center justify-between gap-3'
-      }>
+      <section
+        className="mobile-row-width w-full overflow-x-auto snap-x snap-mandatory"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
+      >
+        <div className="flex items-center gap-3 w-max">
         <button
           type="button"
-          className={btnClass('timeline')}
+          className={`${btnClass('timeline')} flex-none snap-start`}
           aria-label="Timeline"
           title="Timeline"
           onClick={() => openStudentQuickOverlay('timeline')}
@@ -3284,7 +3284,7 @@ export default function Dashboard() {
 
         <button
           type="button"
-          className={btnClass('sessions')}
+          className={`${btnClass('sessions')} flex-none snap-start`}
           onClick={() => openStudentQuickOverlay('sessions')}
           aria-label="Sessions"
           title="Sessions"
@@ -3298,7 +3298,7 @@ export default function Dashboard() {
 
         <button
           type="button"
-          className={btnClass('groups')}
+          className={`${btnClass('groups')} flex-none snap-start`}
           onClick={() => openStudentQuickOverlay('groups')}
           aria-label="Groups"
           title="Groups"
@@ -3314,7 +3314,7 @@ export default function Dashboard() {
 
         <button
           type="button"
-          className={`${baseBtn} relative`}
+          className={`${baseBtn} relative flex-none snap-start`}
           onClick={openNotificationsOverlay}
           aria-label="Notifications"
           title="Notifications"
@@ -3335,7 +3335,7 @@ export default function Dashboard() {
 
         <button
           type="button"
-          className={btnClass('discover')}
+          className={`${btnClass('discover')} flex-none snap-start`}
           onClick={() => openStudentQuickOverlay('discover')}
           aria-label="Discover"
           title="Discover"
@@ -3350,7 +3350,7 @@ export default function Dashboard() {
         {isAdmin && (
           <button
             type="button"
-            className={baseBtn}
+            className={`${baseBtn} flex-none snap-start`}
             onClick={() => openStudentQuickOverlay('admin')}
             aria-label="Admin tools"
             title="Admin tools"
@@ -3367,6 +3367,7 @@ export default function Dashboard() {
             <span className="text-[10px] leading-none opacity-80 text-white">Admin</span>
           </button>
         )}
+        </div>
       </section>
     )
   }

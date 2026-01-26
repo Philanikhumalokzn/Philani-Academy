@@ -2681,6 +2681,21 @@ export default function Dashboard() {
     fetchSubmissionDetail(safeChallengeId, safeUserId)
   }, [fetchSubmissionDetail])
 
+  const clearChallengeOverlayQuery = useCallback(() => {
+    const nextQuery: Record<string, any> = { ...router.query }
+    const keys = ['manageChallenge', 'userId', 'responseId', 'viewUserChallenge', 'viewChallengeResponse']
+    let changed = false
+    keys.forEach((k) => {
+      if (k in nextQuery) {
+        delete nextQuery[k]
+        changed = true
+      }
+    })
+    if (changed) {
+      void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+    }
+  }, [router])
+
   const openEditSelectedChallenge = useCallback(() => {
     const id = selectedChallengeId ? String(selectedChallengeId) : ''
     if (!id) return
@@ -9548,6 +9563,7 @@ export default function Dashboard() {
               setSelectedChallengeData(null)
               setSelectedSubmissionUserId(null)
               setSelectedSubmissionDetail(null)
+              clearChallengeOverlayQuery()
             }}
           >
             <div className="space-y-3">
@@ -9987,6 +10003,7 @@ export default function Dashboard() {
               setChallengeResponseChallenge(null)
               setChallengeMyResponses([])
               setChallengeResponseError(null)
+              clearChallengeOverlayQuery()
             }}
             leftActions={
               <button
@@ -9998,6 +10015,7 @@ export default function Dashboard() {
                   setChallengeResponseChallenge(null)
                   setChallengeMyResponses([])
                   setChallengeResponseError(null)
+                  clearChallengeOverlayQuery()
                 }}
               >
                 Back

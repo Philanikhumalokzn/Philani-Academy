@@ -957,6 +957,7 @@ export default function Dashboard() {
   const [challengeGradingStepFeedback, setChallengeGradingStepFeedback] = useState<Record<number, string>>({})
   const [challengeGradingStepMarks, setChallengeGradingStepMarks] = useState<Record<number, number>>({})
   const [challengeGradingSaving, setChallengeGradingSaving] = useState(false)
+  const suppressChallengeAutoOpenRef = useRef(false)
 
   const [challengeResponseOverlayOpen, setChallengeResponseOverlayOpen] = useState(false)
   const [selectedChallengeResponseId, setSelectedChallengeResponseId] = useState<string | null>(null)
@@ -2962,6 +2963,10 @@ export default function Dashboard() {
   }, [challengeGradingOverlayOpen, selectedChallengeId, selectedSubmissionUserId, fetchSubmissionDetail])
 
   useEffect(() => {
+    if (suppressChallengeAutoOpenRef.current) {
+      suppressChallengeAutoOpenRef.current = false
+      return
+    }
     const manageChallenge = typeof router.query.manageChallenge === 'string' ? router.query.manageChallenge : ''
     if (!manageChallenge) return
     const targetUserId = typeof router.query.userId === 'string' ? router.query.userId : ''
@@ -2977,6 +2982,10 @@ export default function Dashboard() {
   }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen, openChallengeSubmissionForGrading])
 
   useEffect(() => {
+    if (suppressChallengeAutoOpenRef.current) {
+      suppressChallengeAutoOpenRef.current = false
+      return
+    }
     const viewUserChallenge = typeof router.query.viewUserChallenge === 'string' ? router.query.viewUserChallenge : ''
     const targetUserId = typeof router.query.userId === 'string' ? router.query.userId : ''
     const targetResponseId = typeof router.query.responseId === 'string' ? router.query.responseId : ''
@@ -9558,6 +9567,7 @@ export default function Dashboard() {
             subtitle={selectedSubmissionUserId ? 'View and grade response' : 'View student responses'}
             zIndexClassName="z-[60]"
             onClose={() => {
+              suppressChallengeAutoOpenRef.current = true
               setChallengeGradingOverlayOpen(false)
               setSelectedChallengeId(null)
               setSelectedChallengeData(null)
@@ -9998,6 +10008,7 @@ export default function Dashboard() {
             subtitle="Your submission and feedback"
             zIndexClassName="z-[55]"
             onClose={() => {
+              suppressChallengeAutoOpenRef.current = true
               setChallengeResponseOverlayOpen(false)
               setSelectedChallengeResponseId(null)
               setChallengeResponseChallenge(null)
@@ -10010,6 +10021,7 @@ export default function Dashboard() {
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => {
+                  suppressChallengeAutoOpenRef.current = true
                   setChallengeResponseOverlayOpen(false)
                   setSelectedChallengeResponseId(null)
                   setChallengeResponseChallenge(null)

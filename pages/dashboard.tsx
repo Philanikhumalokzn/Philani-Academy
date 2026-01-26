@@ -4738,6 +4738,8 @@ export default function Dashboard() {
       setAssignmentQuestionOverlayOpen(false)
       setAssignmentOverlayOpen(true)
       fetchAssignmentDetails(targetSessionId, targetAssignmentId)
+      void fetchAssignmentResponses(targetSessionId, targetAssignmentId)
+      void fetchAssignmentGrade(targetSessionId, targetAssignmentId)
       if (targetSubmissionUserId) {
         setAdminSelectedSubmissionUserId(targetSubmissionUserId)
         setAdminSubmissionOverlayOpen(true)

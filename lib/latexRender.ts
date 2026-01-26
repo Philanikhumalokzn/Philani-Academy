@@ -2,8 +2,14 @@ import katex from 'katex'
 
 const ALIGN_ENV_REGEX = /\\begin\{(aligned|align\*?|array|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix|smallmatrix|split|eqnarray\*?|gather\*?|alignedat\*?|flalign\*?)\}/i
 
+function normalizeMathSymbols(raw: string): string {
+  return raw
+    .replace(/∵/g, '\\because')
+    .replace(/∴/g, '\\therefore')
+}
+
 function alignEqualsForDisplay(raw: string): string {
-  const value = raw.trim()
+  const value = normalizeMathSymbols(raw.trim())
   if (!value) return value
   if (ALIGN_ENV_REGEX.test(value)) return value
   if (value.includes('&')) return value
@@ -39,6 +45,10 @@ export function renderKatexDisplayHtml(latex: unknown): string {
       displayMode: true,
       throwOnError: false,
       strict: 'ignore',
+      macros: {
+        '\\because': '\\mathrel{\\text{∵}}',
+        '\\therefore': '\\mathrel{\\text{∴}}',
+      },
     })
   } catch {
     return ''

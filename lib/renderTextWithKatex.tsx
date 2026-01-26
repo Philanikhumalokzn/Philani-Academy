@@ -5,6 +5,11 @@ type InlineEmphasisRenderer = (text: string, keyPrefix: string) => React.ReactNo
 
 type NodeToken = string | { display: boolean; expr: string }
 
+const normalizeMathSymbols = (raw: string) =>
+  raw
+    .replace(/∵/g, '\\because')
+    .replace(/∴/g, '\\therefore')
+
 export function renderTextWithKatex(
   text: unknown,
   options?: {
@@ -85,7 +90,15 @@ export function renderTextWithKatex(
     }
 
     try {
-      const html = katex.renderToString(n.expr, { displayMode: n.display, throwOnError: false, strict: 'ignore' })
+      const html = katex.renderToString(normalizeMathSymbols(n.expr), {
+        displayMode: n.display,
+        throwOnError: false,
+        strict: 'ignore',
+        macros: {
+          '\\because': '\\mathrel{\\text{∵}}',
+          '\\therefore': '\\mathrel{\\text{∴}}',
+        },
+      })
       return (
         <span
           key={`k-${idx}`}

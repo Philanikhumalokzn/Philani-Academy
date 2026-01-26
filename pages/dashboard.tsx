@@ -3267,10 +3267,11 @@ export default function Dashboard() {
         className="mobile-row-width w-full overflow-x-auto snap-x snap-mandatory"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
       >
-        <div className="flex items-center gap-3 w-max">
+        <div className="flex items-center justify-between w-max min-w-full">
         <button
           type="button"
           className={`${btnClass('timeline')} flex-none snap-start`}
+          style={{ width: 'calc(100% / 6)' }}
           aria-label="Timeline"
           title="Timeline"
           onClick={() => openStudentQuickOverlay('timeline')}
@@ -3285,6 +3286,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('sessions')} flex-none snap-start`}
+          style={{ width: 'calc(100% / 6)' }}
           onClick={() => openStudentQuickOverlay('sessions')}
           aria-label="Sessions"
           title="Sessions"
@@ -3299,6 +3301,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('groups')} flex-none snap-start`}
+          style={{ width: 'calc(100% / 6)' }}
           onClick={() => openStudentQuickOverlay('groups')}
           aria-label="Groups"
           title="Groups"
@@ -3315,6 +3318,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${baseBtn} relative flex-none snap-start`}
+          style={{ width: 'calc(100% / 6)' }}
           onClick={openNotificationsOverlay}
           aria-label="Notifications"
           title="Notifications"
@@ -3336,6 +3340,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('discover')} flex-none snap-start`}
+          style={{ width: 'calc(100% / 6)' }}
           onClick={() => openStudentQuickOverlay('discover')}
           aria-label="Discover"
           title="Discover"
@@ -3351,6 +3356,7 @@ export default function Dashboard() {
           <button
             type="button"
             className={`${baseBtn} flex-none snap-start`}
+            style={{ width: 'calc(100% / 6)' }}
             onClick={() => openStudentQuickOverlay('admin')}
             aria-label="Admin tools"
             title="Admin tools"

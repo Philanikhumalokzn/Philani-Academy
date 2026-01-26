@@ -489,14 +489,14 @@ export default function MobileTopChrome() {
     }
 
     if (type === 'challenge_graded') {
+      if (challengeId) {
+        closeNotifications()
+        void router.push({ pathname: '/dashboard', query: { viewChallengeResponse: challengeId } })
+        return true
+      }
       if (responseId) {
         closeNotifications()
         void router.push({ pathname: '/dashboard', query: { viewChallengeResponse: responseId } })
-        return true
-      }
-      if (challengeId) {
-        closeNotifications()
-        void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
         return true
       }
     }

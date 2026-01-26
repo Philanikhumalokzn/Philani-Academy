@@ -434,6 +434,13 @@ export default function MobileTopChrome() {
     void loadActionNotifications()
   }
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => openNotifications()
+    window.addEventListener('pa:open-notifications', handler as EventListener)
+    return () => window.removeEventListener('pa:open-notifications', handler as EventListener)
+  }, [openNotifications])
+
   const markActivityNotificationRead = useCallback(async (id: string) => {
     const targetId = String(id || '')
     if (!targetId) return
@@ -665,30 +672,7 @@ export default function MobileTopChrome() {
 
   return (
     <>
-      {newNotificationIds.length > 0 && !notificationsOpen && (
-        <div className="fixed top-2 left-2 right-2 z-50 md:hidden">
-          <div className="mx-auto w-fit">
-            <button
-              type="button"
-              aria-label={`${newNotificationIds.length} new notifications`}
-              className="relative inline-flex items-center justify-center h-10 w-10 text-white"
-              onClick={() => {
-                openNotifications()
-              }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
-              </svg>
-              <span
-                className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                aria-label={`${newNotificationIds.length} new notifications`}
-              >
-                {newNotificationIds.length > 99 ? '99+' : newNotificationIds.length}
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
+      {null}
       <div
         data-mobile-top-chrome
         className={`fixed top-2 left-2 right-2 z-50 md:hidden transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -717,31 +701,7 @@ export default function MobileTopChrome() {
               </svg>
             </button>
 
-            <button
-              type="button"
-              aria-label="Notifications"
-              className="relative inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-              onClick={() => {
-                // If already open, close; otherwise open as an overlay sheet.
-                if (notificationsOpen) {
-                  closeNotifications()
-                } else {
-                  openNotifications()
-                }
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
-              </svg>
-              {unreadCount > 0 && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
-                  aria-label={`${unreadCount} unread notifications`}
-                >
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </button>
+            {null}
 
             <button
               type="button"

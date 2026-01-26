@@ -1420,6 +1420,22 @@ export default function Dashboard() {
     }
   }, [discoverPanelActive, discoverQuery, searchDiscover])
 
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    void loadNotifications()
+    const intervalId = window.setInterval(() => {
+      void loadNotifications()
+    }, 30000)
+    const handleFocus = () => void loadNotifications()
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
+  }, [status, loadNotifications])
+
   const respondInvite = useCallback(async (inviteId: string, action: 'accept' | 'decline') => {
     try {
       const res = await fetch(`/api/groups/invites/${encodeURIComponent(inviteId)}/respond`, {
@@ -1751,6 +1767,17 @@ export default function Dashboard() {
       return nextArr
     })
   }, [timelineReadStorageKey])
+
+  const unreadNotificationsCount = useMemo(() => {
+    const actionUnread = (actionInvites?.length || 0) + (actionJoinRequests?.length || 0)
+    const activityUnread = Array.isArray(activityFeed) ? activityFeed.filter((n) => !n?.readAt).length : 0
+    return actionUnread + activityUnread
+  }, [actionInvites, actionJoinRequests, activityFeed])
+
+  const openNotificationsOverlay = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('pa:open-notifications'))
+  }, [])
 
   const mobileHeroBgStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
@@ -3283,6 +3310,27 @@ export default function Dashboard() {
             <path d="M8 13c2.761 0 5 1.567 5 3.5V19H3v-2.5C3 14.567 5.239 13 8 13Z" stroke="currentColor" strokeWidth="2" />
           </svg>
           <span className={labelClass('groups')}>Groups</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${baseBtn} relative`}
+          onClick={openNotificationsOverlay}
+          aria-label="Notifications"
+          title="Notifications"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+          </svg>
+          {unreadNotificationsCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center"
+              aria-label={`${unreadNotificationsCount} unread notifications`}
+            >
+              {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+            </span>
+          )}
+          <span className="text-[10px] leading-none opacity-80 text-white">Alerts</span>
         </button>
 
         <button

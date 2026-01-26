@@ -888,10 +888,10 @@ export default function MobileTopChrome() {
                             }}
                           >
                             <div className="flex items-start gap-3">
-                              <div className="relative h-10 w-10 rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0">
+                              <div className="relative h-10 w-10 rounded-full border border-white/15 bg-white/5 flex items-center justify-center text-white/90 shrink-0">
                                 {actor?.avatar ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={actor.avatar} alt={actorName} className="h-full w-full object-cover" />
+                                  <img src={actor.avatar} alt={actorName} className="h-full w-full object-cover rounded-full" />
                                 ) : (
                                   <span className="text-sm font-semibold">{actorInitial}</span>
                                 )}

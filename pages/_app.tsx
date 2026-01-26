@@ -48,7 +48,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <div className="app-shell">
         {!hideNavBar && <NavBar />}
         {!hideMobileTopChrome && <MobileTopChrome />}
-        <AppErrorBoundary key={router.asPath}>
+        <AppErrorBoundary key={router.pathname}>
           <Component {...pageProps} />
         </AppErrorBoundary>
       </div>

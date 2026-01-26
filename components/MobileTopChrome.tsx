@@ -468,6 +468,14 @@ export default function MobileTopChrome() {
     const challengeId = typeof payload?.challengeId === 'string' ? payload.challengeId : ''
     const responderId = typeof payload?.responderId === 'string' ? payload.responderId : ''
     const responseId = typeof payload?.responseId === 'string' ? payload.responseId : ''
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : ''
+    const assignmentId = typeof payload?.assignmentId === 'string' ? payload.assignmentId : ''
+    const assignmentUserId = typeof payload?.userId === 'string' ? payload.userId : ''
+    const followerId = typeof payload?.followerId === 'string' ? payload.followerId : ''
+    const groupId = typeof payload?.groupId === 'string' ? payload.groupId : ''
+    const newUserId = typeof payload?.newUserId === 'string' ? payload.newUserId : ''
+    const updatedById = typeof payload?.updatedById === 'string' ? payload.updatedById : ''
+    const schoolUserId = newUserId || updatedById
 
     if (type === 'challenge_response') {
       const query: Record<string, string> = {
@@ -493,6 +501,75 @@ export default function MobileTopChrome() {
         void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
         return true
       }
+    }
+
+    if (type === 'assignment_submitted') {
+      if (sessionId && assignmentId) {
+        const query: Record<string, string> = {
+          panel: 'sessions',
+          assignmentSessionId: sessionId,
+          assignmentId,
+        }
+        if (assignmentUserId) query.submissionUserId = assignmentUserId
+        closeNotifications()
+        void router.push({ pathname: '/dashboard', query })
+        return true
+      }
+    }
+
+    if (type === 'assignment_graded') {
+      if (sessionId && assignmentId) {
+        closeNotifications()
+        void router.push({ pathname: '/dashboard', query: { panel: 'sessions', assignmentSessionId: sessionId, assignmentId } })
+        return true
+      }
+    }
+
+    if (type === 'new_follower') {
+      if (followerId) {
+        closeNotifications()
+        void router.push(`/u/${encodeURIComponent(followerId)}`)
+        return true
+      }
+    }
+
+    if (type === 'new_challenge') {
+      if (challengeId) {
+        closeNotifications()
+        void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
+        return true
+      }
+    }
+
+    if (
+      type === 'group_invite' ||
+      type === 'group_invite_response' ||
+      type === 'group_join_request' ||
+      type === 'group_join_request_response' ||
+      type === 'group_joined'
+    ) {
+      const query: Record<string, string> = { panel: 'groups' }
+      if (groupId) query.groupId = groupId
+      closeNotifications()
+      void router.push({ pathname: '/dashboard', query })
+      return true
+    }
+
+    if (type === 'account_verified') {
+      closeNotifications()
+      void router.push('/profile')
+      return true
+    }
+
+    if (type === 'school_manual_entry') {
+      if (schoolUserId) {
+        closeNotifications()
+        void router.push(`/u/${encodeURIComponent(schoolUserId)}`)
+        return true
+      }
+      closeNotifications()
+      void router.push({ pathname: '/dashboard', query: { panel: 'users' } })
+      return true
     }
 
     return false

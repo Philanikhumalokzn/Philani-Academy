@@ -2110,6 +2110,20 @@ export default function Dashboard() {
     }
   }, [isMobile, isAdmin, activeSection, openDashboardOverlay, openMobileAnnouncements, router.isReady, router.query.panel])
 
+  useEffect(() => {
+    if (!router.isReady) return
+    const groupId = typeof router.query.groupId === 'string' ? router.query.groupId : ''
+    if (!groupId) return
+
+    if (selectedGroupId !== groupId) {
+      void loadGroupMembers(groupId)
+    }
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.groupId
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [router.isReady, router.query, router.pathname, selectedGroupId, loadGroupMembers])
+
   const showMobileHeroEdit = useCallback(() => {
     setMobileHeroBgEditVisible(true)
     if (heroBgEditHideTimeoutRef.current) {
@@ -4704,6 +4718,51 @@ export default function Dashboard() {
 
   const sessionDetailsSessionId = sessionDetailsIds[sessionDetailsIndex] || null
   const sessionDetailsSession = sessionDetailsSessionId ? sessionById.get(sessionDetailsSessionId) : null
+
+  useEffect(() => {
+    const targetSessionId = typeof router.query.assignmentSessionId === 'string' ? router.query.assignmentSessionId : ''
+    const targetAssignmentId = typeof router.query.assignmentId === 'string' ? router.query.assignmentId : ''
+    const targetSubmissionUserId = typeof router.query.submissionUserId === 'string' ? router.query.submissionUserId : ''
+    if (!targetSessionId || !targetAssignmentId) return
+
+    const alreadyOpen =
+      assignmentOverlayOpen &&
+      selectedAssignmentId === targetAssignmentId &&
+      sessionDetailsSessionId === targetSessionId &&
+      (!targetSubmissionUserId || (adminSubmissionOverlayOpen && adminSelectedSubmissionUserId === targetSubmissionUserId))
+
+    if (!alreadyOpen) {
+      openSessionDetails([targetSessionId], 0, 'assignments')
+      setSelectedAssignmentId(targetAssignmentId)
+      setSelectedAssignmentQuestionId(null)
+      setAssignmentQuestionOverlayOpen(false)
+      setAssignmentOverlayOpen(true)
+      fetchAssignmentDetails(targetSessionId, targetAssignmentId)
+      if (targetSubmissionUserId) {
+        setAdminSelectedSubmissionUserId(targetSubmissionUserId)
+        setAdminSubmissionOverlayOpen(true)
+        void fetchAdminSubmissionDetail(targetSessionId, targetAssignmentId, targetSubmissionUserId)
+      }
+    }
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.assignmentSessionId
+    delete nextQuery.assignmentId
+    delete nextQuery.submissionUserId
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [
+    router,
+    router.query,
+    router.pathname,
+    assignmentOverlayOpen,
+    selectedAssignmentId,
+    sessionDetailsSessionId,
+    adminSubmissionOverlayOpen,
+    adminSelectedSubmissionUserId,
+    openSessionDetails,
+    fetchAssignmentDetails,
+    fetchAdminSubmissionDetail,
+  ])
 
   const safeParseJsonObject = (raw: string) => {
     const trimmed = (raw || '').trim()

@@ -2959,11 +2959,6 @@ export default function Dashboard() {
       setChallengeGradingOverlayOpen(true)
     }
 
-    const nextQuery: Record<string, any> = { ...router.query }
-    delete nextQuery.manageChallenge
-    delete nextQuery.userId
-    delete nextQuery.responseId
-    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen, openChallengeSubmissionForGrading])
 
   useEffect(() => {
@@ -2975,11 +2970,6 @@ export default function Dashboard() {
 
     openChallengeSubmissionForGrading(viewUserChallenge, targetUserId, targetResponseId || undefined)
 
-    const nextQuery: Record<string, any> = { ...router.query }
-    delete nextQuery.viewUserChallenge
-    delete nextQuery.userId
-    delete nextQuery.responseId
-    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router, router.query, selectedChallengeId, selectedSubmissionUserId, challengeGradingOverlayOpen, openChallengeSubmissionForGrading])
 
   useEffect(() => {

@@ -479,11 +479,11 @@ export default function MobileTopChrome() {
 
     if (type === 'challenge_response') {
       const query: Record<string, string> = {
-        viewUserChallenge: challengeId || '',
+        manageChallenge: challengeId || '',
         userId: responderId || '',
       }
       if (responseId) query.responseId = responseId
-      if (query.viewUserChallenge && query.userId) {
+      if (query.manageChallenge && query.userId) {
         closeNotifications()
         void router.push({ pathname: '/dashboard', query })
         return true

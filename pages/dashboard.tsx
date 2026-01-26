@@ -2670,6 +2670,17 @@ export default function Dashboard() {
     }
   }, [])
 
+  const openChallengeSubmissionForGrading = useCallback((challengeId: string, userId: string, responseId?: string) => {
+    const safeChallengeId = String(challengeId || '')
+    const safeUserId = String(userId || '')
+    if (!safeChallengeId || !safeUserId) return
+    setSelectedChallengeId(safeChallengeId)
+    setSelectedSubmissionUserId(safeUserId)
+    if (responseId) setChallengeGradingResponseId(String(responseId))
+    setChallengeGradingOverlayOpen(true)
+    fetchSubmissionDetail(safeChallengeId, safeUserId)
+  }, [fetchSubmissionDetail])
+
   const openEditSelectedChallenge = useCallback(() => {
     const id = selectedChallengeId ? String(selectedChallengeId) : ''
     if (!id) return
@@ -2938,15 +2949,22 @@ export default function Dashboard() {
   useEffect(() => {
     const manageChallenge = typeof router.query.manageChallenge === 'string' ? router.query.manageChallenge : ''
     if (!manageChallenge) return
-    if (selectedChallengeId === manageChallenge && challengeGradingOverlayOpen) return
+    const targetUserId = typeof router.query.userId === 'string' ? router.query.userId : ''
+    const targetResponseId = typeof router.query.responseId === 'string' ? router.query.responseId : ''
 
-    setSelectedChallengeId(manageChallenge)
-    setChallengeGradingOverlayOpen(true)
+    if (targetUserId) {
+      openChallengeSubmissionForGrading(manageChallenge, targetUserId, targetResponseId || undefined)
+    } else if (!(selectedChallengeId === manageChallenge && challengeGradingOverlayOpen)) {
+      setSelectedChallengeId(manageChallenge)
+      setChallengeGradingOverlayOpen(true)
+    }
 
     const nextQuery: Record<string, any> = { ...router.query }
     delete nextQuery.manageChallenge
+    delete nextQuery.userId
+    delete nextQuery.responseId
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
-  }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen])
+  }, [router, router.query, selectedChallengeId, challengeGradingOverlayOpen, openChallengeSubmissionForGrading])
 
   useEffect(() => {
     const viewUserChallenge = typeof router.query.viewUserChallenge === 'string' ? router.query.viewUserChallenge : ''
@@ -2955,17 +2973,14 @@ export default function Dashboard() {
     if (!viewUserChallenge || !targetUserId) return
     if (selectedChallengeId === viewUserChallenge && selectedSubmissionUserId === targetUserId && challengeGradingOverlayOpen) return
 
-    setSelectedChallengeId(viewUserChallenge)
-    setSelectedSubmissionUserId(targetUserId)
-    if (targetResponseId) setChallengeGradingResponseId(targetResponseId)
-    setChallengeGradingOverlayOpen(true)
+    openChallengeSubmissionForGrading(viewUserChallenge, targetUserId, targetResponseId || undefined)
 
     const nextQuery: Record<string, any> = { ...router.query }
     delete nextQuery.viewUserChallenge
     delete nextQuery.userId
     delete nextQuery.responseId
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
-  }, [router, router.query, selectedChallengeId, selectedSubmissionUserId, challengeGradingOverlayOpen])
+  }, [router, router.query, selectedChallengeId, selectedSubmissionUserId, challengeGradingOverlayOpen, openChallengeSubmissionForGrading])
 
   useEffect(() => {
     const viewChallengeResponse = typeof router.query.viewChallengeResponse === 'string' ? router.query.viewChallengeResponse : ''
@@ -9608,8 +9623,7 @@ export default function Dashboard() {
                                 type="button"
                                 className="btn btn-ghost text-xs shrink-0"
                                 onClick={() => {
-                                  setSelectedSubmissionUserId(String(row?.userId || ''))
-                                  fetchSubmissionDetail(selectedChallengeId, String(row?.userId || ''))
+                                  openChallengeSubmissionForGrading(selectedChallengeId, String(row?.userId || ''))
                                 }}
                               >
                                 View

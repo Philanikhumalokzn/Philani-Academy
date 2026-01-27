@@ -43,6 +43,11 @@ const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
   return createPortal(children, document.body)
 }
 
+const normalizeMathSymbols = (raw: string) =>
+  raw
+    .replace(/∵/g, '\\because')
+    .replace(/∴/g, '\\therefore')
+
 function OwnerAttemptCard(props: {
   resp: any
   idx: number
@@ -538,11 +543,15 @@ export default function ChallengeAttemptPage() {
     return nodes.map((n, idx) => {
       if (typeof n === 'string') return <span key={`t-${idx}`} className="whitespace-pre-wrap break-words">{n}</span>
       try {
-        const html = katex.renderToString(n.expr, {
+        const html = katex.renderToString(normalizeMathSymbols(n.expr), {
           displayMode: n.display,
           throwOnError: false,
           strict: 'ignore',
           errorColor: 'currentColor',
+          macros: {
+            '\\because': '\\mathrel{\\text{∵}}',
+            '\\therefore': '\\mathrel{\\text{∴}}',
+          },
         })
         return (
           <span
@@ -561,9 +570,13 @@ export default function ChallengeAttemptPage() {
     const input = typeof latex === 'string' ? latex.trim() : ''
     if (!input) return ''
     try {
-      return katex.renderToString(input, {
+      return katex.renderToString(normalizeMathSymbols(input), {
         throwOnError: false,
         displayMode: true,
+        macros: {
+          '\\because': '\\mathrel{\\text{∵}}',
+          '\\therefore': '\\mathrel{\\text{∴}}',
+        },
       })
     } catch {
       return ''

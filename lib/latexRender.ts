@@ -15,10 +15,10 @@ function alignEqualsForDisplay(raw: string): string {
   if (value.includes('&')) return value
   if (!value.includes('=')) return value
 
-  const hasDoubleSlash = value.includes('\\')
+  const hasDoubleSlash = value.includes('\\\\')
   const hasNewline = value.includes('\n')
   const lines = hasDoubleSlash
-    ? value.split(/\\/g)
+    ? value.split(/\\\\/g)
     : hasNewline
       ? value.split(/\n/g)
       : [value]

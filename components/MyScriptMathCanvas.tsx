@@ -4222,6 +4222,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return rhs || ''
   }, [normalizeStepLatex])
 
+  const sanitizeLatexForEvaluation = useCallback((value: string) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    return raw
+      .replace(/\(left|right)/g, '')
+      .replace(/\\/g, '')
+      .replace(/&/g, '')
+      .replace(/\(,|;|:|!|quad|qquad)/g, '')
+      .replace(/\(dfrac|tfrac)/g, '\\frac')
+      .replace(/\,\s*/g, '')
+      .replace(/\!/g, '')
+      .trim()
+  }, [])
+
   const extractNumericRhsFromStep = useCallback((value: string) => {
     const raw = normalizeStepLatex(value)
     if (!raw) return ''
@@ -4373,7 +4387,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!expr) return null
     if (!computeEngine) return null
     try {
-      const boxed = computeEngine.parse(expr)
+      const cleaned = sanitizeLatexForEvaluation(expr)
+      if (!cleaned) return null
+      const boxed = computeEngine.parse(cleaned)
       const numericBoxed: any = boxed?.N ? boxed.N() : boxed
       if (!numericBoxed) return null
 
@@ -4389,7 +4405,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // ignore
     }
     return null
-  }, [computeEngine])
+  }, [computeEngine, sanitizeLatexForEvaluation])
 
   const formatComputedValue = useCallback((value: number) => {
     if (Number.isInteger(value)) return String(value)

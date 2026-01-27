@@ -1147,6 +1147,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // Those flows use `studentCommittedLatex` + `latexOutput` and should append steps as new lines.
     && (isAdmin || (!forceEditableForAssignment && !forceEditable))
   )
+  useEffect(() => {
+    useAdminStepComposerRef.current = useAdminStepComposer
+  }, [useAdminStepComposer])
 
   const allowStudentTextTray = !isAdmin && (isAssignmentView || isChallengeBoard)
   const useStudentStepComposer = !isAdmin && useStackedStudentLayout && (isAssignmentView || isChallengeBoard)
@@ -1263,6 +1266,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const adminTopPanelRef = useRef<HTMLDivElement | null>(null)
   const adminLastTapRef = useRef<{ ts: number; y: number } | null>(null)
   const previewExportInFlightRef = useRef(false)
+  const latexRenderSourceRef = useRef('')
+  const useAdminStepComposerRef = useRef(false)
 
   type StudentStep = { latex: string; symbols: any[] | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
@@ -4356,7 +4361,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const appendComputedLineFromLastStep = useCallback(() => {
-    const lastStep = adminSteps.length ? adminSteps[adminSteps.length - 1]?.latex || '' : ''
+    let lastStep = adminSteps.length ? adminSteps[adminSteps.length - 1]?.latex || '' : ''
+    if (!lastStep) {
+      const fallback = (latexRenderSourceRef.current || '').trim()
+      if (fallback) {
+        const parts = fallback.split(/\\\\/).map(part => part.trim()).filter(Boolean)
+        lastStep = parts.length ? (parts[parts.length - 1] || '') : ''
+      }
+    }
     if (!lastStep) return
 
     const expr = extractNumericRhsFromStep(lastStep)
@@ -4366,7 +4378,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (value === null) return
 
     const computedLine = `=${formatComputedValue(value)}`
-    setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null }])
+    if (useAdminStepComposerRef.current) {
+      setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null }])
+    } else {
+      setLatexDisplayState(prev => {
+        const existing = (prev.latex || '').trim()
+        const nextLatex = [existing, computedLine].filter(Boolean).join(' \\\\ ')
+        return { ...prev, latex: nextLatex }
+      })
+    }
     clearTopPanelSelection()
   }, [adminSteps, clearTopPanelSelection, evaluateNumericExpression, extractNumericRhsFromStep, formatComputedValue])
   const createSessionNoteId = useCallback(() => {
@@ -6239,6 +6259,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     return (latexDisplayState.latex || '').trim()
   }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, quizActive, stackedNotesState.latex, studentCommittedLatex, studentEditIndex, studentSteps, useAdminStepComposer, useStackedStudentLayout, useStudentStepComposer])
+
+  useEffect(() => {
+    latexRenderSourceRef.current = latexRenderSource || ''
+  }, [latexRenderSource])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty
@@ -10088,7 +10112,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         className="px-2 py-1"
                         title="Compute answer"
                         onClick={() => runCanvasAction(appendComputedLineFromLastStep)}
-                        disabled={Boolean(fatalError) || adminSteps.length === 0}
+                        disabled={Boolean(fatalError)}
                       >
                         <span className="sr-only">Compute</span>
                         <svg

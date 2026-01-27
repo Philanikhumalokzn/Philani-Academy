@@ -4198,6 +4198,177 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return simplified.length > 72 ? `${simplified.slice(0, 72).trim()}…` : simplified
   }, [normalizeStepLatex])
 
+  const extractNumericRhsFromStep = useCallback((value: string) => {
+    const raw = normalizeStepLatex(value)
+    if (!raw) return ''
+    const eqIndex = raw.lastIndexOf('=')
+    if (eqIndex < 0) return ''
+
+    let rhs = raw.slice(eqIndex + 1).trim()
+    if (!rhs) return ''
+
+    rhs = rhs
+      .replace(/\$+/g, '')
+      .replace(/\\\$/g, '')
+      .replace(/\\(left|right)/g, '')
+      .replace(/\\times/g, '*')
+      .replace(/\\cdot/g, '*')
+      .replace(/\\div/g, '/')
+      .replace(/\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}/g, '($1)/($2)')
+      .replace(/\\(,|;|:|!|quad|qquad)/g, '')
+      .replace(/[×]/g, '*')
+      .replace(/[÷]/g, '/')
+      .replace(/[–−]/g, '-')
+      .replace(/,/g, '')
+      .replace(/[{}]/g, match => (match === '{' ? '(' : ')'))
+      .replace(/\s+/g, '')
+
+    return rhs
+  }, [normalizeStepLatex])
+
+  const evaluateNumericExpression = useCallback((expr: string) => {
+    if (!expr) return null
+
+    const tokens: string[] = []
+    let i = 0
+    while (i < expr.length) {
+      const ch = expr[i]
+      if (ch >= '0' && ch <= '9' || ch === '.') {
+        let num = ch
+        i += 1
+        while (i < expr.length && ((expr[i] >= '0' && expr[i] <= '9') || expr[i] === '.')) {
+          num += expr[i]
+          i += 1
+        }
+        if (num === '.' || num === '+.' || num === '-.') return null
+        tokens.push(num)
+        continue
+      }
+
+      if (ch === '+' || ch === '-' || ch === '*' || ch === '/' || ch === '(' || ch === ')') {
+        tokens.push(ch)
+        i += 1
+        continue
+      }
+
+      return null
+    }
+
+    const output: string[] = []
+    const ops: string[] = []
+    const precedence: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2, 'u+': 3, 'u-': 3 }
+    const isRightAssoc = (op: string) => op === 'u+' || op === 'u-'
+
+    let prevToken: string | null = null
+    for (const token of tokens) {
+      const isNumber = /^(\d+(\.\d+)?|\.\d+)$/.test(token)
+      if (isNumber) {
+        output.push(token)
+        prevToken = token
+        continue
+      }
+
+      if (token === '(') {
+        ops.push(token)
+        prevToken = token
+        continue
+      }
+
+      if (token === ')') {
+        while (ops.length && ops[ops.length - 1] !== '(') {
+          output.push(ops.pop() as string)
+        }
+        if (!ops.length) return null
+        ops.pop()
+        prevToken = token
+        continue
+      }
+
+      let op = token
+      if ((token === '+' || token === '-') && (!prevToken || prevToken === '(' || /[+\-*/]/.test(prevToken))) {
+        op = token === '+' ? 'u+' : 'u-'
+      }
+
+      while (ops.length) {
+        const top = ops[ops.length - 1]
+        if (top === '(') break
+        const pTop = precedence[top]
+        const pOp = precedence[op]
+        if (pTop > pOp || (pTop === pOp && !isRightAssoc(op))) {
+          output.push(ops.pop() as string)
+          continue
+        }
+        break
+      }
+
+      ops.push(op)
+      prevToken = op
+    }
+
+    while (ops.length) {
+      const op = ops.pop() as string
+      if (op === '(' || op === ')') return null
+      output.push(op)
+    }
+
+    const stack: number[] = []
+    for (const token of output) {
+      if (/^(\d+(\.\d+)?|\.\d+)$/.test(token)) {
+        const n = Number(token)
+        if (!Number.isFinite(n)) return null
+        stack.push(n)
+        continue
+      }
+
+      if (token === 'u+' || token === 'u-') {
+        if (stack.length < 1) return null
+        const v = stack.pop() as number
+        stack.push(token === 'u-' ? -v : v)
+        continue
+      }
+
+      if (stack.length < 2) return null
+      const b = stack.pop() as number
+      const a = stack.pop() as number
+      let res = 0
+      if (token === '+') res = a + b
+      else if (token === '-') res = a - b
+      else if (token === '*') res = a * b
+      else if (token === '/') res = a / b
+      else return null
+
+      if (!Number.isFinite(res)) return null
+      stack.push(res)
+    }
+
+    if (stack.length !== 1) return null
+    return stack[0]
+  }, [])
+
+  const formatComputedValue = useCallback((value: number) => {
+    if (Number.isInteger(value)) return String(value)
+    const rounded = Math.round(value * 1e10) / 1e10
+    let text = String(rounded)
+    if (text.includes('e') || text.includes('E')) {
+      text = rounded.toFixed(10)
+    }
+    return text.replace(/0+$/, '').replace(/\.$/, '')
+  }, [])
+
+  const appendComputedLineFromLastStep = useCallback(() => {
+    const lastStep = adminSteps.length ? adminSteps[adminSteps.length - 1]?.latex || '' : ''
+    if (!lastStep) return
+
+    const expr = extractNumericRhsFromStep(lastStep)
+    if (!expr) return
+
+    const value = evaluateNumericExpression(expr)
+    if (value === null) return
+
+    const computedLine = `=${formatComputedValue(value)}`
+    setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null }])
+    clearTopPanelSelection()
+  }, [adminSteps, clearTopPanelSelection, evaluateNumericExpression, extractNumericRhsFromStep, formatComputedValue])
   const createSessionNoteId = useCallback(() => {
     try {
       const cryptoAny = (globalThis as any)?.crypto
@@ -9915,14 +10086,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <button
                         type="button"
                         className="px-2 py-1"
-                        title="LaTeX"
-                        onClick={() => {
-                          toggleMobileLatexTray()
-                          openPickerOrApplySingle('latex')
-                        }}
-                        disabled={Boolean(fatalError)}
+                        title="Compute answer"
+                        onClick={() => runCanvasAction(appendComputedLineFromLastStep)}
+                        disabled={Boolean(fatalError) || adminSteps.length === 0}
                       >
-                        <span className="sr-only">LaTeX</span>
+                        <span className="sr-only">Compute</span>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           viewBox="0 0 24 24"

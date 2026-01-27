@@ -1,7 +1,7 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
-import { ComputeEngine } from '@cortex-js/compute-engine'
+import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
@@ -1269,7 +1269,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const previewExportInFlightRef = useRef(false)
   const latexRenderSourceRef = useRef('')
   const useAdminStepComposerRef = useRef(false)
-  const computeEngine = useMemo(() => new ComputeEngine(), [])
+  const computeEngine = useMemo(() => {
+    try {
+      const registry = (globalThis as any)?.[Symbol.for('io.cortexjs.compute-engine')]
+      const Ctor = registry?.ComputeEngine
+      return typeof Ctor === 'function' ? new Ctor() : null
+    } catch {
+      return null
+    }
+  }, [])
 
   type StudentStep = { latex: string; symbols: any[] | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
@@ -4363,6 +4371,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const evaluateLatexExpression = useCallback((expr: string) => {
     if (!expr) return null
+    if (!computeEngine) return null
     try {
       const boxed = computeEngine.parse(expr)
       const numericBoxed: any = boxed?.N ? boxed.N() : boxed

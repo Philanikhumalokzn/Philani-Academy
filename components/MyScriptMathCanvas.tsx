@@ -4226,13 +4226,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const raw = String(value || '').trim()
     if (!raw) return ''
     return raw
-      .replace(/\(left|right)/g, '')
-      .replace(/\\/g, '')
+      .replace(/\\(left|right)/g, '')
+      .replace(/\\\\/g, '')
       .replace(/&/g, '')
-      .replace(/\(,|;|:|!|quad|qquad)/g, '')
-      .replace(/\(dfrac|tfrac)/g, '\\frac')
-      .replace(/\,\s*/g, '')
-      .replace(/\!/g, '')
+      .replace(/\\(,|;|:|!|quad|qquad)/g, '')
+      .replace(/\\(dfrac|tfrac)/g, '\\frac')
+      .replace(/\\,\s*/g, '')
+      .replace(/\\!/g, '')
       .trim()
   }, [])
 

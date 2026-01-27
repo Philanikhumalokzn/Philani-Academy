@@ -1,6 +1,7 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
+import { ComputeEngine } from '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
@@ -1268,6 +1269,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const previewExportInFlightRef = useRef(false)
   const latexRenderSourceRef = useRef('')
   const useAdminStepComposerRef = useRef(false)
+  const computeEngine = useMemo(() => new ComputeEngine(), [])
 
   type StudentStep = { latex: string; symbols: any[] | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
@@ -4203,6 +4205,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return simplified.length > 72 ? `${simplified.slice(0, 72).trim()}…` : simplified
   }, [normalizeStepLatex])
 
+  const extractLatexRhsFromStep = useCallback((value: string) => {
+    const raw = normalizeStepLatex(value)
+    if (!raw) return ''
+    const eqIndex = raw.lastIndexOf('=')
+    if (eqIndex < 0) return ''
+    const rhs = raw.slice(eqIndex + 1).trim()
+    return rhs || ''
+  }, [normalizeStepLatex])
+
   const extractNumericRhsFromStep = useCallback((value: string) => {
     const raw = normalizeStepLatex(value)
     if (!raw) return ''
@@ -4350,6 +4361,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return stack[0]
   }, [])
 
+  const evaluateLatexExpression = useCallback((expr: string) => {
+    if (!expr) return null
+    try {
+      const boxed = computeEngine.parse(expr)
+      const numericBoxed: any = boxed?.N ? boxed.N() : boxed
+      if (!numericBoxed) return null
+
+      const value = (typeof numericBoxed.valueOf === 'function') ? numericBoxed.valueOf() : null
+      if (typeof value === 'number' && Number.isFinite(value)) return value
+
+      const numericValue = (numericBoxed as any).numericValue
+      if (typeof numericValue === 'number' && Number.isFinite(numericValue)) return numericValue
+
+      const rawValue = (numericBoxed as any).value
+      if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue
+    } catch {
+      // ignore
+    }
+    return null
+  }, [computeEngine])
+
   const formatComputedValue = useCallback((value: number) => {
     if (Number.isInteger(value)) return String(value)
     const rounded = Math.round(value * 1e10) / 1e10
@@ -4371,10 +4403,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     if (!lastStep) return
 
-    const expr = extractNumericRhsFromStep(lastStep)
-    if (!expr) return
+    const latexExpr = extractLatexRhsFromStep(lastStep)
+    const valueFromLatex = latexExpr ? evaluateLatexExpression(latexExpr) : null
+    let value = valueFromLatex
 
-    const value = evaluateNumericExpression(expr)
+    if (value === null) {
+      const expr = extractNumericRhsFromStep(lastStep)
+      if (!expr) return
+      value = evaluateNumericExpression(expr)
+    }
     if (value === null) return
 
     const computedLine = `=${formatComputedValue(value)}`
@@ -4388,7 +4425,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       })
     }
     clearTopPanelSelection()
-  }, [adminSteps, clearTopPanelSelection, evaluateNumericExpression, extractNumericRhsFromStep, formatComputedValue])
+  }, [adminSteps, clearTopPanelSelection, evaluateLatexExpression, evaluateNumericExpression, extractLatexRhsFromStep, extractNumericRhsFromStep, formatComputedValue])
   const createSessionNoteId = useCallback(() => {
     try {
       const cryptoAny = (globalThis as any)?.crypto

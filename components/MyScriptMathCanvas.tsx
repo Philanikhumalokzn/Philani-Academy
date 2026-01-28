@@ -621,6 +621,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [mathpixLastProxyPayload, setMathpixLastProxyPayload] = useState<string | null>(null)
   const [mathpixLastUpstreamPayload, setMathpixLastUpstreamPayload] = useState<string | null>(null)
   const [mathpixLastEventCount, setMathpixLastEventCount] = useState<number | null>(null)
+  const [mathpixLocalStrokeCount, setMathpixLocalStrokeCount] = useState<number | null>(null)
+  const [mathpixLocalPointCount, setMathpixLocalPointCount] = useState<number | null>(null)
   const [mathpixStatus, setMathpixStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [mathpixLastRequestAt, setMathpixLastRequestAt] = useState<number | null>(null)
   const [mathpixLastResponseAt, setMathpixLastResponseAt] = useState<number | null>(null)
@@ -629,6 +631,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [mathpixLastPointCount, setMathpixLastPointCount] = useState<number | null>(null)
   const mathpixRequestSeqRef = useRef(0)
   const mathpixPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mathpixLocalStrokesRef = useRef<Array<{ x: number[]; y: number[] }>>([])
+  const mathpixActivePointerRef = useRef<Map<number, { x: number[]; y: number[] }>>(new Map())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
@@ -646,6 +650,80 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     recognitionEngineRef.current = recognitionEngine
   }, [recognitionEngine])
+
+  const updateMathpixLocalCounts = useCallback(() => {
+    const strokes = mathpixLocalStrokesRef.current
+    if (!strokes.length) {
+      setMathpixLocalStrokeCount(null)
+      setMathpixLocalPointCount(null)
+      return
+    }
+    setMathpixLocalStrokeCount(strokes.length)
+    setMathpixLocalPointCount(strokes.reduce((sum, stroke) => sum + stroke.x.length, 0))
+  }, [])
+
+  const clearMathpixLocalStrokes = useCallback(() => {
+    mathpixLocalStrokesRef.current = []
+    mathpixActivePointerRef.current.clear()
+    setMathpixLocalStrokeCount(null)
+    setMathpixLocalPointCount(null)
+  }, [])
+
+  useEffect(() => {
+    if (recognitionEngine !== 'mathpix') {
+      clearMathpixLocalStrokes()
+    }
+  }, [recognitionEngine, clearMathpixLocalStrokes])
+
+  useEffect(() => {
+    const host = editorHostRef.current
+    if (!host) return
+
+    const addPoint = (evt: PointerEvent, stroke: { x: number[]; y: number[] }) => {
+      const rect = host.getBoundingClientRect()
+      const px = evt.clientX - rect.left
+      const py = evt.clientY - rect.top
+      if (!Number.isFinite(px) || !Number.isFinite(py)) return
+      stroke.x.push(Math.round(px))
+      stroke.y.push(Math.round(py))
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (recognitionEngineRef.current !== 'mathpix') return
+      const stroke = { x: [], y: [] }
+      mathpixActivePointerRef.current.set(evt.pointerId, stroke)
+      mathpixLocalStrokesRef.current.push(stroke)
+      addPoint(evt, stroke)
+      updateMathpixLocalCounts()
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (recognitionEngineRef.current !== 'mathpix') return
+      const stroke = mathpixActivePointerRef.current.get(evt.pointerId)
+      if (!stroke) return
+      addPoint(evt, stroke)
+      updateMathpixLocalCounts()
+    }
+
+    const handlePointerUp = (evt: PointerEvent) => {
+      if (mathpixActivePointerRef.current.has(evt.pointerId)) {
+        mathpixActivePointerRef.current.delete(evt.pointerId)
+        updateMathpixLocalCounts()
+      }
+    }
+
+    host.addEventListener('pointerdown', handlePointerDown, { passive: true })
+    host.addEventListener('pointermove', handlePointerMove, { passive: true })
+    window.addEventListener('pointerup', handlePointerUp, { passive: true })
+    window.addEventListener('pointercancel', handlePointerUp, { passive: true })
+
+    return () => {
+      host.removeEventListener('pointerdown', handlePointerDown)
+      host.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [updateMathpixLocalCounts])
 
   useEffect(() => {
     if (!isAdmin) return
@@ -4565,9 +4643,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       : []
   }, [])
 
+  const getMathpixLocalStrokesPayload = useCallback(() => {
+    const strokes = mathpixLocalStrokesRef.current
+      .map(stroke => ({ x: stroke.x, y: stroke.y }))
+      .filter(stroke => stroke.x.length && stroke.y.length)
+    if (!strokes.length) return null
+    return {
+      x: strokes.map(stroke => stroke.x),
+      y: strokes.map(stroke => stroke.y),
+    }
+  }, [])
+
   const buildMathpixStrokesPayload = useCallback((symbols: any[] | null) => {
     const events: any[] = getMathpixEventList(symbols)
-    if (!events.length) return null
+    if (!events.length) return getMathpixLocalStrokesPayload()
 
     const hasStrokeIds = events.some(e => e && (e.strokeId != null || e.stroke_id != null))
     const toNumber = (value: unknown) => {
@@ -4640,8 +4729,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     flush()
-    return x.length ? { x, y } : null
-  }, [getMathpixEventList])
+    return x.length ? { x, y } : getMathpixLocalStrokesPayload()
+  }, [getMathpixEventList, getMathpixLocalStrokesPayload])
 
   const requestMathpixLatex = useCallback(async (symbols: any[] | null) => {
     const events = getMathpixEventList(symbols)
@@ -6131,6 +6220,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       editorInstanceRef.current.clear()
     } catch {}
     setLatexOutput('')
+    clearMathpixLocalStrokes()
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
 
@@ -6153,6 +6243,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (lockedOutRef.current) return
     editorInstanceRef.current.clear()
     setLatexOutput('')
+    clearMathpixLocalStrokes()
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
     if (useAdminStepComposer && hasControllerRights()) {
@@ -10825,6 +10916,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <div>HTTP status: {mathpixLastStatusCode ?? '—'}</div>
                       <div>Strokes: {mathpixLastStrokeCount ?? '—'} · Points: {mathpixLastPointCount ?? '—'}</div>
                       <div>Events: {mathpixLastEventCount ?? '—'}</div>
+                      <div>Local strokes: {mathpixLocalStrokeCount ?? '—'} · Local points: {mathpixLocalPointCount ?? '—'}</div>
                     </div>
                     <details className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
                       <summary className="cursor-pointer select-none text-[11px] font-semibold text-slate-700">Payloads</summary>

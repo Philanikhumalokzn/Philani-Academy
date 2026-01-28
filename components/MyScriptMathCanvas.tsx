@@ -617,6 +617,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
+  const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
   const mathpixRequestSeqRef = useRef(0)
   const mathpixPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -4635,6 +4636,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const requestId = ++mathpixRequestSeqRef.current
     setMathpixError(null)
+    setMathpixRawResponse(null)
 
     try {
       const res = await fetch('/api/mathpix/strokes', {
@@ -4645,14 +4647,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         const message = data?.error || `Mathpix request failed (${res.status}).`
-        if (requestId === mathpixRequestSeqRef.current) setMathpixError(message)
+        if (requestId === mathpixRequestSeqRef.current) {
+          setMathpixError(message)
+          setMathpixRawResponse(data ? JSON.stringify(data, null, 2) : null)
+        }
         return ''
       }
       if (requestId !== mathpixRequestSeqRef.current) return ''
+      setMathpixRawResponse(data ? JSON.stringify(data, null, 2) : null)
       return typeof data?.latex === 'string' ? data.latex : ''
     } catch (err: any) {
       if (requestId === mathpixRequestSeqRef.current) {
         setMathpixError(err?.message || 'Mathpix request failed.')
+        setMathpixRawResponse(err ? String(err?.stack || err?.message || err) : null)
       }
       return ''
     }
@@ -9603,6 +9610,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {recognitionEngine === 'mathpix' && mathpixError && (
             <span className="text-[11px] text-red-600">{mathpixError}</span>
           )}
+          {recognitionEngine === 'mathpix' && (
+            <div className="mt-1 max-h-32 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
+              {mathpixRawResponse || 'No Mathpix response yet.'}
+            </div>
+          )}
         </div>
         <button
           className="btn"
@@ -11776,6 +11788,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </label>
             {recognitionEngine === 'mathpix' && mathpixError && (
               <span className="text-[11px] text-red-600">{mathpixError}</span>
+            )}
+            {recognitionEngine === 'mathpix' && (
+              <div className="mt-2">
+                <p className="text-[11px] font-semibold text-slate-700">Mathpix raw output</p>
+                <div className="mt-1 max-h-40 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
+                  {mathpixRawResponse || 'No Mathpix response yet.'}
+                </div>
+              </div>
             )}
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Notes font size</span>

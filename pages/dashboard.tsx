@@ -6728,7 +6728,7 @@ export default function Dashboard() {
                                               fetchAssignmentDetails(expandedSessionId, String(a.id))
                                             }}
                                           >
-                                            View
+                                            Manage
                                           </button>
                                         )
                                       }

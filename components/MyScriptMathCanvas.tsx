@@ -620,6 +620,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
   const [mathpixLastProxyPayload, setMathpixLastProxyPayload] = useState<string | null>(null)
   const [mathpixLastUpstreamPayload, setMathpixLastUpstreamPayload] = useState<string | null>(null)
+  const [mathpixLastEventCount, setMathpixLastEventCount] = useState<number | null>(null)
   const [mathpixStatus, setMathpixStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [mathpixLastRequestAt, setMathpixLastRequestAt] = useState<number | null>(null)
   const [mathpixLastResponseAt, setMathpixLastResponseAt] = useState<number | null>(null)
@@ -4556,12 +4557,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return ''
   }, [])
 
-  const buildMathpixStrokesPayload = useCallback((symbols: any[] | null) => {
-    const events: any[] = Array.isArray(symbols)
+  const getMathpixEventList = useCallback((symbols: any[] | null) => {
+    return Array.isArray(symbols)
       ? symbols
       : Array.isArray((symbols as any)?.events)
       ? (symbols as any).events
       : []
+  }, [])
+
+  const buildMathpixStrokesPayload = useCallback((symbols: any[] | null) => {
+    const events: any[] = getMathpixEventList(symbols)
     if (!events.length) return null
 
     const hasStrokeIds = events.some(e => e && (e.strokeId != null || e.stroke_id != null))
@@ -4636,11 +4641,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     flush()
     return x.length ? { x, y } : null
-  }, [])
+  }, [getMathpixEventList])
 
   const requestMathpixLatex = useCallback(async (symbols: any[] | null) => {
+    const events = getMathpixEventList(symbols)
+    setMathpixLastEventCount(events.length || null)
+
     const strokes = buildMathpixStrokesPayload(symbols)
-    if (!strokes) return ''
+    if (!strokes) {
+      setMathpixLastProxyPayload(null)
+      setMathpixLastUpstreamPayload(null)
+      setMathpixStatus('error')
+      setMathpixError('No strokes extracted from MyScript symbols.')
+      setMathpixLastResponseAt(Date.now())
+      return ''
+    }
 
     const proxyPayload = { strokes }
     const upstreamPayload = {
@@ -4692,7 +4707,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       return ''
     }
-  }, [buildMathpixStrokesPayload])
+  }, [buildMathpixStrokesPayload, getMathpixEventList])
+
+  const copyMathpixPayload = useCallback(async (value: string | null, label: string) => {
+    if (!value) return
+    try {
+      await navigator.clipboard?.writeText(value)
+      return
+    } catch (err) {
+      console.warn('Failed to copy Mathpix payload', err)
+    }
+    try {
+      if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
+        window.prompt(`Copy ${label} payload`, value)
+      }
+    } catch (err) {
+      console.warn('Failed to open copy prompt', err)
+    }
+  }, [])
 
   const exportLatexFromEngine = useCallback(async () => {
     if (recognitionEngineRef.current === 'mathpix') {
@@ -10773,28 +10805,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         <button
                           type="button"
                           className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] text-slate-700 hover:bg-slate-50"
-                          onClick={async () => {
-                            if (!mathpixLastProxyPayload) return
-                            try {
-                              await navigator.clipboard?.writeText(mathpixLastProxyPayload)
-                            } catch (err) {
-                              console.warn('Failed to copy Mathpix proxy payload', err)
-                            }
-                          }}
+                          onClick={() => void copyMathpixPayload(mathpixLastProxyPayload, 'proxy')}
                         >
                           Copy proxy
                         </button>
                         <button
                           type="button"
                           className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] text-slate-700 hover:bg-slate-50"
-                          onClick={async () => {
-                            if (!mathpixLastUpstreamPayload) return
-                            try {
-                              await navigator.clipboard?.writeText(mathpixLastUpstreamPayload)
-                            } catch (err) {
-                              console.warn('Failed to copy Mathpix upstream payload', err)
-                            }
-                          }}
+                          onClick={() => void copyMathpixPayload(mathpixLastUpstreamPayload, 'Mathpix')}
                         >
                           Copy Mathpix
                         </button>
@@ -10806,7 +10824,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <div>Last response: {mathpixLastResponseAt ? new Date(mathpixLastResponseAt).toLocaleTimeString() : '—'}</div>
                       <div>HTTP status: {mathpixLastStatusCode ?? '—'}</div>
                       <div>Strokes: {mathpixLastStrokeCount ?? '—'} · Points: {mathpixLastPointCount ?? '—'}</div>
+                      <div>Events: {mathpixLastEventCount ?? '—'}</div>
                     </div>
+                    <details className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
+                      <summary className="cursor-pointer select-none text-[11px] font-semibold text-slate-700">Payloads</summary>
+                      <div className="mt-2">
+                        <div className="text-[10px] text-slate-500">Proxy payload</div>
+                        <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">
+                          {mathpixLastProxyPayload || '—'}
+                        </pre>
+                      </div>
+                      <div className="mt-2">
+                        <div className="text-[10px] text-slate-500">Mathpix payload</div>
+                        <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">
+                          {mathpixLastUpstreamPayload || '—'}
+                        </pre>
+                      </div>
+                    </details>
                     <div className="max-h-40 overflow-auto p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
                       {mathpixRawResponse || mathpixError || 'No Mathpix response yet.'}
                     </div>

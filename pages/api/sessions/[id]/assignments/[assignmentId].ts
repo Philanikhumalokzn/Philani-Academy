@@ -20,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const sessionRecord = await prisma.sessionRecord.findUnique({
     where: { id: sessionIdParam },
-    select: { grade: true, id: true },
+    select: { grade: true, id: true, createdBy: true },
   })
   if (!sessionRecord) return res.status(404).json({ message: 'Session not found' })
 
@@ -42,8 +42,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  const assignmentRecord = await (prisma as any).assignment.findFirst({
+    where: { id: String(assignmentIdParam), sessionId: sessionRecord.id },
+    select: { id: true, createdBy: true },
+  })
+
+  if (!assignmentRecord) return res.status(404).json({ message: 'Assignment not found' })
+
+  const isOwner = Boolean(
+    (assignmentRecord.createdBy && String(assignmentRecord.createdBy) === String(authUserId))
+    || (sessionRecord.createdBy && String(sessionRecord.createdBy) === String(authUserId))
+  )
+
+  if (req.method === 'PATCH' || req.method === 'DELETE') {
+    if (role !== 'admin' && role !== 'teacher') {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+    if (role === 'teacher' && !isOwner) {
+      return res.status(403).json({ message: 'Only the assignment creator can manage this assignment' })
+    }
+  }
+
+  if (req.method === 'PATCH') {
+    const body = (req.body || {}) as any
+    const nextTitle = typeof body.title === 'string' ? body.title.trim() : ''
+    if (!nextTitle) return res.status(400).json({ message: 'Title is required' })
+    const updated = await (prisma as any).assignment.update({
+      where: { id: assignmentRecord.id },
+      data: { title: nextTitle },
+    })
+    return res.status(200).json({ id: updated.id, title: updated.title })
+  }
+
+  if (req.method === 'DELETE') {
+    await (prisma as any).assignment.delete({ where: { id: assignmentRecord.id } })
+    return res.status(200).json({ ok: true })
+  }
+
   if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
+    res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
     return res.status(405).end(`Method ${req.method} Not Allowed`)
   }
 
@@ -54,7 +91,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       session: { select: { title: true } },
     },
   })
-
-  if (!assignment) return res.status(404).json({ message: 'Assignment not found' })
   return res.status(200).json(assignment)
 }

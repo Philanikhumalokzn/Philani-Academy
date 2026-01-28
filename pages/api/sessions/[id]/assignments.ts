@@ -49,6 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         title: true,
         createdAt: true,
         updatedAt: true,
+        createdBy: true,
         sourceUrl: true,
         sourceFilename: true,
         sourceContentType: true,

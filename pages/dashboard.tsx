@@ -10,6 +10,7 @@ import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
+import TaskManageMenu from '../components/TaskManageMenu'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -3541,6 +3542,25 @@ export default function Dashboard() {
                       >
                         Assignments
                       </button>
+                      {(() => {
+                        const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
+                        const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                        if (!canManage) return null
+                        return (
+                          <TaskManageMenu
+                            actions={[
+                              {
+                                label: 'Manage assignments',
+                                onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments'),
+                              },
+                              {
+                                label: 'Manage quizzes',
+                                onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses'),
+                              },
+                            ]}
+                          />
+                        )
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -4188,6 +4208,45 @@ export default function Dashboard() {
       setAssignmentSolutionWorkedSolutionGeneratingQuestionId(null)
     } finally {
       setSelectedAssignmentLoading(false)
+    }
+  }
+
+  async function updateAssignmentTitle(sessionId: string, assignmentId: string, nextTitle: string) {
+    if (!nextTitle.trim()) return
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}`,
+        {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: nextTitle.trim() }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update assignment (${res.status})`)
+      setAssignments(prev => prev.map(a => (String(a?.id || '') === assignmentId ? { ...a, title: data?.title || nextTitle.trim() } : a)))
+      setSelectedAssignment(prev => (prev && String(prev?.id || '') === assignmentId ? { ...prev, title: data?.title || nextTitle.trim() } : prev))
+    } catch (err: any) {
+      setAssignmentsError(err?.message || 'Unable to update assignment')
+    }
+  }
+
+  async function deleteAssignment(sessionId: string, assignmentId: string) {
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}`,
+        { method: 'DELETE', credentials: 'same-origin' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to delete assignment (${res.status})`)
+      setAssignments(prev => prev.filter(a => String(a?.id || '') !== assignmentId))
+      if (selectedAssignment && String(selectedAssignment?.id || '') === assignmentId) {
+        setSelectedAssignment(null)
+        setAssignmentOverlayOpen(false)
+      }
+    } catch (err: any) {
+      setAssignmentsError(err?.message || 'Unable to delete assignment')
     }
   }
 
@@ -6430,6 +6489,25 @@ export default function Dashboard() {
                         >
                           Assignments
                         </button>
+                        {(() => {
+                          const isOwner = viewerId && String(s?.createdBy || '') === String(viewerId)
+                          const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                          if (!canManage) return null
+                          return (
+                            <TaskManageMenu
+                              actions={[
+                                {
+                                  label: 'Manage assignments',
+                                  onClick: () => openSessionDetails([String(s.id)], 0, 'assignments'),
+                                },
+                                {
+                                  label: 'Manage quizzes',
+                                  onClick: () => openSessionDetails([String(s.id)], 0, 'responses'),
+                                },
+                              ]}
+                            />
+                          )
+                        })()}
                       </div>
                     </div>
                   )}
@@ -6633,20 +6711,64 @@ export default function Dashboard() {
                                     </div>
                                   </button>
                                   <div className="shrink-0">
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost text-xs"
-                                      onClick={() => {
-                                        if (!expandedSessionId) return
-                                        setSelectedAssignmentId(String(a.id))
-                                        setSelectedAssignmentQuestionId(null)
-                                        setAssignmentQuestionOverlayOpen(false)
-                                        setAssignmentOverlayOpen(true)
-                                        fetchAssignmentDetails(expandedSessionId, String(a.id))
-                                      }}
-                                    >
-                                      View
-                                    </button>
+                                    {(() => {
+                                      const isOwner = viewerId && (String(a?.createdBy || '') === String(viewerId) || String(sessionDetailsSession?.createdBy || '') === String(viewerId))
+                                      const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                                      if (!canManage) {
+                                        return (
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost text-xs"
+                                            onClick={() => {
+                                              if (!expandedSessionId) return
+                                              setSelectedAssignmentId(String(a.id))
+                                              setSelectedAssignmentQuestionId(null)
+                                              setAssignmentQuestionOverlayOpen(false)
+                                              setAssignmentOverlayOpen(true)
+                                              fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                            }}
+                                          >
+                                            View
+                                          </button>
+                                        )
+                                      }
+
+                                      return (
+                                        <TaskManageMenu
+                                          actions={[
+                                            {
+                                              label: 'Open',
+                                              onClick: () => {
+                                                if (!expandedSessionId) return
+                                                setSelectedAssignmentId(String(a.id))
+                                                setSelectedAssignmentQuestionId(null)
+                                                setAssignmentQuestionOverlayOpen(false)
+                                                setAssignmentOverlayOpen(true)
+                                                fetchAssignmentDetails(expandedSessionId, String(a.id))
+                                              },
+                                            },
+                                            {
+                                              label: 'Edit title',
+                                              onClick: () => {
+                                                if (!expandedSessionId) return
+                                                const nextTitle = window.prompt('New assignment title', a.title || 'Assignment')
+                                                if (!nextTitle) return
+                                                void updateAssignmentTitle(expandedSessionId, String(a.id), nextTitle)
+                                              },
+                                            },
+                                            {
+                                              label: 'Delete',
+                                              variant: 'danger',
+                                              onClick: () => {
+                                                if (!expandedSessionId) return
+                                                if (!window.confirm('Delete this assignment? This cannot be undone.')) return
+                                                void deleteAssignment(expandedSessionId, String(a.id))
+                                              },
+                                            },
+                                          ]}
+                                        />
+                                      )
+                                    })()}
                                   </div>
                                 </li>
                               ))}
@@ -6780,6 +6902,35 @@ export default function Dashboard() {
               }
             >
               <div className="space-y-3">
+                {(() => {
+                  const isOwner = viewerId && (String(selectedAssignment?.createdBy || '') === String(viewerId) || String(sessionDetailsSession?.createdBy || '') === String(viewerId))
+                  const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                  if (!canManage || !expandedSessionId || !selectedAssignment?.id) return null
+                  return (
+                    <div className="flex items-center justify-end">
+                      <TaskManageMenu
+                        actions={[
+                          {
+                            label: 'Edit title',
+                            onClick: () => {
+                              const nextTitle = window.prompt('New assignment title', selectedAssignment?.title || 'Assignment')
+                              if (!nextTitle) return
+                              void updateAssignmentTitle(expandedSessionId, String(selectedAssignment.id), nextTitle)
+                            },
+                          },
+                          {
+                            label: 'Delete',
+                            variant: 'danger',
+                            onClick: () => {
+                              if (!window.confirm('Delete this assignment? This cannot be undone.')) return
+                              void deleteAssignment(expandedSessionId, String(selectedAssignment.id))
+                            },
+                          },
+                        ]}
+                      />
+                    </div>
+                  )
+                })()}
                     {selectedAssignmentError ? (
                       <div className="text-sm text-red-600">{selectedAssignmentError}</div>
                     ) : selectedAssignmentLoading ? (

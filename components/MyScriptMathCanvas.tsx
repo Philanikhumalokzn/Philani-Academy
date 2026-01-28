@@ -618,6 +618,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
   const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
+  const [mathpixStatus, setMathpixStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  const [mathpixLastRequestAt, setMathpixLastRequestAt] = useState<number | null>(null)
+  const [mathpixLastResponseAt, setMathpixLastResponseAt] = useState<number | null>(null)
+  const [mathpixLastStatusCode, setMathpixLastStatusCode] = useState<number | null>(null)
+  const [mathpixLastStrokeCount, setMathpixLastStrokeCount] = useState<number | null>(null)
+  const [mathpixLastPointCount, setMathpixLastPointCount] = useState<number | null>(null)
   const mathpixRequestSeqRef = useRef(0)
   const mathpixPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -4637,6 +4643,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const requestId = ++mathpixRequestSeqRef.current
     setMathpixError(null)
     setMathpixRawResponse(null)
+    setMathpixStatus('pending')
+    setMathpixLastRequestAt(Date.now())
+    setMathpixLastStrokeCount(strokes.x.length)
+    setMathpixLastPointCount(strokes.x.reduce((sum, stroke) => sum + stroke.length, 0))
+    setMathpixLastStatusCode(null)
 
     try {
       const res = await fetch('/api/mathpix/strokes', {
@@ -4645,21 +4656,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         body: JSON.stringify({ strokes }),
       })
       const data = await res.json().catch(() => null)
+      setMathpixLastStatusCode(res.status)
+      setMathpixLastResponseAt(Date.now())
       if (!res.ok) {
         const message = data?.error || `Mathpix request failed (${res.status}).`
         if (requestId === mathpixRequestSeqRef.current) {
           setMathpixError(message)
           setMathpixRawResponse(data ? JSON.stringify(data, null, 2) : null)
+          setMathpixStatus('error')
         }
         return ''
       }
       if (requestId !== mathpixRequestSeqRef.current) return ''
       setMathpixRawResponse(data ? JSON.stringify(data, null, 2) : null)
+      setMathpixStatus('success')
       return typeof data?.latex === 'string' ? data.latex : ''
     } catch (err: any) {
       if (requestId === mathpixRequestSeqRef.current) {
         setMathpixError(err?.message || 'Mathpix request failed.')
         setMathpixRawResponse(err ? String(err?.stack || err?.message || err) : null)
+        setMathpixStatus('error')
+        setMathpixLastResponseAt(Date.now())
       }
       return ''
     }
@@ -9610,11 +9627,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {recognitionEngine === 'mathpix' && mathpixError && (
             <span className="text-[11px] text-red-600">{mathpixError}</span>
           )}
-          {recognitionEngine === 'mathpix' && (
-            <div className="mt-1 max-h-32 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
-              {mathpixRawResponse || 'No Mathpix response yet.'}
-            </div>
-          )}
         </div>
         <button
           className="btn"
@@ -10741,6 +10753,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
 
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
+                {recognitionEngine === 'mathpix' && isAdmin && (
+                  <div className="absolute right-2 top-2 z-30 w-[min(320px,90%)] rounded border border-slate-200 bg-white/95 shadow-sm">
+                    <div className="px-2 py-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200">
+                      Mathpix raw output
+                    </div>
+                    <div className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
+                      <div>Status: <span className="font-semibold">{mathpixStatus}</span></div>
+                      <div>Last request: {mathpixLastRequestAt ? new Date(mathpixLastRequestAt).toLocaleTimeString() : '—'}</div>
+                      <div>Last response: {mathpixLastResponseAt ? new Date(mathpixLastResponseAt).toLocaleTimeString() : '—'}</div>
+                      <div>HTTP status: {mathpixLastStatusCode ?? '—'}</div>
+                      <div>Strokes: {mathpixLastStrokeCount ?? '—'} · Points: {mathpixLastPointCount ?? '—'}</div>
+                    </div>
+                    <div className="max-h-40 overflow-auto p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
+                      {mathpixRawResponse || mathpixError || 'No Mathpix response yet.'}
+                    </div>
+                  </div>
+                )}
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
@@ -10837,6 +10866,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+          {recognitionEngine === 'mathpix' && isAdmin && (
+            <div className="absolute right-2 top-2 z-30 w-[min(320px,90%)] rounded border border-slate-200 bg-white/95 shadow-sm">
+              <div className="px-2 py-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200">
+                Mathpix raw output
+              </div>
+              <div className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
+                <div>Status: <span className="font-semibold">{mathpixStatus}</span></div>
+                <div>Last request: {mathpixLastRequestAt ? new Date(mathpixLastRequestAt).toLocaleTimeString() : '—'}</div>
+                <div>Last response: {mathpixLastResponseAt ? new Date(mathpixLastResponseAt).toLocaleTimeString() : '—'}</div>
+                <div>HTTP status: {mathpixLastStatusCode ?? '—'}</div>
+                <div>Strokes: {mathpixLastStrokeCount ?? '—'} · Points: {mathpixLastPointCount ?? '—'}</div>
+              </div>
+              <div className="max-h-40 overflow-auto p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
+                {mathpixRawResponse || mathpixError || 'No Mathpix response yet.'}
+              </div>
+            </div>
+          )}
           <div
             ref={editorHostRef}
             className={editorHostClass}
@@ -11788,14 +11834,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             </label>
             {recognitionEngine === 'mathpix' && mathpixError && (
               <span className="text-[11px] text-red-600">{mathpixError}</span>
-            )}
-            {recognitionEngine === 'mathpix' && (
-              <div className="mt-2">
-                <p className="text-[11px] font-semibold text-slate-700">Mathpix raw output</p>
-                <div className="mt-1 max-h-40 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
-                  {mathpixRawResponse || 'No Mathpix response yet.'}
-                </div>
-              </div>
             )}
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Notes font size</span>

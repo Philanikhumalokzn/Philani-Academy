@@ -618,6 +618,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
   const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
+  const [mathpixLastProxyPayload, setMathpixLastProxyPayload] = useState<string | null>(null)
+  const [mathpixLastUpstreamPayload, setMathpixLastUpstreamPayload] = useState<string | null>(null)
   const [mathpixStatus, setMathpixStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [mathpixLastRequestAt, setMathpixLastRequestAt] = useState<number | null>(null)
   const [mathpixLastResponseAt, setMathpixLastResponseAt] = useState<number | null>(null)
@@ -4639,6 +4641,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const requestMathpixLatex = useCallback(async (symbols: any[] | null) => {
     const strokes = buildMathpixStrokesPayload(symbols)
     if (!strokes) return ''
+
+    const proxyPayload = { strokes }
+    const upstreamPayload = {
+      strokes: { strokes },
+      formats: ['latex_styled', 'text'],
+      rm_spaces: true,
+      metadata: { improve_mathpix: false },
+    }
+    setMathpixLastProxyPayload(JSON.stringify(proxyPayload, null, 2))
+    setMathpixLastUpstreamPayload(JSON.stringify(upstreamPayload, null, 2))
 
     const requestId = ++mathpixRequestSeqRef.current
     setMathpixError(null)
@@ -10755,8 +10767,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 {recognitionEngine === 'mathpix' && isAdmin && (
                   <div className="absolute right-2 top-2 z-30 w-[min(320px,90%)] rounded border border-slate-200 bg-white/95 shadow-sm">
-                    <div className="px-2 py-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200">
-                      Mathpix raw output
+                    <div className="px-2 py-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200 flex items-center justify-between gap-2">
+                      <span>Mathpix raw output</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] text-slate-700 hover:bg-slate-50"
+                          onClick={async () => {
+                            if (!mathpixLastProxyPayload) return
+                            try {
+                              await navigator.clipboard?.writeText(mathpixLastProxyPayload)
+                            } catch (err) {
+                              console.warn('Failed to copy Mathpix proxy payload', err)
+                            }
+                          }}
+                        >
+                          Copy proxy
+                        </button>
+                        <button
+                          type="button"
+                          className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] text-slate-700 hover:bg-slate-50"
+                          onClick={async () => {
+                            if (!mathpixLastUpstreamPayload) return
+                            try {
+                              await navigator.clipboard?.writeText(mathpixLastUpstreamPayload)
+                            } catch (err) {
+                              console.warn('Failed to copy Mathpix upstream payload', err)
+                            }
+                          }}
+                        >
+                          Copy Mathpix
+                        </button>
+                      </div>
                     </div>
                     <div className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
                       <div>Status: <span className="font-semibold">{mathpixStatus}</span></div>

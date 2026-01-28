@@ -3636,7 +3636,7 @@ export default function Dashboard() {
                 <div className="text-sm text-white/70">No posts yet.</div>
               ) : (
                 <ul className="space-y-2">
-                  {studentFeedPosts.slice(0, 15).map((p: any) => {
+                  {studentFeedPosts.slice(0, 15).map((p: any, index: number, arr: any[]) => {
                 const title = (p?.title || '').trim() || 'Quiz'
                 const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
@@ -3655,6 +3655,7 @@ export default function Dashboard() {
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
                 
+                const isLast = index === arr.length - 1
                 return (
                   <li key={String(p?.id || title)} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -3754,6 +3755,7 @@ export default function Dashboard() {
                         )
                       ) : null}
                     </div>
+                    {!isLast && <div className="mt-3 border-t border-white/10" />}
                   </li>
                 )
                   })}

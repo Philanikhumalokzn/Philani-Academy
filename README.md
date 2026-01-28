@@ -41,6 +41,7 @@ Notes
 - This is a prototype. For production, configure a proper database, HTTPS, secure secrets, and Stripe settings.
 - When deploying to Vercel, create a Blob store and expose the `BLOB_READ_WRITE_TOKEN` environment variable so lesson material uploads work. Without it the API falls back to writing into `public/materials`, which only functions during local development.
 - PayFast onsite subscription setup is documented in `docs/PAYFAST_ONSITE.md`. Follow it when enabling inline payments.
+- Mathpix backup handwriting recognition requires `MATHPIX_APP_ID` and `MATHPIX_APP_KEY` on the server (used by `POST /api/mathpix/strokes`).
 
 Email & phone verification
 - Signups and admin-invited users now receive a 6-digit email verification code. Learners confirm it on `/verify-email`, which posts to `POST /api/auth/verify-email`.

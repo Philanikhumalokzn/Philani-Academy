@@ -309,6 +309,8 @@ function loadIinkRuntime(): Promise<void> {
 
 type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+type RecognitionEngine = 'myscript' | 'mathpix'
+
 type SnapshotPayload = {
   symbols: any[] | null
   latex?: string
@@ -513,6 +515,8 @@ const LESSON_SCRIPT_PHASES: Array<{ key: LessonScriptPhaseKey; label: string }> 
 const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
 const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
+const DEFAULT_RECOGNITION_ENGINE: RecognitionEngine = 'myscript'
+const RECOGNITION_ENGINE_STORAGE_KEY = 'philani.math.recognition-engine'
 
 // Reserve a small strip above the bottom of the viewport in stacked mobile mode so
 // fixed overlays (like the custom scrollbar and quick trays) never cover ink.
@@ -605,10 +609,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const suppressNextLoadingOverlayRef = useRef(false)
   const editorReconnectingRef = useRef(false)
   const [latexOutput, setLatexOutput] = useState('')
+  const latexOutputRef = useRef('')
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
+  const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
+  const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
+  const [mathpixError, setMathpixError] = useState<string | null>(null)
+  const mathpixRequestSeqRef = useRef(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
@@ -618,6 +627,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     isEraserModeRef.current = isEraserMode
   }, [isEraserMode])
+
+  useEffect(() => {
+    latexOutputRef.current = latexOutput
+  }, [latexOutput])
+
+  useEffect(() => {
+    recognitionEngineRef.current = recognitionEngine
+  }, [recognitionEngine])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (typeof window === 'undefined') return
+    try {
+      const saved = window.localStorage.getItem(RECOGNITION_ENGINE_STORAGE_KEY)
+      if (saved === 'myscript' || saved === 'mathpix') {
+        setRecognitionEngine(saved)
+      }
+    } catch {}
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(RECOGNITION_ENGINE_STORAGE_KEY, recognitionEngine)
+    } catch {}
+  }, [isAdmin, recognitionEngine])
   const [eraserShimReady, setEraserShimReady] = useState(false)
   const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const eraserLongPressTriggeredRef = useRef(false)
@@ -3532,37 +3568,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [redrawDiagramCanvas])
 
+  const extractEditorSymbols = useCallback(() => {
+    const editor = editorInstanceRef.current
+    if (!editor) return null
+    const model = editor.model ?? {}
+    try {
+      const raw = (model as any).symbols
+      const src = Array.isArray(raw) ? raw : (Array.isArray(raw?.events) ? raw.events : null)
+      if (src) return JSON.parse(JSON.stringify(src))
+    } catch (err) {
+      console.warn('Unable to serialize MyScript symbols', err)
+    }
+    return null
+  }, [])
+
   const collectEditorSnapshot = useCallback((incrementVersion: boolean): SnapshotPayload | null => {
     const editor = editorInstanceRef.current
     if (!editor) return null
 
     const model = editor.model ?? {}
-    let symbols: any[] | null = null
-    try {
-      const raw = (model as any).symbols
-      const src = Array.isArray(raw) ? raw : (Array.isArray(raw?.events) ? raw.events : null)
-      if (src) {
-        symbols = JSON.parse(JSON.stringify(src))
-      }
-    } catch (err) {
-      console.warn('Unable to serialize MyScript symbols', err)
-      symbols = null
-    }
-
+    const symbols = extractEditorSymbols()
     const exports = model.exports ?? {}
     const latexExport = exports['application/x-latex']
     const jiixRaw = exports['application/vnd.myscript.jiix']
+    const fallbackLatex = typeof latexExport === 'string' ? latexExport : ''
+    const engineLatex = recognitionEngineRef.current === 'mathpix'
+      ? (latexOutputRef.current || '')
+      : fallbackLatex
 
     const snapshot: SnapshotPayload = {
       symbols,
-      latex: typeof latexExport === 'string' ? latexExport : '',
+      latex: engineLatex || fallbackLatex || '',
       jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
       version: incrementVersion ? ++localVersionRef.current : localVersionRef.current,
       snapshotId: `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
     }
 
     return snapshot
-  }, [])
+  }, [extractEditorSymbols])
 
   const captureFullSnapshot = useCallback((): SnapshotPayload | null => {
     const snapshot = collectEditorSnapshot(false)
@@ -4503,12 +4546,138 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return ''
   }, [])
 
+  const buildMathpixStrokesPayload = useCallback((symbols: any[] | null) => {
+    const events: any[] = Array.isArray(symbols)
+      ? symbols
+      : Array.isArray((symbols as any)?.events)
+      ? (symbols as any).events
+      : []
+    if (!events.length) return null
+
+    const hasStrokeIds = events.some(e => e && (e.strokeId != null || e.stroke_id != null))
+    const toNumber = (value: unknown) => {
+      const n = Number(value)
+      return Number.isFinite(n) ? n : null
+    }
+
+    if (hasStrokeIds) {
+      const order: string[] = []
+      const map = new Map<string, { x: number[]; y: number[] }>()
+      for (const e of events) {
+        const keyRaw = e?.strokeId ?? e?.stroke_id
+        if (keyRaw == null) continue
+        const key = String(keyRaw)
+        const x = toNumber(e?.x ?? e?.point?.x)
+        const y = toNumber(e?.y ?? e?.point?.y)
+        if (x == null || y == null) continue
+        if (!map.has(key)) {
+          map.set(key, { x: [], y: [] })
+          order.push(key)
+        }
+        map.get(key)!.x.push(Math.round(x))
+        map.get(key)!.y.push(Math.round(y))
+      }
+      const x: number[][] = []
+      const y: number[][] = []
+      order.forEach(key => {
+        const entry = map.get(key)
+        if (!entry || entry.x.length === 0 || entry.y.length === 0) return
+        x.push(entry.x)
+        y.push(entry.y)
+      })
+      return x.length ? { x, y } : null
+    }
+
+    const x: number[][] = []
+    const y: number[][] = []
+    let currentX: number[] = []
+    let currentY: number[] = []
+
+    const flush = () => {
+      if (currentX.length && currentY.length) {
+        x.push(currentX)
+        y.push(currentY)
+      }
+      currentX = []
+      currentY = []
+    }
+
+    const normalizeType = (evt: any) => {
+      const raw = evt?.type ?? evt?.eventType ?? evt?.state ?? evt?.phase ?? evt?.kind ?? evt?.action ?? ''
+      return String(raw).toLowerCase()
+    }
+
+    for (const e of events) {
+      const type = normalizeType(e)
+      const isStart = Boolean(e?.isFirst || e?.isStart) || /(down|start|begin)/.test(type)
+      const isEnd = Boolean(e?.isLast || e?.isEnd) || /(up|end|stop)/.test(type)
+
+      if (isStart && currentX.length) flush()
+
+      const px = toNumber(e?.x ?? e?.point?.x)
+      const py = toNumber(e?.y ?? e?.point?.y)
+      if (px != null && py != null) {
+        currentX.push(Math.round(px))
+        currentY.push(Math.round(py))
+      }
+
+      if (isEnd) flush()
+    }
+
+    flush()
+    return x.length ? { x, y } : null
+  }, [])
+
+  const requestMathpixLatex = useCallback(async (symbols: any[] | null) => {
+    const strokes = buildMathpixStrokesPayload(symbols)
+    if (!strokes) return ''
+
+    const requestId = ++mathpixRequestSeqRef.current
+    setMathpixError(null)
+
+    try {
+      const res = await fetch('/api/mathpix/strokes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strokes }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message = data?.error || `Mathpix request failed (${res.status}).`
+        if (requestId === mathpixRequestSeqRef.current) setMathpixError(message)
+        return ''
+      }
+      if (requestId !== mathpixRequestSeqRef.current) return ''
+      return typeof data?.latex === 'string' ? data.latex : ''
+    } catch (err: any) {
+      if (requestId === mathpixRequestSeqRef.current) {
+        setMathpixError(err?.message || 'Mathpix request failed.')
+      }
+      return ''
+    }
+  }, [buildMathpixStrokesPayload])
+
+  const exportLatexFromEngine = useCallback(async () => {
+    if (recognitionEngineRef.current === 'mathpix') {
+      const symbols = extractEditorSymbols()
+      return requestMathpixLatex(symbols)
+    }
+    return exportLatexFromEditor()
+  }, [exportLatexFromEditor, extractEditorSymbols, requestMathpixLatex])
+
   const getLatexFromEditorModel = useCallback(() => {
     const editor = editorInstanceRef.current
     const exports = editor?.model?.exports ?? {}
     const latex = exports?.['application/x-latex']
     return typeof latex === 'string' ? latex : ''
   }, [])
+
+  const getLatexFromEngineModel = useCallback(() => {
+    if (recognitionEngineRef.current === 'mathpix') {
+      return latexOutputRef.current || ''
+    }
+    return getLatexFromEditorModel()
+  }, [getLatexFromEditorModel])
 
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
@@ -4711,9 +4880,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               if (previewExportInFlightRef.current) return
               previewExportInFlightRef.current = true
               ;(async () => {
-                let latexValue = getLatexFromEditorModel()
-                if (!latexValue || latexValue.trim().length === 0) {
-                  const exported = await exportLatexFromEditor()
+                let latexValue = getLatexFromEngineModel()
+                if (recognitionEngineRef.current === 'mathpix') {
+                  const exported = await exportLatexFromEngine()
+                  latexValue = typeof exported === 'string' ? exported : ''
+                } else if (!latexValue || latexValue.trim().length === 0) {
+                  const exported = await exportLatexFromEngine()
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
@@ -4741,9 +4913,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               if (studentQuizPreviewExportInFlightRef.current) return
               studentQuizPreviewExportInFlightRef.current = true
               ;(async () => {
-                let latexValue = getLatexFromEditorModel()
-                if (!latexValue || latexValue.trim().length === 0) {
-                  const exported = await exportLatexFromEditor()
+                let latexValue = getLatexFromEngineModel()
+                if (recognitionEngineRef.current === 'mathpix') {
+                  const exported = await exportLatexFromEngine()
+                  latexValue = typeof exported === 'string' ? exported : ''
+                } else if (!latexValue || latexValue.trim().length === 0) {
+                  const exported = await exportLatexFromEngine()
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
@@ -4756,6 +4931,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
         }
         const handleExported = (evt: any) => {
+          if (recognitionEngineRef.current === 'mathpix') return
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
           const latexValue = typeof latex === 'string' ? latex : ''
@@ -4853,7 +5029,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, canPublishSnapshots, editorInitKey, exportLatexFromEditor, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
+  }, [broadcastSnapshot, canPublishSnapshots, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
 
   useEffect(() => {
     if (!useAdminStepComposer) return
@@ -5961,6 +6137,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const handleConvert = () => {
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
+    if (recognitionEngineRef.current === 'mathpix') {
+      setIsConverting(true)
+      const symbols = extractEditorSymbols()
+      requestMathpixLatex(symbols)
+        .then(latex => {
+          setLatexOutput(latex)
+          if (useAdminStepComposer && hasControllerRights()) {
+            setAdminDraftLatex(normalizeStepLatex(latex))
+          }
+        })
+        .finally(() => {
+          setIsConverting(false)
+        })
+      return
+    }
+
     setIsConverting(true)
     editorInstanceRef.current.convert()
     if (canPublishSnapshots() && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
@@ -7399,13 +7591,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const getStepLatex = async () => {
         let step = ''
         try {
-          const modelLatex = getLatexFromEditorModel()
+          const modelLatex = getLatexFromEngineModel()
           const normalizedModel = normalizeStepLatex(modelLatex)
           if (normalizedModel) step = normalizedModel
         } catch {}
         if (!step) {
           for (let i = 0; i < 3 && !step; i += 1) {
-            const exported = await exportLatexFromEditor()
+            const exported = await exportLatexFromEngine()
             const normalized = normalizeStepLatex(exported)
             if (normalized) {
               step = normalized
@@ -7688,7 +7880,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEditor, forceEditableForAssignment, getLatexFromEditorModel, hasWriteAccess, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
@@ -7738,7 +7930,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       let step = adminDraftLatex
       if (!step) {
-        const modelLatex = getLatexFromEditorModel()
+        const modelLatex = getLatexFromEngineModel()
         const normalizedModel = normalizeStepLatex(modelLatex)
         if (normalizedModel) {
           step = normalizedModel
@@ -7749,7 +7941,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!step) {
         // Retry export a few times in case recognition is still catching up.
         for (let i = 0; i < 3 && !step; i += 1) {
-          const exported = await exportLatexFromEditor()
+          const exported = await exportLatexFromEngine()
           const normalized = normalizeStepLatex(exported)
           if (normalized) {
             step = normalized
@@ -7794,8 +7986,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     adminSendingStep,
     adminSteps,
     captureFullSnapshot,
-    exportLatexFromEditor,
-    getLatexFromEditorModel,
+    exportLatexFromEngine,
+    getLatexFromEngineModel,
     isAdmin,
     isAssignmentSolutionAuthoring,
     isCurrentLineEmptyNow,
@@ -9059,6 +9251,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       </div>
       {hasWriteAccess && (
         <div className="canvas-toolbar__buttons">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold">Recognition</span>
+            <select
+              className="input"
+              value={recognitionEngine}
+              onChange={e => {
+                const next = e.target.value as RecognitionEngine
+                setRecognitionEngine(next)
+                setMathpixError(null)
+              }}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+              aria-label="Choose recognition engine"
+            >
+              <option value="myscript">MyScript (primary)</option>
+              <option value="mathpix">Mathpix (backup)</option>
+            </select>
+            {recognitionEngine === 'mathpix' && mathpixError && (
+              <span className="text-[11px] text-red-600">{mathpixError}</span>
+            )}
+          </div>
           <button
             className={`btn ${quizActive ? 'btn-secondary' : ''}`}
             type="button"

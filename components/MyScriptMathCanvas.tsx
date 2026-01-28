@@ -9251,26 +9251,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       </div>
       {hasWriteAccess && (
         <div className="canvas-toolbar__buttons">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold">Recognition</span>
-            <select
-              className="input"
-              value={recognitionEngine}
-              onChange={e => {
-                const next = e.target.value as RecognitionEngine
-                setRecognitionEngine(next)
-                setMathpixError(null)
-              }}
-              disabled={status !== 'ready' || Boolean(fatalError)}
-              aria-label="Choose recognition engine"
-            >
-              <option value="myscript">MyScript (primary)</option>
-              <option value="mathpix">Mathpix (backup)</option>
-            </select>
-            {recognitionEngine === 'mathpix' && mathpixError && (
-              <span className="text-[11px] text-red-600">{mathpixError}</span>
-            )}
-          </div>
           <button
             className={`btn ${quizActive ? 'btn-secondary' : ''}`}
             type="button"
@@ -11720,6 +11700,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         {isAdmin && !isOverlayMode && (
           <div className="canvas-settings-panel">
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold">Recognition engine</span>
+              <select
+                className="canvas-settings-panel__select"
+                value={recognitionEngine}
+                onChange={e => {
+                  const next = e.target.value as RecognitionEngine
+                  setRecognitionEngine(next)
+                  setMathpixError(null)
+                }}
+                disabled={status !== 'ready' || Boolean(fatalError)}
+                aria-label="Choose recognition engine"
+              >
+                <option value="myscript">MyScript (primary)</option>
+                <option value="mathpix">Mathpix (backup)</option>
+              </select>
+            </label>
+            {recognitionEngine === 'mathpix' && mathpixError && (
+              <span className="text-[11px] text-red-600">{mathpixError}</span>
+            )}
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Notes font size</span>
               <input

@@ -618,6 +618,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
   const mathpixRequestSeqRef = useRef(0)
+  const mathpixPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
@@ -4665,6 +4666,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return exportLatexFromEditor()
   }, [exportLatexFromEditor, extractEditorSymbols, requestMathpixLatex])
 
+  const scheduleMathpixPreview = useCallback(() => {
+    if (recognitionEngineRef.current !== 'mathpix') return
+    if (mathpixPreviewTimeoutRef.current) {
+      clearTimeout(mathpixPreviewTimeoutRef.current)
+      mathpixPreviewTimeoutRef.current = null
+    }
+    mathpixPreviewTimeoutRef.current = setTimeout(() => {
+      mathpixPreviewTimeoutRef.current = null
+      const symbols = extractEditorSymbols()
+      const symbolCount = countSymbols(symbols)
+      if (symbolCount === 0) {
+        setLatexOutput('')
+        if (useAdminStepComposerRef.current && hasControllerRights()) {
+          setAdminDraftLatex('')
+        }
+        return
+      }
+      requestMathpixLatex(symbols)
+        .then(latex => {
+          setLatexOutput(latex)
+          if (useAdminStepComposerRef.current && hasControllerRights()) {
+            setAdminDraftLatex(normalizeStepLatex(latex))
+          }
+        })
+        .catch(() => {})
+    }, 420)
+  }, [extractEditorSymbols, hasControllerRights, normalizeStepLatex, requestMathpixLatex])
+
   const getLatexFromEditorModel = useCallback(() => {
     const editor = editorInstanceRef.current
     const exports = editor?.model?.exports ?? {}
@@ -4870,6 +4899,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             broadcastSnapshot(false)
           }
 
+          if (recognitionEngineRef.current === 'mathpix') {
+            scheduleMathpixPreview()
+          }
+
           // Admin compact/stacked mode: keep a live typeset preview updated without mutating the ink.
           if (useAdminStepComposer) {
             if (pendingExportRef.current) {
@@ -5005,6 +5038,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         clearTimeout(pendingExportRef.current)
         pendingExportRef.current = null
       }
+      if (mathpixPreviewTimeoutRef.current) {
+        clearTimeout(mathpixPreviewTimeoutRef.current)
+        mathpixPreviewTimeoutRef.current = null
+      }
       listeners.forEach(({ type, handler }) => {
         try {
           editorInstanceRef.current?.event?.removeEventListener(type, handler)
@@ -5029,7 +5066,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, canPublishSnapshots, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, triggerEditorReinit, useAdminStepComposer])
+  }, [broadcastSnapshot, canPublishSnapshots, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useAdminStepComposer])
 
   useEffect(() => {
     if (!useAdminStepComposer) return

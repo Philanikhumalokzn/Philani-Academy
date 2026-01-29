@@ -1,130 +1,5 @@
 import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
-// --- Debug Panel State ---
-// These will be placed inside the MyScriptMathCanvas component
-// (add after other useState/useRef declarations)
 
-// Debug panel state for MyScript
-const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
-const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
-const [myscriptLastError, setMyScriptLastError] = useState<string | null>(null)
-const [myscriptLastSymbolExtract, setMyScriptLastSymbolExtract] = useState<number | null>(null)
-
-// Track MyScript script load
-useEffect(() => {
-  const script = document.getElementById(SCRIPT_ID)
-  if (script && script.getAttribute('data-loaded') === 'true') {
-    setMyScriptScriptLoaded(true)
-  } else {
-    setMyScriptScriptLoaded(false)
-  }
-}, [])
-
-// Track editor instance
-useEffect(() => {
-  setMyScriptEditorReady(!!editorInstanceRef.current)
-}, [editorInstanceRef.current])
-
-// Example: update error and last symbol extraction time in your symbol extraction logic
-// setMyScriptLastError(err.message)
-// setMyScriptLastSymbolExtract(Date.now())
-
-// --- Draggable/Minimizable Debug Panel ---
-const [debugPanelPos, setDebugPanelPos] = useState({ x: 40, y: 40 })
-const [debugPanelMin, setDebugPanelMin] = useState(false)
-
-function DraggableDebugPanel({ children }: { children: React.ReactNode }) {
-  const panelRef = useRef<HTMLDivElement>(null)
-  const [dragging, setDragging] = useState(false)
-  const [rel, setRel] = useState({ x: 0, y: 0 })
-
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    const panel = panelRef.current
-    if (!panel) return
-    setDragging(true)
-    setRel({
-      x: e.pageX - debugPanelPos.x,
-      y: e.pageY - debugPanelPos.y,
-    })
-    e.stopPropagation()
-    e.preventDefault()
-  }
-  const onMouseUp = () => setDragging(false)
-  const onMouseMove = (e: MouseEvent) => {
-    if (!dragging) return
-    setDebugPanelPos({ x: e.pageX - rel.x, y: e.pageY - rel.y })
-  }
-  useEffect(() => {
-    if (dragging) {
-      window.addEventListener('mousemove', onMouseMove)
-      window.addEventListener('mouseup', onMouseUp)
-    } else {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-  }, [dragging, rel])
-
-  return (
-    <div
-      ref={panelRef}
-      style={{
-        position: 'fixed',
-        left: debugPanelPos.x,
-        top: debugPanelPos.y,
-        zIndex: 9999,
-        minWidth: 260,
-        maxWidth: 400,
-        background: 'rgba(30,30,40,0.98)',
-        color: '#fff',
-        borderRadius: 8,
-        boxShadow: '0 2px 16px #0008',
-        border: '1px solid #fff2',
-        padding: debugPanelMin ? 0 : 16,
-        opacity: 0.98,
-        userSelect: dragging ? 'none' : 'auto',
-        cursor: dragging ? 'move' : 'default',
-        transition: 'box-shadow 0.2s',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          padding: '6px 10px',
-          background: 'rgba(40,40,60,0.95)',
-          borderBottom: '1px solid #fff2',
-          borderRadius: '8px 8px 0 0',
-          cursor: 'move',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-        onMouseDown={onMouseDown}
-      >
-        <span style={{ fontWeight: 600, fontSize: 13 }}>Debug Panel</span>
-        <button
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#fff',
-            fontSize: 18,
-            cursor: 'pointer',
-            marginLeft: 8,
-            lineHeight: 1,
-          }}
-          onClick={() => setDebugPanelMin(m => !m)}
-          title={debugPanelMin ? 'Expand' : 'Minimize'}
-        >
-          {debugPanelMin ? '▢' : '—'}
-        </button>
-      </div>
-      {!debugPanelMin && <div style={{ paddingTop: 8 }}>{children}</div>}
-    </div>
-  )
-}
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
@@ -703,6 +578,125 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
 }
 
 const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
+  // --- Debug Panel State (must be inside component) ---
+  const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
+  const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
+  const [myscriptLastError, setMyScriptLastError] = useState<string | null>(null)
+  const [myscriptLastSymbolExtract, setMyScriptLastSymbolExtract] = useState<number | null>(null)
+
+  // Track MyScript script load
+  useEffect(() => {
+    const script = document.getElementById(SCRIPT_ID)
+    if (script && script.getAttribute('data-loaded') === 'true') {
+      setMyScriptScriptLoaded(true)
+    } else {
+      setMyScriptScriptLoaded(false)
+    }
+  }, [])
+
+  // Track editor instance
+  useEffect(() => {
+    setMyScriptEditorReady(!!editorInstanceRef.current)
+    // If you want to update when the ref changes, trigger this effect manually elsewhere.
+  }, [])
+
+  // --- Draggable/Minimizable Debug Panel ---
+  const [debugPanelPos, setDebugPanelPos] = useState({ x: 40, y: 40 })
+  const [debugPanelMin, setDebugPanelMin] = useState(false)
+
+  function DraggableDebugPanel({ children }: { children: React.ReactNode }) {
+    const panelRef = useRef<HTMLDivElement>(null)
+    const [dragging, setDragging] = useState(false)
+    const [rel, setRel] = useState({ x: 0, y: 0 })
+
+    const onMouseDown = (e: React.MouseEvent) => {
+      if (e.button !== 0) return
+      const panel = panelRef.current
+      if (!panel) return
+      setDragging(true)
+      setRel({
+        x: e.pageX - debugPanelPos.x,
+        y: e.pageY - debugPanelPos.y,
+      })
+      e.stopPropagation()
+      e.preventDefault()
+    }
+    const onMouseUp = () => setDragging(false)
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging) return
+      setDebugPanelPos({ x: e.pageX - rel.x, y: e.pageY - rel.y })
+    }
+    useEffect(() => {
+      if (dragging) {
+        window.addEventListener('mousemove', onMouseMove)
+        window.addEventListener('mouseup', onMouseUp)
+      } else {
+        window.removeEventListener('mousemove', onMouseMove)
+        window.removeEventListener('mouseup', onMouseUp)
+      }
+      return () => {
+        window.removeEventListener('mousemove', onMouseMove)
+        window.removeEventListener('mouseup', onMouseUp)
+      }
+    }, [dragging, rel])
+
+    return (
+      <div
+        ref={panelRef}
+        style={{
+          position: 'fixed',
+          left: debugPanelPos.x,
+          top: debugPanelPos.y,
+          zIndex: 9999,
+          minWidth: 260,
+          maxWidth: 400,
+          background: 'rgba(30,30,40,0.98)',
+          color: '#fff',
+          borderRadius: 8,
+          boxShadow: '0 2px 16px #0008',
+          border: '1px solid #fff2',
+          padding: debugPanelMin ? 0 : 16,
+          opacity: 0.98,
+          userSelect: dragging ? 'none' : 'auto',
+          cursor: dragging ? 'move' : 'default',
+          transition: 'box-shadow 0.2s',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            padding: '6px 10px',
+            background: 'rgba(40,40,60,0.95)',
+            borderBottom: '1px solid #fff2',
+            borderRadius: '8px 8px 0 0',
+            cursor: 'move',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+          onMouseDown={onMouseDown}
+        >
+          <span style={{ fontWeight: 600, fontSize: 13 }}>Debug Panel</span>
+          <button
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#fff',
+              fontSize: 18,
+              cursor: 'pointer',
+              marginLeft: 8,
+              lineHeight: 1,
+            }}
+            onClick={() => setDebugPanelMin(m => !m)}
+            title={debugPanelMin ? 'Expand' : 'Minimize'}
+          >
+            {debugPanelMin ? '▢' : '—'}
+          </button>
+        </div>
+        {!debugPanelMin && <div style={{ paddingTop: 8 }}>{children}</div>}
+      </div>
+    )
+  }
   const isAssignmentSolutionAuthoring = assignmentSubmission?.kind === 'solution'
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   // Assignments & timeline challenges are single-user canvases. They must remain editable for the current

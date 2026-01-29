@@ -198,7 +198,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               throw new Error('Mathpix PDF parsing requires a public URL')
             }
             payload = {
-              pdf_url: pdfUrl,
+              url: pdfUrl,
               formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
               include_line_data: true,
               include_smiles: false,

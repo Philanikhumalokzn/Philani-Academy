@@ -8,7 +8,6 @@ import { put } from '@vercel/blob'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
-import { extractQuestionsWithGemini, tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 
 export const config = {
   api: {
@@ -163,9 +162,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (parseRequested) {
         try {
-          const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
-          if (!geminiApiKey) {
-            throw new Error('Gemini is not configured (missing GEMINI_API_KEY)')
+          const appId = (process.env.MATHPIX_APP_ID || '').trim()
+          const appKey = (process.env.MATHPIX_APP_KEY || '').trim()
+          if (!appId || !appKey) {
+            throw new Error('Mathpix is not configured (missing MATHPIX_APP_ID or MATHPIX_APP_KEY)')
           }
 
           const mimeType = (uploadedFile.mimetype || '').toString()
@@ -176,47 +176,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
 
           const fileSize = typeof uploadedFile.size === 'number' ? uploadedFile.size : 0
-          // Keep parsing requests reasonable; still allow upload even if too large.
           if (fileSize > 25 * 1024 * 1024) {
             throw new Error('File is too large to parse (max 25 MB)')
           }
 
           const rawBytes = await fs.readFile(uploadedFile.filepath)
           const base64Data = rawBytes.toString('base64')
-          const gradeLabel = `Grade ${String(grade).replace('GRADE_', '')}`
-          const model = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash'
+          const contentType = isPdf ? 'application/pdf' : (mimeType || 'image/png')
+          const src = `data:${contentType};base64,${base64Data}`
 
-          const geminiText = await extractQuestionsWithGemini({
-            apiKey: geminiApiKey,
-            model,
-            gradeLabel,
-            mimeType: isPdf ? 'application/pdf' : (mimeType || 'image/png'),
-            base64Data,
-            filename: uploadedFile.originalFilename || safeFilename,
-            titleHint: title || uploadedFile.originalFilename || 'Resource',
+          const mathpixRes = await fetch('https://api.mathpix.com/v3/text', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              app_id: appId,
+              app_key: appKey,
+            },
+            body: JSON.stringify({
+              src,
+              formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
+              include_line_data: true,
+              include_smiles: false,
+              math_inline_delimiters: ['$', '$'],
+              math_display_delimiters: ['$$', '$$'],
+              rm_spaces: true,
+            }),
           })
 
-          const parsed = tryParseJsonLoose(geminiText)
-          const questionsRaw = Array.isArray(parsed?.questions) ? parsed.questions : []
-          const questions = questionsRaw
-            .map((q: any) => ({ latex: typeof q?.latex === 'string' ? q.latex.trim() : '' }))
-            .filter((q: any) => q.latex)
-            .slice(0, 50)
+          const data: any = await mathpixRes.json().catch(() => ({}))
+          if (!mathpixRes.ok) {
+            const errMsg = data?.error || data?.error_info || `Mathpix request failed (${mathpixRes.status})`
+            throw new Error(String(errMsg))
+          }
 
-          if (!questions.length) {
-            throw new Error('Gemini returned no questions/text')
+          const text = typeof data?.text === 'string' ? data.text.trim() : ''
+          const latex = typeof data?.latex_styled === 'string'
+            ? data.latex_styled.trim()
+            : typeof data?.latex_simplified === 'string'
+            ? data.latex_simplified.trim()
+            : typeof data?.latex === 'string'
+            ? data.latex.trim()
+            : ''
+
+          if (!text && !latex) {
+            throw new Error('Mathpix returned no text/latex')
           }
 
           parsedJson = {
-            title: typeof parsed?.title === 'string' ? parsed.title.trim() : '',
-            displayTitle: typeof (parsed as any)?.displayTitle === 'string' ? String((parsed as any).displayTitle).trim() : '',
-            sectionLabel: typeof (parsed as any)?.sectionLabel === 'string' ? String((parsed as any).sectionLabel).trim() : '',
-            questions,
+            source: 'mathpix',
+            mimeType: contentType,
+            confidence: typeof data?.confidence === 'number' ? data.confidence : null,
+            text,
+            latex,
+            lines: Array.isArray(data?.line_data) ? data.line_data.slice(0, 200) : [],
           }
           parsedAt = new Date()
         } catch (err: any) {
           parseError = err?.message || 'Parse failed'
-          // Ensure parse failures are visible in server logs (Vercel Functions logs).
           try {
             console.error('Resource parse failed', {
               grade,

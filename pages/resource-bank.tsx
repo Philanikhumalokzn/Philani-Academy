@@ -286,7 +286,7 @@ export default function ResourceBankPage() {
                         checked={parseOnUpload}
                         onChange={(e) => setParseOnUpload(e.target.checked)}
                       />
-                      Parse
+                      Parse (Mathpix OCR)
                     </label>
                     <button
                       type="button"

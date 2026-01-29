@@ -585,8 +585,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
   const [myscriptLastError, setMyScriptLastError] = useState<string | null>(null)
   const [myscriptLastSymbolExtract, setMyScriptLastSymbolExtract] = useState<number | null>(null)
-  const debugPanelDefault = process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1'
-  const [debugPanelVisible, setDebugPanelVisible] = useState(debugPanelDefault)
+  const [debugPanelVisible, setDebugPanelVisible] = useState(false)
 
   // Track MyScript script load
   useEffect(() => {

@@ -101,25 +101,31 @@ export default function RecognitionDebugPanel({
         top: pos.y,
         zIndex: 9999,
         minWidth: 280,
-        maxWidth: 420,
-        background: 'rgba(30,30,40,0.98)',
+        minHeight: 160,
+        maxWidth: 'min(560px, 92vw)',
+        maxHeight: 'min(520px, 80vh)',
+        background: 'rgba(15, 23, 42, 0.7)',
         color: '#fff',
-        borderRadius: 10,
-        boxShadow: '0 2px 16px #0008',
-        border: '1px solid #fff2',
+        borderRadius: 14,
+        boxShadow: '0 12px 32px rgba(15,23,42,0.45)',
+        border: '1px solid rgba(255,255,255,0.12)',
         padding: minimized ? 0 : 14,
         opacity: 0.98,
         userSelect: dragging ? 'none' : 'auto',
         cursor: dragging ? 'move' : 'default',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        resize: minimized ? 'none' : 'both',
+        overflow: minimized ? 'hidden' : 'auto',
       }}
     >
       <div
         style={{
           width: '100%',
           padding: '6px 10px',
-          background: 'rgba(40,40,60,0.95)',
-          borderBottom: '1px solid #fff2',
-          borderRadius: '10px 10px 0 0',
+          background: 'rgba(30,41,59,0.6)',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: '12px 12px 0 0',
           cursor: 'move',
           display: 'flex',
           alignItems: 'center',
@@ -138,6 +144,7 @@ export default function RecognitionDebugPanel({
               fontSize: 18,
               cursor: 'pointer',
               lineHeight: 1,
+              opacity: 0.9,
             }}
             onClick={() => setMinimized(m => !m)}
             title={minimized ? 'Expand' : 'Minimize'}
@@ -153,6 +160,7 @@ export default function RecognitionDebugPanel({
                 fontSize: 18,
                 cursor: 'pointer',
                 lineHeight: 1,
+                opacity: 0.9,
               }}
               onClick={onClose}
               title="Close"
@@ -166,11 +174,11 @@ export default function RecognitionDebugPanel({
         <div style={{ paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {sections.map((section, idx) => (
             <div key={`${section.title}-${idx}`}>
-              <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>{section.title}</div>
+              <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6, letterSpacing: 0.2 }}>{section.title}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {section.fields.map((field, fieldIdx) => (
                   <div key={`${field.label}-${fieldIdx}`} style={{ display: 'flex', gap: 6, fontSize: 12 }}>
-                    <span style={{ opacity: 0.75, minWidth: 140 }}>{field.label}</span>
+                    <span style={{ opacity: 0.7, minWidth: 140 }}>{field.label}</span>
                     <span style={{ fontWeight: 500, wordBreak: 'break-word' }}>{field.value}</span>
                   </div>
                 ))}

@@ -12230,7 +12230,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
-        {!isOverlayMode && process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
+        {process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
           <DraggableDebugPanel>
             <div className="font-semibold">Debug</div>
             <div>localVersion: {localVersionRef.current}</div>

@@ -180,10 +180,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             throw new Error('File is too large to parse (max 25 MB)')
           }
 
-          const rawBytes = await fs.readFile(uploadedFile.filepath)
-          const base64Data = rawBytes.toString('base64')
           const contentType = isPdf ? 'application/pdf' : (mimeType || 'image/png')
-          const src = `data:${contentType};base64,${base64Data}`
+          const buildAbsoluteUrl = (value: string) => {
+            if (!value) return value
+            if (/^https?:\/\//i.test(value)) return value
+            const proto = (req.headers['x-forwarded-proto'] as string) || 'https'
+            const host = (req.headers['x-forwarded-host'] as string) || (req.headers.host as string) || ''
+            if (!host) return value
+            const pathOnly = value.startsWith('/') ? value : `/${value}`
+            return `${proto}://${host}${pathOnly}`
+          }
+
+          let payload: any
+          if (isPdf) {
+            const pdfUrl = buildAbsoluteUrl(publicUrl)
+            if (!/^https?:\/\//i.test(pdfUrl)) {
+              throw new Error('Mathpix PDF parsing requires a public URL')
+            }
+            payload = {
+              pdf_url: pdfUrl,
+              formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
+              include_line_data: true,
+              include_smiles: false,
+              rm_spaces: true,
+            }
+          } else {
+            const rawBytes = await fs.readFile(uploadedFile.filepath)
+            const base64Data = rawBytes.toString('base64')
+            const src = `data:${contentType};base64,${base64Data}`
+            payload = {
+              src,
+              formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
+              include_line_data: true,
+              include_smiles: false,
+              math_inline_delimiters: ['$', '$'],
+              math_display_delimiters: ['$$', '$$'],
+              rm_spaces: true,
+            }
+          }
 
           const mathpixRes = await fetch('https://api.mathpix.com/v3/text', {
             method: 'POST',
@@ -192,15 +226,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               app_id: appId,
               app_key: appKey,
             },
-            body: JSON.stringify({
-              src,
-              formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
-              include_line_data: true,
-              include_smiles: false,
-              math_inline_delimiters: ['$', '$'],
-              math_display_delimiters: ['$$', '$$'],
-              rm_spaces: true,
-            }),
+            body: JSON.stringify(payload),
           })
 
           const data: any = await mathpixRes.json().catch(() => ({}))

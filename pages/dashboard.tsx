@@ -3230,6 +3230,17 @@ export default function Dashboard() {
           <div className="text-sm text-white/70">No admin sections available.</div>
         ) : (
           <div className="grid gap-2">
+            <button
+              type="button"
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20"
+              onClick={() => {
+                closeStudentQuickOverlay()
+                void router.push('/resource-bank')
+              }}
+            >
+              <div className="text-sm font-semibold text-white">Resource Bank</div>
+              <div className="text-xs text-white/60">Shared resources & uploads</div>
+            </button>
             {adminSections.map(section => (
               <button
                 key={section.id}

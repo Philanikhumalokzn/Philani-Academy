@@ -11012,56 +11012,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
 
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
-                {recognitionEngine === 'mathpix' && isAdmin && (
-                  <div className="absolute right-2 top-2 z-30 w-[min(320px,90%)] rounded border border-slate-200 bg-white/95 shadow-sm">
-                    <div className="px-2 py-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200 flex items-center justify-between gap-2">
-                      <span>Mathpix raw output</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] text-slate-700 hover:bg-slate-50"
-                          onClick={() => void copyMathpixPayload(mathpixLastProxyPayload, 'proxy')}
-                        >
-                          Copy proxy
-                        </button>
-                        <button
-                          type="button"
-                          className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] text-slate-700 hover:bg-slate-50"
-                          onClick={() => void copyMathpixPayload(mathpixLastUpstreamPayload, 'Mathpix')}
-                        >
-                          Copy Mathpix
-                        </button>
-                      </div>
-                    </div>
-                    <div className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
-                      <div>Status: <span className="font-semibold">{mathpixStatus}</span></div>
-                      <div>Last request: {mathpixLastRequestAt ? new Date(mathpixLastRequestAt).toLocaleTimeString() : '—'}</div>
-                      <div>Last response: {mathpixLastResponseAt ? new Date(mathpixLastResponseAt).toLocaleTimeString() : '—'}</div>
-                      <div>HTTP status: {mathpixLastStatusCode ?? '—'}</div>
-                      <div>Strokes: {mathpixLastStrokeCount ?? '—'} · Points: {mathpixLastPointCount ?? '—'}</div>
-                      <div>Events: {mathpixLastEventCount ?? '—'}</div>
-                      <div>Local strokes: {mathpixLocalStrokeCount ?? '—'} · Local points: {mathpixLocalPointCount ?? '—'}</div>
-                    </div>
-                    <details className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
-                      <summary className="cursor-pointer select-none text-[11px] font-semibold text-slate-700">Payloads</summary>
-                      <div className="mt-2">
-                        <div className="text-[10px] text-slate-500">Proxy payload</div>
-                        <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">
-                          {mathpixLastProxyPayload || '—'}
-                        </pre>
-                      </div>
-                      <div className="mt-2">
-                        <div className="text-[10px] text-slate-500">Mathpix payload</div>
-                        <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">
-                          {mathpixLastUpstreamPayload || '—'}
-                        </pre>
-                      </div>
-                    </details>
-                    <div className="max-h-40 overflow-auto p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
-                      {mathpixRawResponse || mathpixError || 'No Mathpix response yet.'}
-                    </div>
-                  </div>
-                )}
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"

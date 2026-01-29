@@ -793,7 +793,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
-  const canUseDebugPanel = isAdmin && !isOverlayMode
+  const canUseDebugPanel = isAdmin
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -9878,6 +9878,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <span className="text-[11px] text-red-600">{mathpixError}</span>
           )}
         </div>
+        {canUseDebugPanel && (
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={debugPanelVisible}
+              onChange={e => setDebugPanelVisible(e.target.checked)}
+            />
+            <span className="font-semibold">Show debug panel</span>
+          </label>
+        )}
         <button
           className="btn"
           type="button"

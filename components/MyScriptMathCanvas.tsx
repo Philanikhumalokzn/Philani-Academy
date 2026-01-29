@@ -586,12 +586,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   // Track MyScript script load
   useEffect(() => {
-    const script = document.getElementById(SCRIPT_ID)
-    if (script && script.getAttribute('data-loaded') === 'true') {
-      setMyScriptScriptLoaded(true)
-    } else {
-      setMyScriptScriptLoaded(false)
-    }
+    const hasRuntime = Boolean(window?.iink?.Editor?.load)
+    setMyScriptScriptLoaded(hasRuntime)
   }, [])
 
   // Track editor instance
@@ -4942,9 +4938,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     // Only MyScript: if MyScript fails, do not fallback to MathPix, just return empty string
     try {
-      return await exportLatexFromEditor()
+      const latex = await exportLatexFromEditor()
+      setMyScriptLastSymbolExtract(Date.now())
+      return latex
     } catch (err) {
       setLatexOutput('')
+      setMyScriptLastError(err instanceof Error ? err.message : String(err))
       return ''
     }
   }, [exportLatexFromEditor, extractEditorSymbols, requestMathpixLatex])
@@ -5045,6 +5044,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setStatus('loading')
     }
   setFatalError(null)
+    setMyScriptEditorReady(false)
+    setMyScriptLastError(null)
 
     let resizeHandler: (() => void) | null = null
     const listeners: Array<{ type: string; handler: (event: any) => void }> = []
@@ -5052,6 +5053,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     loadIinkRuntime()
       .then(async () => {
         if (cancelled) return
+        setMyScriptScriptLoaded(Boolean(window?.iink?.Editor?.load))
         if (!window.iink?.Editor?.load) {
           throw new Error('MyScript iink runtime did not expose the expected API.')
         }
@@ -5148,8 +5150,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         editorInstanceRef.current = editor
+        setMyScriptEditorReady(true)
         setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current))
         setStatus('ready')
+        setMyScriptLastError(null)
 
         // Ensure the editor has a valid view size after any initial layout shifts.
         try {
@@ -5248,6 +5252,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         const handleExported = (evt: any) => {
           if (recognitionEngineRef.current === 'mathpix') return
+          setMyScriptLastSymbolExtract(Date.now())
           const exports = evt.detail || {}
           const latex = exports['application/x-latex'] || ''
           const latexValue = typeof latex === 'string' ? latex : ''
@@ -5266,6 +5271,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         const handleError = (evt: any) => {
           const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
+          setMyScriptLastError(raw)
           const lower = String(raw).toLowerCase()
           const isSessionTooLong = /(session too long|max session duration|session is too old)/.test(lower)
           const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
@@ -5307,6 +5313,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       .catch(err => {
         if (cancelled) return
         console.error('MyScript initialization failed', err)
+        setMyScriptScriptLoaded(Boolean(window?.iink?.Editor?.load))
+        setMyScriptLastError(err instanceof Error ? err.message : String(err))
         setFatalError(err instanceof Error ? err.message : String(err))
         setStatus('error')
       })
@@ -5342,6 +5350,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // ignore during teardown
         }
         editorInstanceRef.current = null
+        setMyScriptEditorReady(false)
       }
 
       if (eraserLongPressTimeoutRef.current) {

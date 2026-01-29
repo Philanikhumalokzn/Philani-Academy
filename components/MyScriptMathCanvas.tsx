@@ -5,6 +5,7 @@ import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 
 function renderTextWithInlineKatex(inputRaw: string) {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
@@ -518,6 +519,7 @@ const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 const DEFAULT_RECOGNITION_ENGINE: RecognitionEngine = 'myscript'
 const RECOGNITION_ENGINE_STORAGE_KEY = 'philani.math.recognition-engine'
+const DEBUG_PANEL_STORAGE_KEY = 'philani.math.debug-panel-visible'
 
 // Reserve a small strip above the bottom of the viewport in stacked mobile mode so
 // fixed overlays (like the custom scrollbar and quick trays) never cover ink.
@@ -583,6 +585,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
   const [myscriptLastError, setMyScriptLastError] = useState<string | null>(null)
   const [myscriptLastSymbolExtract, setMyScriptLastSymbolExtract] = useState<number | null>(null)
+  const debugPanelDefault = process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1'
+  const [debugPanelVisible, setDebugPanelVisible] = useState(debugPanelDefault)
 
   // Track MyScript script load
   useEffect(() => {
@@ -595,104 +599,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setMyScriptEditorReady(!!editorInstanceRef.current)
     // If you want to update when the ref changes, trigger this effect manually elsewhere.
   }, [])
-
-  // --- Draggable/Minimizable Debug Panel ---
-  const [debugPanelPos, setDebugPanelPos] = useState({ x: 40, y: 40 })
-  const [debugPanelMin, setDebugPanelMin] = useState(false)
-
-  function DraggableDebugPanel({ children }: { children: React.ReactNode }) {
-    const panelRef = useRef<HTMLDivElement>(null)
-    const [dragging, setDragging] = useState(false)
-    const [rel, setRel] = useState({ x: 0, y: 0 })
-
-    const onMouseDown = (e: React.MouseEvent) => {
-      if (e.button !== 0) return
-      const panel = panelRef.current
-      if (!panel) return
-      setDragging(true)
-      setRel({
-        x: e.pageX - debugPanelPos.x,
-        y: e.pageY - debugPanelPos.y,
-      })
-      e.stopPropagation()
-      e.preventDefault()
-    }
-    const onMouseUp = () => setDragging(false)
-    const onMouseMove = (e: MouseEvent) => {
-      if (!dragging) return
-      setDebugPanelPos({ x: e.pageX - rel.x, y: e.pageY - rel.y })
-    }
-    useEffect(() => {
-      if (dragging) {
-        window.addEventListener('mousemove', onMouseMove)
-        window.addEventListener('mouseup', onMouseUp)
-      } else {
-        window.removeEventListener('mousemove', onMouseMove)
-        window.removeEventListener('mouseup', onMouseUp)
+  useEffect(() => {
+    if (!isAdmin) return
+    if (typeof window === 'undefined') return
+    try {
+      const saved = window.localStorage.getItem(DEBUG_PANEL_STORAGE_KEY)
+      if (saved === '1') {
+        setDebugPanelVisible(true)
+      } else if (saved === '0') {
+        setDebugPanelVisible(false)
       }
-      return () => {
-        window.removeEventListener('mousemove', onMouseMove)
-        window.removeEventListener('mouseup', onMouseUp)
-      }
-    }, [dragging, rel])
+    } catch {}
+  }, [isAdmin])
 
-    return (
-      <div
-        ref={panelRef}
-        style={{
-          position: 'fixed',
-          left: debugPanelPos.x,
-          top: debugPanelPos.y,
-          zIndex: 9999,
-          minWidth: 260,
-          maxWidth: 400,
-          background: 'rgba(30,30,40,0.98)',
-          color: '#fff',
-          borderRadius: 8,
-          boxShadow: '0 2px 16px #0008',
-          border: '1px solid #fff2',
-          padding: debugPanelMin ? 0 : 16,
-          opacity: 0.98,
-          userSelect: dragging ? 'none' : 'auto',
-          cursor: dragging ? 'move' : 'default',
-          transition: 'box-shadow 0.2s',
-        }}
-      >
-        <div
-          style={{
-            width: '100%',
-            padding: '6px 10px',
-            background: 'rgba(40,40,60,0.95)',
-            borderBottom: '1px solid #fff2',
-            borderRadius: '8px 8px 0 0',
-            cursor: 'move',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-          onMouseDown={onMouseDown}
-        >
-          <span style={{ fontWeight: 600, fontSize: 13 }}>Debug Panel</span>
-          <button
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#fff',
-              fontSize: 18,
-              cursor: 'pointer',
-              marginLeft: 8,
-              lineHeight: 1,
-            }}
-            onClick={() => setDebugPanelMin(m => !m)}
-            title={debugPanelMin ? 'Expand' : 'Minimize'}
-          >
-            {debugPanelMin ? '▢' : '—'}
-          </button>
-        </div>
-        {!debugPanelMin && <div style={{ paddingTop: 8 }}>{children}</div>}
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!isAdmin) return
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(DEBUG_PANEL_STORAGE_KEY, debugPanelVisible ? '1' : '0')
+    } catch {}
+  }, [debugPanelVisible, isAdmin])
+
   const isAssignmentSolutionAuthoring = assignmentSubmission?.kind === 'solution'
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   // Assignments & timeline challenges are single-user canvases. They must remain editable for the current
@@ -866,6 +793,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
+  const canUseDebugPanel = isAdmin && !isOverlayMode
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -1905,6 +1833,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [sharedPageIndex, setSharedPageIndex] = useState(0)
   const pendingPublishQueueRef = useRef<Array<SnapshotRecord>>([])
   const reconnectAttemptsRef = useRef(0)
+  const formatDebugTime = (ts: number | null) => (ts ? new Date(ts).toLocaleTimeString() : 'never')
+  const mathpixResponseSize = mathpixRawResponse ? `${mathpixRawResponse.length} chars` : '—'
+
+  const debugSections: DebugSection[] = [
+    {
+      title: 'Realtime',
+      fields: [
+        { label: 'localVersion', value: localVersionRef.current },
+        { label: 'appliedVersion', value: appliedVersionRef.current },
+        { label: 'lastRemoteVersion', value: lastAppliedRemoteVersionRef.current },
+        { label: 'symbolCount', value: lastSymbolCountRef.current },
+        { label: 'suppressUntil', value: suppressBroadcastUntilTsRef.current },
+        { label: 'appliedIds', value: appliedSnapshotIdsRef.current.size },
+        { label: 'realtimeConnected', value: isRealtimeConnected ? 'yes' : 'no' },
+        { label: 'queueLen', value: pendingPublishQueueRef.current.length },
+        { label: 'reconnectAttempts', value: reconnectAttemptsRef.current },
+      ],
+    },
+    {
+      title: 'Recognition',
+      fields: [
+        { label: 'activeEngine', value: recognitionEngine },
+        { label: 'engineReady', value: status },
+      ],
+    },
+    {
+      title: 'MyScript',
+      fields: [
+        { label: 'scriptLoaded', value: myscriptScriptLoaded ? 'yes' : 'no' },
+        { label: 'editorInstance', value: editorInstanceRef.current ? 'yes' : 'no' },
+        { label: 'editorReady', value: myscriptEditorReady ? 'yes' : 'no' },
+        { label: 'lastError', value: myscriptLastError || 'none' },
+        { label: 'lastExtraction', value: formatDebugTime(myscriptLastSymbolExtract) },
+      ],
+    },
+    {
+      title: 'Mathpix',
+      fields: [
+        { label: 'status', value: mathpixStatus },
+        { label: 'lastRequest', value: formatDebugTime(mathpixLastRequestAt) },
+        { label: 'lastResponse', value: formatDebugTime(mathpixLastResponseAt) },
+        { label: 'httpStatus', value: mathpixLastStatusCode ?? '—' },
+        { label: 'lastStrokes', value: mathpixLastStrokeCount ?? '—' },
+        { label: 'lastPoints', value: mathpixLastPointCount ?? '—' },
+        { label: 'lastEventCount', value: mathpixLastEventCount ?? '—' },
+        { label: 'localStrokes', value: mathpixLocalStrokeCount ?? '—' },
+        { label: 'localPoints', value: mathpixLocalPointCount ?? '—' },
+        { label: 'lastError', value: mathpixError || 'none' },
+        { label: 'lastResponseSize', value: mathpixResponseSize },
+      ],
+    },
+  ]
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // (Unused now; kept for potential future periodic sync)
   const realtimeRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -11169,23 +11149,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         {!useStackedStudentLayout && (
           <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-          {recognitionEngine === 'mathpix' && isAdmin && (
-            <div className="absolute right-2 top-2 z-30 w-[min(320px,90%)] rounded border border-slate-200 bg-white/95 shadow-sm">
-              <div className="px-2 py-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200">
-                Mathpix raw output
-              </div>
-              <div className="border-b border-slate-200 p-2 text-[11px] text-slate-700">
-                <div>Status: <span className="font-semibold">{mathpixStatus}</span></div>
-                <div>Last request: {mathpixLastRequestAt ? new Date(mathpixLastRequestAt).toLocaleTimeString() : '—'}</div>
-                <div>Last response: {mathpixLastResponseAt ? new Date(mathpixLastResponseAt).toLocaleTimeString() : '—'}</div>
-                <div>HTTP status: {mathpixLastStatusCode ?? '—'}</div>
-                <div>Strokes: {mathpixLastStrokeCount ?? '—'} · Points: {mathpixLastPointCount ?? '—'}</div>
-              </div>
-              <div className="max-h-40 overflow-auto p-2 text-[11px] text-slate-700 whitespace-pre-wrap">
-                {mathpixRawResponse || mathpixError || 'No Mathpix response yet.'}
-              </div>
-            </div>
-          )}
           <div
             ref={editorHostRef}
             className={editorHostClass}
@@ -12169,6 +12132,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               />
               <span className="font-semibold">Align at “=”</span>
             </label>
+            {canUseDebugPanel && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={debugPanelVisible}
+                  onChange={e => setDebugPanelVisible(e.target.checked)}
+                />
+                <span className="font-semibold">Show debug panel</span>
+              </label>
+            )}
           </div>
         )}
 
@@ -12245,26 +12218,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <pre className="text-sm bg-slate-900/80 border border-white/10 rounded-xl p-3 text-blue-100 overflow-auto whitespace-pre-wrap">{latexOutput}</pre>
           </div>
         )}
-        {process.env.NEXT_PUBLIC_MYSCRIPT_DEBUG === '1' && (
-          <DraggableDebugPanel>
-            <div className="font-semibold">Debug</div>
-            <div>localVersion: {localVersionRef.current}</div>
-            <div>appliedVersion: {appliedVersionRef.current}</div>
-            <div>lastRemoteVersion: {lastAppliedRemoteVersionRef.current}</div>
-            <div>symbolCount: {lastSymbolCountRef.current}</div>
-            <div>suppressUntil: {suppressBroadcastUntilTsRef.current}</div>
-            <div>appliedIds: {appliedSnapshotIdsRef.current.size}</div>
-            <div>realtimeConnected: {isRealtimeConnected ? 'yes' : 'no'}</div>
-            <div>queueLen: {pendingPublishQueueRef.current.length}</div>
-            <div>reconnectAttempts: {reconnectAttemptsRef.current}</div>
-            <hr className="my-2 border-white/20" />
-            <div className="font-semibold">MyScript Status</div>
-            <div>Script loaded: {myscriptScriptLoaded ? 'yes' : 'no'}</div>
-            <div>Editor instance: {editorInstanceRef.current ? 'yes' : 'no'}</div>
-            <div>Editor ready: {myscriptEditorReady ? 'yes' : 'no'}</div>
-            <div>Last error: {myscriptLastError || 'none'}</div>
-            <div>Last symbol extraction: {myscriptLastSymbolExtract ? new Date(myscriptLastSymbolExtract).toLocaleTimeString() : 'never'}</div>
-          </DraggableDebugPanel>
+        {canUseDebugPanel && (
+          <RecognitionDebugPanel
+            visible={debugPanelVisible}
+            title="Recognition Debug"
+            sections={debugSections}
+            onClose={() => setDebugPanelVisible(false)}
+            storageKey={`${DEBUG_PANEL_STORAGE_KEY}:pos`}
+          />
         )}
         {!isOverlayMode && (
           <div className="canvas-admin-controls">

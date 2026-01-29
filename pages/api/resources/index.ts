@@ -218,10 +218,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ? data.latex.trim()
             : ''
 
-          if (!text && !latex) {
-            throw new Error('Mathpix returned no text/latex')
-          }
-
           parsedJson = {
             source: 'mathpix',
             mimeType: contentType,
@@ -229,8 +225,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             text,
             latex,
             lines: Array.isArray(data?.line_data) ? data.line_data.slice(0, 200) : [],
+            raw: data,
           }
           parsedAt = new Date()
+
+          if (!text && !latex) {
+            parseError = 'Mathpix returned no text/latex'
+          }
         } catch (err: any) {
           parseError = err?.message || 'Parse failed'
           try {

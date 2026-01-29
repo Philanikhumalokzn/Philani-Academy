@@ -4940,7 +4940,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const symbols = extractEditorSymbols()
       return requestMathpixLatex(symbols)
     }
-    return exportLatexFromEditor()
+    // Only MyScript: if MyScript fails, do not fallback to MathPix, just return empty string
+    try {
+      return await exportLatexFromEditor()
+    } catch (err) {
+      setLatexOutput('')
+      return ''
+    }
   }, [exportLatexFromEditor, extractEditorSymbols, requestMathpixLatex])
 
   const scheduleMathpixPreview = useCallback(() => {

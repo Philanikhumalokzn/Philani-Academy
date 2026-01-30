@@ -26,6 +26,14 @@ type Props = {
 
 type InlineNode = string | { kind: 'katex'; display: boolean; expr: string }
 
+const normalizeDisplayText = (value: string) =>
+  (value || '')
+    .replace(/\\\$/g, '$')
+    .replace(/\\\(/g, '\\(')
+    .replace(/\\\)/g, '\\)')
+    .replace(/\\\[/g, '\\[')
+    .replace(/\\\]/g, '\\]')
+
 const renderInlineMath = (inputRaw: string) => {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
   if (!input) return [input]
@@ -144,7 +152,7 @@ const renderKatex = (expr: string, display: boolean) => {
 }
 
 const renderLine = (line: ParsedLine, idx: number) => {
-  const text = typeof line.text === 'string' ? line.text.trim() : ''
+  const text = typeof line.text === 'string' ? normalizeDisplayText(line.text).trim() : ''
   const latex = typeof line.latex_styled === 'string'
     ? line.latex_styled.trim()
     : typeof line.latex_simplified === 'string'
@@ -199,7 +207,7 @@ export default function ParsedDocumentViewer({ parsedJson, fallbackText }: Props
           <div className="space-y-3">
             {text.split(/\n{2,}/g).map((block, idx) => (
               <p key={`blk-${idx}`} className="text-sm text-slate-900 leading-relaxed">
-                {renderInlineMath(block).map((node, i) => {
+                {renderInlineMath(normalizeDisplayText(block)).map((node, i) => {
                   if (typeof node === 'string') return <span key={`bt-${idx}-${i}`}>{node}</span>
                   return (
                     <span key={`bk-${idx}-${i}`} className={node.display ? 'block my-2' : 'inline'}>

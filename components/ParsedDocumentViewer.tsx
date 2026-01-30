@@ -151,6 +151,14 @@ const renderKatex = (expr: string, display: boolean) => {
   }
 }
 
+const looksLikeLatex = (value: string) => {
+  const s = (value || '').trim()
+  if (!s) return false
+  if (/^\$\$[\s\S]*\$\$$/.test(s)) return true
+  if (/^\$[^$]+\$$/.test(s)) return true
+  return /\\(frac|sqrt|text|mathrm|mathbf|mathit|sum|int|left|right|begin|end|lambda|alpha|beta|gamma|theta|pi|sigma|mu|pm|times|cdot|leq|geq|neq|approx|overline|underline)/.test(s)
+}
+
 const renderLine = (line: ParsedLine, idx: number) => {
   const text = typeof line.text === 'string' ? normalizeDisplayText(line.text).trim() : ''
   const latex = typeof line.latex_styled === 'string'
@@ -165,6 +173,14 @@ const renderLine = (line: ParsedLine, idx: number) => {
     return (
       <div key={`line-${idx}`} className="my-3">
         <div className="text-base text-slate-900">{renderKatex(latex, true)}</div>
+      </div>
+    )
+  }
+
+  if (!latex && text && looksLikeLatex(text)) {
+    return (
+      <div key={`line-${idx}`} className="my-3">
+        <div className="text-base text-slate-900">{renderKatex(text, true)}</div>
       </div>
     )
   }
@@ -207,7 +223,9 @@ export default function ParsedDocumentViewer({ parsedJson, fallbackText }: Props
           <div className="space-y-3">
             {text.split(/\n{2,}/g).map((block, idx) => (
               <p key={`blk-${idx}`} className="text-sm text-slate-900 leading-relaxed">
-                {renderInlineMath(normalizeDisplayText(block)).map((node, i) => {
+                {looksLikeLatex(normalizeDisplayText(block))
+                  ? renderKatex(normalizeDisplayText(block), true)
+                  : renderInlineMath(normalizeDisplayText(block)).map((node, i) => {
                   if (typeof node === 'string') return <span key={`bt-${idx}-${i}`}>{node}</span>
                   return (
                     <span key={`bk-${idx}-${i}`} className={node.display ? 'block my-2' : 'inline'}>

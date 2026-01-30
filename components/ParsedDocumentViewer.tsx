@@ -39,6 +39,20 @@ const normalizeDisplayText = (value: string) => {
   return next
 }
 
+const normalizeLatexForRender = (value: string) => {
+  let next = (value || '').trim()
+  if (!next) return ''
+  next = next
+    .replace(/\\labda/g, '\\lambda')
+    .replace(/\\lamda/g, '\\lambda')
+    .replace(/\\infinity/g, '\\infty')
+    .replace(/\\Infinity/g, '\\infty')
+    .replace(/∞/g, '\\infty')
+    .replace(/\bpii\b/g, '\\pi')
+    .replace(/\\lnn\b/g, '\\ln')
+  return next
+}
+
 const renderInlineMath = (inputRaw: string) => {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
   if (!input) return [input]
@@ -144,7 +158,7 @@ const renderKatex = (expr: string, display: boolean) => {
     next = strip(next, '$', '$')
     next = strip(next, '\\[', '\\]')
     next = strip(next, '\\(', '\\)')
-    return next.trim()
+    return normalizeLatexForRender(next.trim())
   }
   const cleaned = normalize(expr)
   if (!cleaned) return <span />
@@ -185,7 +199,7 @@ const renderLine = (line: ParsedLine, idx: number) => {
   if (!latex && text && looksLikeLatex(text)) {
     return (
       <div key={`line-${idx}`} className="my-3">
-        <div className="text-base text-slate-900">{renderKatex(text, true)}</div>
+        <div className="text-base text-slate-900">{renderKatex(normalizeLatexForRender(text), true)}</div>
       </div>
     )
   }

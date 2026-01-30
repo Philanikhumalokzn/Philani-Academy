@@ -119,11 +119,27 @@ const renderInlineMath = (inputRaw: string) => {
 }
 
 const renderKatex = (expr: string, display: boolean) => {
+  const normalize = (value: string) => {
+    const trimmed = (value || '').trim()
+    if (!trimmed) return ''
+    const strip = (v: string, open: string, close: string) =>
+      v.startsWith(open) && v.endsWith(close)
+        ? v.slice(open.length, v.length - close.length).trim()
+        : v
+    let next = trimmed
+    next = strip(next, '$$', '$$')
+    next = strip(next, '$', '$')
+    next = strip(next, '\\[', '\\]')
+    next = strip(next, '\\(', '\\)')
+    return next.trim()
+  }
+  const cleaned = normalize(expr)
+  if (!cleaned) return <span />
   try {
-    const html = renderToString(expr, { displayMode: display, throwOnError: false })
+    const html = renderToString(cleaned, { displayMode: display, throwOnError: false })
     return <span dangerouslySetInnerHTML={{ __html: html }} />
   } catch {
-    return <span>{display ? `$$${expr}$$` : `$${expr}$`}</span>
+    return <span>{display ? `$$${cleaned}$$` : `$${cleaned}$`}</span>
   }
 }
 

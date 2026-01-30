@@ -26,13 +26,18 @@ type Props = {
 
 type InlineNode = string | { kind: 'katex'; display: boolean; expr: string }
 
-const normalizeDisplayText = (value: string) =>
-  (value || '')
-    .replace(/\\\$/g, '$')
-    .replace(/\\\(/g, '\\(')
-    .replace(/\\\)/g, '\\)')
-    .replace(/\\\[/g, '\\[')
-    .replace(/\\\]/g, '\\]')
+const normalizeDisplayText = (value: string) => {
+  let next = value || ''
+  // Unescape double backslashes that arrive from JSON-escaped LaTeX.
+  next = next.replace(/\\\\/g, '\\')
+  // Unescape escaped delimiters so the parser sees them.
+  next = next.replace(/\\\$/g, '$')
+  next = next.replace(/\\\(/g, '\\(')
+  next = next.replace(/\\\)/g, '\\)')
+  next = next.replace(/\\\[/g, '\\[')
+  next = next.replace(/\\\]/g, '\\]')
+  return next
+}
 
 const renderInlineMath = (inputRaw: string) => {
   const input = typeof inputRaw === 'string' ? inputRaw : ''

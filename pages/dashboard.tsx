@@ -3602,9 +3602,23 @@ export default function Dashboard() {
         </div>
 
           <div className="space-y-3">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 aspect-square shrink-0 rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
+            <div className="rounded-3xl border border-white/15 bg-gradient-to-br from-blue-500/10 via-white/5 to-white/5 p-4 shadow-[0_0_30px_rgba(59,130,246,0.18)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-blue-200/70">Posts</div>
+                  <div className="text-base font-semibold text-white">Share a challenge</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost text-xs"
+                  onClick={() => setTimelineOpen(true)}
+                >
+                  My posts
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center gap-3">
+                <div className="h-10 w-10 aspect-square shrink-0 rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center profile-avatar-container">
                   {effectiveAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
@@ -3615,10 +3629,10 @@ export default function Dashboard() {
 
                 <button
                   type="button"
-                  className="group flex-1 h-10 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-4 text-left"
+                  className="group flex-1 h-11 rounded-2xl border border-blue-300/30 bg-white/10 hover:bg-white/15 px-4 text-left"
                   onClick={openCreateChallengeComposer}
                 >
-                  <span className="w-full inline-flex items-center justify-between gap-3 text-sm text-white/70 group-hover:text-white/80">
+                  <span className="w-full inline-flex items-center justify-between gap-3 text-sm text-white/80 group-hover:text-white">
                     <span>Post a challenge</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="text-white/70 group-hover:text-white/90">
                       <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -3629,7 +3643,7 @@ export default function Dashboard() {
 
                 <button
                   type="button"
-                  className="h-10 w-10 shrink-0 flex items-center justify-center text-white/80 hover:text-white"
+                  className="h-11 w-11 shrink-0 flex items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/80 hover:text-white hover:bg-white/15"
                   aria-label="Upload screenshot"
                   onClick={openCreateChallengeScreenshotPicker}
                 >
@@ -3637,16 +3651,6 @@ export default function Dashboard() {
                     <path d="M4 7.5C4 6.11929 5.11929 5 6.5 5H8.5L9.2 3.6C9.538 2.924 10.229 2.5 10.985 2.5H13.015C13.771 2.5 14.462 2.924 14.8 3.6L15.5 5H17.5C18.8807 5 20 6.11929 20 7.5V18.5C20 19.8807 18.8807 21 17.5 21H6.5C5.11929 21 4 19.8807 4 18.5V7.5Z" stroke="currentColor" strokeWidth="1.6" />
                     <path d="M12 17.5C14.2091 17.5 16 15.7091 16 13.5C16 11.2909 14.2091 9.5 12 9.5C9.79086 9.5 8 11.2909 8 13.5C8 15.7091 9.79086 17.5 12 17.5Z" stroke="currentColor" strokeWidth="1.6" />
                   </svg>
-                </button>
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn btn-ghost text-xs"
-                  onClick={() => setTimelineOpen(true)}
-                >
-                  My posts
                 </button>
               </div>
             </div>

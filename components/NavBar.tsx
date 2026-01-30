@@ -165,7 +165,7 @@ export default function NavBar() {
                         <div className="relative overflow-visible">
                           <img src={effectiveAvatarUrl} alt="avatar" className="h-8 w-8 rounded-full object-cover" />
                           {isVerified ? (
-                            <span className="absolute -bottom-1 -left-1 h-4 w-4 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                            <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                               </svg>
@@ -195,7 +195,7 @@ export default function NavBar() {
                       <div className="relative overflow-visible">
                         <img src={effectiveAvatarUrl} alt="avatar" className="h-8 w-8 rounded-full object-cover" />
                         {isVerified ? (
-                          <span className="absolute -bottom-1 -left-1 h-4 w-4 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                          <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                               <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                             </svg>

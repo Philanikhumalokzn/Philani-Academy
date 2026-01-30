@@ -3629,7 +3629,7 @@ export default function Dashboard() {
                   </div>
                   {isVerifiedAccount ? (
                     <span
-                      className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
+                      className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                       aria-label="Verified"
                       title="Verified"
                     >
@@ -3721,7 +3721,7 @@ export default function Dashboard() {
                               </div>
                               {authorVerified ? (
                                 <span
-                                  className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
+                                  className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                   aria-label="Verified"
                                   title="Verified"
                                 >
@@ -8336,7 +8336,7 @@ export default function Dashboard() {
                                   )}
                                 </div>
                                 {verified ? (
-                                  <span className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                                  <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                                     </svg>
@@ -8387,7 +8387,7 @@ export default function Dashboard() {
                             )}
                           </div>
                           {profilePeek.verified ? (
-                            <span className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                            <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                               </svg>
@@ -8489,7 +8489,7 @@ export default function Dashboard() {
 
                             {verified ? (
                               <div
-                                className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
+                                className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                 title="Verified"
                                 aria-label="Verified"
                               >

@@ -333,6 +333,7 @@ export default function PublicUserProfilePage() {
   }
   const displayName = profile?.name || 'Profile'
   const gradeLabel = profile?.grade ? gradeToLabel(profile.grade as any) : 'Unassigned'
+  const profileVerified = Boolean(profile?.verified || profile?.role === 'admin' || profile?.role === 'teacher')
 
   return (
     <main className="mobile-dashboard-theme profile-overlay-theme min-h-screen overflow-hidden text-white">
@@ -374,16 +375,34 @@ export default function PublicUserProfilePage() {
               <div className="relative z-10 p-5">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="relative w-24 h-24 aspect-square rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden flex-shrink-0 profile-avatar-container">
-                      {profile?.avatar ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={profile.avatar} alt={displayName} className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{displayName.slice(0, 1).toUpperCase()}</span>
-                      )}
+                    <div className="relative overflow-visible flex-shrink-0">
+                      <div className="w-24 h-24 aspect-square rounded-full border-2 border-white/30 bg-white/5 text-2xl font-semibold text-white flex items-center justify-center overflow-hidden profile-avatar-container">
+                        {profile?.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={profile.avatar} alt={displayName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{displayName.slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                      {profileVerified ? (
+                        <span className="absolute -bottom-1 -left-1 h-6 w-6 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                          </svg>
+                        </span>
+                      ) : null}
                     </div>
                     <div>
-                      <h1 className="text-3xl font-semibold">{displayName}</h1>
+                      <h1 className="text-3xl font-semibold flex items-center gap-2">
+                        <span>{displayName}</span>
+                        {profileVerified ? (
+                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                              <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                            </svg>
+                          </span>
+                        ) : null}
+                      </h1>
                       <p className="text-sm text-blue-100/80">
                         {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
                         {profile?.grade ? ` • ${gradeLabel}` : ''}

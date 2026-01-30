@@ -3618,13 +3618,26 @@ export default function Dashboard() {
               </div>
 
               <div className="mt-3 flex items-center gap-3">
-                <div className="h-10 w-10 aspect-square shrink-0 rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center profile-avatar-container">
-                  {effectiveAvatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
-                  )}
+                <div className="relative overflow-visible shrink-0">
+                  <div className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center profile-avatar-container">
+                    {effectiveAvatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </div>
+                  {isVerifiedAccount ? (
+                    <span
+                      className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
+                      aria-label="Verified"
+                      title="Verified"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                      </svg>
+                    </span>
+                  ) : null}
                 </div>
 
                 <button
@@ -3697,13 +3710,26 @@ export default function Dashboard() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
                           <UserLink userId={authorId} className="shrink-0" title="View profile">
-                            <div className="h-9 w-9 aspect-square rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
-                              {authorAvatar ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={authorAvatar} alt={authorName} className="h-full w-full object-cover" />
-                              ) : (
-                                <span className="text-xs font-semibold text-white">{authorName.slice(0, 1).toUpperCase()}</span>
-                              )}
+                            <div className="relative overflow-visible">
+                              <div className="h-9 w-9 aspect-square rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
+                                {authorAvatar ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={authorAvatar} alt={authorName} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="text-xs font-semibold text-white">{authorName.slice(0, 1).toUpperCase()}</span>
+                                )}
+                              </div>
+                              {authorVerified ? (
+                                <span
+                                  className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
+                                  aria-label="Verified"
+                                  title="Verified"
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                                  </svg>
+                                </span>
+                              ) : null}
                             </div>
                           </UserLink>
                           <div className="min-w-0">
@@ -8240,24 +8266,34 @@ export default function Dashboard() {
                           <div className="text-sm muted">No pending requests.</div>
                         ) : (
                           <div className="grid gap-2">
-                            {pendingForGroup.map((r: any) => (
-                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                                <div className="text-sm text-white/90">
-                                  <UserLink
-                                    userId={r.requestedBy?.id}
-                                    className="font-semibold text-white/90 hover:underline"
-                                    title="View profile"
-                                  >
-                                    {r.requestedBy?.name || r.requestedBy?.email || 'Learner'}
-                                  </UserLink>{' '}
-                                  wants to join
+                            {pendingForGroup.map((r: any) => {
+                              const requesterVerified = r?.requestedBy?.verified || r?.requestedBy?.role === 'admin' || r?.requestedBy?.role === 'teacher'
+                              return (
+                                <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                                  <div className="text-sm text-white/90">
+                                    <UserLink
+                                      userId={r.requestedBy?.id}
+                                      className="font-semibold text-white/90 hover:underline"
+                                      title="View profile"
+                                    >
+                                      {r.requestedBy?.name || r.requestedBy?.email || 'Learner'}
+                                    </UserLink>
+                                    {requesterVerified ? (
+                                      <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                          <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                        </svg>
+                                      </span>
+                                    ) : null}{' '}
+                                    wants to join
+                                  </div>
+                                  <div className="mt-2 flex gap-2">
+                                    <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
+                                    <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
+                                  </div>
                                 </div>
-                                <div className="mt-2 flex gap-2">
-                                  <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
-                                  <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
-                                </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </div>
@@ -8289,17 +8325,24 @@ export default function Dashboard() {
                           className="card p-3 text-left"
                         >
                           <div className="flex items-center gap-3">
-                            <UserLink
-                              userId={m.user.id}
-                              className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0 profile-avatar-container"
-                              title="View profile"
-                            >
-                              {m.user.avatar ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
-                              ) : (
-                                <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
-                              )}
+                            <UserLink userId={m.user.id} className="shrink-0" title="View profile">
+                              <div className="relative overflow-visible">
+                                <div className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
+                                  {m.user.avatar ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
+                                  )}
+                                </div>
+                                {verified ? (
+                                  <span className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                    </svg>
+                                  </span>
+                                ) : null}
+                              </div>
                             </UserLink>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
@@ -8333,17 +8376,24 @@ export default function Dashboard() {
                 ) : profilePeek ? (
                   <div className="card p-3">
                     <div className="flex items-start gap-3">
-                      <UserLink
-                        userId={profilePeek.id}
-                        className="h-12 w-12 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 shrink-0 profile-avatar-container"
-                        title="View profile"
-                      >
-                        {profilePeek.avatar ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={profilePeek.avatar} alt={profilePeek.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
-                        )}
+                      <UserLink userId={profilePeek.id} className="shrink-0" title="View profile">
+                        <div className="relative overflow-visible">
+                          <div className="h-12 w-12 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
+                            {profilePeek.avatar ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={profilePeek.avatar} alt={profilePeek.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
+                            )}
+                          </div>
+                          {profilePeek.verified ? (
+                            <span className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                              </svg>
+                            </span>
+                          ) : null}
+                        </div>
                       </UserLink>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -8427,17 +8477,19 @@ export default function Dashboard() {
                         title="View profile"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="relative h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
-                            {u.avatar ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={u.avatar} alt={u.name} className="h-full w-full object-cover" />
-                            ) : (
-                              <span className="text-sm font-semibold">{String(u.name || 'U').slice(0, 1).toUpperCase()}</span>
-                            )}
+                          <div className="relative overflow-visible">
+                            <div className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
+                              {u.avatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={u.avatar} alt={u.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-sm font-semibold">{String(u.name || 'U').slice(0, 1).toUpperCase()}</span>
+                              )}
+                            </div>
 
                             {verified ? (
                               <div
-                                className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/30"
+                                className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                 title="Verified"
                                 aria-label="Verified"
                               >
@@ -8449,7 +8501,16 @@ export default function Dashboard() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="font-semibold text-white truncate">{u.name}</div>
+                              <div className="font-semibold text-white truncate flex items-center gap-2">
+                                <span className="truncate">{u.name}</span>
+                                {verified ? (
+                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                      <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                                    </svg>
+                                  </span>
+                                ) : null}
+                              </div>
                               {chips.length > 0 ? (
                                 <div className="shrink-0 flex flex-wrap gap-1">
                                   {chips.slice(0, 2).map((c) => (

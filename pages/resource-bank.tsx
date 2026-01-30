@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
+import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
 
 type ResourceBankItem = {
   id: string
@@ -43,6 +44,7 @@ export default function ResourceBankPage() {
   const [parsedViewerLoading, setParsedViewerLoading] = useState(false)
   const [parsedViewerTitle, setParsedViewerTitle] = useState('')
   const [parsedViewerText, setParsedViewerText] = useState('')
+  const [parsedViewerJson, setParsedViewerJson] = useState<any | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -167,6 +169,7 @@ export default function ResourceBankPage() {
     setParsedViewerLoading(true)
     setParsedViewerTitle(item?.title || 'Parsed')
     setParsedViewerText('')
+    setParsedViewerJson(null)
     try {
       const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
@@ -174,8 +177,12 @@ export default function ResourceBankPage() {
 
       const json = data?.parsedJson
       const err = typeof data?.parseError === 'string' ? data.parseError : ''
-      const rendered = json ? JSON.stringify(json, null, 2) : (err || 'No parsed output available.')
-      setParsedViewerText(rendered)
+      if (json && typeof json === 'object') {
+        setParsedViewerJson(json)
+      } else {
+        const rendered = err || 'No parsed output available.'
+        setParsedViewerText(rendered)
+      }
     } catch (err: any) {
       setParsedViewerText(err?.message || 'Failed to load parsed output')
     } finally {
@@ -227,7 +234,9 @@ export default function ResourceBankPage() {
                 onClose={() => setParsedViewerOpen(false)}
               >
                 {parsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
-                <pre className="whitespace-pre-wrap text-xs text-white/90">{parsedViewerText}</pre>
+                {!parsedViewerLoading && (
+                  <ParsedDocumentViewer parsedJson={parsedViewerJson} fallbackText={parsedViewerText} />
+                )}
               </FullScreenGlassOverlay>
             ) : null}
 

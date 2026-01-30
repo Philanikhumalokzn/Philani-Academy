@@ -39,6 +39,7 @@ export default function ResourceBankPage() {
   const [tag, setTag] = useState('')
   const [uploading, setUploading] = useState(false)
   const [parseOnUpload, setParseOnUpload] = useState(false)
+  const [aiNormalizeOnUpload, setAiNormalizeOnUpload] = useState(false)
 
   const [parsedViewerOpen, setParsedViewerOpen] = useState(false)
   const [parsedViewerLoading, setParsedViewerLoading] = useState(false)
@@ -137,6 +138,7 @@ export default function ResourceBankPage() {
       if (tag.trim()) form.append('tag', tag.trim())
       if (role === 'admin') form.append('grade', effectiveGrade)
       if (parseOnUpload) form.append('parse', '1')
+      if (parseOnUpload && aiNormalizeOnUpload) form.append('aiNormalize', '1')
 
       const res = await fetch('/api/resources', {
         method: 'POST',
@@ -293,9 +295,22 @@ export default function ResourceBankPage() {
                       <input
                         type="checkbox"
                         checked={parseOnUpload}
-                        onChange={(e) => setParseOnUpload(e.target.checked)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setParseOnUpload(next)
+                          if (!next) setAiNormalizeOnUpload(false)
+                        }}
                       />
                       Parse (Mathpix OCR)
+                    </label>
+                    <label className={`flex items-center gap-2 text-sm ${parseOnUpload ? 'text-white/90' : 'text-white/40'} select-none`}>
+                      <input
+                        type="checkbox"
+                        checked={aiNormalizeOnUpload}
+                        onChange={(e) => setAiNormalizeOnUpload(e.target.checked)}
+                        disabled={!parseOnUpload}
+                      />
+                      AI post-normalize (Gemini)
                     </label>
                     <button
                       type="button"

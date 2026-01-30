@@ -8,6 +8,7 @@ import { put } from '@vercel/blob'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
+import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 
 export const config = {
   api: {
@@ -18,6 +19,49 @@ export const config = {
 type ParsedForm = {
   fields: formidable.Fields
   files: formidable.Files
+}
+
+async function normalizeParsedWithGemini(parsed: any, model: string, apiKey: string) {
+  const safeJson = (() => {
+    if (!parsed || typeof parsed !== 'object') return {}
+    const { raw, ...rest } = parsed as any
+    return rest
+  })()
+
+  const prompt =
+    `You are a LaTeX normalizer. Fix OCR/Mathpix LaTeX errors and normalize delimiters. ` +
+    `Return ONLY valid JSON. Keep the same shape: {text, latex, lines:[{text, latex, latex_styled, latex_simplified}]}. ` +
+    `Rules: preserve original wording; only fix LaTeX tokens (e.g., \\labda->\\lambda, \\infinity->\\infty), ` +
+    `remove escaped delimiters, and keep math delimiters consistent. ` +
+    `If a field is missing in input, omit it.\n\n` +
+    `INPUT JSON:\n${JSON.stringify(safeJson).slice(0, 15000)}`
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0,
+        topP: 0.1,
+        maxOutputTokens: 2000,
+        responseMimeType: 'application/json',
+      },
+    }),
+  })
+
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`Gemini error (${res.status}): ${t}`)
+  }
+
+  const data: any = await res.json().catch(() => null)
+  const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('')
+  const normalized = tryParseJsonLoose(typeof text === 'string' ? text : '')
+  if (!normalized || typeof normalized !== 'object') {
+    throw new Error('Gemini returned invalid JSON')
+  }
+  return normalized
 }
 
 async function parseForm(req: NextApiRequest): Promise<ParsedForm> {
@@ -107,6 +151,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const parseField = fields.parse
       const parseRequestedRaw = Array.isArray(parseField) ? parseField[0] : parseField
       const parseRequested = ['1', 'true', 'yes', 'on'].includes(String(parseRequestedRaw || '').trim().toLowerCase())
+
+      const aiNormalizeField = fields.aiNormalize
+      const aiNormalizeRaw = Array.isArray(aiNormalizeField) ? aiNormalizeField[0] : aiNormalizeField
+      const aiNormalizeRequested = ['1', 'true', 'yes', 'on'].includes(String(aiNormalizeRaw || '').trim().toLowerCase())
 
       const titleField = fields.title
       const providedTitle = Array.isArray(titleField) ? titleField[0] : titleField
@@ -257,6 +305,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           if (!text && !latex) {
             parseError = 'Mathpix returned no text/latex'
+          }
+
+          if (aiNormalizeRequested) {
+            const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
+            const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash'
+            if (!geminiApiKey) {
+              throw new Error('Gemini is not configured (missing GEMINI_API_KEY)')
+            }
+            try {
+              const normalized = await normalizeParsedWithGemini(parsedJson, geminiModel, geminiApiKey)
+              parsedJson = {
+                ...normalized,
+                source: 'mathpix+gemini',
+                mimeType: contentType,
+                confidence: typeof data?.confidence === 'number' ? data.confidence : null,
+              }
+            } catch (aiErr: any) {
+              const msg = aiErr?.message || 'AI post-normalize failed'
+              parseError = parseError ? `${parseError} | ${msg}` : msg
+            }
           }
         } catch (err: any) {
           parseError = err?.message || 'Parse failed'

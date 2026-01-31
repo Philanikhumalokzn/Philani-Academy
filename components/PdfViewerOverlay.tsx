@@ -41,7 +41,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
 
     ;(async () => {
       try {
-        const pdfjs = await import('pdfjs-dist/legacy/build/pdf')
+        const pdfjs = await import('pdfjs-dist/build/pdf.mjs')
         if (pdfjs?.GlobalWorkerOptions) {
           pdfjs.GlobalWorkerOptions.workerSrc = '/api/pdf-worker'
         }

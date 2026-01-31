@@ -225,7 +225,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
           onClick={(e) => e.stopPropagation()}
         >
           <div
-            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/10 px-2 py-2 text-xs text-white/90 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/10 px-2 py-2 text-xs text-white/90 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
             <div className="min-w-0 flex-1">
@@ -332,7 +332,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
             </div>
           </div>
 
-          <div className="absolute inset-0 overflow-auto">
+          <div className="absolute inset-0 z-0 overflow-auto">
             <div className="min-h-full w-full flex items-center justify-center">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>

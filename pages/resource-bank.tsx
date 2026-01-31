@@ -215,7 +215,8 @@ export default function ResourceBankPage() {
 
   const openPdfViewer = (item: ResourceBankItem) => {
     setPdfViewerTitle(item.title || 'Document')
-    setPdfViewerSubtitle(item.filename || item.url)
+    // Avoid showing filepaths/URLs in the UI.
+    setPdfViewerSubtitle('')
     setPdfViewerUrl(item.url)
     setPdfViewerOpen(true)
   }
@@ -261,7 +262,7 @@ export default function ResourceBankPage() {
                 open={pdfViewerOpen}
                 url={pdfViewerUrl}
                 title={pdfViewerTitle}
-                subtitle={pdfViewerSubtitle}
+                subtitle={pdfViewerSubtitle || undefined}
                 onClose={() => setPdfViewerOpen(false)}
               />
             ) : null}

@@ -2577,7 +2577,8 @@ export default function Dashboard() {
 
   const openPdfViewer = useCallback((item: ResourceBankItem) => {
     setPdfViewerTitle(item.title || 'Document')
-    setPdfViewerSubtitle(item.filename || item.url)
+    // Avoid showing filepaths/URLs in the UI.
+    setPdfViewerSubtitle('')
     setPdfViewerUrl(item.url)
     setPdfViewerOpen(true)
   }, [])
@@ -9354,9 +9355,9 @@ export default function Dashboard() {
                   >
                     <div className="min-w-0">
                       <div className="font-medium text-white truncate">{item.title}</div>
-                      <div className="text-xs muted truncate" title={item.filename || ''}>
+                      <div className="text-xs muted truncate">
                         {item.tag ? `${item.tag} • ` : ''}
-                        {item.filename || 'Material'}
+                        {gradeToLabel(item.grade)}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -9392,7 +9393,7 @@ export default function Dashboard() {
           open={pdfViewerOpen}
           url={pdfViewerUrl}
           title={pdfViewerTitle}
-          subtitle={pdfViewerSubtitle}
+          subtitle={pdfViewerSubtitle || undefined}
           onClose={() => setPdfViewerOpen(false)}
         />
       ) : null}

@@ -43,7 +43,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
       try {
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf')
         if (!pdfjs?.GlobalWorkerOptions?.workerSrc) {
-          pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
+          pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+            'pdfjs-dist/legacy/build/pdf.worker.min.js',
+            import.meta.url
+          ).toString()
         }
         loadingTask = pdfjs.getDocument({ url })
         const doc = await loadingTask.promise

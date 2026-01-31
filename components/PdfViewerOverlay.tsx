@@ -288,16 +288,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           onClick={(e) => e.stopPropagation()}
         >
           <div
-            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-between gap-1 sm:gap-2 flex-nowrap rounded-2xl border border-slate-200/60 bg-white/90 px-2 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-between gap-1 sm:gap-2 flex-nowrap text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
             <div className="min-w-0 flex-1 max-w-[35vw] sm:max-w-[45vw]">
-              <div className="font-semibold text-slate-900 truncate">{title}</div>
-              {subtitle ? <div className="text-[11px] text-slate-600 truncate hidden sm:block">{subtitle}</div> : null}
+              <div className="font-semibold text-slate-900 truncate drop-shadow-sm">{title}</div>
+              {subtitle ? <div className="text-[11px] text-slate-600 truncate hidden sm:block drop-shadow-sm">{subtitle}</div> : null}
             </div>
 
             <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0 flex-nowrap">
-              <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200 bg-white px-1.5 py-1 sm:px-2">
+              <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">
                 <button
                   type="button"
                   className="px-1.5 py-1 rounded-full hover:bg-slate-100"
@@ -321,7 +321,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
                 </button>
               </div>
 
-              <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200 bg-white px-1.5 py-1 sm:px-2">
+              <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">
                 <button
                   type="button"
                   className="px-1.5 py-1 rounded-full hover:bg-slate-100"
@@ -365,7 +365,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="px-2 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50"
+                className="px-2 py-1 rounded-full border border-slate-200/70 bg-white/90 hover:bg-white shadow-sm"
                 onClick={kickChromeAutoHide}
                 aria-label="Open"
               >
@@ -379,7 +379,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
               <a
                 href={url}
                 download
-                className="px-2 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50"
+                className="px-2 py-1 rounded-full border border-slate-200/70 bg-white/90 hover:bg-white shadow-sm"
                 onClick={kickChromeAutoHide}
                 aria-label="Download"
               >
@@ -392,7 +392,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
               </a>
               <button
                 type="button"
-                className="w-8 h-8 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-900"
+                className="w-8 h-8 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-full border border-slate-200/70 bg-white/90 hover:bg-white text-slate-900 shadow-sm"
                 onClick={onClose}
                 aria-label="Close"
                 title="Close"
@@ -438,7 +438,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
               ) : loading ? (
                 <div className="text-sm muted">Loading PDF…</div>
               ) : (
-                <canvas ref={canvasRef} className="block bg-white shadow-sm max-w-full" />
+                <canvas ref={canvasRef} className="block bg-white shadow-sm" />
               )}
             </div>
           </div>

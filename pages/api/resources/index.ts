@@ -109,16 +109,41 @@ function extractLinesFromMathpix(data: any) {
 }
 
 function buildParsedJsonFromMathpix(data: any, contentType: string, source: string) {
-  const text = typeof data?.text === 'string' ? data.text.trim() : ''
-  const latex = typeof data?.latex_styled === 'string'
-    ? data.latex_styled.trim()
-    : typeof data?.latex_simplified === 'string'
-    ? data.latex_simplified.trim()
-    : typeof data?.latex === 'string'
-    ? data.latex.trim()
-    : ''
-
   const lines = extractLinesFromMathpix(data)
+  const text = (() => {
+    if (typeof data?.text === 'string') return data.text.trim()
+    if (typeof data?.data?.text === 'string') return data.data.text.trim()
+    if (Array.isArray(lines) && lines.length) {
+      return lines
+        .map((line: any) => (typeof line?.text === 'string' ? line.text.trim() : ''))
+        .filter(Boolean)
+        .slice(0, 200)
+        .join('\n')
+        .trim()
+    }
+    return ''
+  })()
+
+  const latex = (() => {
+    if (typeof data?.latex_styled === 'string') return data.latex_styled.trim()
+    if (typeof data?.latex_simplified === 'string') return data.latex_simplified.trim()
+    if (typeof data?.latex === 'string') return data.latex.trim()
+    if (typeof data?.data?.latex === 'string') return data.data.latex.trim()
+    if (Array.isArray(lines) && lines.length) {
+      return lines
+        .map((line: any) => {
+          if (typeof line?.latex_styled === 'string') return line.latex_styled.trim()
+          if (typeof line?.latex_simplified === 'string') return line.latex_simplified.trim()
+          if (typeof line?.latex === 'string') return line.latex.trim()
+          return ''
+        })
+        .filter(Boolean)
+        .slice(0, 200)
+        .join('\n')
+        .trim()
+    }
+    return ''
+  })()
   return {
     source,
     mimeType: contentType,
@@ -417,7 +442,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           parsedAt = new Date()
           const text = typeof parsedJson?.text === 'string' ? parsedJson.text.trim() : ''
           const latex = typeof parsedJson?.latex === 'string' ? parsedJson.latex.trim() : ''
-          if (!text && !latex) {
+          const hasLines = Array.isArray(parsedJson?.lines) && parsedJson.lines.length > 0
+          if (!text && !latex && !hasLines) {
             parseError = 'Mathpix returned no text/latex'
           }
 

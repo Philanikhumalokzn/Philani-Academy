@@ -285,9 +285,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       const baseScale = effectiveZoom / 100
       const baseViewport = pageObj.getViewport({ scale: baseScale })
       const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
-      const availableHeight = contentSize.height || contentRef.current?.clientHeight || 0
-      const fitScale = (availableWidth && availableHeight)
-        ? Math.min(1, availableWidth / baseViewport.width, availableHeight / baseViewport.height)
+      const fitScale = availableWidth
+        ? Math.min(1, availableWidth / baseViewport.width)
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
@@ -512,7 +511,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           <div
             ref={scrollContainerRef}
             className="absolute inset-0 z-0 overflow-auto"
-            style={{ touchAction: 'pan-y' }}
+            style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}
             onPointerDown={handleSwipeStart}
             onPointerMove={handleSwipeMove}
             onPointerUp={handleSwipeEnd}

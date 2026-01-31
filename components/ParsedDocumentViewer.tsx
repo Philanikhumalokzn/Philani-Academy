@@ -160,41 +160,14 @@ const renderKatex = (expr: string, display: boolean) => {
     next = strip(next, '\\(', '\\)')
     return normalizeLatexForRender(next.trim())
   }
-
-  const tryRender = (value: string) => {
-    const cleaned = normalize(value)
-    if (!cleaned) return null
-    try {
-      const html = renderToString(cleaned, { displayMode: display, throwOnError: true })
-      return { html, cleaned }
-    } catch {
-      return null
-    }
-  }
-
   const cleaned = normalize(expr)
   if (!cleaned) return <span />
-
-  const variants = [
-    cleaned,
-    cleaned.replace(/\\left/g, '').replace(/\\right/g, ''),
-    cleaned.replace(/−/g, '-').replace(/–/g, '-').replace(/…/g, '\\ldots'),
-    cleaned
-      .replace(/\\left/g, '')
-      .replace(/\\right/g, '')
-      .replace(/−/g, '-')
-      .replace(/–/g, '-')
-      .replace(/…/g, '\\ldots'),
-  ]
-
-  for (const candidate of variants) {
-    const rendered = tryRender(candidate)
-    if (rendered) {
-      return <span dangerouslySetInnerHTML={{ __html: rendered.html }} />
-    }
+  try {
+    const html = renderToString(cleaned, { displayMode: display, throwOnError: false })
+    return <span dangerouslySetInnerHTML={{ __html: html }} />
+  } catch {
+    return <span>{display ? `$$${cleaned}$$` : `$${cleaned}$`}</span>
   }
-
-  return <span>{display ? `$$${cleaned}$$` : `$${cleaned}$`}</span>
 }
 
 const looksLikeLatex = (value: string) => {

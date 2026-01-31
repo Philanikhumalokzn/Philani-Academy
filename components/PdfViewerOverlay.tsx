@@ -26,6 +26,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const [chromeVisible, setChromeVisible] = useState(true)
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+  const swipeStateRef = useRef<{
+    pointerId: number | null
+    startX: number
+    startY: number
+    lastX: number
+    lastY: number
+    handled: boolean
+  }>({ pointerId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, handled: false })
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -117,6 +125,47 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       setPostBusy(false)
     }
   }, [captureVisibleCanvas, error, kickChromeAutoHide, loading, onPostImage, postBusy])
+
+  const handleSwipeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    swipeStateRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      handled: false,
+    }
+  }, [])
+
+  const handleSwipeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current
+    if (state.pointerId !== e.pointerId) return
+    state.lastX = e.clientX
+    state.lastY = e.clientY
+
+    const dx = state.lastX - state.startX
+    const dy = state.lastY - state.startY
+    if (state.handled) return
+
+    const absX = Math.abs(dx)
+    const absY = Math.abs(dy)
+    if (absX < 40) return
+    if (absX < absY * 1.2) return
+
+    state.handled = true
+    kickChromeAutoHide()
+    if (dx < 0) {
+      setPage((p) => Math.min(totalPages, p + 1))
+    } else {
+      setPage((p) => Math.max(1, p - 1))
+    }
+  }, [kickChromeAutoHide, totalPages])
+
+  const handleSwipeEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current
+    if (state.pointerId !== e.pointerId) return
+    swipeStateRef.current = { pointerId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, handled: false }
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -460,7 +509,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
             </div>
           ) : null}
 
-          <div ref={scrollContainerRef} className="absolute inset-0 z-0 overflow-auto">
+          <div
+            ref={scrollContainerRef}
+            className="absolute inset-0 z-0 overflow-auto"
+            style={{ touchAction: 'pan-y' }}
+            onPointerDown={handleSwipeStart}
+            onPointerMove={handleSwipeMove}
+            onPointerUp={handleSwipeEnd}
+            onPointerCancel={handleSwipeEnd}
+            onPointerLeave={handleSwipeEnd}
+          >
             <div ref={contentRef} className="min-h-full w-full flex items-center justify-center p-4 sm:p-6">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>

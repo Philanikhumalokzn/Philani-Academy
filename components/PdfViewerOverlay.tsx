@@ -127,6 +127,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   }, [captureVisibleCanvas, error, kickChromeAutoHide, loading, onPostImage, postBusy])
 
   const handleSwipeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return
     swipeStateRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -138,6 +139,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   }, [])
 
   const handleSwipeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return
     const state = swipeStateRef.current
     if (state.pointerId !== e.pointerId) return
     state.lastX = e.clientX
@@ -162,10 +164,65 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   }, [kickChromeAutoHide, totalPages])
 
   const handleSwipeEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return
     const state = swipeStateRef.current
     if (state.pointerId !== e.pointerId) return
     swipeStateRef.current = { pointerId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, handled: false }
   }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const el = scrollContainerRef.current
+    if (!el) return
+
+    const touchState = { active: false, startX: 0, startY: 0, lastX: 0, lastY: 0 }
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      touchState.active = true
+      touchState.startX = t.clientX
+      touchState.startY = t.clientY
+      touchState.lastX = t.clientX
+      touchState.lastY = t.clientY
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!touchState.active || e.touches.length !== 1) return
+      const t = e.touches[0]
+      touchState.lastX = t.clientX
+      touchState.lastY = t.clientY
+    }
+
+    const onTouchEnd = () => {
+      if (!touchState.active) return
+      touchState.active = false
+      const dx = touchState.lastX - touchState.startX
+      const dy = touchState.lastY - touchState.startY
+      const absX = Math.abs(dx)
+      const absY = Math.abs(dy)
+      if (absX < 40) return
+      if (absX < absY * 1.2) return
+      kickChromeAutoHide()
+      if (dx < 0) {
+        setPage((p) => Math.min(totalPages, p + 1))
+      } else {
+        setPage((p) => Math.max(1, p - 1))
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [kickChromeAutoHide, open, totalPages])
 
   useEffect(() => {
     if (!open) return

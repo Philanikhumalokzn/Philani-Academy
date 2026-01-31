@@ -24,6 +24,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
   }, [])
+  const canUseWorker = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return typeof (window as any).Worker !== 'undefined' && !isMobile
+  }, [isMobile])
 
   const effectiveZoom = clamp(zoom, 50, 220)
   const effectivePage = Math.max(1, page)
@@ -47,23 +51,24 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
       try {
         const pdfjs = await import('pdfjs-dist/build/pdf.mjs')
         if (pdfjs?.GlobalWorkerOptions) {
-          pdfjs.GlobalWorkerOptions.workerSrc = '/api/pdf-worker'
+          pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
         }
 
         const loadWithOptions = async (opts: Record<string, any>) => {
-          loadingTask = pdfjs.getDocument(opts)
+          loadingTask = pdfjs.getDocument({
+            url,
+            ...opts,
+          })
           return await loadingTask.promise
         }
 
         let doc: any
         try {
-          doc = await loadWithOptions({ url, disableWorker: isMobile })
+          doc = await loadWithOptions({ disableWorker: !canUseWorker })
         } catch (innerErr: any) {
           const message = String(innerErr?.message || '')
-          if (!isMobile && /fake worker|worker/i.test(message)) {
-            doc = await loadWithOptions({ url, disableWorker: true })
-          } else if (isMobile) {
-            doc = await loadWithOptions({ url, disableWorker: true })
+          if (/fake worker|worker/i.test(message)) {
+            doc = await loadWithOptions({ disableWorker: true })
           } else {
             throw innerErr
           }

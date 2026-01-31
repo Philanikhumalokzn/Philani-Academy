@@ -286,7 +286,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       const baseViewport = pageObj.getViewport({ scale: baseScale })
       const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
       const fitScale = availableWidth
-        ? Math.min(1, availableWidth / baseViewport.width)
+        ? clamp(availableWidth / baseViewport.width, 0.5, 2)
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })

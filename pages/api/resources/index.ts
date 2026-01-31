@@ -93,6 +93,79 @@ function sanitizeFilename(original: string | undefined): string {
   return `${timestamp}_${safeName}${extension}`
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function extractLinesFromMathpix(data: any) {
+  const direct = Array.isArray(data?.line_data) ? data.line_data : null
+  if (direct?.length) return direct
+
+  const pages = Array.isArray(data?.pages) ? data.pages : []
+  const lines: any[] = []
+  for (const page of pages) {
+    const pageLines = Array.isArray(page?.line_data) ? page.line_data : Array.isArray(page?.lines) ? page.lines : []
+    for (const line of pageLines) lines.push(line)
+  }
+  return lines.length ? lines : []
+}
+
+function buildParsedJsonFromMathpix(data: any, contentType: string, source: string) {
+  const text = typeof data?.text === 'string' ? data.text.trim() : ''
+  const latex = typeof data?.latex_styled === 'string'
+    ? data.latex_styled.trim()
+    : typeof data?.latex_simplified === 'string'
+    ? data.latex_simplified.trim()
+    : typeof data?.latex === 'string'
+    ? data.latex.trim()
+    : ''
+
+  const lines = extractLinesFromMathpix(data)
+  return {
+    source,
+    mimeType: contentType,
+    confidence: typeof data?.confidence === 'number' ? data.confidence : null,
+    text,
+    latex,
+    lines: Array.isArray(lines) ? lines.slice(0, 200) : [],
+    raw: data,
+  }
+}
+
+async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string) {
+  const maxAttempts = 12
+  const delayMs = 1500
+  let lastData: any = null
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const res = await fetch(`https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}`, {
+      method: 'GET',
+      headers: {
+        app_id: appId,
+        app_key: appKey,
+      },
+    })
+    const data: any = await res.json().catch(() => ({}))
+    lastData = data
+    if (!res.ok) {
+      const errMsg = data?.error || data?.error_info || `Mathpix PDF status failed (${res.status})`
+      throw new Error(String(errMsg))
+    }
+
+    const status = String(data?.status || '').toLowerCase()
+    if (['completed', 'finished', 'done', 'success'].includes(status)) {
+      return data
+    }
+    if (['error', 'failed', 'failure'].includes(status)) {
+      const errMsg = data?.error || data?.error_info || 'Mathpix PDF processing failed'
+      throw new Error(String(errMsg))
+    }
+
+    await sleep(delayMs)
+  }
+
+  const message = lastData?.status ? `Mathpix PDF processing timed out (${lastData.status})` : 'Mathpix PDF processing timed out'
+  throw new Error(message)
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
@@ -239,24 +312,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return `${proto}://${host}${pathOnly}`
           }
 
-          let payload: any
+          let data: any = null
+
           if (isPdf) {
             const pdfUrl = buildAbsoluteUrl(publicUrl)
             if (!/^https?:\/\//i.test(pdfUrl)) {
               throw new Error('Mathpix PDF parsing requires a public URL')
             }
-            payload = {
+
+            const pdfPayload = {
               url: pdfUrl,
               formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
               include_line_data: true,
               include_smiles: false,
               rm_spaces: true,
             }
+
+            const submitRes = await fetch('https://api.mathpix.com/v3/pdf', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                app_id: appId,
+                app_key: appKey,
+              },
+              body: JSON.stringify(pdfPayload),
+            })
+
+            const submitData: any = await submitRes.json().catch(() => ({}))
+            if (!submitRes.ok) {
+              const errMsg = submitData?.error || submitData?.error_info || `Mathpix PDF request failed (${submitRes.status})`
+              throw new Error(String(errMsg))
+            }
+
+            const pdfId = String(submitData?.pdf_id || submitData?.id || '').trim()
+            if (!pdfId) {
+              throw new Error('Mathpix PDF did not return a pdf_id')
+            }
+
+            data = await pollMathpixPdfResult(pdfId, appId, appKey)
+            parsedJson = buildParsedJsonFromMathpix(data, contentType, 'mathpix-pdf')
           } else {
             const rawBytes = await fs.readFile(uploadedFile.filepath)
             const base64Data = rawBytes.toString('base64')
             const src = `data:${contentType};base64,${base64Data}`
-            payload = {
+            const payload = {
               src,
               formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
               include_line_data: true,
@@ -265,44 +364,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               math_display_delimiters: ['$$', '$$'],
               rm_spaces: true,
             }
+
+            const mathpixRes = await fetch('https://api.mathpix.com/v3/text', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                app_id: appId,
+                app_key: appKey,
+              },
+              body: JSON.stringify(payload),
+            })
+
+            data = await mathpixRes.json().catch(() => ({}))
+            if (!mathpixRes.ok) {
+              const errMsg = data?.error || data?.error_info || `Mathpix request failed (${mathpixRes.status})`
+              throw new Error(String(errMsg))
+            }
+
+            parsedJson = buildParsedJsonFromMathpix(data, contentType, 'mathpix')
           }
 
-          const mathpixRes = await fetch('https://api.mathpix.com/v3/text', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              app_id: appId,
-              app_key: appKey,
-            },
-            body: JSON.stringify(payload),
-          })
-
-          const data: any = await mathpixRes.json().catch(() => ({}))
-          if (!mathpixRes.ok) {
-            const errMsg = data?.error || data?.error_info || `Mathpix request failed (${mathpixRes.status})`
-            throw new Error(String(errMsg))
-          }
-
-          const text = typeof data?.text === 'string' ? data.text.trim() : ''
-          const latex = typeof data?.latex_styled === 'string'
-            ? data.latex_styled.trim()
-            : typeof data?.latex_simplified === 'string'
-            ? data.latex_simplified.trim()
-            : typeof data?.latex === 'string'
-            ? data.latex.trim()
-            : ''
-
-          parsedJson = {
-            source: 'mathpix',
-            mimeType: contentType,
-            confidence: typeof data?.confidence === 'number' ? data.confidence : null,
-            text,
-            latex,
-            lines: Array.isArray(data?.line_data) ? data.line_data.slice(0, 200) : [],
-            raw: data,
-          }
           parsedAt = new Date()
-
+          const text = typeof parsedJson?.text === 'string' ? parsedJson.text.trim() : ''
+          const latex = typeof parsedJson?.latex === 'string' ? parsedJson.latex.trim() : ''
           if (!text && !latex) {
             parseError = 'Mathpix returned no text/latex'
           }

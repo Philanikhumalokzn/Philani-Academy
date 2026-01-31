@@ -11,6 +11,7 @@ import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import TaskManageMenu from '../components/TaskManageMenu'
+import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -85,6 +86,18 @@ type LessonMaterial = {
   size?: number | null
   createdAt: string
   createdBy?: string | null
+}
+
+type ResourceBankItem = {
+  id: string
+  grade: GradeValue
+  title: string
+  url: string
+  filename?: string | null
+  contentType?: string | null
+  size?: number | null
+  createdAt: string
+  tag?: string | null
 }
 
 type LatexSave = {
@@ -992,6 +1005,14 @@ export default function Dashboard() {
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
+  const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
+  const [booksLoading, setBooksLoading] = useState(false)
+  const [booksError, setBooksError] = useState<string | null>(null)
+  const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
+  const [pdfViewerUrl, setPdfViewerUrl] = useState('')
+  const [pdfViewerTitle, setPdfViewerTitle] = useState('')
+  const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
@@ -2511,6 +2532,56 @@ export default function Dashboard() {
     setStudentQuickOverlay(null)
   }, [])
 
+  const isPdfResource = useCallback((item: ResourceBankItem) => {
+    const filename = (item.filename || '').toLowerCase()
+    const url = (item.url || '').toLowerCase()
+    const contentType = (item.contentType || '').toLowerCase()
+    return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
+  }, [])
+
+  const fetchBooksForGrade = useCallback(async () => {
+    if (status !== 'authenticated') {
+      setBooksItems([])
+      setBooksError('Sign in to view materials.')
+      return
+    }
+    if (!selectedGrade) {
+      setBooksItems([])
+      setBooksError('Select a grade to view materials.')
+      return
+    }
+
+    setBooksLoading(true)
+    setBooksError(null)
+    try {
+      const url = isAdmin
+        ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}`
+        : '/api/resources'
+      const res = await fetch(url, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load materials (${res.status})`)
+      const items = Array.isArray(data?.items) ? data.items : []
+      setBooksItems(items)
+    } catch (err: any) {
+      setBooksError(err?.message || 'Failed to load materials')
+      setBooksItems([])
+    } finally {
+      setBooksLoading(false)
+    }
+  }, [isAdmin, selectedGrade, status])
+
+  const openBooksOverlay = useCallback(() => {
+    setBooksOverlayOpen(true)
+    void fetchBooksForGrade()
+  }, [fetchBooksForGrade])
+
+  const openPdfViewer = useCallback((item: ResourceBankItem) => {
+    setPdfViewerTitle(item.title || 'Document')
+    setPdfViewerSubtitle(item.filename || item.url)
+    setPdfViewerUrl(item.url)
+    setPdfViewerOpen(true)
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     // Keep scroll position aligned to the active tab.
@@ -3274,6 +3345,9 @@ export default function Dashboard() {
     const labelClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
+    const quickActionCount = isAdmin ? 7 : 6
+    const buttonWidth = `calc(100% / ${quickActionCount})`
+
     return (
       <section
         className="mobile-row-width w-full overflow-x-auto snap-x snap-mandatory"
@@ -3283,7 +3357,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('timeline')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           aria-label="Timeline"
           title="Timeline"
           onClick={() => openStudentQuickOverlay('timeline')}
@@ -3298,7 +3372,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('sessions')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('sessions')}
           aria-label="Sessions"
           title="Sessions"
@@ -3312,8 +3386,24 @@ export default function Dashboard() {
 
         <button
           type="button"
+          className={`${baseBtn} flex-none snap-start`}
+          style={{ width: buttonWidth }}
+          onClick={openBooksOverlay}
+          aria-label="Books & materials"
+          title="Books & materials"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M4 5.5V18a3 3 0 0 0 3 3h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <span className="text-[10px] leading-none opacity-80 text-white">Books</span>
+        </button>
+
+        <button
+          type="button"
           className={`${btnClass('groups')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('groups')}
           aria-label="Groups"
           title="Groups"
@@ -3330,7 +3420,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${baseBtn} relative flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={openNotificationsOverlay}
           aria-label="Notifications"
           title="Notifications"
@@ -3352,7 +3442,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('discover')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('discover')}
           aria-label="Discover"
           title="Discover"
@@ -3368,7 +3458,7 @@ export default function Dashboard() {
           <button
             type="button"
             className={`${baseBtn} flex-none snap-start`}
-            style={{ width: 'calc(100% / 6)' }}
+            style={{ width: buttonWidth }}
             onClick={() => openStudentQuickOverlay('admin')}
             aria-label="Admin tools"
             title="Admin tools"
@@ -9229,6 +9319,83 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {booksOverlayOpen && (
+        <FullScreenGlassOverlay
+          title="Books & materials"
+          subtitle={selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade'}
+          onClose={() => setBooksOverlayOpen(false)}
+          onBackdropClick={() => setBooksOverlayOpen(false)}
+          zIndexClassName="z-50"
+          rightActions={
+            <button
+              type="button"
+              className="btn btn-ghost text-xs"
+              onClick={() => void fetchBooksForGrade()}
+              disabled={booksLoading}
+            >
+              {booksLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          }
+        >
+          <div className="space-y-3">
+            {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
+            {booksLoading ? <div className="text-sm muted">Loading…</div> : null}
+            {!booksLoading && !booksError && booksItems.length === 0 ? (
+              <div className="text-sm muted">No materials available yet.</div>
+            ) : null}
+
+            {booksItems.length > 0 ? (
+              <ul className="space-y-2">
+                {booksItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-medium text-white truncate">{item.title}</div>
+                      <div className="text-xs muted">
+                        {item.tag ? `${item.tag} • ` : ''}
+                        {item.filename || 'Material'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isPdfResource(item) ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => openPdfViewer(item)}
+                        >
+                          View
+                        </button>
+                      ) : (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost"
+                        >
+                          Open
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </FullScreenGlassOverlay>
+      )}
+
+      {pdfViewerOpen ? (
+        <PdfViewerOverlay
+          open={pdfViewerOpen}
+          url={pdfViewerUrl}
+          title={pdfViewerTitle}
+          subtitle={pdfViewerSubtitle}
+          onClose={() => setPdfViewerOpen(false)}
+        />
+      ) : null}
 
       {dashboardSectionOverlay && (
         <FullScreenGlassOverlay

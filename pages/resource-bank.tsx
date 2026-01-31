@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
+import PdfViewerOverlay from '../components/PdfViewerOverlay'
 
 type ResourceBankItem = {
   id: string
@@ -49,6 +50,11 @@ export default function ResourceBankPage() {
 
   const [parseDebugOpen, setParseDebugOpen] = useState(false)
   const [parseDebugItem, setParseDebugItem] = useState<ResourceBankItem | null>(null)
+
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
+  const [pdfViewerUrl, setPdfViewerUrl] = useState('')
+  const [pdfViewerTitle, setPdfViewerTitle] = useState('')
+  const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -200,6 +206,20 @@ export default function ResourceBankPage() {
     setParseDebugOpen(true)
   }
 
+  const isPdfResource = (item: ResourceBankItem) => {
+    const filename = (item.filename || '').toLowerCase()
+    const url = (item.url || '').toLowerCase()
+    const contentType = (item.contentType || '').toLowerCase()
+    return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
+  }
+
+  const openPdfViewer = (item: ResourceBankItem) => {
+    setPdfViewerTitle(item.title || 'Document')
+    setPdfViewerSubtitle(item.filename || item.url)
+    setPdfViewerUrl(item.url)
+    setPdfViewerOpen(true)
+  }
+
   const handleDelete = async (id: string) => {
     if (!id) return
     setError(null)
@@ -236,6 +256,16 @@ export default function ResourceBankPage() {
           </div>
         ) : (
           <>
+            {pdfViewerOpen ? (
+              <PdfViewerOverlay
+                open={pdfViewerOpen}
+                url={pdfViewerUrl}
+                title={pdfViewerTitle}
+                subtitle={pdfViewerSubtitle}
+                onClose={() => setPdfViewerOpen(false)}
+              />
+            ) : null}
+
             {parseDebugOpen ? (
               <FullScreenGlassOverlay
                 title="Parsing debugger"
@@ -386,13 +416,27 @@ export default function ResourceBankPage() {
                           ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                          {isPdfResource(item) ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => openPdfViewer(item)}>
+                              View
+                            </button>
+                          ) : (
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="btn btn-ghost"
+                            >
+                              Open
+                            </a>
+                          )}
                           <a
                             href={item.url}
                             target="_blank"
                             rel="noreferrer"
                             className="btn btn-ghost"
                           >
-                            Open
+                            Open new
                           </a>
                           {item.parsedAt || item.parseError ? (
                             <button type="button" className="btn btn-ghost" onClick={() => void openParsedViewer(item)}>

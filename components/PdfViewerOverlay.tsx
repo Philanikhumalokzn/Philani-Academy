@@ -20,6 +20,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
   const [pdfDoc, setPdfDoc] = useState<any | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const renderTaskRef = useRef<any | null>(null)
+  const isMobile = useMemo(() => {
+    if (typeof navigator === 'undefined') return false
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  }, [])
 
   const effectiveZoom = clamp(zoom, 50, 220)
   const effectivePage = Math.max(1, page)
@@ -45,8 +49,25 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
         if (pdfjs?.GlobalWorkerOptions) {
           pdfjs.GlobalWorkerOptions.workerSrc = '/api/pdf-worker'
         }
-        loadingTask = pdfjs.getDocument({ url })
-        const doc = await loadingTask.promise
+
+        const loadWithOptions = async (opts: Record<string, any>) => {
+          loadingTask = pdfjs.getDocument(opts)
+          return await loadingTask.promise
+        }
+
+        let doc: any
+        try {
+          doc = await loadWithOptions({ url, disableWorker: isMobile })
+        } catch (innerErr: any) {
+          const message = String(innerErr?.message || '')
+          if (!isMobile && /fake worker|worker/i.test(message)) {
+            doc = await loadWithOptions({ url, disableWorker: true })
+          } else if (isMobile) {
+            doc = await loadWithOptions({ url, disableWorker: true })
+          } else {
+            throw innerErr
+          }
+        }
         activeDoc = doc
         if (cancelled) {
           if (doc?.destroy) await doc.destroy()

@@ -9354,7 +9354,7 @@ export default function Dashboard() {
                   >
                     <div className="min-w-0">
                       <div className="font-medium text-white truncate">{item.title}</div>
-                      <div className="text-xs muted">
+                      <div className="text-xs muted truncate" title={item.filename || ''}>
                         {item.tag ? `${item.tag} • ` : ''}
                         {item.filename || 'Material'}
                       </div>

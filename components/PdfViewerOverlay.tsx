@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
@@ -20,6 +19,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
   const [pdfDoc, setPdfDoc] = useState<any | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const renderTaskRef = useRef<any | null>(null)
+  const hideChromeTimerRef = useRef<number | null>(null)
+  const [chromeVisible, setChromeVisible] = useState(true)
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -34,6 +35,45 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
 
   const totalPages = Math.max(1, numPages || 1)
   const safePage = clamp(effectivePage, 1, totalPages)
+
+  const clearChromeTimer = useCallback(() => {
+    if (hideChromeTimerRef.current) {
+      window.clearTimeout(hideChromeTimerRef.current)
+      hideChromeTimerRef.current = null
+    }
+  }, [])
+
+  const kickChromeAutoHide = useCallback(() => {
+    if (!open) return
+    setChromeVisible(true)
+    clearChromeTimer()
+    hideChromeTimerRef.current = window.setTimeout(() => {
+      setChromeVisible(false)
+      hideChromeTimerRef.current = null
+    }, 2500)
+  }, [clearChromeTimer, open])
+
+  useEffect(() => {
+    if (!open) return
+    kickChromeAutoHide()
+    return () => {
+      clearChromeTimer()
+    }
+  }, [open, kickChromeAutoHide, clearChromeTimer])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+      kickChromeAutoHide()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose, kickChromeAutoHide])
 
   useEffect(() => {
     if (!open || !url) return
@@ -163,90 +203,149 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
 
   if (!open) return null
 
+  const chromeClassName = chromeVisible
+    ? 'opacity-100 pointer-events-auto'
+    : 'opacity-0 pointer-events-none'
+
   return (
-    <FullScreenGlassOverlay
-      title={title}
-      subtitle={subtitle}
-      onClose={onClose}
-      zIndexClassName="z-50"
-      contentClassName="p-4 sm:p-6"
-      rightActions={
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs text-white/90">
-            <button
-              type="button"
-              className="px-2 py-1 rounded-full hover:bg-white/15"
-              onClick={() => setZoom((z) => clamp(z - 10, 50, 220))}
-            >
-              −
-            </button>
-            <span className="min-w-[48px] text-center">{effectiveZoom}%</span>
-            <button
-              type="button"
-              className="px-2 py-1 rounded-full hover:bg-white/15"
-              onClick={() => setZoom((z) => clamp(z + 10, 50, 220))}
-            >
-              +
-            </button>
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs text-white/90">
-            <button
-              type="button"
-              className="px-2 py-1 rounded-full hover:bg-white/15"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={loading}
-            >
-              Prev
-            </button>
-            <input
-              type="number"
-              className="w-16 bg-transparent text-center text-xs text-white outline-none"
-              min={1}
-              max={totalPages}
-              value={safePage}
-              onChange={(e) => setPage(clamp(Number(e.target.value || 1), 1, totalPages))}
-              disabled={loading}
-            />
-            <span className="text-[10px] text-white/70">/ {totalPages}</span>
-            <button
-              type="button"
-              className="px-2 py-1 rounded-full hover:bg-white/15"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={loading}
-            >
-              Next
-            </button>
-          </div>
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1 rounded-full border border-white/10 bg-white/10 text-xs text-white/90 hover:bg-white/15"
-          >
-            Open
-          </a>
-          <a
-            href={url}
-            download
-            className="px-3 py-1 rounded-full border border-white/10 bg-white/10 text-xs text-white/90 hover:bg-white/15"
-          >
-            Download
-          </a>
-        </div>
-      }
+    <div
+      className="fixed inset-0 z-50"
+      role="dialog"
+      aria-modal="true"
+      onPointerMove={kickChromeAutoHide}
+      onPointerDown={kickChromeAutoHide}
+      onTouchStart={kickChromeAutoHide}
+      onWheel={kickChromeAutoHide}
     >
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-2">
-        <div className="h-[70vh] w-full rounded-xl bg-white/5 flex items-center justify-center overflow-auto">
-          {error ? (
-            <div className="text-sm text-red-200 px-4">{error}</div>
-          ) : loading ? (
-            <div className="text-sm muted">Loading PDF…</div>
-          ) : (
-            <canvas ref={canvasRef} className="rounded-lg bg-white shadow-sm" />
-          )}
+      <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={onClose} />
+
+      <div className="absolute inset-0" onClick={onClose}>
+        <div
+          className="relative h-full w-full overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/10 px-2 py-2 text-xs text-white/90 transition-opacity duration-200 ${chromeClassName}`}
+            aria-hidden={!chromeVisible}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-white truncate">{title}</div>
+              {subtitle ? <div className="text-[11px] text-white/70 truncate">{subtitle}</div> : null}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  onClick={() => {
+                    kickChromeAutoHide()
+                    setZoom((z) => clamp(z - 10, 50, 220))
+                  }}
+                >
+                  −
+                </button>
+                <span className="min-w-[48px] text-center">{effectiveZoom}%</span>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  onClick={() => {
+                    kickChromeAutoHide()
+                    setZoom((z) => clamp(z + 10, 50, 220))
+                  }}
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  onClick={() => {
+                    kickChromeAutoHide()
+                    setPage((p) => Math.max(1, p - 1))
+                  }}
+                  disabled={loading}
+                >
+                  Prev
+                </button>
+                <input
+                  type="number"
+                  className="w-16 bg-transparent text-center text-xs text-white outline-none"
+                  min={1}
+                  max={totalPages}
+                  value={safePage}
+                  onChange={(e) => {
+                    kickChromeAutoHide()
+                    setPage(clamp(Number(e.target.value || 1), 1, totalPages))
+                  }}
+                  disabled={loading}
+                />
+                <span className="text-[10px] text-white/70">/ {totalPages}</span>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  onClick={() => {
+                    kickChromeAutoHide()
+                    setPage((p) => Math.min(totalPages, p + 1))
+                  }}
+                  disabled={loading}
+                >
+                  Next
+                </button>
+              </div>
+
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1 rounded-full border border-white/10 bg-white/10 hover:bg-white/15"
+                onClick={kickChromeAutoHide}
+              >
+                Open
+              </a>
+              <a
+                href={url}
+                download
+                className="px-3 py-1 rounded-full border border-white/10 bg-white/10 hover:bg-white/15"
+                onClick={kickChromeAutoHide}
+              >
+                Download
+              </a>
+              <button
+                type="button"
+                className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white"
+                onClick={onClose}
+                aria-label="Close"
+                title="Close"
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                  <path
+                    d="M6 6l8 8M14 6l-8 8"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="absolute inset-0 overflow-auto">
+            <div className="min-h-full w-full flex items-center justify-center">
+              {error ? (
+                <div className="text-sm text-red-200 px-4">{error}</div>
+              ) : loading ? (
+                <div className="text-sm muted">Loading PDF…</div>
+              ) : (
+                <canvas ref={canvasRef} className="block bg-white shadow-sm" />
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </FullScreenGlassOverlay>
+    </div>
   )
 }
 

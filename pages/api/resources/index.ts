@@ -190,7 +190,8 @@ async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string
 
     const status = String(data?.status || '').toLowerCase()
     if (['completed', 'finished', 'done', 'success'].includes(status)) {
-      return data
+      const detailed = await fetchMathpixPdfResultData(pdfId, appId, appKey)
+      return detailed || data
     }
     if (['error', 'failed', 'failure'].includes(status)) {
       const errMsg = data?.error || data?.error_info || 'Mathpix PDF processing failed'
@@ -202,6 +203,29 @@ async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string
 
   const message = lastData?.status ? `Mathpix PDF processing timed out (${lastData.status})` : 'Mathpix PDF processing timed out'
   throw new Error(message)
+}
+
+async function fetchMathpixPdfResultData(pdfId: string, appId: string, appKey: string) {
+  const endpoints = [
+    `https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.json`,
+    `https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}?format=all`,
+    `https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}`,
+  ]
+
+  for (const url of endpoints) {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        app_id: appId,
+        app_key: appKey,
+      },
+    })
+    const data: any = await res.json().catch(() => ({}))
+    if (!res.ok) continue
+    if (data && typeof data === 'object') return data
+  }
+
+  return null
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

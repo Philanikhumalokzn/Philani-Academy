@@ -2583,6 +2583,20 @@ export default function Dashboard() {
     setPdfViewerOpen(true)
   }, [])
 
+  const handlePdfPostCapture = useCallback((file: File) => {
+    setPdfViewerOpen(false)
+    setCreateKind('quiz')
+    setEditingChallengeId(null)
+    setChallengeAudiencePickerOpen(false)
+    setChallengeImageUrl(null)
+    setChallengeImageSourceFile(null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
+    setCreateOverlayOpen(true)
+    setChallengeImageEditFile(file)
+    setChallengeImageEditOpen(true)
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     // Keep scroll position aligned to the active tab.
@@ -9394,6 +9408,7 @@ export default function Dashboard() {
           url={pdfViewerUrl}
           title={pdfViewerTitle}
           subtitle={pdfViewerSubtitle || undefined}
+                onPostImage={handlePdfPostCapture}
           onClose={() => setPdfViewerOpen(false)}
         />
       ) : null}

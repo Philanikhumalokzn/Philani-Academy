@@ -8,9 +8,10 @@ type PdfViewerOverlayProps = {
   title: string
   subtitle?: string
   onClose: () => void
+  onPostImage?: (file: File) => void | Promise<void>
 }
 
-export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }: PdfViewerOverlayProps) {
+export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, onPostImage }: PdfViewerOverlayProps) {
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(110)
   const [loading, setLoading] = useState(false)
@@ -18,9 +19,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
   const [numPages, setNumPages] = useState(0)
   const [pdfDoc, setPdfDoc] = useState<any | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const renderTaskRef = useRef<any | null>(null)
   const hideChromeTimerRef = useRef<number | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
+  const [postBusy, setPostBusy] = useState(false)
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -52,6 +55,66 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
       hideChromeTimerRef.current = null
     }, 2500)
   }, [clearChromeTimer, open])
+
+  const captureVisibleCanvas = useCallback(async () => {
+    const canvas = canvasRef.current
+    const scrollEl = scrollContainerRef.current
+    if (!canvas || !scrollEl) return null
+
+    const canvasRect = canvas.getBoundingClientRect()
+    const scrollRect = scrollEl.getBoundingClientRect()
+
+    let left = Math.max(canvasRect.left, scrollRect.left)
+    let right = Math.min(canvasRect.right, scrollRect.right)
+    let top = Math.max(canvasRect.top, scrollRect.top)
+    let bottom = Math.min(canvasRect.bottom, scrollRect.bottom)
+
+    if (right <= left || bottom <= top) {
+      left = canvasRect.left
+      right = canvasRect.right
+      top = canvasRect.top
+      bottom = canvasRect.bottom
+    }
+
+    const scaleX = canvas.width / canvasRect.width
+    const scaleY = canvas.height / canvasRect.height
+    const sx = Math.max(0, Math.floor((left - canvasRect.left) * scaleX))
+    const sy = Math.max(0, Math.floor((top - canvasRect.top) * scaleY))
+    const sw = Math.max(1, Math.min(canvas.width - sx, Math.ceil((right - left) * scaleX)))
+    const sh = Math.max(1, Math.min(canvas.height - sy, Math.ceil((bottom - top) * scaleY)))
+
+    const outCanvas = document.createElement('canvas')
+    outCanvas.width = sw
+    outCanvas.height = sh
+    const ctx = outCanvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh)
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      outCanvas.toBlob(resolve, 'image/png', 0.92)
+    })
+
+    if (!blob) return null
+    return new File([blob], `pdf-capture-${Date.now()}.png`, { type: 'image/png' })
+  }, [])
+
+  const handlePostCapture = useCallback(async () => {
+    if (!onPostImage || loading || error || postBusy) return
+    setPostBusy(true)
+    try {
+      kickChromeAutoHide()
+      const file = await captureVisibleCanvas()
+      if (!file) {
+        alert('Unable to capture the current PDF view.')
+        return
+      }
+      await onPostImage(file)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to capture PDF view')
+    } finally {
+      setPostBusy(false)
+    }
+  }, [captureVisibleCanvas, error, kickChromeAutoHide, loading, onPostImage, postBusy])
 
   useEffect(() => {
     if (!open) return
@@ -332,7 +395,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
             </div>
           </div>
 
-          <div className="absolute inset-0 z-0 overflow-auto">
+          {onPostImage ? (
+            <div
+              className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 transition-opacity duration-200 ${chromeClassName}`}
+              aria-hidden={!chromeVisible}
+            >
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-full border border-slate-200/60 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-white disabled:opacity-50"
+                onClick={handlePostCapture}
+                disabled={loading || postBusy || Boolean(error)}
+                aria-label={postBusy ? 'Capturing PDF view' : 'Post PDF view'}
+                title={postBusy ? 'Capturing…' : 'Post'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 7a2 2 0 0 1 2-2h2l1-1h6l1 1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                <span>{postBusy ? 'Capturing…' : 'Post'}</span>
+              </button>
+            </div>
+          ) : null}
+
+          <div ref={scrollContainerRef} className="absolute inset-0 z-0 overflow-auto">
             <div className="min-h-full w-full flex items-center justify-center">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>

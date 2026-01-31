@@ -225,19 +225,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
           onClick={(e) => e.stopPropagation()}
         >
           <div
-            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/10 px-2 py-2 text-xs text-white/90 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/60 bg-white/90 px-2 py-2 text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
             <div className="min-w-0 flex-1">
-              <div className="font-semibold text-white truncate">{title}</div>
-              {subtitle ? <div className="text-[11px] text-white/70 truncate">{subtitle}</div> : null}
+              <div className="font-semibold text-slate-900 truncate">{title}</div>
+              {subtitle ? <div className="text-[11px] text-slate-600 truncate">{subtitle}</div> : null}
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1">
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1">
                 <button
                   type="button"
-                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  className="px-2 py-1 rounded-full hover:bg-slate-100"
                   onClick={() => {
                     kickChromeAutoHide()
                     setZoom((z) => clamp(z - 10, 50, 220))
@@ -248,7 +248,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
                 <span className="min-w-[48px] text-center">{effectiveZoom}%</span>
                 <button
                   type="button"
-                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  className="px-2 py-1 rounded-full hover:bg-slate-100"
                   onClick={() => {
                     kickChromeAutoHide()
                     setZoom((z) => clamp(z + 10, 50, 220))
@@ -258,10 +258,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2 py-1">
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1">
                 <button
                   type="button"
-                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  className="px-2 py-1 rounded-full hover:bg-slate-100"
                   onClick={() => {
                     kickChromeAutoHide()
                     setPage((p) => Math.max(1, p - 1))
@@ -272,7 +272,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
                 </button>
                 <input
                   type="number"
-                  className="w-16 bg-transparent text-center text-xs text-white outline-none"
+                  className="w-16 bg-transparent text-center text-xs text-slate-900 outline-none"
                   min={1}
                   max={totalPages}
                   value={safePage}
@@ -282,10 +282,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
                   }}
                   disabled={loading}
                 />
-                <span className="text-[10px] text-white/70">/ {totalPages}</span>
+                <span className="text-[10px] text-slate-500">/ {totalPages}</span>
                 <button
                   type="button"
-                  className="px-2 py-1 rounded-full hover:bg-white/15"
+                  className="px-2 py-1 rounded-full hover:bg-slate-100"
                   onClick={() => {
                     kickChromeAutoHide()
                     setPage((p) => Math.min(totalPages, p + 1))
@@ -300,7 +300,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1 rounded-full border border-white/10 bg-white/10 hover:bg-white/15"
+                className="px-3 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50"
                 onClick={kickChromeAutoHide}
               >
                 Open
@@ -308,14 +308,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose }
               <a
                 href={url}
                 download
-                className="px-3 py-1 rounded-full border border-white/10 bg-white/10 hover:bg-white/15"
+                className="px-3 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50"
                 onClick={kickChromeAutoHide}
               >
                 Download
               </a>
               <button
                 type="button"
-                className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white"
+                className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-900"
                 onClick={onClose}
                 aria-label="Close"
                 title="Close"

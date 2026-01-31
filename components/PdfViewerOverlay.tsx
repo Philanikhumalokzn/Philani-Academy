@@ -25,7 +25,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const hideChromeTimerRef = useRef<number | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [postBusy, setPostBusy] = useState(false)
-  const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
   const swipeStateRef = useRef<{
     pointerId: number | null
     startX: number
@@ -340,13 +339,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     try {
       const pageObj = await pdfDoc.getPage(currentPage)
       const baseScale = effectiveZoom / 100
-      const baseViewport = pageObj.getViewport({ scale: baseScale })
-      const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
-      const fitScale = availableWidth
-        ? clamp(availableWidth / baseViewport.width, 0.5, 2)
-        : 1
-      const finalScale = baseScale * fitScale
-      const viewport = pageObj.getViewport({ scale: finalScale })
+      const viewport = pageObj.getViewport({ scale: baseScale })
       const outputScale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
       canvas.width = Math.floor(viewport.width * outputScale)
       canvas.height = Math.floor(viewport.height * outputScale)
@@ -363,26 +356,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     } catch (err: any) {
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, safePage, totalPages, effectiveZoom, contentSize.height, contentSize.width])
-
-  useEffect(() => {
-    if (!open) return
-    const el = contentRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      const nextWidth = Math.round(entry.contentRect.width)
-      const nextHeight = Math.round(entry.contentRect.height)
-      setContentSize((prev) =>
-        (prev.width === nextWidth && prev.height === nextHeight)
-          ? prev
-          : { width: nextWidth, height: nextHeight }
-      )
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [open])
+  }, [pdfDoc, open, safePage, totalPages, effectiveZoom])
 
   useEffect(() => {
     let cancelled = false
@@ -575,7 +549,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
             onPointerCancel={handleSwipeEnd}
             onPointerLeave={handleSwipeEnd}
           >
-            <div ref={contentRef} className="min-h-full w-full flex items-center justify-center p-4 sm:p-6">
+            <div ref={contentRef} className="w-full flex flex-col items-center p-4 sm:p-6">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>
               ) : loading ? (

@@ -18,10 +18,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const [error, setError] = useState<string | null>(null)
   const [numPages, setNumPages] = useState(0)
   const [pdfDoc, setPdfDoc] = useState<any | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
-  const renderTaskRef = useRef<any | null>(null)
+  const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  const renderTasksRef = useRef<Map<number, any>>(new Map())
   const hideChromeTimerRef = useRef<number | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [postBusy, setPostBusy] = useState(false)
@@ -65,8 +65,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     }, 2500)
   }, [clearChromeTimer, open])
 
+  const setPageCanvasRef = useCallback((pageNum: number) => (el: HTMLCanvasElement | null) => {
+    if (el) {
+      pageCanvasRefs.current.set(pageNum, el)
+    } else {
+      pageCanvasRefs.current.delete(pageNum)
+    }
+  }, [])
+
+  const cancelRenderTasks = useCallback(() => {
+    renderTasksRef.current.forEach((task) => {
+      if (task?.cancel) task.cancel()
+    })
+    renderTasksRef.current.clear()
+  }, [])
+
+  const scrollToPage = useCallback((pageNum: number) => {
+    const canvas = pageCanvasRefs.current.get(pageNum)
+    if (!canvas) return
+    canvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
   const captureVisibleCanvas = useCallback(async () => {
-    const canvas = canvasRef.current
+    const canvas = pageCanvasRefs.current.get(safePage)
     const scrollEl = scrollContainerRef.current
     if (!canvas || !scrollEl) return null
 
@@ -105,7 +126,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
 
     if (!blob) return null
     return new File([blob], `pdf-capture-${Date.now()}.png`, { type: 'image/png' })
-  }, [])
+  }, [safePage])
 
   const handlePostCapture = useCallback(async () => {
     if (!onPostImage || loading || error || postBusy) return
@@ -156,11 +177,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     state.handled = true
     kickChromeAutoHide()
     if (dx < 0) {
-      setPage((p) => Math.min(totalPages, p + 1))
+      setPage((p) => {
+        const next = Math.min(totalPages, p + 1)
+        scrollToPage(next)
+        return next
+      })
     } else {
-      setPage((p) => Math.max(1, p - 1))
+      setPage((p) => {
+        const next = Math.max(1, p - 1)
+        scrollToPage(next)
+        return next
+      })
     }
-  }, [kickChromeAutoHide, totalPages])
+  }, [kickChromeAutoHide, scrollToPage, totalPages])
 
   const handleSwipeEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType && e.pointerType !== 'mouse') return
@@ -204,9 +233,17 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       if (absX < absY * 1.2) return
       kickChromeAutoHide()
       if (dx < 0) {
-        setPage((p) => Math.min(totalPages, p + 1))
+        setPage((p) => {
+          const next = Math.min(totalPages, p + 1)
+          scrollToPage(next)
+          return next
+        })
       } else {
-        setPage((p) => Math.max(1, p - 1))
+        setPage((p) => {
+          const next = Math.max(1, p - 1)
+          scrollToPage(next)
+          return next
+        })
       }
     }
 
@@ -221,7 +258,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [kickChromeAutoHide, open, totalPages])
+  }, [kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -314,30 +351,20 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
 
   useEffect(() => {
     if (open) return
-    if (renderTaskRef.current?.cancel) {
-      renderTaskRef.current.cancel()
-    }
+    cancelRenderTasks()
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
     setPdfDoc(null)
-  }, [open, pdfDoc])
+  }, [open, pdfDoc, cancelRenderTasks])
 
-  const renderPage = useCallback(async () => {
+  const renderPageToCanvas = useCallback(async (pageNum: number, canvas: HTMLCanvasElement) => {
     if (!pdfDoc || !open) return
-    const currentPage = clamp(safePage, 1, totalPages)
-    if (currentPage !== safePage) {
-      setPage(currentPage)
-      return
-    }
-
-    const canvas = canvasRef.current
-    if (!canvas) return
     const context = canvas.getContext('2d')
     if (!context) return
 
     try {
-      const pageObj = await pdfDoc.getPage(currentPage)
+      const pageObj = await pdfDoc.getPage(pageNum)
       const baseScale = effectiveZoom / 100
       const viewport = pageObj.getViewport({ scale: baseScale })
       const outputScale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
@@ -347,30 +374,37 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       canvas.style.height = `${Math.floor(viewport.height)}px`
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
 
-      if (renderTaskRef.current?.cancel) {
-        renderTaskRef.current.cancel()
-      }
+      const existing = renderTasksRef.current.get(pageNum)
+      if (existing?.cancel) existing.cancel()
       const task = pageObj.render({ canvasContext: context, viewport })
-      renderTaskRef.current = task
+      renderTasksRef.current.set(pageNum, task)
       await task.promise
     } catch (err: any) {
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, safePage, totalPages, effectiveZoom])
+  }, [pdfDoc, open, effectiveZoom])
+
+  const renderAllPages = useCallback(async () => {
+    if (!pdfDoc || !open) return
+    const pages = Array.from({ length: totalPages }, (_, idx) => idx + 1)
+    for (const pageNum of pages) {
+      const canvas = pageCanvasRefs.current.get(pageNum)
+      if (!canvas) continue
+      await renderPageToCanvas(pageNum, canvas)
+    }
+  }, [pdfDoc, open, renderPageToCanvas, totalPages])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       if (cancelled) return
-      await renderPage()
+      await renderAllPages()
     })()
     return () => {
       cancelled = true
-      if (renderTaskRef.current?.cancel) {
-        renderTaskRef.current.cancel()
-      }
+      cancelRenderTasks()
     }
-  }, [renderPage])
+  }, [renderAllPages, cancelRenderTasks])
 
   if (!open) return null
 
@@ -435,7 +469,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
                   className="px-1.5 py-1 rounded-full hover:bg-slate-100"
                   onClick={() => {
                     kickChromeAutoHide()
-                    setPage((p) => Math.max(1, p - 1))
+                    setPage((p) => {
+                      const next = Math.max(1, p - 1)
+                      scrollToPage(next)
+                      return next
+                    })
                   }}
                   disabled={loading}
                 >
@@ -450,7 +488,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
                   value={safePage}
                   onChange={(e) => {
                     kickChromeAutoHide()
-                    setPage(clamp(Number(e.target.value || 1), 1, totalPages))
+                    const next = clamp(Number(e.target.value || 1), 1, totalPages)
+                    setPage(next)
+                    scrollToPage(next)
                   }}
                   disabled={loading}
                 />
@@ -460,7 +500,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
                   className="px-1.5 py-1 rounded-full hover:bg-slate-100"
                   onClick={() => {
                     kickChromeAutoHide()
-                    setPage((p) => Math.min(totalPages, p + 1))
+                    setPage((p) => {
+                      const next = Math.min(totalPages, p + 1)
+                      scrollToPage(next)
+                      return next
+                    })
                   }}
                   disabled={loading}
                 >
@@ -549,13 +593,23 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
             onPointerCancel={handleSwipeEnd}
             onPointerLeave={handleSwipeEnd}
           >
-            <div ref={contentRef} className="w-full flex flex-col items-center p-4 sm:p-6">
+            <div ref={contentRef} className="w-full flex flex-col items-center gap-6 p-4 sm:p-6">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>
               ) : loading ? (
                 <div className="text-sm muted">Loading PDF…</div>
               ) : (
-                <canvas ref={canvasRef} className="block bg-white shadow-sm" />
+                Array.from({ length: totalPages }, (_, idx) => {
+                  const pageNum = idx + 1
+                  return (
+                    <canvas
+                      key={`pdf-page-${pageNum}`}
+                      ref={setPageCanvasRef(pageNum)}
+                      className="block bg-white shadow-sm"
+                      data-page={pageNum}
+                    />
+                  )
+                })
               )}
             </div>
           </div>

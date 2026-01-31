@@ -47,6 +47,9 @@ export default function ResourceBankPage() {
   const [parsedViewerText, setParsedViewerText] = useState('')
   const [parsedViewerJson, setParsedViewerJson] = useState<any | null>(null)
 
+  const [parseDebugOpen, setParseDebugOpen] = useState(false)
+  const [parseDebugItem, setParseDebugItem] = useState<ResourceBankItem | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const effectiveGrade: GradeValue | undefined = useMemo(() => {
@@ -192,6 +195,11 @@ export default function ResourceBankPage() {
     }
   }
 
+  const openParseDebug = (item: ResourceBankItem) => {
+    setParseDebugItem(item)
+    setParseDebugOpen(true)
+  }
+
   const handleDelete = async (id: string) => {
     if (!id) return
     setError(null)
@@ -228,6 +236,28 @@ export default function ResourceBankPage() {
           </div>
         ) : (
           <>
+            {parseDebugOpen ? (
+              <FullScreenGlassOverlay
+                title="Parsing debugger"
+                subtitle={parseDebugItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => setParseDebugOpen(false)}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+                  <div className="text-sm">
+                    <div><span className="font-semibold">Filename:</span> {parseDebugItem?.filename || '—'}</div>
+                    <div><span className="font-semibold">Content type:</span> {parseDebugItem?.contentType || '—'}</div>
+                    <div><span className="font-semibold">Size:</span> {typeof parseDebugItem?.size === 'number' ? `${Math.round(parseDebugItem.size / 1024)} KB` : '—'}</div>
+                    <div><span className="font-semibold">Parsed at:</span> {parseDebugItem?.parsedAt ? new Date(parseDebugItem.parsedAt).toLocaleString() : '—'}</div>
+                  </div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Error details</div>
+                  <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-100 p-3 text-xs text-slate-900">
+                    {parseDebugItem?.parseError || 'No error details available.'}
+                  </pre>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
             {parsedViewerOpen ? (
               <FullScreenGlassOverlay
                 title="Parsed"
@@ -345,7 +375,15 @@ export default function ResourceBankPage() {
                             {item.tag ? `${item.tag} • ` : ''}
                             {gradeToLabel(item.grade)}
                           </div>
-                          {item.parseError ? <div className="text-xs text-red-200">Parse failed</div> : null}
+                          {item.parseError ? (
+                            <button
+                              type="button"
+                              className="text-left text-xs text-red-200 underline decoration-dotted"
+                              onClick={() => openParseDebug(item)}
+                            >
+                              Parse failed — view details
+                            </button>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <a

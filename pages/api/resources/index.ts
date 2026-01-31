@@ -130,6 +130,19 @@ function buildParsedJsonFromMathpix(data: any, contentType: string, source: stri
   }
 }
 
+function serializeDebugDetails(details: Record<string, any>) {
+  const keys = Object.keys(details || {})
+  if (keys.length === 0) return ''
+  try {
+    const raw = JSON.stringify(details, null, 2)
+    if (!raw || raw === '{}' || raw === 'null') return ''
+    const limit = 6000
+    return raw.length > limit ? `${raw.slice(0, limit)}\n... (truncated)` : raw
+  } catch {
+    return ''
+  }
+}
+
 async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string) {
   const maxAttempts = 12
   const delayMs = 1500
@@ -280,6 +293,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let parsedJson: any | null = null
       let parsedAt: Date | null = null
       let parseError: string | null = null
+      let parseDebugPayload: any | null = null
+      let parseDebugResponse: any | null = null
 
       if (parseRequested) {
         try {
@@ -327,6 +342,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               include_smiles: false,
               rm_spaces: true,
             }
+            parseDebugPayload = { endpoint: '/v3/pdf', ...pdfPayload }
 
             const submitRes = await fetch('https://api.mathpix.com/v3/pdf', {
               method: 'POST',
@@ -340,6 +356,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             const submitData: any = await submitRes.json().catch(() => ({}))
             if (!submitRes.ok) {
+              parseDebugResponse = submitData
               const errMsg = submitData?.error || submitData?.error_info || `Mathpix PDF request failed (${submitRes.status})`
               throw new Error(String(errMsg))
             }
@@ -350,6 +367,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
 
             data = await pollMathpixPdfResult(pdfId, appId, appKey)
+            parseDebugResponse = data
             parsedJson = buildParsedJsonFromMathpix(data, contentType, 'mathpix-pdf')
           } else {
             const rawBytes = await fs.readFile(uploadedFile.filepath)
@@ -364,6 +382,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               math_display_delimiters: ['$$', '$$'],
               rm_spaces: true,
             }
+            parseDebugPayload = {
+              endpoint: '/v3/text',
+              src: `data:${contentType};base64,(omitted ${rawBytes.length} bytes)`,
+              formats: payload.formats,
+              include_line_data: payload.include_line_data,
+              include_smiles: payload.include_smiles,
+              math_inline_delimiters: payload.math_inline_delimiters,
+              math_display_delimiters: payload.math_display_delimiters,
+              rm_spaces: payload.rm_spaces,
+            }
 
             const mathpixRes = await fetch('https://api.mathpix.com/v3/text', {
               method: 'POST',
@@ -377,10 +405,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             data = await mathpixRes.json().catch(() => ({}))
             if (!mathpixRes.ok) {
+              parseDebugResponse = data
               const errMsg = data?.error || data?.error_info || `Mathpix request failed (${mathpixRes.status})`
               throw new Error(String(errMsg))
             }
 
+            parseDebugResponse = data
             parsedJson = buildParsedJsonFromMathpix(data, contentType, 'mathpix')
           }
 
@@ -425,6 +455,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           } catch {
             // ignore
           }
+        }
+      }
+
+      if (parseError) {
+        const debugDetails: Record<string, any> = {}
+        if (parseDebugPayload) debugDetails.payload = parseDebugPayload
+        if (parseDebugResponse) debugDetails.response = parseDebugResponse
+        const debugText = serializeDebugDetails(debugDetails)
+        if (debugText) {
+          parseError = `${parseError}\n\nDebug:\n${debugText}`
         }
       }
 

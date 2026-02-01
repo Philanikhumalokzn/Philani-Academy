@@ -8,6 +8,7 @@ import { useRouter } from 'next/router'
 import NavBar from '../components/NavBar'
 import MobileTopChrome from '../components/MobileTopChrome'
 import AppErrorBoundary from '../components/AppErrorBoundary'
+import { OverlayRestoreProvider } from '../lib/overlayRestore'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   const router = useRouter()
@@ -48,9 +49,11 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <div className="app-shell">
         {!hideNavBar && <NavBar />}
         {!hideMobileTopChrome && <MobileTopChrome />}
-        <AppErrorBoundary key={router.pathname}>
-          <Component {...pageProps} />
-        </AppErrorBoundary>
+        <OverlayRestoreProvider>
+          <AppErrorBoundary key={router.pathname}>
+            <Component {...pageProps} />
+          </AppErrorBoundary>
+        </OverlayRestoreProvider>
       </div>
     </SessionProvider>
   )

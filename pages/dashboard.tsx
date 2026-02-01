@@ -20,6 +20,7 @@ import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { useTapToPeek } from '../lib/useTapToPeek'
+import { useOverlayRestore } from '../lib/overlayRestore'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -292,6 +293,7 @@ export default function Dashboard() {
   }, [formatSessionDate])
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
+  const { queueRestore, discardRestore } = useOverlayRestore()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
@@ -621,31 +623,10 @@ export default function Dashboard() {
     setChallengeImageEditOpen(true)
   }, [])
 
-  const closeCreateOverlay = useCallback((options?: { skipPdfRestore?: boolean }) => {
+  const closeCreateOverlay = useCallback(() => {
     setCreateOverlayOpen(false)
     setEditingChallengeId(null)
     setChallengeAudiencePickerOpen(false)
-
-    if (options?.skipPdfRestore) {
-      pdfViewerRestorePendingRef.current = false
-      pdfViewerRestoreRef.current = null
-      return
-    }
-
-    if (pdfViewerRestorePendingRef.current && pdfViewerRestoreRef.current) {
-      const restore = pdfViewerRestoreRef.current
-      pdfViewerRestorePendingRef.current = false
-      pdfViewerRestoreRef.current = null
-      setPdfViewerTitle(restore.title)
-      setPdfViewerSubtitle(restore.subtitle)
-      setPdfViewerUrl(restore.url)
-      setPdfViewerInitialState({
-        page: restore.page,
-        zoom: restore.zoom,
-        scrollTop: restore.scrollTop,
-      })
-      setPdfViewerOpen(true)
-    }
   }, [])
 
   const postChallenge = useCallback(async () => {
@@ -701,7 +682,8 @@ export default function Dashboard() {
         setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
       }
 
-      closeCreateOverlay({ skipPdfRestore: true })
+      discardRestore()
+      closeCreateOverlay()
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
       setChallengeAudienceDraft('public')
@@ -716,7 +698,7 @@ export default function Dashboard() {
     } finally {
       setChallengePosting(false)
     }
-  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, closeCreateOverlay])
+  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, closeCreateOverlay, discardRestore])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)
@@ -1035,18 +1017,11 @@ export default function Dashboard() {
     zoom: number
     scrollTop: number
   }
-  type PdfViewerRestoreState = PdfViewerSnapshot & {
-    url: string
-    title: string
-    subtitle: string
-  }
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
   const [pdfViewerUrl, setPdfViewerUrl] = useState('')
   const [pdfViewerTitle, setPdfViewerTitle] = useState('')
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
   const [pdfViewerInitialState, setPdfViewerInitialState] = useState<PdfViewerSnapshot | null>(null)
-  const pdfViewerRestoreRef = useRef<PdfViewerRestoreState | null>(null)
-  const pdfViewerRestorePendingRef = useRef(false)
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
@@ -2596,21 +2571,21 @@ export default function Dashboard() {
     setPdfViewerSubtitle('')
     setPdfViewerUrl(item.url)
     setPdfViewerInitialState(null)
-    pdfViewerRestoreRef.current = null
-    pdfViewerRestorePendingRef.current = false
     setPdfViewerOpen(true)
   }, [])
 
   const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
-    pdfViewerRestoreRef.current = {
-      url: pdfViewerUrl,
-      title: pdfViewerTitle,
-      subtitle: pdfViewerSubtitle,
-      page: snapshot?.page ?? 1,
-      zoom: snapshot?.zoom ?? 110,
-      scrollTop: snapshot?.scrollTop ?? 0,
-    }
-    pdfViewerRestorePendingRef.current = true
+    queueRestore(() => {
+      setPdfViewerTitle(pdfViewerTitle)
+      setPdfViewerSubtitle(pdfViewerSubtitle)
+      setPdfViewerUrl(pdfViewerUrl)
+      setPdfViewerInitialState({
+        page: snapshot?.page ?? 1,
+        zoom: snapshot?.zoom ?? 110,
+        scrollTop: snapshot?.scrollTop ?? 0,
+      })
+      setPdfViewerOpen(true)
+    })
     setPdfViewerOpen(false)
     setCreateKind('quiz')
     setEditingChallengeId(null)
@@ -2622,7 +2597,7 @@ export default function Dashboard() {
     setCreateOverlayOpen(true)
     setChallengeImageEditFile(file)
     setChallengeImageEditOpen(true)
-  }, [pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl])
+  }, [pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl, queueRestore])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

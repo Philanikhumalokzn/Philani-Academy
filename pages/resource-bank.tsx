@@ -52,6 +52,15 @@ export default function ResourceBankPage() {
   const [parseDebugOpen, setParseDebugOpen] = useState(false)
   const [parseDebugItem, setParseDebugItem] = useState<ResourceBankItem | null>(null)
 
+  const [editOpen, setEditOpen] = useState(false)
+  const [editItem, setEditItem] = useState<ResourceBankItem | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editTag, setEditTag] = useState('')
+  const [editGrade, setEditGrade] = useState<GradeValue | ''>('')
+  const [editParse, setEditParse] = useState(false)
+  const [editAiNormalize, setEditAiNormalize] = useState(false)
+  const [editing, setEditing] = useState(false)
+
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
   const [pdfViewerUrl, setPdfViewerUrl] = useState('')
   const [pdfViewerTitle, setPdfViewerTitle] = useState('')
@@ -269,6 +278,47 @@ export default function ResourceBankPage() {
     setParseDebugOpen(true)
   }
 
+  const openEdit = (item: ResourceBankItem) => {
+    setEditItem(item)
+    setEditTitle(item?.title || '')
+    setEditTag(item?.tag || '')
+    setEditGrade((item?.grade as GradeValue) || '')
+    setEditParse(false)
+    setEditAiNormalize(false)
+    setEditOpen(true)
+  }
+
+  const saveEdit = async () => {
+    if (!editItem?.id) return
+    setEditing(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(editItem.id)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          tag: editTag,
+          grade: editGrade || undefined,
+          parse: editParse ? '1' : undefined,
+          aiNormalize: editParse && editAiNormalize ? '1' : undefined,
+        }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Edit failed (${res.status})`)
+
+      setEditOpen(false)
+      setEditItem(null)
+      await fetchItems(effectiveGrade)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to edit resource')
+    } finally {
+      setEditing(false)
+    }
+  }
+
   const isPdfResource = (item: ResourceBankItem) => {
     const filename = (item.filename || '').toLowerCase()
     const url = (item.url || '').toLowerCase()
@@ -320,6 +370,79 @@ export default function ResourceBankPage() {
           </div>
         ) : (
           <>
+            {editOpen ? (
+              <FullScreenGlassOverlay
+                title="Edit resource"
+                subtitle={editItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => {
+                  if (editing) return
+                  setEditOpen(false)
+                }}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Title</div>
+                      <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Tag</div>
+                      <input className="input" value={editTag} onChange={(e) => setEditTag(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wide text-slate-600">Grade</div>
+                    <select
+                      className="input"
+                      value={editGrade}
+                      onChange={(e) => setEditGrade(normalizeGradeInput(e.target.value) || '')}
+                    >
+                      <option value="">(unchanged)</option>
+                      {GRADE_VALUES.map((g) => (
+                        <option key={g} value={g}>{gradeToLabel(g)}</option>
+                      ))}
+                    </select>
+                    <div className="text-xs text-slate-600">Admin can move resources across grades.</div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm text-slate-900 select-none">
+                      <input
+                        type="checkbox"
+                        checked={editParse}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setEditParse(next)
+                          if (!next) setEditAiNormalize(false)
+                        }}
+                      />
+                      Re-parse (Mathpix OCR)
+                    </label>
+                    <label className={`flex items-center gap-2 text-sm ${editParse ? 'text-slate-900' : 'text-slate-500'} select-none`}>
+                      <input
+                        type="checkbox"
+                        checked={editAiNormalize}
+                        onChange={(e) => setEditAiNormalize(e.target.checked)}
+                        disabled={!editParse}
+                      />
+                      AI post-normalize (Gemini)
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button type="button" className="btn btn-ghost" onClick={() => setEditOpen(false)} disabled={editing}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={() => void saveEdit()} disabled={editing}>
+                      {editing ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
             {pdfViewerOpen ? (
               <PdfViewerOverlay
                 open={pdfViewerOpen}
@@ -514,6 +637,11 @@ export default function ResourceBankPage() {
                               onClick={() => void handleDelete(item.id)}
                             >
                               Delete
+                            </button>
+                          ) : null}
+                          {role === 'admin' ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => openEdit(item)}>
+                              Edit
                             </button>
                           ) : null}
                         </div>

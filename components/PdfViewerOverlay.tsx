@@ -25,6 +25,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const hideChromeTimerRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
+  const wheelAccumRef = useRef(0)
+  const wheelResetTimerRef = useRef<number | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
@@ -686,12 +688,31 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
             onWheel={(e) => {
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)
-              if (absX < 30 || absX < absY * 1.2) return
+              const isShiftHorizontal = e.shiftKey && absY > absX
+              const primaryDelta = isShiftHorizontal ? e.deltaY : e.deltaX
+              const primaryAbs = Math.abs(primaryDelta)
+              const isHorizontal = isShiftHorizontal || (absX > absY * 1.1)
+              if (!isHorizontal || primaryAbs < 8) return
+
+              e.preventDefault()
+              wheelAccumRef.current += primaryDelta
+              if (wheelResetTimerRef.current) {
+                window.clearTimeout(wheelResetTimerRef.current)
+              }
+              wheelResetTimerRef.current = window.setTimeout(() => {
+                wheelAccumRef.current = 0
+                wheelResetTimerRef.current = null
+              }, 120)
+
               const now = Date.now()
-              if (now - lastWheelTsRef.current < 250) return
+              if (now - lastWheelTsRef.current < 200) return
+              if (Math.abs(wheelAccumRef.current) < 36) return
+
               lastWheelTsRef.current = now
+              const delta = wheelAccumRef.current
+              wheelAccumRef.current = 0
               kickChromeAutoHide()
-              if (e.deltaX > 0) {
+              if (delta > 0) {
                 setPage((p) => {
                   const next = Math.min(totalPages, p + 1)
                   scrollToPage(next)

@@ -659,7 +659,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
 
           {onPostImage ? (
             <div
-              className={`absolute right-3 top-1/2 -translate-y-1/2 z-20 transition-opacity duration-200 ${chromeClassName}`}
+              className={`absolute right-3 z-20 transition-opacity duration-200 ${chromeClassName}`}
+              style={{ bottom: '33%' }}
               aria-hidden={!chromeVisible}
             >
               <button

@@ -9371,7 +9371,7 @@ export default function Dashboard() {
                       {isPdfResource(item) ? (
                         <button
                           type="button"
-                          className="font-medium text-white truncate text-left hover:underline"
+                          className="font-medium text-white text-left hover:underline whitespace-normal break-words block"
                           onClick={() => openPdfViewer(item)}
                         >
                           {item.title}
@@ -9381,7 +9381,7 @@ export default function Dashboard() {
                           href={item.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="font-medium text-white truncate hover:underline"
+                          className="font-medium text-white hover:underline whitespace-normal break-words block"
                         >
                           {item.title}
                         </a>

@@ -9368,31 +9368,28 @@ export default function Dashboard() {
                     className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
                   >
                     <div className="min-w-0">
-                      <div className="font-medium text-white truncate">{item.title}</div>
-                      <div className="text-xs muted truncate">
-                        {item.tag ? `${item.tag} • ` : ''}
-                        {gradeToLabel(item.grade)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
                       {isPdfResource(item) ? (
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className="font-medium text-white truncate text-left hover:underline"
                           onClick={() => openPdfViewer(item)}
                         >
-                          View
+                          {item.title}
                         </button>
                       ) : (
                         <a
                           href={item.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="btn btn-ghost"
+                          className="font-medium text-white truncate hover:underline"
                         >
-                          Open
+                          {item.title}
                         </a>
                       )}
+                      <div className="text-xs muted truncate">
+                        {item.tag ? `${item.tag} • ` : ''}
+                        {gradeToLabel(item.grade)}
+                      </div>
                     </div>
                   </li>
                 ))}

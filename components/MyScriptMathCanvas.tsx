@@ -8285,6 +8285,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       try {
         editor.clear?.()
       } catch {}
+      clearMathpixLocalStrokes()
       lastSymbolCountRef.current = 0
       lastBroadcastBaseCountRef.current = 0
     } finally {

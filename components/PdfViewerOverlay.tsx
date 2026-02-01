@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTapToPeek } from '../lib/useTapToPeek'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
@@ -22,10 +23,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const contentRef = useRef<HTMLDivElement | null>(null)
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
-  const hideChromeTimerRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
-  const [chromeVisible, setChromeVisible] = useState(true)
+  const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
+    autoHideMs: 2500,
+    defaultVisible: true,
+    disabled: !open,
+  })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
   const swipeStateRef = useRef<{
@@ -50,23 +54,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
 
   const totalPages = Math.max(1, numPages || 1)
   const safePage = clamp(effectivePage, 1, totalPages)
-
-  const clearChromeTimer = useCallback(() => {
-    if (hideChromeTimerRef.current) {
-      window.clearTimeout(hideChromeTimerRef.current)
-      hideChromeTimerRef.current = null
-    }
-  }, [])
-
-  const kickChromeAutoHide = useCallback(() => {
-    if (!open) return
-    setChromeVisible(true)
-    clearChromeTimer()
-    hideChromeTimerRef.current = window.setTimeout(() => {
-      setChromeVisible(false)
-      hideChromeTimerRef.current = null
-    }, 2500)
-  }, [clearChromeTimer, open])
 
   const setPageCanvasRef = useCallback((pageNum: number) => (el: HTMLCanvasElement | null) => {
     if (el) {

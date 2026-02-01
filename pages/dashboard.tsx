@@ -19,6 +19,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
+import { useTapToPeek } from '../lib/useTapToPeek'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -838,11 +839,10 @@ export default function Dashboard() {
     return !mobileHeroBgUrl.startsWith('data:image/svg+xml,')
   }, [mobileHeroBgUrl])
   const [mobileHeroBgDragActive, setMobileHeroBgDragActive] = useState(false)
-  const [mobileHeroBgEditVisible, setMobileHeroBgEditVisible] = useState(false)
+  const { visible: mobileHeroBgEditVisible, peek: showMobileHeroEdit } = useTapToPeek({ autoHideMs: 2500 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const heroBgInputRef = useRef<HTMLInputElement | null>(null)
   const themeBgInputRef = useRef<HTMLInputElement | null>(null)
-  const heroBgEditHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
 
@@ -2174,25 +2174,6 @@ export default function Dashboard() {
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router.isReady, router.query, router.pathname, selectedGroupId, loadGroupMembers])
 
-  const showMobileHeroEdit = useCallback(() => {
-    setMobileHeroBgEditVisible(true)
-    if (heroBgEditHideTimeoutRef.current) {
-      clearTimeout(heroBgEditHideTimeoutRef.current)
-      heroBgEditHideTimeoutRef.current = null
-    }
-    heroBgEditHideTimeoutRef.current = setTimeout(() => {
-      setMobileHeroBgEditVisible(false)
-      heroBgEditHideTimeoutRef.current = null
-    }, 2500)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (heroBgEditHideTimeoutRef.current) {
-        clearTimeout(heroBgEditHideTimeoutRef.current)
-      }
-    }
-  }, [])
 
   const toggleFullscreenLiveWindow = useCallback((id: string) => {
     setLiveWindows(prev => prev.map(win => {

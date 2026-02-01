@@ -515,6 +515,22 @@ export default function PublicUserProfilePage() {
                         <div key={String(c.id)} className="rounded-xl border border-white/10 bg-white/5 p-3">
                           <div className="text-sm font-semibold">{c.title || 'Challenge'}</div>
                           {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+                          {c.prompt ? (
+                            <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap break-words">
+                              {c.prompt}
+                            </div>
+                          ) : null}
+                          {c.imageUrl ? (
+                            <div className="mt-3">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={c.imageUrl}
+                                alt={c.title || 'Challenge image'}
+                                className="max-h-[260px] w-full rounded-lg border border-white/10 object-contain"
+                                loading="lazy"
+                              />
+                            </div>
+                          ) : null}
                           <div className="mt-2">
                             <Link href={href} className="btn btn-primary">
                               {buttonText}

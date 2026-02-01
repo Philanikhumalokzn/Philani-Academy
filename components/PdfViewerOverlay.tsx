@@ -23,6 +23,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
   const hideChromeTimerRef = useRef<number | null>(null)
+  const scrollRafRef = useRef<number | null>(null)
+  const lastWheelTsRef = useRef(0)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
@@ -86,6 +88,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     if (!canvas) return
     canvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
+
+  const updatePageFromScroll = useCallback(() => {
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) return
+    const viewportRect = scrollEl.getBoundingClientRect()
+    const viewportCenter = viewportRect.top + viewportRect.height / 2
+    let bestPage = safePage
+    let bestDist = Number.POSITIVE_INFINITY
+
+    pageCanvasRefs.current.forEach((canvas, pageNum) => {
+      const rect = canvas.getBoundingClientRect()
+      const center = rect.top + rect.height / 2
+      const dist = Math.abs(center - viewportCenter)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestPage = pageNum
+      }
+    })
+
+    if (bestPage !== safePage) {
+      setPage(bestPage)
+    }
+  }, [safePage])
 
   const captureVisibleCanvas = useCallback(async () => {
     const canvas = pageCanvasRefs.current.get(safePage)
@@ -277,11 +302,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
         onClose()
         return
       }
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault()
+        setPage((p) => {
+          const next = Math.max(1, p - 1)
+          scrollToPage(next)
+          return next
+        })
+        return
+      }
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault()
+        setPage((p) => {
+          const next = Math.min(totalPages, p + 1)
+          scrollToPage(next)
+          return next
+        })
+        return
+      }
       kickChromeAutoHide()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose, kickChromeAutoHide])
+  }, [open, onClose, kickChromeAutoHide, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open || !url) return
@@ -419,6 +462,33 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     observer.observe(el)
     return () => observer.disconnect()
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) return
+
+    const onScroll = () => {
+      if (scrollRafRef.current) return
+      scrollRafRef.current = window.requestAnimationFrame(() => {
+        scrollRafRef.current = null
+        updatePageFromScroll()
+      })
+    }
+
+    scrollEl.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    onScroll()
+
+    return () => {
+      scrollEl.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (scrollRafRef.current) {
+        window.cancelAnimationFrame(scrollRafRef.current)
+        scrollRafRef.current = null
+      }
+    }
+  }, [open, updatePageFromScroll])
 
   useEffect(() => {
     let cancelled = false
@@ -613,6 +683,28 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
             ref={scrollContainerRef}
             className="absolute inset-0 z-0 overflow-auto"
             style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}
+            onWheel={(e) => {
+              const absX = Math.abs(e.deltaX)
+              const absY = Math.abs(e.deltaY)
+              if (absX < 30 || absX < absY * 1.2) return
+              const now = Date.now()
+              if (now - lastWheelTsRef.current < 250) return
+              lastWheelTsRef.current = now
+              kickChromeAutoHide()
+              if (e.deltaX > 0) {
+                setPage((p) => {
+                  const next = Math.min(totalPages, p + 1)
+                  scrollToPage(next)
+                  return next
+                })
+              } else {
+                setPage((p) => {
+                  const next = Math.max(1, p - 1)
+                  scrollToPage(next)
+                  return next
+                })
+              }
+            }}
             onPointerDown={handleSwipeStart}
             onPointerMove={handleSwipeMove}
             onPointerUp={handleSwipeEnd}

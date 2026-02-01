@@ -8,11 +8,23 @@ type PdfViewerOverlayProps = {
   url: string
   title: string
   subtitle?: string
+  initialState?: {
+    page?: number
+    zoom?: number
+    scrollTop?: number
+  }
   onClose: () => void
-  onPostImage?: (file: File) => void | Promise<void>
+  onPostImage?: (
+    file: File,
+    snapshot?: {
+      page: number
+      zoom: number
+      scrollTop: number
+    }
+  ) => void | Promise<void>
 }
 
-export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, onPostImage }: PdfViewerOverlayProps) {
+export default function PdfViewerOverlay({ open, url, title, subtitle, initialState, onClose, onPostImage }: PdfViewerOverlayProps) {
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(110)
   const [loading, setLoading] = useState(false)
@@ -32,6 +44,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+  const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
     pointerId: number | null
     startX: number
@@ -156,13 +169,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
         alert('Unable to capture the current PDF view.')
         return
       }
-      await onPostImage(file)
+      const snapshot = {
+        page: safePage,
+        zoom: effectiveZoom,
+        scrollTop: scrollContainerRef.current?.scrollTop ?? 0,
+      }
+      await onPostImage(file, snapshot)
     } catch (err: any) {
       alert(err?.message || 'Failed to capture PDF view')
     } finally {
       setPostBusy(false)
     }
-  }, [captureVisibleCanvas, error, kickChromeAutoHide, loading, onPostImage, postBusy])
+  }, [captureVisibleCanvas, error, kickChromeAutoHide, loading, onPostImage, postBusy, safePage, effectiveZoom])
 
   const handleSwipeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType && e.pointerType !== 'mouse') return
@@ -356,7 +374,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
-    setPage(1)
+    setPage(initialState?.page ?? 1)
+    setZoom(initialState?.zoom ?? 110)
+    restoredScrollRef.current = false
 
     ;(async () => {
       try {
@@ -411,7 +431,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
         // ignore
       }
     }
-  }, [open, url])
+  }, [open, url, initialState?.page, initialState?.zoom])
 
   useEffect(() => {
     if (open) return
@@ -515,12 +535,23 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     ;(async () => {
       if (cancelled) return
       await renderAllPages()
+      if (cancelled || !open) return
+      if (!initialState) return
+      if (restoredScrollRef.current) return
+      const scrollEl = scrollContainerRef.current
+      if (!scrollEl) return
+      if (typeof initialState.scrollTop === 'number') {
+        scrollEl.scrollTop = initialState.scrollTop
+      } else if (typeof initialState.page === 'number') {
+        scrollToPage(initialState.page)
+      }
+      restoredScrollRef.current = true
     })()
     return () => {
       cancelled = true
       cancelRenderTasks()
     }
-  }, [renderAllPages, cancelRenderTasks])
+  }, [renderAllPages, cancelRenderTasks, initialState, open, scrollToPage])
 
   if (!open) return null
 

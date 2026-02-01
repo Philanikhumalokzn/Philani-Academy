@@ -621,10 +621,31 @@ export default function Dashboard() {
     setChallengeImageEditOpen(true)
   }, [])
 
-  const closeCreateOverlay = useCallback(() => {
+  const closeCreateOverlay = useCallback((options?: { skipPdfRestore?: boolean }) => {
     setCreateOverlayOpen(false)
     setEditingChallengeId(null)
     setChallengeAudiencePickerOpen(false)
+
+    if (options?.skipPdfRestore) {
+      pdfViewerRestorePendingRef.current = false
+      pdfViewerRestoreRef.current = null
+      return
+    }
+
+    if (pdfViewerRestorePendingRef.current && pdfViewerRestoreRef.current) {
+      const restore = pdfViewerRestoreRef.current
+      pdfViewerRestorePendingRef.current = false
+      pdfViewerRestoreRef.current = null
+      setPdfViewerTitle(restore.title)
+      setPdfViewerSubtitle(restore.subtitle)
+      setPdfViewerUrl(restore.url)
+      setPdfViewerInitialState({
+        page: restore.page,
+        zoom: restore.zoom,
+        scrollTop: restore.scrollTop,
+      })
+      setPdfViewerOpen(true)
+    }
   }, [])
 
   const postChallenge = useCallback(async () => {
@@ -680,7 +701,7 @@ export default function Dashboard() {
         setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
       }
 
-      closeCreateOverlay()
+      closeCreateOverlay({ skipPdfRestore: true })
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
       setChallengeAudienceDraft('public')
@@ -1009,10 +1030,23 @@ export default function Dashboard() {
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+  type PdfViewerSnapshot = {
+    page: number
+    zoom: number
+    scrollTop: number
+  }
+  type PdfViewerRestoreState = PdfViewerSnapshot & {
+    url: string
+    title: string
+    subtitle: string
+  }
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
   const [pdfViewerUrl, setPdfViewerUrl] = useState('')
   const [pdfViewerTitle, setPdfViewerTitle] = useState('')
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
+  const [pdfViewerInitialState, setPdfViewerInitialState] = useState<PdfViewerSnapshot | null>(null)
+  const pdfViewerRestoreRef = useRef<PdfViewerRestoreState | null>(null)
+  const pdfViewerRestorePendingRef = useRef(false)
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
@@ -2561,10 +2595,22 @@ export default function Dashboard() {
     // Avoid showing filepaths/URLs in the UI.
     setPdfViewerSubtitle('')
     setPdfViewerUrl(item.url)
+    setPdfViewerInitialState(null)
+    pdfViewerRestoreRef.current = null
+    pdfViewerRestorePendingRef.current = false
     setPdfViewerOpen(true)
   }, [])
 
-  const handlePdfPostCapture = useCallback((file: File) => {
+  const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
+    pdfViewerRestoreRef.current = {
+      url: pdfViewerUrl,
+      title: pdfViewerTitle,
+      subtitle: pdfViewerSubtitle,
+      page: snapshot?.page ?? 1,
+      zoom: snapshot?.zoom ?? 110,
+      scrollTop: snapshot?.scrollTop ?? 0,
+    }
+    pdfViewerRestorePendingRef.current = true
     setPdfViewerOpen(false)
     setCreateKind('quiz')
     setEditingChallengeId(null)
@@ -2576,7 +2622,7 @@ export default function Dashboard() {
     setCreateOverlayOpen(true)
     setChallengeImageEditFile(file)
     setChallengeImageEditOpen(true)
-  }, [])
+  }, [pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -9386,7 +9432,8 @@ export default function Dashboard() {
           url={pdfViewerUrl}
           title={pdfViewerTitle}
           subtitle={pdfViewerSubtitle || undefined}
-                onPostImage={handlePdfPostCapture}
+          initialState={pdfViewerInitialState || undefined}
+          onPostImage={handlePdfPostCapture}
           onClose={() => setPdfViewerOpen(false)}
         />
       ) : null}

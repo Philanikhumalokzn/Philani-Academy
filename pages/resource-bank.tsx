@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
@@ -57,6 +58,16 @@ export default function ResourceBankPage() {
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const buildResourceBlobPath = (grade: GradeValue, originalName: string) => {
+    const safe = String(originalName || 'resource')
+      .replace(/\\/g, '_')
+      .replace(/\//g, '_')
+      .replace(/[^a-z0-9._-]+/gi, '_')
+      .slice(0, 120)
+    const stamp = Date.now()
+    return `resource-bank/${String(grade)}/${stamp}_${safe}`
+  }
 
   const effectiveGrade: GradeValue | undefined = useMemo(() => {
     const profileGrade = normalizeGradeInput(profile?.grade)
@@ -141,6 +152,58 @@ export default function ResourceBankPage() {
     setError(null)
 
     try {
+      // Vercel serverless functions have a small request payload limit (often ~4.5 MB).
+      // Upload larger files directly to Vercel Blob from the browser.
+      const shouldUseClientUpload = file.size > 4.0 * 1024 * 1024
+
+      if (shouldUseClientUpload) {
+        const blobPath = buildResourceBlobPath(effectiveGrade, file.name)
+
+        let blob: any
+        try {
+          blob = await upload(blobPath, file, {
+            access: 'public',
+            handleUploadUrl: '/api/resources/blob-upload',
+          })
+        } catch (uploadErr: any) {
+          const msg = uploadErr?.message || 'Direct upload failed'
+          throw new Error(`${msg}. If you're running locally, ensure Vercel Blob is configured (BLOB_READ_WRITE_TOKEN).`)
+        }
+
+        const registerRes = await fetch('/api/resources/register', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: blob?.url,
+            filename: blob?.pathname || blobPath,
+            contentType: file.type || null,
+            size: file.size,
+            title: title.trim() ? title.trim() : undefined,
+            tag: tag.trim() ? tag.trim() : undefined,
+            grade: role === 'admin' ? effectiveGrade : undefined,
+            parse: parseOnUpload ? '1' : undefined,
+            aiNormalize: parseOnUpload && aiNormalizeOnUpload ? '1' : undefined,
+          }),
+        })
+
+        const registerData = await registerRes.json().catch(() => ({}))
+        if (!registerRes.ok) {
+          throw new Error(registerData?.message || `Upload failed (${registerRes.status})`)
+        }
+
+        if (parseOnUpload && typeof registerData?.parseError === 'string' && registerData.parseError.trim()) {
+          setError(`Parse failed: ${registerData.parseError}`)
+        }
+
+        setTitle('')
+        setTag('')
+        if (fileInputRef.current) fileInputRef.current.value = ''
+
+        await fetchItems(effectiveGrade)
+        return
+      }
+
       const form = new FormData()
       form.append('file', file)
       if (title.trim()) form.append('title', title.trim())

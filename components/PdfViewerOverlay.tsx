@@ -25,13 +25,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
   const hideChromeTimerRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
-  const wheelAccumRef = useRef(0)
-  const wheelResetTimerRef = useRef<number | null>(null)
-  const fitWidthResetTimerRef = useRef<number | null>(null)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
-  const [fitWidthEnabled, setFitWidthEnabled] = useState(true)
   const swipeStateRef = useRef<{
     pointerId: number | null
     startX: number
@@ -91,23 +87,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     const canvas = pageCanvasRefs.current.get(pageNum)
     if (!canvas) return
     canvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
-
-  const activateHorizontalPan = useCallback(() => {
-    setFitWidthEnabled(false)
-    if (fitWidthResetTimerRef.current) {
-      window.clearTimeout(fitWidthResetTimerRef.current)
-    }
-    fitWidthResetTimerRef.current = window.setTimeout(() => {
-      setFitWidthEnabled(true)
-      fitWidthResetTimerRef.current = null
-    }, 800)
-  }, [])
-
-  const canScrollHorizontally = useCallback(() => {
-    const scrollEl = scrollContainerRef.current
-    if (!scrollEl) return false
-    return scrollEl.scrollWidth - scrollEl.clientWidth > 2
   }, [])
 
   const updatePageFromScroll = useCallback(() => {
@@ -222,8 +201,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     if (absX < absY * 1.2) return
 
     state.handled = true
-    activateHorizontalPan()
-    if (canScrollHorizontally()) return
     kickChromeAutoHide()
     if (dx < 0) {
       setPage((p) => {
@@ -238,7 +215,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
         return next
       })
     }
-  }, [activateHorizontalPan, canScrollHorizontally, kickChromeAutoHide, scrollToPage, totalPages])
+  }, [kickChromeAutoHide, scrollToPage, totalPages])
 
   const handleSwipeEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType && e.pointerType !== 'mouse') return
@@ -280,8 +257,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       const absY = Math.abs(dy)
       if (absX < 40) return
       if (absX < absY * 1.2) return
-      activateHorizontalPan()
-      if (canScrollHorizontally()) return
       kickChromeAutoHide()
       if (dx < 0) {
         setPage((p) => {
@@ -309,7 +284,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [activateHorizontalPan, canScrollHorizontally, kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -437,7 +412,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       const baseScale = effectiveZoom / 100
       const baseViewport = pageObj.getViewport({ scale: baseScale })
       const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
-      const fitScale = fitWidthEnabled && availableWidth
+      const fitScale = availableWidth
         ? clamp(availableWidth / baseViewport.width, 0.5, 2)
         : 1
       const finalScale = baseScale * fitScale
@@ -457,7 +432,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     } catch (err: any) {
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, effectiveZoom, contentSize.width, fitWidthEnabled])
+  }, [pdfDoc, open, effectiveZoom, contentSize.width])
 
   const renderAllPages = useCallback(async () => {
     if (!pdfDoc || !open) return
@@ -707,37 +682,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           <div
             ref={scrollContainerRef}
             className="absolute inset-0 z-0 overflow-auto"
-            style={{ touchAction: fitWidthEnabled ? 'pan-y' : 'pan-y pan-x', WebkitOverflowScrolling: 'touch' }}
+            style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}
             onWheel={(e) => {
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)
-              const isShiftHorizontal = e.shiftKey && absY > absX
-              const primaryDelta = isShiftHorizontal ? e.deltaY : e.deltaX
-              const primaryAbs = Math.abs(primaryDelta)
-              const isHorizontal = isShiftHorizontal || (absX > absY * 1.1)
-              if (!isHorizontal || primaryAbs < 8) return
-
-              activateHorizontalPan()
-              if (canScrollHorizontally()) return
-              e.preventDefault()
-              wheelAccumRef.current += primaryDelta
-              if (wheelResetTimerRef.current) {
-                window.clearTimeout(wheelResetTimerRef.current)
-              }
-              wheelResetTimerRef.current = window.setTimeout(() => {
-                wheelAccumRef.current = 0
-                wheelResetTimerRef.current = null
-              }, 120)
-
+              if (absX < 30 || absX < absY * 1.2) return
               const now = Date.now()
-              if (now - lastWheelTsRef.current < 200) return
-              if (Math.abs(wheelAccumRef.current) < 36) return
-
+              if (now - lastWheelTsRef.current < 250) return
               lastWheelTsRef.current = now
-              const delta = wheelAccumRef.current
-              wheelAccumRef.current = 0
               kickChromeAutoHide()
-              if (delta > 0) {
+              if (e.deltaX > 0) {
                 setPage((p) => {
                   const next = Math.min(totalPages, p + 1)
                   scrollToPage(next)

@@ -384,24 +384,10 @@ export default function PublicUserProfilePage() {
                           <span>{displayName.slice(0, 1).toUpperCase()}</span>
                         )}
                       </div>
-                      {profileVerified ? (
-                        <span className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      ) : null}
                     </div>
                     <div>
                       <h1 className="text-3xl font-semibold flex items-center gap-2">
                         <span>{displayName}</span>
-                        {profileVerified ? (
-                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                              <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                            </svg>
-                          </span>
-                        ) : null}
                       </h1>
                       <p className="text-sm text-blue-100/80">
                         {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}

@@ -3815,6 +3815,9 @@ export default function Dashboard() {
                 const authorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
                 const authorRole = String(p?.createdBy?.role || '').toLowerCase()
                 const authorVerified = authorRole === 'admin' || authorRole === 'teacher'
+                const authorHasAvatar = Boolean(authorAvatar)
+                const showAuthorAvatarTick = authorVerified && authorHasAvatar
+                const showAuthorNameTick = authorVerified && !authorHasAvatar
                 const prompt = (p?.prompt || '').trim()
                 const imageUrl = typeof p?.imageUrl === 'string' ? p.imageUrl.trim() : ''
                 const myAttemptCount = typeof p?.myAttemptCount === 'number' ? p.myAttemptCount : 0
@@ -3842,7 +3845,7 @@ export default function Dashboard() {
                                   <span className="text-xs font-semibold text-white">{authorName.slice(0, 1).toUpperCase()}</span>
                                 )}
                               </div>
-                              {authorVerified ? (
+                              {showAuthorAvatarTick ? (
                                 <span
                                   className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                   aria-label="Verified"
@@ -3860,7 +3863,7 @@ export default function Dashboard() {
                               <UserLink userId={authorId} className="text-sm font-semibold text-white hover:underline truncate" title="View profile">
                                 {authorName}
                               </UserLink>
-                              {authorVerified ? (
+                              {showAuthorNameTick ? (
                                 <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                   <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
                                     <path
@@ -8442,6 +8445,9 @@ export default function Dashboard() {
                             : m.user.grade
                               ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
                               : 'Student'
+                      const showRoleTick = verified && Boolean(label)
+                      const showAvatarTick = verified && !showRoleTick && Boolean(m.user.avatar)
+                      const showNameTick = verified && !showRoleTick && !m.user.avatar
                       return (
                         <div
                           key={m.membershipId}
@@ -8458,7 +8464,7 @@ export default function Dashboard() {
                                     <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
                                   )}
                                 </div>
-                                {verified ? (
+                                {showAvatarTick ? (
                                   <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
@@ -8472,15 +8478,24 @@ export default function Dashboard() {
                                 <UserLink userId={m.user.id} className="font-semibold text-white truncate hover:underline" title="View profile">
                                   {m.user.name}
                                 </UserLink>
-                                {verified && (
+                                {showNameTick ? (
                                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                                     </svg>
                                   </span>
-                                )}
+                                ) : null}
                               </div>
-                              <div className="text-xs muted truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</div>
+                              <div className="text-xs muted truncate inline-flex items-center gap-1">
+                                <span className="truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</span>
+                                {showRoleTick ? (
+                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                    </svg>
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -8509,13 +8524,6 @@ export default function Dashboard() {
                               <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
                             )}
                           </div>
-                          {profilePeek.verified ? (
-                            <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                              </svg>
-                            </span>
-                          ) : null}
                         </div>
                       </UserLink>
                       <div className="min-w-0">
@@ -8523,13 +8531,6 @@ export default function Dashboard() {
                           <UserLink userId={profilePeek.id} className="font-semibold text-white truncate hover:underline" title="View profile">
                             {profilePeek.name}
                           </UserLink>
-                          {profilePeek.verified && (
-                            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                              </svg>
-                            </span>
-                          )}
                         </div>
                         <div className="text-xs muted">
                           {profilePeek.role === 'admin'
@@ -8540,6 +8541,13 @@ export default function Dashboard() {
                                 ? `Student (${gradeToLabel(profilePeek.grade as GradeValue)})`
                                 : 'Student'}
                           {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
+                          {profilePeek.verified ? (
+                            <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                              </svg>
+                            </span>
+                          ) : null}
                         </div>
                         {profilePeek.statusBio && <div className="mt-1 text-sm text-white/85">{profilePeek.statusBio}</div>}
                       </div>
@@ -8592,6 +8600,11 @@ export default function Dashboard() {
                     const r = roleLabel(u?.role)
                     if (r) chips.push(r)
                     const verified = Boolean(u?.verified)
+                    const hasRoleChip = Boolean(r)
+                    const hasAvatar = Boolean(u?.avatar)
+                    const showRoleTick = verified && hasRoleChip
+                    const showAvatarTick = verified && !showRoleTick && hasAvatar
+                    const showNameTick = verified && !showRoleTick && !hasAvatar
                     return (
                       <UserLink
                         key={u.id}
@@ -8610,7 +8623,7 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            {verified ? (
+                            {showAvatarTick ? (
                               <div
                                 className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                 title="Verified"
@@ -8626,7 +8639,7 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold text-white truncate flex items-center gap-2">
                                 <span className="truncate">{u.name}</span>
-                                {verified ? (
+                                {showNameTick ? (
                                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
@@ -8637,7 +8650,16 @@ export default function Dashboard() {
                               {chips.length > 0 ? (
                                 <div className="shrink-0 flex flex-wrap gap-1">
                                   {chips.slice(0, 2).map((c) => (
-                                    <span key={c} className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5">{c}</span>
+                                    <span key={c} className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 inline-flex items-center gap-1">
+                                      <span>{c}</span>
+                                      {showRoleTick && c === r ? (
+                                        <span className="inline-flex items-center justify-center h-3 w-3 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                                          </svg>
+                                        </span>
+                                      ) : null}
+                                    </span>
                                   ))}
                                 </div>
                               ) : null}

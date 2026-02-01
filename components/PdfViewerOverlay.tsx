@@ -40,6 +40,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     lastY: number
     handled: boolean
   }>({ pointerId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, handled: false })
+  const pinchStateRef = useRef<{
+    active: boolean
+    startDist: number
+    startZoom: number
+  }>({ active: false, startDist: 0, startZoom: 110 })
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -218,7 +223,21 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
 
     const touchState = { active: false, startX: 0, startY: 0, lastX: 0, lastY: 0 }
 
+    const getPinchDistance = (touches: TouchList) => {
+      const a = touches[0]
+      const b = touches[1]
+      if (!a || !b) return 0
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    }
+
     const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchStateRef.current.active = true
+        pinchStateRef.current.startDist = getPinchDistance(e.touches)
+        pinchStateRef.current.startZoom = effectiveZoom
+        touchState.active = false
+        return
+      }
       if (e.touches.length !== 1) return
       const t = e.touches[0]
       touchState.active = true
@@ -229,6 +248,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     }
 
     const onTouchMove = (e: TouchEvent) => {
+      if (pinchStateRef.current.active && e.touches.length === 2) {
+        e.preventDefault()
+        const dist = getPinchDistance(e.touches)
+        if (!dist || !pinchStateRef.current.startDist) return
+        const scale = dist / pinchStateRef.current.startDist
+        const nextZoom = clamp(Math.round(pinchStateRef.current.startZoom * scale), 50, 220)
+        setZoom(nextZoom)
+        kickChromeAutoHide()
+        return
+      }
       if (!touchState.active || e.touches.length !== 1) return
       const t = e.touches[0]
       touchState.lastX = t.clientX
@@ -236,6 +265,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     }
 
     const onTouchEnd = () => {
+      if (pinchStateRef.current.active) {
+        pinchStateRef.current.active = false
+        return
+      }
       if (!touchState.active) return
       touchState.active = false
       const dx = touchState.lastX - touchState.startX
@@ -261,7 +294,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
     }
 
     el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
     el.addEventListener('touchend', onTouchEnd)
     el.addEventListener('touchcancel', onTouchEnd)
 
@@ -271,7 +304,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [effectiveZoom, kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -523,36 +556,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           </div>
 
           <div
-            className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 flex items-center justify-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
-            <div />
-
-            <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap justify-self-center">
-              <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">
-                <button
-                  type="button"
-                  className="px-1.5 py-1 rounded-full hover:bg-slate-100"
-                  onClick={() => {
-                    kickChromeAutoHide()
-                    setZoom((z) => clamp(z - 10, 50, 220))
-                  }}
-                >
-                  −
-                </button>
-                <span className="min-w-[40px] sm:min-w-[48px] text-center">{effectiveZoom}%</span>
-                <button
-                  type="button"
-                  className="px-1.5 py-1 rounded-full hover:bg-slate-100"
-                  onClick={() => {
-                    kickChromeAutoHide()
-                    setZoom((z) => clamp(z + 10, 50, 220))
-                  }}
-                >
-                  +
-                </button>
-              </div>
-
+            <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
               <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">
                 <button
                   type="button"
@@ -602,9 +609,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
                   <span className="sm:hidden" aria-hidden="true">▶</span>
                 </button>
               </div>
-            </div>
 
-            <div className="flex items-center justify-end gap-1 sm:gap-2 flex-nowrap justify-self-end">
               <a
                 href={url}
                 target="_blank"

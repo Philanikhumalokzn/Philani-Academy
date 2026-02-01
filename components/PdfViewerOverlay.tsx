@@ -536,12 +536,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           </div>
 
           <div
-            className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 flex items-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
-            <div className="flex-1" />
+            <div />
 
-            <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
+            <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap justify-self-center">
               <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">
                 <button
                   type="button"
@@ -617,7 +617,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
               </div>
             </div>
 
-            <div className="flex-1 flex items-center justify-end gap-1 sm:gap-2 flex-nowrap">
+            <div className="flex items-center justify-end gap-1 sm:gap-2 flex-nowrap justify-self-end">
               <a
                 href={url}
                 target="_blank"

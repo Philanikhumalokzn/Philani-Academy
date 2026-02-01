@@ -526,13 +526,20 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           onClick={(e) => e.stopPropagation()}
         >
           <div
+            className={`absolute left-3 right-3 top-3 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-center transition-opacity duration-200 ${chromeClassName} pointer-events-none`}
+            aria-hidden={!chromeVisible}
+          >
+            <div className="max-w-[82vw] text-center">
+              <div className="text-sm sm:text-base font-semibold text-slate-900 truncate drop-shadow-sm">{title}</div>
+              {subtitle ? <div className="text-[11px] sm:text-xs text-slate-600 truncate drop-shadow-sm">{subtitle}</div> : null}
+            </div>
+          </div>
+
+          <div
             className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 flex items-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
-            <div className="min-w-0 flex-1 max-w-[35vw] sm:max-w-[45vw]">
-              <div className="font-semibold text-slate-900 truncate drop-shadow-sm">{title}</div>
-              {subtitle ? <div className="text-[11px] text-slate-600 truncate hidden sm:block drop-shadow-sm">{subtitle}</div> : null}
-            </div>
+            <div className="flex-1" />
 
             <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
               <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">

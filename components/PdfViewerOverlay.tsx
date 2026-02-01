@@ -526,7 +526,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
           onClick={(e) => e.stopPropagation()}
         >
           <div
-            className={`absolute left-2 right-2 top-2 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-between gap-1 sm:gap-2 flex-nowrap text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 flex items-center justify-between gap-1 sm:gap-2 flex-nowrap text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
           >
             <div className="min-w-0 flex-1 max-w-[35vw] sm:max-w-[45vw]">
@@ -659,7 +659,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, onClose, 
 
           {onPostImage ? (
             <div
-              className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 transition-opacity duration-200 ${chromeClassName}`}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 z-20 transition-opacity duration-200 ${chromeClassName}`}
               aria-hidden={!chromeVisible}
             >
               <button

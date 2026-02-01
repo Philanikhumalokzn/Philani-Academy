@@ -293,7 +293,7 @@ export default function Dashboard() {
   }, [formatSessionDate])
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
-  const { queueRestore, discardRestore } = useOverlayRestore()
+  const { queueRestore, discardRestore, popRestore, hasRestore } = useOverlayRestore()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
@@ -704,6 +704,22 @@ export default function Dashboard() {
     setChallengeImageEditOpen(false)
     setChallengeImageEditFile(null)
   }, [])
+
+  const cancelChallengeImageEdit = useCallback(() => {
+    closeChallengeImageEdit()
+    if (!createOverlayOpen) return
+    if (!hasRestore()) return
+    closeCreateOverlay()
+    const restore = popRestore()
+    if (!restore) return
+    window.setTimeout(() => {
+      try {
+        restore()
+      } catch {
+        // ignore
+      }
+    }, 0)
+  }, [closeChallengeImageEdit, createOverlayOpen, hasRestore, closeCreateOverlay, popRestore])
 
   const confirmChallengeImageEdit = useCallback(async (file: File) => {
     try {
@@ -9730,7 +9746,7 @@ export default function Dashboard() {
         open={challengeImageEditOpen}
         file={challengeImageEditFile}
         title="Edit screenshot"
-        onCancel={closeChallengeImageEdit}
+        onCancel={cancelChallengeImageEdit}
         onUseOriginal={(file: File) => void confirmChallengeImageEdit(file)}
         onConfirm={(file: File) => void confirmChallengeImageEdit(file)}
         confirmLabel="Upload"

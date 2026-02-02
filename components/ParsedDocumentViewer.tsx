@@ -53,6 +53,14 @@ const normalizeLatexForRender = (value: string) => {
   return next
 }
 
+const escapeHtml = (value: string) =>
+  (value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
 const renderInlineMath = (inputRaw: string) => {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
   if (!input) return [input]
@@ -168,6 +176,203 @@ const renderKatex = (expr: string, display: boolean) => {
   } catch {
     return <span>{display ? `$$${cleaned}$$` : `$${cleaned}$`}</span>
   }
+}
+
+const renderKatexHtml = (expr: string, display: boolean) => {
+  const normalize = (value: string) => {
+    const trimmed = (value || '').trim()
+    if (!trimmed) return ''
+    const strip = (v: string, open: string, close: string) =>
+      v.startsWith(open) && v.endsWith(close)
+        ? v.slice(open.length, v.length - close.length).trim()
+        : v
+    let next = trimmed
+    next = strip(next, '$$', '$$')
+    next = strip(next, '$', '$')
+    next = strip(next, '\\[', '\\]')
+    next = strip(next, '\\(', '\\)')
+    return normalizeLatexForRender(next.trim())
+  }
+
+  const cleaned = normalize(expr)
+  if (!cleaned) return ''
+  try {
+    return renderToString(cleaned, { displayMode: display, throwOnError: false })
+  } catch {
+    const fallback = display ? `$$${cleaned}$$` : `$${cleaned}$`
+    return `<span>${escapeHtml(fallback)}</span>`
+  }
+}
+
+const renderInlineMathHtml = (inputRaw: string) => {
+  const input = typeof inputRaw === 'string' ? inputRaw : ''
+  if (!input) return ''
+
+  const nodes: InlineNode[] = []
+  let i = 0
+  const MAX_MATH_SEGMENTS = 24
+  const MAX_MATH_CHARS = 2000
+  let segments = 0
+
+  const pushText = (s: string) => {
+    if (!s) return
+    const last = nodes[nodes.length - 1]
+    if (typeof last === 'string') nodes[nodes.length - 1] = last + s
+    else nodes.push(s)
+  }
+
+  const tryReadDelimited = (open: string, close: string, display: boolean) => {
+    if (!input.startsWith(open, i)) return false
+    const start = i + open.length
+    const end = input.indexOf(close, start)
+    if (end < 0) return false
+    const expr = input.slice(start, end)
+    i = end + close.length
+
+    if (segments >= MAX_MATH_SEGMENTS) {
+      pushText(open + expr + close)
+      return true
+    }
+    const trimmed = expr.trim()
+    if (!trimmed) {
+      pushText(open + expr + close)
+      return true
+    }
+    if (trimmed.length > MAX_MATH_CHARS) {
+      pushText(open + trimmed.slice(0, MAX_MATH_CHARS) + close)
+      return true
+    }
+    segments += 1
+    nodes.push({ kind: 'katex', display, expr: trimmed })
+    return true
+  }
+
+  while (i < input.length) {
+    if (tryReadDelimited('$$', '$$', true)) continue
+    if (tryReadDelimited('\\[', '\\]', true)) continue
+    if (tryReadDelimited('\\(', '\\)', false)) continue
+
+    if (input[i] === '$' && (i === 0 || input[i - 1] !== '\\')) {
+      if (input[i + 1] === '$') {
+        pushText('$')
+        i += 1
+        continue
+      }
+      const start = i + 1
+      let end = start
+      while (end < input.length) {
+        if (input[end] === '$' && input[end - 1] !== '\\') break
+        end += 1
+      }
+      if (end < input.length && input[end] === '$') {
+        const expr = input.slice(start, end)
+        i = end + 1
+        if (segments >= MAX_MATH_SEGMENTS) {
+          pushText(`$${expr}$`)
+          continue
+        }
+        const trimmed = expr.trim()
+        if (!trimmed) {
+          pushText(`$${expr}$`)
+          continue
+        }
+        if (trimmed.length > MAX_MATH_CHARS) {
+          pushText(`$${trimmed.slice(0, MAX_MATH_CHARS)}$`)
+          continue
+        }
+        segments += 1
+        nodes.push({ kind: 'katex', display: false, expr: trimmed })
+        continue
+      }
+      pushText('$')
+      i += 1
+      continue
+    }
+
+    pushText(input[i])
+    i += 1
+  }
+
+  return nodes
+    .map((node) => {
+      if (typeof node === 'string') return escapeHtml(node)
+      return renderKatexHtml(node.expr, node.display)
+    })
+    .join('')
+}
+
+export function buildParsedDocumentHtml(parsedJson: ParsedDocument | null, fallbackText?: string) {
+  if (!parsedJson && !fallbackText) return ''
+
+  const title = (parsedJson?.displayTitle || parsedJson?.title || '').trim()
+  const sectionLabel = (parsedJson?.sectionLabel || '').trim()
+  const lines = Array.isArray(parsedJson?.lines) ? parsedJson?.lines : []
+  const text = typeof parsedJson?.text === 'string' ? parsedJson?.text : ''
+  const latex = typeof parsedJson?.latex === 'string' ? parsedJson?.latex : ''
+
+  const blocks: string[] = []
+
+  if (title) blocks.push(`<h1 class="title">${escapeHtml(title)}</h1>`)
+  if (sectionLabel) blocks.push(`<div class="section">${escapeHtml(sectionLabel)}</div>`)
+
+  if (lines.length > 0) {
+    const rendered = lines.slice(0, 250).map((line) => {
+      const lineText = typeof line.text === 'string' ? normalizeDisplayText(line.text).trim() : ''
+      const lineLatex = typeof line.latex_styled === 'string'
+        ? line.latex_styled.trim()
+        : typeof line.latex_simplified === 'string'
+        ? line.latex_simplified.trim()
+        : typeof line.latex === 'string'
+        ? line.latex.trim()
+        : ''
+
+      if (lineLatex) return `<div class="math-block">${renderKatexHtml(lineLatex, true)}</div>`
+      if (lineText && looksLikeLatex(lineText)) return `<div class="math-block">${renderKatexHtml(normalizeLatexForRender(lineText), true)}</div>`
+      return `<p class="paragraph">${renderInlineMathHtml(lineText)}</p>`
+    })
+    blocks.push(`<div class="lines">${rendered.join('')}</div>`)
+  } else if (text) {
+    const rendered = text.split(/\n{2,}/g).map((block) => {
+      const normalized = normalizeDisplayText(block)
+      if (looksLikeLatex(normalized)) {
+        return `<div class="math-block">${renderKatexHtml(normalized, true)}</div>`
+      }
+      return `<p class="paragraph">${renderInlineMathHtml(normalized)}</p>`
+    })
+    blocks.push(`<div class="lines">${rendered.join('')}</div>`)
+  } else if (latex) {
+    blocks.push(`<div class="math-block">${renderKatexHtml(latex, true)}</div>`)
+  } else if (fallbackText) {
+    blocks.push(`<pre class="fallback">${escapeHtml(fallbackText)}</pre>`)
+  } else {
+    blocks.push('<div class="empty">No parsed content available.</div>')
+  }
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title || 'Parsed Document')}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <style>
+      :root { color-scheme: light; }
+      body { font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; padding: 24px; color: #0f172a; background: #f8fafc; }
+      .container { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; }
+      .title { font-size: 22px; margin: 0 0 8px; }
+      .section { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #64748b; margin-bottom: 16px; }
+      .paragraph { font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
+      .math-block { margin: 12px 0; }
+      .fallback { white-space: pre-wrap; font-size: 12px; color: #475569; }
+      .empty { font-size: 14px; color: #64748b; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      ${blocks.join('')}
+    </div>
+  </body>
+</html>`
 }
 
 const looksLikeLatex = (value: string) => {

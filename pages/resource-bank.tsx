@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
+import ParsedDocumentViewer, { buildParsedDocumentHtml } from '../components/ParsedDocumentViewer'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 
 type ResourceBankItem = {
@@ -48,6 +48,7 @@ export default function ResourceBankPage() {
   const [parsedViewerTitle, setParsedViewerTitle] = useState('')
   const [parsedViewerText, setParsedViewerText] = useState('')
   const [parsedViewerJson, setParsedViewerJson] = useState<any | null>(null)
+  const [parsedDownloadBusy, setParsedDownloadBusy] = useState(false)
 
   const [parseDebugOpen, setParseDebugOpen] = useState(false)
   const [parseDebugItem, setParseDebugItem] = useState<ResourceBankItem | null>(null)
@@ -270,6 +271,34 @@ export default function ResourceBankPage() {
       setParsedViewerText(err?.message || 'Failed to load parsed output')
     } finally {
       setParsedViewerLoading(false)
+    }
+  }
+
+  const buildParsedHtmlFilename = (title: string) => {
+    const baseRaw = (title || 'parsed').toString().trim() || 'parsed'
+    const base = baseRaw.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_') || 'parsed'
+    return `${base}.html`
+  }
+
+  const downloadParsedHtml = async () => {
+    if (parsedDownloadBusy) return
+    setParsedDownloadBusy(true)
+    try {
+      const html = buildParsedDocumentHtml(parsedViewerJson, parsedViewerText)
+      if (!html) throw new Error('No parsed content available to download.')
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = buildParsedHtmlFilename(parsedViewerTitle || 'parsed')
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to download parsed output')
+    } finally {
+      setParsedDownloadBusy(false)
     }
   }
 
@@ -532,6 +561,22 @@ export default function ResourceBankPage() {
                 title="Parsed"
                 subtitle={parsedViewerTitle}
                 zIndexClassName="z-50"
+                rightActions={
+                  <button
+                    type="button"
+                    className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 hover:bg-white/20 text-white"
+                    onClick={() => void downloadParsedHtml()}
+                    aria-label="Download parsed"
+                    title={parsedDownloadBusy ? 'Preparing…' : 'Download parsed'}
+                    disabled={parsedDownloadBusy || parsedViewerLoading}
+                  >
+                    <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                      <path d="M10 3v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M6.5 9.5L10 12.8l3.5-3.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M4 16h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                }
                 onClose={() => setParsedViewerOpen(false)}
               >
                 {parsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}

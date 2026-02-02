@@ -273,7 +273,6 @@ export default function ResourceBankPage() {
     }
   }
 
-<<<<<<< HEAD
   const buildLatexFilename = (item: ResourceBankItem) => {
     const baseRaw = (item?.title || item?.filename || 'resource').toString().trim() || 'resource'
     const base = baseRaw.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_') || 'resource'
@@ -327,8 +326,6 @@ export default function ResourceBankPage() {
       setError(err?.message || 'Failed to download LaTeX')
     }
   }
-=======
->>>>>>> 4fdb3e0099ac22746e871b503d94fd1376006d6a
   const openParseDebug = (item: ResourceBankItem) => {
     setParseDebugItem(item)
     setParseDebugOpen(true)
@@ -389,10 +386,6 @@ export default function ResourceBankPage() {
     setPdfViewerUrl(item.url)
     setPdfViewerOpen(true)
   }
-<<<<<<< HEAD
-=======
-
->>>>>>> 4fdb3e0099ac22746e871b503d94fd1376006d6a
   const handleDelete = async (id: string) => {
     if (!id) return
     setError(null)

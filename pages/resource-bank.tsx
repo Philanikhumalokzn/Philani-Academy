@@ -18,6 +18,7 @@ type ResourceBankItem = {
   size?: number | null
   checksum?: string | null
   source?: string | null
+  parsedJson?: any | null
   createdById?: string | null
   createdAt: string
   parsedAt?: string | null
@@ -42,6 +43,7 @@ export default function ResourceBankPage() {
   const [uploading, setUploading] = useState(false)
   const [parseOnUpload, setParseOnUpload] = useState(false)
   const [aiNormalizeOnUpload, setAiNormalizeOnUpload] = useState(false)
+  const [convertDocxOnUpload, setConvertDocxOnUpload] = useState(false)
 
   const [parsedViewerOpen, setParsedViewerOpen] = useState(false)
   const [parsedViewerLoading, setParsedViewerLoading] = useState(false)
@@ -194,6 +196,7 @@ export default function ResourceBankPage() {
             grade: role === 'admin' ? effectiveGrade : undefined,
             parse: parseOnUpload ? '1' : undefined,
             aiNormalize: parseOnUpload && aiNormalizeOnUpload ? '1' : undefined,
+            convertDocx: convertDocxOnUpload ? '1' : undefined,
           }),
         })
 
@@ -221,6 +224,7 @@ export default function ResourceBankPage() {
       if (role === 'admin') form.append('grade', effectiveGrade)
       if (parseOnUpload) form.append('parse', '1')
       if (parseOnUpload && aiNormalizeOnUpload) form.append('aiNormalize', '1')
+      if (convertDocxOnUpload) form.append('convertDocx', '1')
 
       const res = await fetch('/api/resources', {
         method: 'POST',
@@ -659,6 +663,7 @@ export default function ResourceBankPage() {
                         onChange={(e) => {
                           const next = e.target.checked
                           setParseOnUpload(next)
+                          if (next) setConvertDocxOnUpload(false)
                           if (!next) setAiNormalizeOnUpload(false)
                         }}
                       />
@@ -672,6 +677,21 @@ export default function ResourceBankPage() {
                         disabled={!parseOnUpload}
                       />
                       AI post-normalize (Gemini)
+                    </label>
+                    <label className={`flex items-center gap-2 text-sm ${convertDocxOnUpload ? 'text-white/90' : 'text-white/40'} select-none`}>
+                      <input
+                        type="checkbox"
+                        checked={convertDocxOnUpload}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setConvertDocxOnUpload(next)
+                          if (next) {
+                            setParseOnUpload(false)
+                            setAiNormalizeOnUpload(false)
+                          }
+                        }}
+                      />
+                      Convert to DOCX (Mathpix)
                     </label>
                     <button
                       type="button"
@@ -731,6 +751,17 @@ export default function ResourceBankPage() {
                               Open
                             </a>
                           )}
+                          {item?.parsedJson?.docxUrl ? (
+                            <a
+                              href={item.parsedJson.docxUrl}
+                              className="btn btn-ghost"
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                            >
+                              Download DOCX
+                            </a>
+                          ) : null}
                           <a
                             href={item.url}
                             target="_blank"

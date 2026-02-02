@@ -93,6 +93,14 @@ function sanitizeFilename(original: string | undefined): string {
   return `${timestamp}_${safeName}${extension}`
 }
 
+function buildDocxFilename(original: string | undefined): string {
+  const fallback = 'resource'
+  const parsed = path.parse(original || fallback)
+  const safeName = (parsed.name || fallback).replace(/[^a-z0-9_-]+/gi, '_')
+  const timestamp = Date.now()
+  return `${timestamp}_${safeName}.docx`
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function extractLinesFromMathpix(data: any) {
@@ -228,6 +236,33 @@ async function fetchMathpixPdfOutputs(pdfId: string, appId: string, appKey: stri
   return { mmdText, linesJson }
 }
 
+async function pollMathpixPdfConversionDocx(pdfId: string, appId: string, appKey: string) {
+  const deadline = Date.now() + 180_000
+  while (true) {
+    if (Date.now() > deadline) throw new Error('Mathpix DOCX conversion timed out')
+
+    const res = await fetch(`https://api.mathpix.com/v3/converter/${encodeURIComponent(pdfId)}`, {
+      method: 'GET',
+      headers: { app_id: appId, app_key: appKey },
+    })
+
+    const data: any = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const errMsg = data?.error || data?.error_info || `Mathpix conversion status failed (${res.status})`
+      throw new Error(String(errMsg))
+    }
+
+    const status = String(data?.conversion_status?.docx?.status || '')
+    if (status === 'completed') return
+    if (status === 'error') {
+      const errMsg = data?.conversion_status?.docx?.error_info?.error || 'Mathpix DOCX conversion failed'
+      throw new Error(String(errMsg))
+    }
+
+    await sleep(1200)
+  }
+}
+
 async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string) {
   const maxAttempts = 12
   const delayMs = 1500
@@ -299,6 +334,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         createdAt: true,
         parsedAt: true,
         parseError: true,
+        parsedJson: true,
         createdBy: { select: { id: true, name: true, email: true, avatar: true } },
       },
     })
@@ -323,6 +359,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const parseField = fields.parse
       const parseRequestedRaw = Array.isArray(parseField) ? parseField[0] : parseField
       const parseRequested = ['1', 'true', 'yes', 'on'].includes(String(parseRequestedRaw || '').trim().toLowerCase())
+
+      const convertDocxField = fields.convertDocx
+      const convertDocxRaw = Array.isArray(convertDocxField) ? convertDocxField[0] : convertDocxField
+      const convertDocxRequested = ['1', 'true', 'yes', 'on'].includes(String(convertDocxRaw || '').trim().toLowerCase())
 
       const aiNormalizeField = fields.aiNormalize
       const aiNormalizeRaw = Array.isArray(aiNormalizeField) ? aiNormalizeField[0] : aiNormalizeField
@@ -382,7 +422,126 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let parseDebugPayload: any | null = null
       let parseDebugResponse: any | null = null
 
-      if (parseRequested) {
+      if (convertDocxRequested) {
+        try {
+          const appId = (process.env.MATHPIX_APP_ID || '').trim()
+          const appKey = (process.env.MATHPIX_APP_KEY || '').trim()
+          if (!appId || !appKey) {
+            throw new Error('Mathpix is not configured (missing MATHPIX_APP_ID or MATHPIX_APP_KEY)')
+          }
+
+          const mimeType = (uploadedFile.mimetype || '').toString()
+          const isPdf = mimeType === 'application/pdf' || (uploadedFile.originalFilename || '').toLowerCase().endsWith('.pdf')
+          if (!isPdf) throw new Error('DOCX conversion requires a PDF upload')
+
+          const fileSize = typeof uploadedFile.size === 'number' ? uploadedFile.size : 0
+          if (fileSize > 25 * 1024 * 1024) {
+            throw new Error('File is too large to convert (max 25 MB)')
+          }
+
+          const buildAbsoluteUrl = (value: string) => {
+            if (!value) return value
+            if (/^https?:\/\//i.test(value)) return value
+            const proto = (req.headers['x-forwarded-proto'] as string) || 'https'
+            const host = (req.headers['x-forwarded-host'] as string) || (req.headers.host as string) || ''
+            if (!host) return value
+            const pathOnly = value.startsWith('/') ? value : `/${value}`
+            return `${proto}://${host}${pathOnly}`
+          }
+
+          const pdfUrl = buildAbsoluteUrl(publicUrl)
+          if (!/^https?:\/\//i.test(pdfUrl)) {
+            throw new Error('Mathpix PDF conversion requires a public URL')
+          }
+
+          const pdfPayload = {
+            url: pdfUrl,
+            conversion_formats: { docx: true },
+            include_smiles: false,
+            math_inline_delimiters: ['$', '$'],
+            math_display_delimiters: ['$$', '$$'],
+            rm_spaces: true,
+          }
+          parseDebugPayload = { endpoint: '/v3/pdf', ...pdfPayload }
+
+          const submitRes = await fetch('https://api.mathpix.com/v3/pdf', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              app_id: appId,
+              app_key: appKey,
+            },
+            body: JSON.stringify(pdfPayload),
+          })
+
+          const submitData: any = await submitRes.json().catch(() => ({}))
+          if (!submitRes.ok) {
+            parseDebugResponse = submitData
+            const errMsg = submitData?.error || submitData?.error_info || `Mathpix PDF request failed (${submitRes.status})`
+            throw new Error(String(errMsg))
+          }
+
+          const pdfId = String(submitData?.pdf_id || submitData?.id || '').trim()
+          if (!pdfId) throw new Error('Mathpix PDF did not return a pdf_id')
+
+          // Wait for OCR to finish and docx conversion to complete
+          await pollMathpixPdfResult(pdfId, appId, appKey)
+          await pollMathpixPdfConversionDocx(pdfId, appId, appKey)
+
+          const docxRes = await fetch(`https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.docx`, {
+            method: 'GET',
+            headers: { app_id: appId, app_key: appKey },
+          })
+
+          if (!docxRes.ok) {
+            const errText = await docxRes.text().catch(() => '')
+            throw new Error(errText || `Failed to download docx (${docxRes.status})`)
+          }
+
+          const docxBuffer = Buffer.from(await docxRes.arrayBuffer())
+          const docxFilename = buildDocxFilename(uploadedFile.originalFilename)
+          const docxRelativePath = path.posix.join('resource-bank', String(grade), docxFilename).replace(/\\/g, '/')
+
+          let docxUrl = `/${docxRelativePath}`
+          if (blobToken) {
+            const blob = await put(docxRelativePath, docxBuffer, {
+              access: 'public',
+              token: blobToken,
+              contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              addRandomSuffix: false,
+            })
+            docxUrl = blob.url
+          } else {
+            const targetDir = path.join(process.cwd(), 'public', 'resource-bank', String(grade))
+            await fs.mkdir(targetDir, { recursive: true })
+            const destinationPath = path.join(targetDir, docxFilename)
+            await fs.writeFile(destinationPath, docxBuffer)
+          }
+
+          parsedJson = {
+            source: 'mathpix-docx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            docxUrl,
+            docxFilename,
+          }
+          parsedAt = new Date()
+        } catch (err: any) {
+          parseError = err?.message || 'DOCX conversion failed'
+          try {
+            console.error('Resource DOCX conversion failed', {
+              grade,
+              role,
+              filename: uploadedFile?.originalFilename || null,
+              mimeType: uploadedFile?.mimetype || null,
+              size: typeof uploadedFile?.size === 'number' ? uploadedFile.size : null,
+              error: err?.message || String(err),
+            })
+            if (err?.stack) console.error(err.stack)
+          } catch {
+            // ignore
+          }
+        }
+      } else if (parseRequested) {
         try {
           const appId = (process.env.MATHPIX_APP_ID || '').trim()
           const appKey = (process.env.MATHPIX_APP_KEY || '').trim()

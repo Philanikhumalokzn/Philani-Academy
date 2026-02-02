@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTapToPeek } from '../lib/useTapToPeek'
 import { createPortal } from 'react-dom'
 
 import AccountControlOverlay from './AccountControlOverlay'
@@ -58,11 +59,14 @@ export default function MobileTopChrome() {
   const { data: session, status } = useSession()
   const isVisible = useMobileTopChromeVisible(router.pathname, status === 'authenticated')
 
-  const [open, setOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [accountControlOpen, setAccountControlOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { visible: chromeOpen, peek: showChrome, setVisible: setChromeVisible, clearTimer: clearChromeTimer } = useTapToPeek({
+    autoHideMs: 2500,
+    defaultVisible: false,
+    lockVisible: notificationsOpen || accountControlOpen,
+  })
 
   const [unreadCount, setUnreadCount] = useState(0)
   const [announcements, setAnnouncements] = useState<AnnouncementLike[]>([])
@@ -360,43 +364,14 @@ export default function MobileTopChrome() {
     setNewNotificationIds(nextNew)
   }, [actionInvites, actionJoinRequests, activityFeed, announcements, claimedNotificationKey, isVisible, readSet, seenNotificationKey])
 
-  const showChrome = useCallback(() => {
-    setOpen(true)
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current)
-      hideTimeoutRef.current = null
-    }
-    // Keep chrome visible while notifications sheet is open.
-    if (!notificationsOpen) {
-      hideTimeoutRef.current = setTimeout(() => {
-        setOpen(false)
-        hideTimeoutRef.current = null
-      }, 1500)
-    }
-  }, [])
-
   useEffect(() => {
-    // If the notifications overlay is opened, keep the chrome visible.
-    if (!notificationsOpen) return
-    setOpen(true)
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current)
-      hideTimeoutRef.current = null
+    const handleRoute = () => {
+      clearChromeTimer()
+      setChromeVisible(false)
     }
-  }, [notificationsOpen])
-
-
-  useEffect(() => {
-    const handleRoute = () => setOpen(false)
     router.events.on('routeChangeStart', handleRoute)
     return () => router.events.off('routeChangeStart', handleRoute)
-  }, [router.events])
-
-  useEffect(() => {
-    return () => {
-      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
-    }
-  }, [])
+  }, [router.events, clearChromeTimer, setChromeVisible])
 
   if (!isVisible) return null
 
@@ -425,11 +400,7 @@ export default function MobileTopChrome() {
 
   const openNotifications = () => {
     setNotificationsOpen(true)
-    setOpen(true)
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current)
-      hideTimeoutRef.current = null
-    }
+    showChrome()
     acknowledgeNewNotifications()
     void loadActionNotifications()
   }
@@ -675,7 +646,7 @@ export default function MobileTopChrome() {
       {null}
       <div
         data-mobile-top-chrome
-        className={`fixed top-2 left-2 right-2 z-50 md:hidden transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed top-2 left-2 right-2 z-50 md:hidden transition-opacity duration-200 ${chromeOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto w-fit max-w-full rounded-2xl border border-white/15 bg-white/10 backdrop-blur px-2 py-2">
           <div className="flex items-center justify-center gap-2">
@@ -710,11 +681,8 @@ export default function MobileTopChrome() {
               onClick={() => {
                 closeNotifications()
                 setAccountControlOpen(true)
-                setOpen(true)
-                if (hideTimeoutRef.current) {
-                  clearTimeout(hideTimeoutRef.current)
-                  hideTimeoutRef.current = null
-                }
+                showChrome()
+                clearChromeTimer()
               }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

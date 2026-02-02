@@ -384,24 +384,10 @@ export default function PublicUserProfilePage() {
                           <span>{displayName.slice(0, 1).toUpperCase()}</span>
                         )}
                       </div>
-                      {profileVerified ? (
-                        <span className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/60 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      ) : null}
                     </div>
                     <div>
                       <h1 className="text-3xl font-semibold flex items-center gap-2">
                         <span>{displayName}</span>
-                        {profileVerified ? (
-                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                              <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                            </svg>
-                          </span>
-                        ) : null}
                       </h1>
                       <p className="text-sm text-blue-100/80">
                         {profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Learner'}
@@ -515,6 +501,22 @@ export default function PublicUserProfilePage() {
                         <div key={String(c.id)} className="rounded-xl border border-white/10 bg-white/5 p-3">
                           <div className="text-sm font-semibold">{c.title || 'Challenge'}</div>
                           {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+                          {c.prompt ? (
+                            <div className="mt-2 text-sm text-white/80 whitespace-pre-wrap break-words">
+                              {c.prompt}
+                            </div>
+                          ) : null}
+                          {c.imageUrl ? (
+                            <div className="mt-3">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={c.imageUrl}
+                                alt={c.title || 'Challenge image'}
+                                className="max-h-[260px] w-full rounded-lg border border-white/10 object-contain"
+                                loading="lazy"
+                              />
+                            </div>
+                          ) : null}
                           <div className="mt-2">
                             <Link href={href} className="btn btn-primary">
                               {buttonText}

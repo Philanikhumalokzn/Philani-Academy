@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
+import { useOverlayRestore } from '../lib/overlayRestore'
 
 let bodyScrollLockCount = 0
 let bodyPrevOverflow: string | null = null
@@ -11,6 +12,7 @@ export type FullScreenGlassOverlayProps = {
   onBackdropClick?: () => void
 
   closeDisabled?: boolean
+  restoreOnClose?: boolean
 
   panelClassName?: string
   frameClassName?: string
@@ -38,6 +40,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     onClose,
     onBackdropClick,
     closeDisabled,
+    restoreOnClose,
     panelClassName,
     frameClassName,
     mobileChromeIgnore,
@@ -54,6 +57,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   } = props
 
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+  const { popRestore } = useOverlayRestore()
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -72,18 +76,46 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     }
   }, [])
 
+  const runRestore = useCallback(() => {
+    if (restoreOnClose === false) return
+    const restore = popRestore()
+    if (!restore) return
+    window.setTimeout(() => {
+      try {
+        restore()
+      } catch {
+        // ignore
+      }
+    }, 0)
+  }, [popRestore, restoreOnClose])
+
+  const handleRequestClose = useCallback(() => {
+    if (closeDisabled) return
+    onClose()
+    runRestore()
+  }, [closeDisabled, onClose, runRestore])
+
+  const handleBackdropClick = closeDisabled ? undefined : () => {
+    if (onBackdropClick) {
+      onBackdropClick()
+    } else {
+      onClose()
+    }
+    runRestore()
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (closeDisabled) return
         e.preventDefault()
-        onClose()
+        handleRequestClose()
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [closeDisabled, onClose])
+  }, [closeDisabled, handleRequestClose])
 
   useEffect(() => {
     // Focus the close button for accessibility.
@@ -91,8 +123,6 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     const raf = requestAnimationFrame(() => closeBtnRef.current?.focus())
     return () => cancelAnimationFrame(raf)
   }, [])
-
-  const handleBackdropClick = closeDisabled ? undefined : (onBackdropClick || onClose)
 
   const overlayVariant = variant || 'dark'
   const rootPosition = position || 'fixed'
@@ -158,7 +188,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
                   ref={closeBtnRef}
                   type="button"
                   className={closeBtnClassName}
-                  onClick={onClose}
+                  onClick={handleRequestClose}
                   disabled={closeDisabled}
                   aria-label="Close"
                   title="Close"

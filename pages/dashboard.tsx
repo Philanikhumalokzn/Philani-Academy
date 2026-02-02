@@ -11,6 +11,7 @@ import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import TaskManageMenu from '../components/TaskManageMenu'
+import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -18,6 +19,8 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
+import { useTapToPeek } from '../lib/useTapToPeek'
+import { useOverlayRestore } from '../lib/overlayRestore'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -85,6 +88,18 @@ type LessonMaterial = {
   size?: number | null
   createdAt: string
   createdBy?: string | null
+}
+
+type ResourceBankItem = {
+  id: string
+  grade: GradeValue
+  title: string
+  url: string
+  filename?: string | null
+  contentType?: string | null
+  size?: number | null
+  createdAt: string
+  tag?: string | null
 }
 
 type LatexSave = {
@@ -278,6 +293,7 @@ export default function Dashboard() {
   }, [formatSessionDate])
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
+  const { queueRestore, discardRestore, popRestore, hasRestore } = useOverlayRestore()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
@@ -666,6 +682,7 @@ export default function Dashboard() {
         setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
       }
 
+      discardRestore()
       closeCreateOverlay()
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
@@ -681,12 +698,28 @@ export default function Dashboard() {
     } finally {
       setChallengePosting(false)
     }
-  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, closeCreateOverlay])
+  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, closeCreateOverlay, discardRestore])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)
     setChallengeImageEditFile(null)
   }, [])
+
+  const cancelChallengeImageEdit = useCallback(() => {
+    closeChallengeImageEdit()
+    if (!createOverlayOpen) return
+    if (!hasRestore()) return
+    closeCreateOverlay()
+    const restore = popRestore()
+    if (!restore) return
+    window.setTimeout(() => {
+      try {
+        restore()
+      } catch {
+        // ignore
+      }
+    }, 0)
+  }, [closeChallengeImageEdit, createOverlayOpen, hasRestore, closeCreateOverlay, popRestore])
 
   const confirmChallengeImageEdit = useCallback(async (file: File) => {
     try {
@@ -825,11 +858,10 @@ export default function Dashboard() {
     return !mobileHeroBgUrl.startsWith('data:image/svg+xml,')
   }, [mobileHeroBgUrl])
   const [mobileHeroBgDragActive, setMobileHeroBgDragActive] = useState(false)
-  const [mobileHeroBgEditVisible, setMobileHeroBgEditVisible] = useState(false)
+  const { visible: mobileHeroBgEditVisible, peek: showMobileHeroEdit } = useTapToPeek({ autoHideMs: 2500 })
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const heroBgInputRef = useRef<HTMLInputElement | null>(null)
   const themeBgInputRef = useRef<HTMLInputElement | null>(null)
-  const heroBgEditHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
 
@@ -992,6 +1024,20 @@ export default function Dashboard() {
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
+  const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
+  const [booksLoading, setBooksLoading] = useState(false)
+  const [booksError, setBooksError] = useState<string | null>(null)
+  const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+  type PdfViewerSnapshot = {
+    page: number
+    zoom: number
+    scrollTop: number
+  }
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
+  const [pdfViewerUrl, setPdfViewerUrl] = useState('')
+  const [pdfViewerTitle, setPdfViewerTitle] = useState('')
+  const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
+  const [pdfViewerInitialState, setPdfViewerInitialState] = useState<PdfViewerSnapshot | null>(null)
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
@@ -2153,25 +2199,6 @@ export default function Dashboard() {
     void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
   }, [router.isReady, router.query, router.pathname, selectedGroupId, loadGroupMembers])
 
-  const showMobileHeroEdit = useCallback(() => {
-    setMobileHeroBgEditVisible(true)
-    if (heroBgEditHideTimeoutRef.current) {
-      clearTimeout(heroBgEditHideTimeoutRef.current)
-      heroBgEditHideTimeoutRef.current = null
-    }
-    heroBgEditHideTimeoutRef.current = setTimeout(() => {
-      setMobileHeroBgEditVisible(false)
-      heroBgEditHideTimeoutRef.current = null
-    }, 2500)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (heroBgEditHideTimeoutRef.current) {
-        clearTimeout(heroBgEditHideTimeoutRef.current)
-      }
-    }
-  }, [])
 
   const toggleFullscreenLiveWindow = useCallback((id: string) => {
     setLiveWindows(prev => prev.map(win => {
@@ -2510,6 +2537,83 @@ export default function Dashboard() {
   const closeStudentQuickOverlay = useCallback(() => {
     setStudentQuickOverlay(null)
   }, [])
+
+  const isPdfResource = useCallback((item: ResourceBankItem) => {
+    const filename = (item.filename || '').toLowerCase()
+    const url = (item.url || '').toLowerCase()
+    const contentType = (item.contentType || '').toLowerCase()
+    return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
+  }, [])
+
+  const fetchBooksForGrade = useCallback(async () => {
+    if (status !== 'authenticated') {
+      setBooksItems([])
+      setBooksError('Sign in to view materials.')
+      return
+    }
+    if (!selectedGrade) {
+      setBooksItems([])
+      setBooksError('Select a grade to view materials.')
+      return
+    }
+
+    setBooksLoading(true)
+    setBooksError(null)
+    try {
+      const url = isAdmin
+        ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}`
+        : '/api/resources'
+      const res = await fetch(url, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load materials (${res.status})`)
+      const items = Array.isArray(data?.items) ? data.items : []
+      setBooksItems(items)
+    } catch (err: any) {
+      setBooksError(err?.message || 'Failed to load materials')
+      setBooksItems([])
+    } finally {
+      setBooksLoading(false)
+    }
+  }, [isAdmin, selectedGrade, status])
+
+  const openBooksOverlay = useCallback(() => {
+    setBooksOverlayOpen(true)
+    void fetchBooksForGrade()
+  }, [fetchBooksForGrade])
+
+  const openPdfViewer = useCallback((item: ResourceBankItem) => {
+    setPdfViewerTitle(item.title || 'Document')
+    // Avoid showing filepaths/URLs in the UI.
+    setPdfViewerSubtitle('')
+    setPdfViewerUrl(item.url)
+    setPdfViewerInitialState(null)
+    setPdfViewerOpen(true)
+  }, [])
+
+  const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
+    queueRestore(() => {
+      setPdfViewerTitle(pdfViewerTitle)
+      setPdfViewerSubtitle(pdfViewerSubtitle)
+      setPdfViewerUrl(pdfViewerUrl)
+      setPdfViewerInitialState({
+        page: snapshot?.page ?? 1,
+        zoom: snapshot?.zoom ?? 110,
+        scrollTop: snapshot?.scrollTop ?? 0,
+      })
+      setPdfViewerOpen(true)
+    })
+    setPdfViewerOpen(false)
+    setCreateKind('quiz')
+    setEditingChallengeId(null)
+    setChallengeAudiencePickerOpen(false)
+    setChallengeImageUrl(null)
+    setChallengeImageSourceFile(null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
+    setCreateOverlayOpen(true)
+    setChallengeImageEditFile(file)
+    setChallengeImageEditOpen(true)
+  }, [pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl, queueRestore])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3274,6 +3378,9 @@ export default function Dashboard() {
     const labelClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
+    const quickActionCount = isAdmin ? 7 : 6
+    const buttonWidth = `calc(100% / ${quickActionCount})`
+
     return (
       <section
         className="mobile-row-width w-full overflow-x-auto snap-x snap-mandatory"
@@ -3283,7 +3390,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('timeline')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           aria-label="Timeline"
           title="Timeline"
           onClick={() => openStudentQuickOverlay('timeline')}
@@ -3298,7 +3405,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('sessions')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('sessions')}
           aria-label="Sessions"
           title="Sessions"
@@ -3312,8 +3419,24 @@ export default function Dashboard() {
 
         <button
           type="button"
+          className={`${baseBtn} flex-none snap-start`}
+          style={{ width: buttonWidth }}
+          onClick={openBooksOverlay}
+          aria-label="Books & materials"
+          title="Books & materials"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M4 5.5V18a3 3 0 0 0 3 3h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <span className="text-[10px] leading-none opacity-80 text-white">Books</span>
+        </button>
+
+        <button
+          type="button"
           className={`${btnClass('groups')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('groups')}
           aria-label="Groups"
           title="Groups"
@@ -3330,7 +3453,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${baseBtn} relative flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={openNotificationsOverlay}
           aria-label="Notifications"
           title="Notifications"
@@ -3352,7 +3475,7 @@ export default function Dashboard() {
         <button
           type="button"
           className={`${btnClass('discover')} flex-none snap-start`}
-          style={{ width: 'calc(100% / 6)' }}
+          style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('discover')}
           aria-label="Discover"
           title="Discover"
@@ -3368,7 +3491,7 @@ export default function Dashboard() {
           <button
             type="button"
             className={`${baseBtn} flex-none snap-start`}
-            style={{ width: 'calc(100% / 6)' }}
+            style={{ width: buttonWidth }}
             onClick={() => openStudentQuickOverlay('admin')}
             aria-label="Admin tools"
             title="Admin tools"
@@ -3692,6 +3815,9 @@ export default function Dashboard() {
                 const authorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
                 const authorRole = String(p?.createdBy?.role || '').toLowerCase()
                 const authorVerified = authorRole === 'admin' || authorRole === 'teacher'
+                const authorHasAvatar = Boolean(authorAvatar)
+                const showAuthorAvatarTick = authorVerified && authorHasAvatar
+                const showAuthorNameTick = authorVerified && !authorHasAvatar
                 const prompt = (p?.prompt || '').trim()
                 const imageUrl = typeof p?.imageUrl === 'string' ? p.imageUrl.trim() : ''
                 const myAttemptCount = typeof p?.myAttemptCount === 'number' ? p.myAttemptCount : 0
@@ -3719,7 +3845,7 @@ export default function Dashboard() {
                                   <span className="text-xs font-semibold text-white">{authorName.slice(0, 1).toUpperCase()}</span>
                                 )}
                               </div>
-                              {authorVerified ? (
+                              {showAuthorAvatarTick ? (
                                 <span
                                   className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                   aria-label="Verified"
@@ -3737,7 +3863,7 @@ export default function Dashboard() {
                               <UserLink userId={authorId} className="text-sm font-semibold text-white hover:underline truncate" title="View profile">
                                 {authorName}
                               </UserLink>
-                              {authorVerified ? (
+                              {showAuthorNameTick ? (
                                 <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                   <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
                                     <path
@@ -8319,6 +8445,9 @@ export default function Dashboard() {
                             : m.user.grade
                               ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
                               : 'Student'
+                      const showRoleTick = verified && Boolean(label)
+                      const showAvatarTick = verified && !showRoleTick && Boolean(m.user.avatar)
+                      const showNameTick = verified && !showRoleTick && !m.user.avatar
                       return (
                         <div
                           key={m.membershipId}
@@ -8335,7 +8464,7 @@ export default function Dashboard() {
                                     <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
                                   )}
                                 </div>
-                                {verified ? (
+                                {showAvatarTick ? (
                                   <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
@@ -8349,15 +8478,24 @@ export default function Dashboard() {
                                 <UserLink userId={m.user.id} className="font-semibold text-white truncate hover:underline" title="View profile">
                                   {m.user.name}
                                 </UserLink>
-                                {verified && (
+                                {showNameTick ? (
                                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                                     </svg>
                                   </span>
-                                )}
+                                ) : null}
                               </div>
-                              <div className="text-xs muted truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</div>
+                              <div className="text-xs muted truncate inline-flex items-center gap-1">
+                                <span className="truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</span>
+                                {showRoleTick ? (
+                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                    </svg>
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -8386,13 +8524,6 @@ export default function Dashboard() {
                               <span className="text-base font-semibold">{(profilePeek.name || 'U').slice(0, 1).toUpperCase()}</span>
                             )}
                           </div>
-                          {profilePeek.verified ? (
-                            <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                              </svg>
-                            </span>
-                          ) : null}
                         </div>
                       </UserLink>
                       <div className="min-w-0">
@@ -8400,13 +8531,6 @@ export default function Dashboard() {
                           <UserLink userId={profilePeek.id} className="font-semibold text-white truncate hover:underline" title="View profile">
                             {profilePeek.name}
                           </UserLink>
-                          {profilePeek.verified && (
-                            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                              </svg>
-                            </span>
-                          )}
                         </div>
                         <div className="text-xs muted">
                           {profilePeek.role === 'admin'
@@ -8417,6 +8541,13 @@ export default function Dashboard() {
                                 ? `Student (${gradeToLabel(profilePeek.grade as GradeValue)})`
                                 : 'Student'}
                           {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
+                          {profilePeek.verified ? (
+                            <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                              </svg>
+                            </span>
+                          ) : null}
                         </div>
                         {profilePeek.statusBio && <div className="mt-1 text-sm text-white/85">{profilePeek.statusBio}</div>}
                       </div>
@@ -8469,6 +8600,11 @@ export default function Dashboard() {
                     const r = roleLabel(u?.role)
                     if (r) chips.push(r)
                     const verified = Boolean(u?.verified)
+                    const hasRoleChip = Boolean(r)
+                    const hasAvatar = Boolean(u?.avatar)
+                    const showRoleTick = verified && hasRoleChip
+                    const showAvatarTick = verified && !showRoleTick && hasAvatar
+                    const showNameTick = verified && !showRoleTick && !hasAvatar
                     return (
                       <UserLink
                         key={u.id}
@@ -8487,7 +8623,7 @@ export default function Dashboard() {
                               )}
                             </div>
 
-                            {verified ? (
+                            {showAvatarTick ? (
                               <div
                                 className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
                                 title="Verified"
@@ -8503,7 +8639,7 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold text-white truncate flex items-center gap-2">
                                 <span className="truncate">{u.name}</span>
-                                {verified ? (
+                                {showNameTick ? (
                                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                       <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
@@ -8514,7 +8650,16 @@ export default function Dashboard() {
                               {chips.length > 0 ? (
                                 <div className="shrink-0 flex flex-wrap gap-1">
                                   {chips.slice(0, 2).map((c) => (
-                                    <span key={c} className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5">{c}</span>
+                                    <span key={c} className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 inline-flex items-center gap-1">
+                                      <span>{c}</span>
+                                      {showRoleTick && c === r ? (
+                                        <span className="inline-flex items-center justify-center h-3 w-3 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                                          </svg>
+                                        </span>
+                                      ) : null}
+                                    </span>
                                   ))}
                                 </div>
                               ) : null}
@@ -9230,6 +9375,82 @@ export default function Dashboard() {
         )}
       </div>
 
+      {booksOverlayOpen && (
+        <FullScreenGlassOverlay
+          title="Books & materials"
+          subtitle={selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade'}
+          onClose={() => setBooksOverlayOpen(false)}
+          onBackdropClick={() => setBooksOverlayOpen(false)}
+          zIndexClassName="z-50"
+          rightActions={
+            <button
+              type="button"
+              className="btn btn-ghost text-xs"
+              onClick={() => void fetchBooksForGrade()}
+              disabled={booksLoading}
+            >
+              {booksLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          }
+        >
+          <div className="space-y-3">
+            {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
+            {booksLoading ? <div className="text-sm muted">Loading…</div> : null}
+            {!booksLoading && !booksError && booksItems.length === 0 ? (
+              <div className="text-sm muted">No materials available yet.</div>
+            ) : null}
+
+            {booksItems.length > 0 ? (
+              <ul className="space-y-2">
+                {booksItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
+                  >
+                    <div className="min-w-0">
+                      {isPdfResource(item) ? (
+                        <button
+                          type="button"
+                          className="font-medium text-white text-left hover:underline whitespace-normal break-words block"
+                          onClick={() => openPdfViewer(item)}
+                        >
+                          {item.title}
+                        </button>
+                      ) : (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-white hover:underline whitespace-normal break-words block"
+                        >
+                          {item.title}
+                        </a>
+                      )}
+                      <div className="text-xs muted truncate">
+                        {item.tag ? `${item.tag} • ` : ''}
+                        {gradeToLabel(item.grade)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </FullScreenGlassOverlay>
+      )}
+
+      {pdfViewerOpen ? (
+        <PdfViewerOverlay
+          open={pdfViewerOpen}
+          url={pdfViewerUrl}
+          title={pdfViewerTitle}
+          subtitle={pdfViewerSubtitle || undefined}
+          initialState={pdfViewerInitialState || undefined}
+          onPostImage={handlePdfPostCapture}
+          onClose={() => setPdfViewerOpen(false)}
+        />
+      ) : null}
+
       {dashboardSectionOverlay && (
         <FullScreenGlassOverlay
           title={(DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === dashboardSectionOverlay)?.label || 'Section'}
@@ -9547,7 +9768,7 @@ export default function Dashboard() {
         open={challengeImageEditOpen}
         file={challengeImageEditFile}
         title="Edit screenshot"
-        onCancel={closeChallengeImageEdit}
+        onCancel={cancelChallengeImageEdit}
         onUseOriginal={(file: File) => void confirmChallengeImageEdit(file)}
         onConfirm={(file: File) => void confirmChallengeImageEdit(file)}
         confirmLabel="Upload"

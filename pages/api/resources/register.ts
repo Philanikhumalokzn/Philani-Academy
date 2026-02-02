@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
-import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { upsertResourceBankItem } from '../../../lib/resourceBank'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -135,52 +135,73 @@ async function normalizeParsedWithGemini(parsed: any, model: string, apiKey: str
   return normalized
 }
 
+function serializeDebugDetails(details: Record<string, any>) {
+  try {
+    const compact = JSON.stringify(details, null, 2)
+    if (!compact) return ''
+    if (compact.length <= 20000) return compact
+    return compact.slice(0, 20000) + '\n... (truncated)'
+  } catch {
+    return ''
+  }
+}
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '256kb',
+    },
+  },
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if (!token) return res.status(401).json({ message: 'Unauthorized' })
-
-  const role = ((token as any)?.role as string | undefined) || 'student'
-  const authUserId = String((token as any)?.id || (token as any)?.sub || '')
-  const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
-
-  const idParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
-  if (!idParam) return res.status(400).json({ message: 'Resource id required' })
-
-  if (req.method !== 'DELETE' && req.method !== 'PATCH') {
-    res.setHeader('Allow', ['DELETE', 'PATCH'])
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST'])
     return res.status(405).end('Method not allowed')
   }
 
-  const item = await prisma.resourceBankItem.findUnique({ where: { id: String(idParam) } })
-  if (!item) return res.status(404).json({ message: 'Resource not found' })
+  const token = await getToken({ req })
+  const role = ((token as any)?.role as string | undefined) || 'student'
+  const authUserId = String((token as any)?.sub || '')
+  const tokenGrade = normalizeGradeInput((token as any)?.grade)
 
-  if (req.method === 'DELETE') {
-    // Admin can delete anything.
-    if (role === 'admin') {
-      await prisma.resourceBankItem.delete({ where: { id: item.id } })
-      return res.status(204).end()
-    }
-
-    // Teachers/students can only delete their own uploads, and only within their grade.
-    if (!tokenGrade) return res.status(403).json({ message: 'Grade not configured for this account' })
-    if (String(item.grade) !== String(tokenGrade)) return res.status(403).json({ message: 'Forbidden' })
-    if (!item.createdById || String(item.createdById) !== String(authUserId)) return res.status(403).json({ message: 'Forbidden' })
-
-    await prisma.resourceBankItem.delete({ where: { id: item.id } })
-    return res.status(204).end()
+  if (role !== 'admin' && role !== 'teacher' && role !== 'student') {
+    return res.status(403).json({ message: 'Forbidden' })
   }
 
-  // PATCH (edit) is currently admin-only.
-  if (role !== 'admin') return res.status(403).json({ message: 'Forbidden' })
+  if (role !== 'admin' && !tokenGrade) {
+    return res.status(403).json({ message: 'Grade not configured for this account' })
+  }
 
   try {
-    const body = (req.body || {}) as any
-    const nextTitle = typeof body.title === 'string' ? body.title.trim() : undefined
-    const nextTag = typeof body.tag === 'string' ? body.tag.trim() : undefined
-    const nextGrade = normalizeGradeInput(body.grade)
+    const {
+      url,
+      filename,
+      title,
+      tag,
+      grade: requestedGrade,
+      contentType,
+      size,
+      parse,
+      aiNormalize,
+    } = (req.body || {}) as any
 
-    const shouldParse = ['1', 'true', 'yes', 'on'].includes(String(body.parse || '').trim().toLowerCase())
-    const shouldAiNormalize = shouldParse && ['1', 'true', 'yes', 'on'].includes(String(body.aiNormalize || '').trim().toLowerCase())
+    const cleanUrl = String(url || '').trim()
+    if (!cleanUrl) return res.status(400).json({ message: 'Resource URL is required' })
+
+    const wantsGrade = normalizeGradeInput(String(requestedGrade || ''))
+    const grade = role === 'admin' ? (wantsGrade || tokenGrade) : tokenGrade
+    if (!grade) return res.status(400).json({ message: 'Grade is required' })
+
+    if (role !== 'admin' && tokenGrade && grade !== tokenGrade) {
+      return res.status(403).json({ message: 'You may only upload resources for your own grade' })
+    }
+
+    const shouldParse = ['1', 'true', 'yes', 'on'].includes(String(parse || '').trim().toLowerCase())
+    const shouldAiNormalize = shouldParse && ['1', 'true', 'yes', 'on'].includes(String(aiNormalize || '').trim().toLowerCase())
+
+    const storedSize = typeof size === 'number' ? size : typeof size === 'string' ? Number(size) : null
+    const mime = String(contentType || '').trim() || null
 
     let parsedJson: any | null = null
     let parsedAt: Date | null = null
@@ -196,27 +217,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           throw new Error('Mathpix is not configured (missing MATHPIX_APP_ID or MATHPIX_APP_KEY)')
         }
 
-        const storedSize = typeof (item as any).size === 'number' ? (item as any).size : null
         if (storedSize && storedSize > 25 * 1024 * 1024) {
           throw new Error('File is too large to parse (max 25 MB)')
         }
 
-        const url = String((item as any).url || '').trim()
-        const filename = String((item as any).filename || '').trim()
-        const mime = String((item as any).contentType || '').trim()
-        const lowerName = filename.toLowerCase()
+        const lowerName = String(filename || '').toLowerCase()
+        const isPdf = (mime || '').toLowerCase() === 'application/pdf' || lowerName.endsWith('.pdf') || cleanUrl.toLowerCase().includes('.pdf')
+        const isImage = (mime || '').toLowerCase().startsWith('image/')
 
-        const isPdf = mime.toLowerCase() === 'application/pdf' || lowerName.endsWith('.pdf') || url.toLowerCase().includes('.pdf')
-        const isImage = mime.toLowerCase().startsWith('image/')
-        if (!isPdf && !isImage) throw new Error('Only PDF or image files can be parsed')
-
-        if (!url) throw new Error('Resource URL is required for parsing')
+        if (!isPdf && !isImage) {
+          throw new Error('Only PDF or image files can be parsed')
+        }
 
         if (isPdf) {
-          if (!/^https?:\/\//i.test(url)) throw new Error('Mathpix PDF parsing requires a public URL')
+          if (!/^https?:\/\//i.test(cleanUrl)) throw new Error('Mathpix PDF parsing requires a public URL')
 
           const pdfPayload = {
-            url,
+            url: cleanUrl,
             formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
             include_line_data: true,
             include_smiles: false,
@@ -248,10 +265,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           parseDebugResponse = data
           parsedJson = buildParsedJsonFromMathpix(data, mime || 'application/pdf', 'mathpix-pdf')
         } else {
-          const imgRes = await fetch(url)
+          const imgRes = await fetch(cleanUrl)
           if (!imgRes.ok) throw new Error(`Failed to fetch image (${imgRes.status})`)
           const raw = Buffer.from(await imgRes.arrayBuffer())
           const contentTypeFinal = mime || imgRes.headers.get('content-type') || 'image/png'
+
           const base64Data = raw.toString('base64')
           const src = `data:${contentTypeFinal};base64,${base64Data}`
 
@@ -298,6 +316,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         parsedAt = new Date()
+
         const text = typeof parsedJson?.text === 'string' ? parsedJson.text.trim() : ''
         const latex = typeof parsedJson?.latex === 'string' ? parsedJson.latex.trim() : ''
         const hasLines = Array.isArray(parsedJson?.lines) && parsedJson.lines.length > 0
@@ -323,8 +342,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             parseError = parseError ? `${parseError} | ${msg}` : msg
           }
         }
-      } catch (parseErr: any) {
-        parseError = parseErr?.message || 'Parse failed'
+      } catch (err: any) {
+        parseError = err?.message || 'Parse failed'
       }
     }
 
@@ -332,29 +351,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const debugDetails: Record<string, any> = {}
       if (parseDebugPayload) debugDetails.payload = parseDebugPayload
       if (parseDebugResponse) debugDetails.response = parseDebugResponse
-      try {
-        const compact = JSON.stringify(debugDetails, null, 2)
-        const debugText = compact ? (compact.length <= 20000 ? compact : compact.slice(0, 20000) + '\n... (truncated)') : ''
-        if (debugText) parseError = `${parseError}\n\nDebug:\n${debugText}`
-      } catch {
-        // ignore
-      }
+      const debugText = serializeDebugDetails(debugDetails)
+      if (debugText) parseError = `${parseError}\n\nDebug:\n${debugText}`
     }
 
-    const updated = await prisma.resourceBankItem.update({
-      where: { id: item.id },
-      data: {
-        title: nextTitle ? nextTitle : undefined,
-        tag: nextTag != null ? (nextTag || null) : undefined,
-        grade: nextGrade ? nextGrade : undefined,
-        parsedJson: shouldParse ? parsedJson : undefined,
-        parsedAt: shouldParse ? (parsedAt || null) : undefined,
-        parseError: shouldParse ? (parseError || null) : undefined,
-      },
+    const item = await upsertResourceBankItem({
+      grade,
+      title: String(title || '').trim() || String(filename || '').trim() || 'Resource',
+      tag: String(tag || '').trim() || null,
+      url: cleanUrl,
+      filename: String(filename || '').trim() || null,
+      contentType: mime,
+      size: storedSize,
+      checksum: null,
+      source: role === 'admin' ? 'admin' : role,
+      createdById: authUserId || null,
+      parsedJson,
+      parsedAt,
+      parseError,
     })
 
-    return res.status(200).json(updated)
-  } catch (err: any) {
-    return res.status(500).json({ message: err?.message || 'Failed to edit resource' })
+    return res.status(201).json(item)
+  } catch (error: any) {
+    return res.status(500).json({ message: error?.message || 'Failed to register resource' })
   }
 }

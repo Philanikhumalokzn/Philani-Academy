@@ -138,80 +138,114 @@ export default function ImageCropperModal(props: {
       onBackdropClick={onCancel}
       closeDisabled={saving}
       zIndexClassName="z-[90]"
-      contentClassName="space-y-3"
+      contentClassName="relative p-0 overflow-hidden"
     >
-      {error ? <div className="text-sm text-red-300">{error}</div> : null}
-
-      <div className="relative w-full h-[50vh] rounded overflow-hidden border border-white/10 bg-black">
-        {objectUrl ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <ReactCrop
-              crop={crop}
-              onChange={(_, percentCrop) => setCrop(percentCrop)}
-              onComplete={(px) => setCompletedCropPx(px)}
-              keepSelection
-              aspect={aspectRatio}
-              circularCrop={circularCrop}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                ref={imgRef}
-                alt="Crop preview"
-                src={objectUrl}
-                style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }}
-                onLoad={() => {
-                  setCrop(initialCrop)
-                  setCompletedCropPx(null)
-                }}
-              />
-            </ReactCrop>
+      <div className="relative h-full w-full bg-black">
+        {error ? (
+          <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            {error}
           </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-sm text-white/70">No image</div>
-        )}
-      </div>
+        ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-2">
-          <div className="text-xs muted">Crop & Position</div>
-          <div className="text-sm text-white/80">Drag to move. Drag handles to zoom.</div>
-          <button
-            type="button"
-            className="btn btn-ghost w-fit"
-            onClick={() => {
-              setCrop(initialCrop)
-              setCompletedCropPx(null)
-            }}
-            disabled={saving || rotating}
-          >
-            Reset crop
-          </button>
+        <div className="absolute inset-0">
+          {objectUrl ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <ReactCrop
+                crop={crop}
+                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                onComplete={(px) => setCompletedCropPx(px)}
+                keepSelection
+                aspect={aspectRatio}
+                circularCrop={circularCrop}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  ref={imgRef}
+                  alt="Crop preview"
+                  src={objectUrl}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  onLoad={() => {
+                    setCrop(initialCrop)
+                    setCompletedCropPx(null)
+                  }}
+                />
+              </ReactCrop>
+            </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-sm text-white/70">No image</div>
+          )}
         </div>
 
-        <div className="space-y-2">
-          <div className="text-xs muted">Rotate</div>
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(-90)} disabled={saving || rotating || !workingFile}>
-              Rotate -90°
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={() => void rotateBy(90)} disabled={saving || rotating || !workingFile}>
-              Rotate +90°
-            </button>
-          </div>
-          {rotating ? <div className="text-xs text-white/70">Rotating…</div> : null}
-        </div>
-      </div>
+        <div className="absolute inset-x-0 bottom-0 z-10">
+          <div className="px-3 pb-3 pt-16 sm:px-5 sm:pb-5 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost h-9 w-9 !px-0"
+                  onClick={() => {
+                    setCrop(initialCrop)
+                    setCompletedCropPx(null)
+                  }}
+                  disabled={saving || rotating}
+                  aria-label="Reset crop"
+                  title="Reset crop"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <path d="M4 12a8 8 0 1 0 2.343-5.657" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M4 4v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
 
-      <div className="flex flex-wrap gap-2 justify-end">
-        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-        <button type="button" className="btn" onClick={doUseOriginal} disabled={saving || !file}>
-          Upload original
-        </button>
-        <button type="button" className="btn btn-primary" onClick={() => void doConfirm()} disabled={saving || !file || !objectUrl}>
-          {saving ? 'Processing…' : (confirmLabel || 'Upload edited')}
-        </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost h-9 w-9 !px-0"
+                  onClick={() => void rotateBy(-90)}
+                  disabled={saving || rotating || !workingFile}
+                  aria-label="Rotate left"
+                  title="Rotate left"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-ghost h-9 w-9 !px-0"
+                  onClick={() => void rotateBy(90)}
+                  disabled={saving || rotating || !workingFile}
+                  aria-label="Rotate right"
+                  title="Rotate right"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+
+                {rotating ? <div className="text-xs text-white/70">Rotating…</div> : null}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>
+                  Cancel
+                </button>
+                <button type="button" className="btn" onClick={doUseOriginal} disabled={saving || !file}>
+                  Upload original
+                </button>
+                <button type="button" className="btn btn-primary" onClick={() => void doConfirm()} disabled={saving || !file || !objectUrl}>
+                  {saving ? 'Processing…' : (confirmLabel || 'Upload edited')}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2 text-[11px] text-white/70">
+              Drag to move. Drag handles to zoom.
+            </div>
+          </div>
+        </div>
       </div>
     </FullScreenGlassOverlay>
   )

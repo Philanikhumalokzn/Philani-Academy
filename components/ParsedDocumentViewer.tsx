@@ -188,7 +188,7 @@ const renderLine = (line: ParsedLine, idx: number) => {
     ? line.latex.trim()
     : ''
 
-  if (latex && !text) {
+  if (latex) {
     return (
       <div key={`line-${idx}`} className="my-3">
         <div className="text-base text-slate-900">{renderKatex(latex, true)}</div>
@@ -196,7 +196,7 @@ const renderLine = (line: ParsedLine, idx: number) => {
     )
   }
 
-  if (!latex && text && looksLikeLatex(text)) {
+  if (text && looksLikeLatex(text)) {
     return (
       <div key={`line-${idx}`} className="my-3">
         <div className="text-base text-slate-900">{renderKatex(normalizeLatexForRender(text), true)}</div>

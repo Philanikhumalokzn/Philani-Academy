@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
+import PdfViewerOverlay from '../components/PdfViewerOverlay'
 
 type ResourceBankItem = {
   id: string
@@ -47,7 +49,34 @@ export default function ResourceBankPage() {
   const [parsedViewerText, setParsedViewerText] = useState('')
   const [parsedViewerJson, setParsedViewerJson] = useState<any | null>(null)
 
+  const [parseDebugOpen, setParseDebugOpen] = useState(false)
+  const [parseDebugItem, setParseDebugItem] = useState<ResourceBankItem | null>(null)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editItem, setEditItem] = useState<ResourceBankItem | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editTag, setEditTag] = useState('')
+  const [editGrade, setEditGrade] = useState<GradeValue | ''>('')
+  const [editParse, setEditParse] = useState(false)
+  const [editAiNormalize, setEditAiNormalize] = useState(false)
+  const [editing, setEditing] = useState(false)
+
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
+  const [pdfViewerUrl, setPdfViewerUrl] = useState('')
+  const [pdfViewerTitle, setPdfViewerTitle] = useState('')
+  const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const buildResourceBlobPath = (grade: GradeValue, originalName: string) => {
+    const safe = String(originalName || 'resource')
+      .replace(/\\/g, '_')
+      .replace(/\//g, '_')
+      .replace(/[^a-z0-9._-]+/gi, '_')
+      .slice(0, 120)
+    const stamp = Date.now()
+    return `resource-bank/${String(grade)}/${stamp}_${safe}`
+  }
 
   const effectiveGrade: GradeValue | undefined = useMemo(() => {
     const profileGrade = normalizeGradeInput(profile?.grade)
@@ -132,6 +161,58 @@ export default function ResourceBankPage() {
     setError(null)
 
     try {
+      // Vercel serverless functions have a small request payload limit (often ~4.5 MB).
+      // Upload larger files directly to Vercel Blob from the browser.
+      const shouldUseClientUpload = file.size > 4.0 * 1024 * 1024
+
+      if (shouldUseClientUpload) {
+        const blobPath = buildResourceBlobPath(effectiveGrade, file.name)
+
+        let blob: any
+        try {
+          blob = await upload(blobPath, file, {
+            access: 'public',
+            handleUploadUrl: '/api/resources/blob-upload',
+          })
+        } catch (uploadErr: any) {
+          const msg = uploadErr?.message || 'Direct upload failed'
+          throw new Error(`${msg}. If you're running locally, ensure Vercel Blob is configured (BLOB_READ_WRITE_TOKEN).`)
+        }
+
+        const registerRes = await fetch('/api/resources/register', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: blob?.url,
+            filename: blob?.pathname || blobPath,
+            contentType: file.type || null,
+            size: file.size,
+            title: title.trim() ? title.trim() : undefined,
+            tag: tag.trim() ? tag.trim() : undefined,
+            grade: role === 'admin' ? effectiveGrade : undefined,
+            parse: parseOnUpload ? '1' : undefined,
+            aiNormalize: parseOnUpload && aiNormalizeOnUpload ? '1' : undefined,
+          }),
+        })
+
+        const registerData = await registerRes.json().catch(() => ({}))
+        if (!registerRes.ok) {
+          throw new Error(registerData?.message || `Upload failed (${registerRes.status})`)
+        }
+
+        if (parseOnUpload && typeof registerData?.parseError === 'string' && registerData.parseError.trim()) {
+          setError(`Parse failed: ${registerData.parseError}`)
+        }
+
+        setTitle('')
+        setTag('')
+        if (fileInputRef.current) fileInputRef.current.value = ''
+
+        await fetchItems(effectiveGrade)
+        return
+      }
+
       const form = new FormData()
       form.append('file', file)
       if (title.trim()) form.append('title', title.trim())
@@ -245,7 +326,66 @@ export default function ResourceBankPage() {
       setError(err?.message || 'Failed to download LaTeX')
     }
   }
+  const openParseDebug = (item: ResourceBankItem) => {
+    setParseDebugItem(item)
+    setParseDebugOpen(true)
+  }
 
+  const openEdit = (item: ResourceBankItem) => {
+    setEditItem(item)
+    setEditTitle(item?.title || '')
+    setEditTag(item?.tag || '')
+    setEditGrade((item?.grade as GradeValue) || '')
+    setEditParse(false)
+    setEditAiNormalize(false)
+    setEditOpen(true)
+  }
+
+  const saveEdit = async () => {
+    if (!editItem?.id) return
+    setEditing(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(editItem.id)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          tag: editTag,
+          grade: editGrade || undefined,
+          parse: editParse ? '1' : undefined,
+          aiNormalize: editParse && editAiNormalize ? '1' : undefined,
+        }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Edit failed (${res.status})`)
+
+      setEditOpen(false)
+      setEditItem(null)
+      await fetchItems(effectiveGrade)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to edit resource')
+    } finally {
+      setEditing(false)
+    }
+  }
+
+  const isPdfResource = (item: ResourceBankItem) => {
+    const filename = (item.filename || '').toLowerCase()
+    const url = (item.url || '').toLowerCase()
+    const contentType = (item.contentType || '').toLowerCase()
+    return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
+  }
+
+  const openPdfViewer = (item: ResourceBankItem) => {
+    setPdfViewerTitle(item.title || 'Document')
+    // Avoid showing filepaths/URLs in the UI.
+    setPdfViewerSubtitle('')
+    setPdfViewerUrl(item.url)
+    setPdfViewerOpen(true)
+  }
   const handleDelete = async (id: string) => {
     if (!id) return
     setError(null)
@@ -282,6 +422,111 @@ export default function ResourceBankPage() {
           </div>
         ) : (
           <>
+            {editOpen ? (
+              <FullScreenGlassOverlay
+                title="Edit resource"
+                subtitle={editItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => {
+                  if (editing) return
+                  setEditOpen(false)
+                }}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Title</div>
+                      <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Tag</div>
+                      <input className="input" value={editTag} onChange={(e) => setEditTag(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wide text-slate-600">Grade</div>
+                    <select
+                      className="input"
+                      value={editGrade}
+                      onChange={(e) => setEditGrade(normalizeGradeInput(e.target.value) || '')}
+                    >
+                      <option value="">(unchanged)</option>
+                      {GRADE_VALUES.map((g) => (
+                        <option key={g} value={g}>{gradeToLabel(g)}</option>
+                      ))}
+                    </select>
+                    <div className="text-xs text-slate-600">Admin can move resources across grades.</div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm text-slate-900 select-none">
+                      <input
+                        type="checkbox"
+                        checked={editParse}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setEditParse(next)
+                          if (!next) setEditAiNormalize(false)
+                        }}
+                      />
+                      Re-parse (Mathpix OCR)
+                    </label>
+                    <label className={`flex items-center gap-2 text-sm ${editParse ? 'text-slate-900' : 'text-slate-500'} select-none`}>
+                      <input
+                        type="checkbox"
+                        checked={editAiNormalize}
+                        onChange={(e) => setEditAiNormalize(e.target.checked)}
+                        disabled={!editParse}
+                      />
+                      AI post-normalize (Gemini)
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button type="button" className="btn btn-ghost" onClick={() => setEditOpen(false)} disabled={editing}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={() => void saveEdit()} disabled={editing}>
+                      {editing ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
+            {pdfViewerOpen ? (
+              <PdfViewerOverlay
+                open={pdfViewerOpen}
+                url={pdfViewerUrl}
+                title={pdfViewerTitle}
+                subtitle={pdfViewerSubtitle || undefined}
+                onClose={() => setPdfViewerOpen(false)}
+              />
+            ) : null}
+
+            {parseDebugOpen ? (
+              <FullScreenGlassOverlay
+                title="Parsing debugger"
+                subtitle={parseDebugItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => setParseDebugOpen(false)}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+                  <div className="text-sm">
+                    <div><span className="font-semibold">Filename:</span> {parseDebugItem?.filename || '—'}</div>
+                    <div><span className="font-semibold">Content type:</span> {parseDebugItem?.contentType || '—'}</div>
+                    <div><span className="font-semibold">Size:</span> {typeof parseDebugItem?.size === 'number' ? `${Math.round(parseDebugItem.size / 1024)} KB` : '—'}</div>
+                    <div><span className="font-semibold">Parsed at:</span> {parseDebugItem?.parsedAt ? new Date(parseDebugItem.parsedAt).toLocaleString() : '—'}</div>
+                  </div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Error details</div>
+                  <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-100 p-3 text-xs text-slate-900">
+                    {parseDebugItem?.parseError || 'No error details available.'}
+                  </pre>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
             {parsedViewerOpen ? (
               <FullScreenGlassOverlay
                 title="Parsed"
@@ -399,16 +644,38 @@ export default function ResourceBankPage() {
                             {item.tag ? `${item.tag} • ` : ''}
                             {gradeToLabel(item.grade)}
                           </div>
-                          {item.parseError ? <div className="text-xs text-red-200">Parse failed</div> : null}
+                          {item.parseError ? (
+                            <button
+                              type="button"
+                              className="text-left text-xs text-red-200 underline decoration-dotted"
+                              onClick={() => openParseDebug(item)}
+                            >
+                              Parse failed — view details
+                            </button>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                          {isPdfResource(item) ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => openPdfViewer(item)}>
+                              View
+                            </button>
+                          ) : (
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="btn btn-ghost"
+                            >
+                              Open
+                            </a>
+                          )}
                           <a
                             href={item.url}
                             target="_blank"
                             rel="noreferrer"
                             className="btn btn-ghost"
                           >
-                            Open
+                            Open new
                           </a>
                           {item.parsedAt || item.parseError ? (
                             <button type="button" className="btn btn-ghost" onClick={() => void openParsedViewer(item)}>
@@ -431,6 +698,11 @@ export default function ResourceBankPage() {
                               onClick={() => void handleDelete(item.id)}
                             >
                               Delete
+                            </button>
+                          ) : null}
+                          {role === 'admin' ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => openEdit(item)}>
+                              Edit
                             </button>
                           ) : null}
                         </div>

@@ -192,6 +192,60 @@ export default function ResourceBankPage() {
     }
   }
 
+  const buildLatexFilename = (item: ResourceBankItem) => {
+    const baseRaw = (item?.title || item?.filename || 'resource').toString().trim() || 'resource'
+    const base = baseRaw.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_') || 'resource'
+    return `${base}.tex`
+  }
+
+  const extractLatexFromParsed = (parsed: any) => {
+    if (!parsed || typeof parsed !== 'object') return ''
+    const direct = typeof parsed?.latex === 'string' ? parsed.latex.trim() : ''
+    if (direct) return direct
+    const lines = Array.isArray(parsed?.lines) ? parsed.lines : []
+    if (!lines.length) return ''
+    const chunks = lines
+      .map((line: any) => {
+        if (!line || typeof line !== 'object') return ''
+        return (typeof line.latex_styled === 'string' && line.latex_styled.trim())
+          || (typeof line.latex_simplified === 'string' && line.latex_simplified.trim())
+          || (typeof line.latex === 'string' && line.latex.trim())
+          || ''
+      })
+      .filter(Boolean)
+    return chunks.join('\n\n')
+  }
+
+  const handleDownloadLatex = async (item: ResourceBankItem) => {
+    const id = String(item?.id || '')
+    if (!id) return
+    setError(null)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load parsed data (${res.status})`)
+
+      const json = data?.parsedJson
+      const latexText = extractLatexFromParsed(json)
+      if (!latexText) {
+        const err = typeof data?.parseError === 'string' ? data.parseError : ''
+        throw new Error(err || 'No LaTeX output available for this resource')
+      }
+
+      const blob = new Blob([latexText], { type: 'application/x-tex;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = buildLatexFilename(item)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to download LaTeX')
+    }
+  }
+
   const handleDelete = async (id: string) => {
     if (!id) return
     setError(null)
@@ -359,6 +413,15 @@ export default function ResourceBankPage() {
                           {item.parsedAt || item.parseError ? (
                             <button type="button" className="btn btn-ghost" onClick={() => void openParsedViewer(item)}>
                               View parsed
+                            </button>
+                          ) : null}
+                          {role === 'admin' && item.parsedAt ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => void handleDownloadLatex(item)}
+                            >
+                              Download LaTeX
                             </button>
                           ) : null}
                           {canDelete(item) ? (

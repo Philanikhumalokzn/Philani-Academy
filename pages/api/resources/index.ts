@@ -155,6 +155,54 @@ function buildParsedJsonFromMathpix(data: any, contentType: string, source: stri
   }
 }
 
+function extractLinesFromPdfLinesJson(data: any) {
+  const pages = Array.isArray(data?.pages) ? data.pages : []
+  const lines: any[] = []
+  for (const page of pages) {
+    const pageLines = Array.isArray(page?.lines) ? page.lines : []
+    for (const line of pageLines) {
+      lines.push({
+        text: typeof line?.text_display === 'string' ? line.text_display : typeof line?.text === 'string' ? line.text : '',
+        latex: '',
+        latex_styled: '',
+        latex_simplified: '',
+        type: line?.type || null,
+        subtype: line?.subtype || null,
+        page: page?.page ?? null,
+        confidence: typeof line?.confidence === 'number' ? line.confidence : null,
+        confidence_rate: typeof line?.confidence_rate === 'number' ? line.confidence_rate : null,
+      })
+    }
+  }
+  return lines.length ? lines : []
+}
+
+function buildParsedJsonFromMathpixPdf(mmdText: string | null, linesJson: any, contentType: string, source: string) {
+  const lines = extractLinesFromPdfLinesJson(linesJson)
+  const text = (typeof mmdText === 'string' ? mmdText : '').trim() ||
+    (Array.isArray(lines) && lines.length
+      ? lines
+          .map((line: any) => (typeof line?.text === 'string' ? line.text.trim() : ''))
+          .filter(Boolean)
+          .slice(0, 200)
+          .join('\n')
+          .trim()
+      : '')
+
+  return {
+    source,
+    mimeType: contentType,
+    confidence: null,
+    text,
+    latex: '',
+    lines: Array.isArray(lines) ? lines.slice(0, 500) : [],
+    raw: {
+      mmd: typeof mmdText === 'string' ? mmdText : null,
+      linesJson: linesJson && typeof linesJson === 'object' ? linesJson : null,
+    },
+  }
+}
+
 function serializeDebugDetails(details: Record<string, any>) {
   const keys = Object.keys(details || {})
   if (keys.length === 0) return ''
@@ -166,6 +214,18 @@ function serializeDebugDetails(details: Record<string, any>) {
   } catch {
     return ''
   }
+}
+
+async function fetchMathpixPdfOutputs(pdfId: string, appId: string, appKey: string) {
+  const headers = { app_id: appId, app_key: appKey }
+  const [mmdRes, linesRes] = await Promise.all([
+    fetch(`https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.mmd`, { method: 'GET', headers }),
+    fetch(`https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.lines.json`, { method: 'GET', headers }),
+  ])
+
+  const mmdText = mmdRes.ok ? await mmdRes.text().catch(() => '') : ''
+  const linesJson = linesRes.ok ? await linesRes.json().catch(() => null) : null
+  return { mmdText, linesJson }
 }
 
 async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string) {
@@ -190,8 +250,8 @@ async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string
 
     const status = String(data?.status || '').toLowerCase()
     if (['completed', 'finished', 'done', 'success'].includes(status)) {
-      const detailed = await fetchMathpixPdfResultData(pdfId, appId, appKey)
-      return detailed || data
+      const outputs = await fetchMathpixPdfOutputs(pdfId, appId, appKey)
+      return { statusData: data, ...outputs }
     }
     if (['error', 'failed', 'failure'].includes(status)) {
       const errMsg = data?.error || data?.error_info || 'Mathpix PDF processing failed'
@@ -203,29 +263,6 @@ async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string
 
   const message = lastData?.status ? `Mathpix PDF processing timed out (${lastData.status})` : 'Mathpix PDF processing timed out'
   throw new Error(message)
-}
-
-async function fetchMathpixPdfResultData(pdfId: string, appId: string, appKey: string) {
-  const endpoints = [
-    `https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.json`,
-    `https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}?format=all`,
-    `https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}`,
-  ]
-
-  for (const url of endpoints) {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        app_id: appId,
-        app_key: appKey,
-      },
-    })
-    const data: any = await res.json().catch(() => ({}))
-    if (!res.ok) continue
-    if (data && typeof data === 'object') return data
-  }
-
-  return null
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -386,9 +423,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             const pdfPayload = {
               url: pdfUrl,
-              formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
-              include_line_data: true,
               include_smiles: false,
+              math_inline_delimiters: ['$', '$'],
+              math_display_delimiters: ['$$', '$$'],
               rm_spaces: true,
             }
             parseDebugPayload = { endpoint: '/v3/pdf', ...pdfPayload }
@@ -416,8 +453,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
 
             data = await pollMathpixPdfResult(pdfId, appId, appKey)
-            parseDebugResponse = data
-            parsedJson = buildParsedJsonFromMathpix(data, contentType, 'mathpix-pdf')
+            parseDebugResponse = data?.statusData || data
+            parsedJson = buildParsedJsonFromMathpixPdf(data?.mmdText || '', data?.linesJson, contentType, 'mathpix-pdf')
           } else {
             const rawBytes = await fs.readFile(uploadedFile.filepath)
             const base64Data = rawBytes.toString('base64')

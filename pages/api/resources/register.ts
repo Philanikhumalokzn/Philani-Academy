@@ -63,6 +63,62 @@ function buildParsedJsonFromMathpix(data: any, contentType: string, source: stri
   }
 }
 
+function extractLinesFromPdfLinesJson(data: any) {
+  const pages = Array.isArray(data?.pages) ? data.pages : []
+  const lines: any[] = []
+  for (const page of pages) {
+    const pageLines = Array.isArray(page?.lines) ? page.lines : []
+    for (const line of pageLines) {
+      lines.push({
+        text: typeof line?.text_display === 'string' ? line.text_display : typeof line?.text === 'string' ? line.text : '',
+        latex: '',
+        latex_styled: '',
+        latex_simplified: '',
+        type: line?.type || null,
+        subtype: line?.subtype || null,
+        page: page?.page ?? null,
+        confidence: typeof line?.confidence === 'number' ? line.confidence : null,
+        confidence_rate: typeof line?.confidence_rate === 'number' ? line.confidence_rate : null,
+      })
+    }
+  }
+  return lines.length ? lines : []
+}
+
+function buildParsedJsonFromMathpixPdf(mmdText: string | null, linesJson: any, contentType: string, source: string) {
+  const lines = extractLinesFromPdfLinesJson(linesJson)
+  const text = (typeof mmdText === 'string' ? mmdText : '').trim() ||
+    (Array.isArray(lines) && lines.length
+      ? lines
+          .map((line: any) => (typeof line?.text === 'string' ? line.text.trim() : ''))
+          .filter(Boolean)
+          .slice(0, 200)
+          .join('\n')
+          .trim()
+      : '')
+
+  return {
+    source,
+    mimeType: contentType,
+    confidence: null,
+    text,
+    latex: '',
+    lines: Array.isArray(lines) ? lines.slice(0, 500) : [],
+  }
+}
+
+async function fetchMathpixPdfOutputs(pdfId: string, appId: string, appKey: string) {
+  const headers = { app_id: appId, app_key: appKey }
+  const [mmdRes, linesRes] = await Promise.all([
+    fetch(`https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.mmd`, { method: 'GET', headers }),
+    fetch(`https://api.mathpix.com/v3/pdf/${encodeURIComponent(pdfId)}.lines.json`, { method: 'GET', headers }),
+  ])
+
+  const mmdText = mmdRes.ok ? await mmdRes.text().catch(() => '') : ''
+  const linesJson = linesRes.ok ? await linesRes.json().catch(() => null) : null
+  return { mmdText, linesJson }
+}
+
 async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string) {
   const deadline = Date.now() + 120_000
   while (true) {
@@ -79,7 +135,10 @@ async function pollMathpixPdfResult(pdfId: string, appId: string, appKey: string
     }
 
     const status = String(statusData?.status || '').toLowerCase()
-    if (status === 'completed' || status === 'complete' || status === 'done') return statusData
+    if (status === 'completed' || status === 'complete' || status === 'done') {
+      const outputs = await fetchMathpixPdfOutputs(pdfId, appId, appKey)
+      return { statusData, ...outputs }
+    }
     if (status === 'error' || status === 'failed') {
       const errMsg = statusData?.error || statusData?.error_info || 'Mathpix PDF failed'
       throw new Error(String(errMsg))
@@ -234,9 +293,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           const pdfPayload = {
             url: cleanUrl,
-            formats: ['text', 'data', 'latex_styled', 'latex_simplified'],
-            include_line_data: true,
             include_smiles: false,
+            math_inline_delimiters: ['$', '$'],
+            math_display_delimiters: ['$$', '$$'],
             rm_spaces: true,
           }
           parseDebugPayload = { endpoint: '/v3/pdf', ...pdfPayload }
@@ -262,8 +321,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (!pdfId) throw new Error('Mathpix PDF did not return a pdf_id')
 
           const data = await pollMathpixPdfResult(pdfId, appId, appKey)
-          parseDebugResponse = data
-          parsedJson = buildParsedJsonFromMathpix(data, mime || 'application/pdf', 'mathpix-pdf')
+          parseDebugResponse = data?.statusData || data
+          parsedJson = buildParsedJsonFromMathpixPdf(data?.mmdText || '', data?.linesJson, mime || 'application/pdf', 'mathpix-pdf')
         } else {
           const imgRes = await fetch(cleanUrl)
           if (!imgRes.ok) throw new Error(`Failed to fetch image (${imgRes.status})`)

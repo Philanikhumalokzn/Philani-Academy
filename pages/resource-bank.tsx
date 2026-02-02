@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import ParsedDocumentViewer, { buildParsedDocumentHtml } from '../components/ParsedDocumentViewer'
+import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 
 type ResourceBankItem = {
@@ -274,23 +274,40 @@ export default function ResourceBankPage() {
     }
   }
 
-  const buildParsedHtmlFilename = (title: string) => {
+  const buildParsedDocxFilename = (title: string) => {
     const baseRaw = (title || 'parsed').toString().trim() || 'parsed'
     const base = baseRaw.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_') || 'parsed'
-    return `${base}.html`
+    return `${base}.docx`
   }
 
-  const downloadParsedHtml = async () => {
+  const downloadParsedDocx = async () => {
     if (parsedDownloadBusy) return
     setParsedDownloadBusy(true)
     try {
-      const html = buildParsedDocumentHtml(parsedViewerJson, parsedViewerText)
-      if (!html) throw new Error('No parsed content available to download.')
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      const mmd = typeof parsedViewerJson?.raw?.mmd === 'string'
+        ? parsedViewerJson.raw.mmd
+        : typeof parsedViewerJson?.text === 'string'
+        ? parsedViewerJson.text
+        : ''
+
+      if (!mmd) throw new Error('No parsed content available to download.')
+
+      const res = await fetch('/api/resources/convert-docx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mmd, title: parsedViewerTitle || 'parsed' }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.message || `Failed to convert (${res.status})`)
+      }
+
+      const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = buildParsedHtmlFilename(parsedViewerTitle || 'parsed')
+      link.download = buildParsedDocxFilename(parsedViewerTitle || 'parsed')
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -565,9 +582,9 @@ export default function ResourceBankPage() {
                   <button
                     type="button"
                     className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 hover:bg-white/20 text-white"
-                    onClick={() => void downloadParsedHtml()}
+                    onClick={() => void downloadParsedDocx()}
                     aria-label="Download parsed"
-                    title={parsedDownloadBusy ? 'Preparing…' : 'Download parsed'}
+                    title={parsedDownloadBusy ? 'Preparing…' : 'Download as Docx'}
                     disabled={parsedDownloadBusy || parsedViewerLoading}
                   >
                     <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">

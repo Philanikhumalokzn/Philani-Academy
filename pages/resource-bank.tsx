@@ -462,12 +462,16 @@ export default function ResourceBankPage() {
     return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
   }
 
-  const openPdfViewer = (item: ResourceBankItem) => {
-    setPdfViewerTitle(item.title || 'Document')
+  const openPdfUrl = (title: string, url: string, subtitle?: string) => {
+    setPdfViewerTitle(title || 'Document')
     // Avoid showing filepaths/URLs in the UI.
-    setPdfViewerSubtitle('')
-    setPdfViewerUrl(item.url)
+    setPdfViewerSubtitle(subtitle || '')
+    setPdfViewerUrl(url)
     setPdfViewerOpen(true)
+  }
+
+  const openPdfViewer = (item: ResourceBankItem) => {
+    openPdfUrl(item.title || 'Document', item.url)
   }
   const handleDelete = async (id: string) => {
     if (!id) return
@@ -808,6 +812,26 @@ export default function ResourceBankPage() {
                               Open
                             </a>
                           )}
+                          {item?.parsedJson?.pdfUrl ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => openPdfUrl(`${item.title || 'Document'} — Source PDF`, item.parsedJson.pdfUrl)}
+                            >
+                              Source PDF
+                            </button>
+                          ) : null}
+                          {item?.parsedJson?.sourceDocxUrl ? (
+                            <a
+                              href={item.parsedJson.sourceDocxUrl}
+                              className="btn btn-ghost"
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                            >
+                              OCR DOCX
+                            </a>
+                          ) : null}
                           {item?.parsedJson?.docxUrl ? (
                             <a
                               href={item.parsedJson.docxUrl}

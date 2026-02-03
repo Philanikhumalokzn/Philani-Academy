@@ -768,131 +768,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [updateMathpixLocalCounts])
 
   useEffect(() => {
-    if (!useStackedStudentLayout) return
-    const host = editorHostRef.current
-    const viewport = studentViewportRef.current
-    if (!host || !viewport) return
-
-    const state = multiTouchGestureRef.current
-
-    const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch'
-
-    const updatePointer = (evt: PointerEvent) => {
-      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
-    }
-
-    const getMidAndDistance = () => {
-      if (state.pointers.size < 2) return null
-      const [a, b] = Array.from(state.pointers.values()).slice(0, 2)
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const distance = Math.max(1, Math.hypot(dx, dy))
-      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-      return { mid, distance }
-    }
-
-    const suppressEvent = (evt: PointerEvent) => {
-      if (evt.cancelable) evt.preventDefault()
-      evt.stopImmediatePropagation()
-    }
-
-    const beginGestureIfReady = () => {
-      if (state.active) return
-      if (state.pointers.size < 2) return
-      const info = getMidAndDistance()
-      if (!info) return
-      state.active = true
-      state.startDistance = info.distance
-      state.startScale = studentViewScaleRef.current
-      state.lastMid = info.mid
-      state.suppressedPointers = new Set(state.pointers.keys())
-    }
-
-    const endGestureIfNeeded = () => {
-      if (state.active && state.pointers.size < 2) {
-        state.active = false
-        state.startDistance = 1
-        state.lastMid = null
-      }
-      if (state.pointers.size === 0) {
-        state.suppressedPointers.clear()
-      }
-    }
-
-    const handlePointerDown = (evt: PointerEvent) => {
-      if (!isTouchPointer(evt)) return
-      updatePointer(evt)
-      if (state.pointers.size >= 2) {
-        beginGestureIfReady()
-        state.suppressedPointers.add(evt.pointerId)
-        suppressEvent(evt)
-      } else if (state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerMove = (evt: PointerEvent) => {
-      if (!isTouchPointer(evt)) return
-      updatePointer(evt)
-
-      if (state.active && state.pointers.size >= 2) {
-        const info = getMidAndDistance()
-        if (info) {
-          const currentScale = studentViewScaleRef.current
-          const nextScale = clampStudentScale(state.startScale * (info.distance / Math.max(1, state.startDistance)))
-          if (Math.abs(nextScale - currentScale) > 0.001) {
-            const rect = viewport.getBoundingClientRect()
-            const midX = info.mid.x - rect.left + viewport.scrollLeft
-            const midY = info.mid.y - rect.top + viewport.scrollTop
-            const ratio = nextScale / currentScale
-            viewport.scrollLeft = midX * ratio - (info.mid.x - rect.left)
-            viewport.scrollTop = midY * ratio - (info.mid.y - rect.top)
-            studentViewScaleRef.current = nextScale
-            setStudentViewScale(nextScale)
-          }
-
-          if (state.lastMid) {
-            const dx = info.mid.x - state.lastMid.x
-            const dy = info.mid.y - state.lastMid.y
-            viewport.scrollLeft -= dx
-            viewport.scrollTop -= dy
-          }
-          state.lastMid = info.mid
-        }
-        suppressEvent(evt)
-        return
-      }
-
-      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerUp = (evt: PointerEvent) => {
-      if (!isTouchPointer(evt)) return
-      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
-      state.pointers.delete(evt.pointerId)
-      state.suppressedPointers.delete(evt.pointerId)
-      endGestureIfNeeded()
-      if (state.active || wasSuppressed) {
-        suppressEvent(evt)
-      }
-    }
-
-    host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
-    host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
-    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
-    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
-
-    return () => {
-      host.removeEventListener('pointerdown', handlePointerDown, true)
-      host.removeEventListener('pointermove', handlePointerMove, true)
-      window.removeEventListener('pointerup', handlePointerUp, true)
-      window.removeEventListener('pointercancel', handlePointerUp, true)
-    }
-  }, [clampStudentScale, editorReinitNonce, useStackedStudentLayout])
-
-  useEffect(() => {
     if (!isAdmin) return
     if (typeof window === 'undefined') return
     try {
@@ -1789,6 +1664,131 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     studentViewScaleRef.current = studentViewScale
   }, [studentViewScale])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    const host = editorHostRef.current
+    const viewport = studentViewportRef.current
+    if (!host || !viewport) return
+
+    const state = multiTouchGestureRef.current
+
+    const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch'
+
+    const updatePointer = (evt: PointerEvent) => {
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    }
+
+    const getMidAndDistance = () => {
+      if (state.pointers.size < 2) return null
+      const [a, b] = Array.from(state.pointers.values()).slice(0, 2)
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const distance = Math.max(1, Math.hypot(dx, dy))
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      return { mid, distance }
+    }
+
+    const suppressEvent = (evt: PointerEvent) => {
+      if (evt.cancelable) evt.preventDefault()
+      evt.stopImmediatePropagation()
+    }
+
+    const beginGestureIfReady = () => {
+      if (state.active) return
+      if (state.pointers.size < 2) return
+      const info = getMidAndDistance()
+      if (!info) return
+      state.active = true
+      state.startDistance = info.distance
+      state.startScale = studentViewScaleRef.current
+      state.lastMid = info.mid
+      state.suppressedPointers = new Set(state.pointers.keys())
+    }
+
+    const endGestureIfNeeded = () => {
+      if (state.active && state.pointers.size < 2) {
+        state.active = false
+        state.startDistance = 1
+        state.lastMid = null
+      }
+      if (state.pointers.size === 0) {
+        state.suppressedPointers.clear()
+      }
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (!isTouchPointer(evt)) return
+      updatePointer(evt)
+      if (state.pointers.size >= 2) {
+        beginGestureIfReady()
+        state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+      } else if (state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (!isTouchPointer(evt)) return
+      updatePointer(evt)
+
+      if (state.active && state.pointers.size >= 2) {
+        const info = getMidAndDistance()
+        if (info) {
+          const currentScale = studentViewScaleRef.current
+          const nextScale = clampStudentScale(state.startScale * (info.distance / Math.max(1, state.startDistance)))
+          if (Math.abs(nextScale - currentScale) > 0.001) {
+            const rect = viewport.getBoundingClientRect()
+            const midX = info.mid.x - rect.left + viewport.scrollLeft
+            const midY = info.mid.y - rect.top + viewport.scrollTop
+            const ratio = nextScale / currentScale
+            viewport.scrollLeft = midX * ratio - (info.mid.x - rect.left)
+            viewport.scrollTop = midY * ratio - (info.mid.y - rect.top)
+            studentViewScaleRef.current = nextScale
+            setStudentViewScale(nextScale)
+          }
+
+          if (state.lastMid) {
+            const dx = info.mid.x - state.lastMid.x
+            const dy = info.mid.y - state.lastMid.y
+            viewport.scrollLeft -= dx
+            viewport.scrollTop -= dy
+          }
+          state.lastMid = info.mid
+        }
+        suppressEvent(evt)
+        return
+      }
+
+      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerUp = (evt: PointerEvent) => {
+      if (!isTouchPointer(evt)) return
+      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      state.pointers.delete(evt.pointerId)
+      state.suppressedPointers.delete(evt.pointerId)
+      endGestureIfNeeded()
+      if (state.active || wasSuppressed) {
+        suppressEvent(evt)
+      }
+    }
+
+    host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
+    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
+
+    return () => {
+      host.removeEventListener('pointerdown', handlePointerDown, true)
+      host.removeEventListener('pointermove', handlePointerMove, true)
+      window.removeEventListener('pointerup', handlePointerUp, true)
+      window.removeEventListener('pointercancel', handlePointerUp, true)
+    }
+  }, [clampStudentScale, useStackedStudentLayout])
 
   type NotesSaveRecord = {
     id: string

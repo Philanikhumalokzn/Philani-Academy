@@ -768,6 +768,131 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [updateMathpixLocalCounts])
 
   useEffect(() => {
+    if (!useStackedStudentLayout) return
+    const host = editorHostRef.current
+    const viewport = studentViewportRef.current
+    if (!host || !viewport) return
+
+    const state = multiTouchGestureRef.current
+
+    const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch'
+
+    const updatePointer = (evt: PointerEvent) => {
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    }
+
+    const getMidAndDistance = () => {
+      if (state.pointers.size < 2) return null
+      const [a, b] = Array.from(state.pointers.values()).slice(0, 2)
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const distance = Math.max(1, Math.hypot(dx, dy))
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      return { mid, distance }
+    }
+
+    const suppressEvent = (evt: PointerEvent) => {
+      if (evt.cancelable) evt.preventDefault()
+      evt.stopImmediatePropagation()
+    }
+
+    const beginGestureIfReady = () => {
+      if (state.active) return
+      if (state.pointers.size < 2) return
+      const info = getMidAndDistance()
+      if (!info) return
+      state.active = true
+      state.startDistance = info.distance
+      state.startScale = studentViewScaleRef.current
+      state.lastMid = info.mid
+      state.suppressedPointers = new Set(state.pointers.keys())
+    }
+
+    const endGestureIfNeeded = () => {
+      if (state.active && state.pointers.size < 2) {
+        state.active = false
+        state.startDistance = 1
+        state.lastMid = null
+      }
+      if (state.pointers.size === 0) {
+        state.suppressedPointers.clear()
+      }
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (!isTouchPointer(evt)) return
+      updatePointer(evt)
+      if (state.pointers.size >= 2) {
+        beginGestureIfReady()
+        state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+      } else if (state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (!isTouchPointer(evt)) return
+      updatePointer(evt)
+
+      if (state.active && state.pointers.size >= 2) {
+        const info = getMidAndDistance()
+        if (info) {
+          const currentScale = studentViewScaleRef.current
+          const nextScale = clampStudentScale(state.startScale * (info.distance / Math.max(1, state.startDistance)))
+          if (Math.abs(nextScale - currentScale) > 0.001) {
+            const rect = viewport.getBoundingClientRect()
+            const midX = info.mid.x - rect.left + viewport.scrollLeft
+            const midY = info.mid.y - rect.top + viewport.scrollTop
+            const ratio = nextScale / currentScale
+            viewport.scrollLeft = midX * ratio - (info.mid.x - rect.left)
+            viewport.scrollTop = midY * ratio - (info.mid.y - rect.top)
+            studentViewScaleRef.current = nextScale
+            setStudentViewScale(nextScale)
+          }
+
+          if (state.lastMid) {
+            const dx = info.mid.x - state.lastMid.x
+            const dy = info.mid.y - state.lastMid.y
+            viewport.scrollLeft -= dx
+            viewport.scrollTop -= dy
+          }
+          state.lastMid = info.mid
+        }
+        suppressEvent(evt)
+        return
+      }
+
+      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerUp = (evt: PointerEvent) => {
+      if (!isTouchPointer(evt)) return
+      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      state.pointers.delete(evt.pointerId)
+      state.suppressedPointers.delete(evt.pointerId)
+      endGestureIfNeeded()
+      if (state.active || wasSuppressed) {
+        suppressEvent(evt)
+      }
+    }
+
+    host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
+    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
+
+    return () => {
+      host.removeEventListener('pointerdown', handlePointerDown, true)
+      host.removeEventListener('pointermove', handlePointerMove, true)
+      window.removeEventListener('pointerup', handlePointerUp, true)
+      window.removeEventListener('pointercancel', handlePointerUp, true)
+    }
+  }, [clampStudentScale, editorReinitNonce, useStackedStudentLayout])
+
+  useEffect(() => {
     if (!isAdmin) return
     if (typeof window === 'undefined') return
     try {
@@ -1658,6 +1783,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
   const [studentViewScale, setStudentViewScale] = useState(0.9)
+  const studentViewScaleRef = useRef(0.9)
+  const clampStudentScale = useCallback((value: number) => Math.min(1.6, Math.max(0.6, value)), [])
+
+  useEffect(() => {
+    studentViewScaleRef.current = studentViewScale
+  }, [studentViewScale])
 
   type NotesSaveRecord = {
     id: string
@@ -1904,6 +2035,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
+  const multiTouchGestureRef = useRef<{
+    pointers: Map<number, { x: number; y: number }>
+    active: boolean
+    startDistance: number
+    startScale: number
+    lastMid: { x: number; y: number } | null
+    suppressedPointers: Set<number>
+  }>({
+    pointers: new Map(),
+    active: false,
+    startDistance: 1,
+    startScale: 1,
+    lastMid: null,
+    suppressedPointers: new Set(),
+  })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -7010,6 +7156,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         width: '100%',
         height: '100%',
         minHeight: '220px',
+        touchAction: 'none',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }
@@ -9509,20 +9656,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const studentScaleControl = useMemo(() => {
     if (!useStackedStudentLayout) return null
-    const clampScale = (value: number) => Math.min(1.6, Math.max(0.6, value))
     const step = 0.1
-    const handleAdjust = (delta: number) => setStudentViewScale(curr => clampScale(curr + delta))
+    const handleAdjust = (delta: number) => setStudentViewScale(curr => clampStudentScale(curr + delta))
     const handleFit = () => {
       const viewport = studentViewportRef.current
       if (!viewport) return
       const width = viewport.clientWidth || 1
       const baseHeight = width * (4 / 5)
       const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
-      const fitScale = clampScale(availableHeight / baseHeight)
+      const fitScale = clampStudentScale(availableHeight / baseHeight)
       setStudentViewScale(fitScale)
     }
-    return { handleAdjust, handleFit, clampScale }
-  }, [useStackedStudentLayout])
+    return { handleAdjust, handleFit, clampScale: clampStudentScale }
+  }, [clampStudentScale, useStackedStudentLayout])
 
   const renderToolbarBlock = () => (
     <div className="canvas-toolbar">
@@ -11017,7 +11163,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
                   style={{
-                    touchAction: 'pan-x pan-y pinch-zoom',
+                    touchAction: 'none',
                     paddingBottom: showBottomHorizontalScrollbar
                       ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
                       : undefined,

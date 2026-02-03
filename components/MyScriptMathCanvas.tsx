@@ -107,7 +107,11 @@ function renderTextWithInlineKatex(inputRaw: string) {
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
 
-function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean): boolean {
+function installIinkEraserPointerTypeShim(
+  editor: any,
+  isEraserActive: () => boolean,
+  transformPointerInfo?: (info: any) => any
+): boolean {
   if (!editor || typeof editor !== 'object') return false
 
   const tryInstallOn = (candidate: any): boolean => {
@@ -123,24 +127,22 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
 
-    candidate.onPointerDown = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
+    const applyTransforms = (info: any) => {
+      let next = (isEraserActive() && info && typeof info === 'object')
         ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
         : info
-      return originalDown(next)
+      if (transformPointerInfo) {
+        const transformed = transformPointerInfo(next)
+        if (transformed !== undefined) {
+          next = transformed
+        }
+      }
+      return next
     }
-    candidate.onPointerMove = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalMove(next)
-    }
-    candidate.onPointerUp = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalUp(next)
-    }
+
+    candidate.onPointerDown = (info: any) => originalDown(applyTransforms(info))
+    candidate.onPointerMove = (info: any) => originalMove(applyTransforms(info))
+    candidate.onPointerUp = (info: any) => originalUp(applyTransforms(info))
 
     try {
       ;(candidate as any).__philaniEraserShimInstalled = true
@@ -1660,10 +1662,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [studentViewScale, setStudentViewScale] = useState(0.9)
   const studentViewScaleRef = useRef(0.9)
   const clampStudentScale = useCallback((value: number) => Math.min(1.6, Math.max(0.6, value)), [])
+  const stackedLayoutRef = useRef(useStackedStudentLayout)
+
+  useEffect(() => {
+    stackedLayoutRef.current = useStackedStudentLayout
+  }, [useStackedStudentLayout])
 
   useEffect(() => {
     studentViewScaleRef.current = studentViewScale
   }, [studentViewScale])
+
+  const transformIinkPointerInfo = useCallback((info: any) => {
+    if (!stackedLayoutRef.current) return info
+    const scale = studentViewScaleRef.current
+    if (!Number.isFinite(scale) || scale === 1) return info
+    if (!info || typeof info !== 'object') return info
+    const x = Number((info as any).x)
+    const y = Number((info as any).y)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return info
+    return { ...info, x: x / scale, y: y / scale }
+  }, [])
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
@@ -5276,7 +5294,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         editorInstanceRef.current = editor
         setMyScriptEditorReady(true)
-        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current))
+        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current, transformIinkPointerInfo))
         setStatus('ready')
         setMyScriptLastError(null)
 

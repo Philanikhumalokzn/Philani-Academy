@@ -2460,7 +2460,7 @@ export default function DiagramOverlayModule(props: {
               )}
             </>
           }
-          contentClassName="p-0"
+          contentClassName="p-0 flex flex-col"
         >
           <div
             ref={containerRef}

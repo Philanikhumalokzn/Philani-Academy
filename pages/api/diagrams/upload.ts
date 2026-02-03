@@ -97,6 +97,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const relativePath = path.posix.join('uploads', 'diagrams', safeSessionKey, filename).replace(/\\/g, '/')
 
     const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+    const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL)
+    if (!blobToken && isProduction) {
+      return res.status(500).json({ message: 'Diagram uploads are not configured. Please set BLOB_READ_WRITE_TOKEN.' })
+    }
 
     let publicUrl = `/${relativePath}`
     let storedPath = relativePath

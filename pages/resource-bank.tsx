@@ -44,6 +44,8 @@ export default function ResourceBankPage() {
   const [parseOnUpload, setParseOnUpload] = useState(false)
   const [aiNormalizeOnUpload, setAiNormalizeOnUpload] = useState(false)
   const [convertDocxOnUpload, setConvertDocxOnUpload] = useState(false)
+  const [lessonScreenshotsOnUpload, setLessonScreenshotsOnUpload] = useState(false)
+  const [lessonScreenshotsBusy, setLessonScreenshotsBusy] = useState(false)
 
   const [parsedViewerOpen, setParsedViewerOpen] = useState(false)
   const [parsedViewerLoading, setParsedViewerLoading] = useState(false)
@@ -155,7 +157,7 @@ export default function ResourceBankPage() {
     }
 
     const file = fileInputRef.current?.files?.[0]
-    if (!file) {
+    if (!file && !lessonScreenshotsOnUpload) {
       setError('Choose a file first')
       return
     }
@@ -164,9 +166,39 @@ export default function ResourceBankPage() {
     setError(null)
 
     try {
+      if (lessonScreenshotsOnUpload) {
+        const files = Array.from(fileInputRef.current?.files || [])
+        if (!files.length) {
+          setError('Choose one or more image files first')
+          return
+        }
+
+        setLessonScreenshotsBusy(true)
+        const form = new FormData()
+        files.forEach((file) => form.append('files', file))
+        if (title.trim()) form.append('title', title.trim())
+        if (tag.trim()) form.append('tag', tag.trim())
+        if (role === 'admin') form.append('grade', effectiveGrade)
+
+        const res = await fetch('/api/lesson-plans/from-screenshots', {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: form,
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.message || `Lesson plan upload failed (${res.status})`)
+
+        setTitle('')
+        setTag('')
+        if (fileInputRef.current) fileInputRef.current.value = ''
+
+        await fetchItems(effectiveGrade)
+        return
+      }
+
       // Vercel serverless functions have a small request payload limit (often ~4.5 MB).
       // Upload larger files directly to Vercel Blob from the browser.
-      const shouldUseClientUpload = file.size > 4.0 * 1024 * 1024
+      const shouldUseClientUpload = file ? file.size > 4.0 * 1024 * 1024 : false
 
       if (shouldUseClientUpload) {
         const blobPath = buildResourceBlobPath(effectiveGrade, file.name)
@@ -247,6 +279,7 @@ export default function ResourceBankPage() {
       setError(err?.message || 'Failed to upload resource')
     } finally {
       setUploading(false)
+      setLessonScreenshotsBusy(false)
     }
   }
 
@@ -654,7 +687,13 @@ export default function ResourceBankPage() {
 
                 <div className="space-y-2">
                   <div className="text-xs muted">File</div>
-                  <input ref={fileInputRef} type="file" className="input" />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="input"
+                    multiple={lessonScreenshotsOnUpload}
+                    accept={lessonScreenshotsOnUpload ? 'image/png,image/jpeg,image/webp' : undefined}
+                  />
                   <div className="flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-sm text-white/90 select-none">
                       <input
@@ -665,6 +704,7 @@ export default function ResourceBankPage() {
                           setParseOnUpload(next)
                           if (next) setConvertDocxOnUpload(false)
                           if (!next) setAiNormalizeOnUpload(false)
+                          if (next) setLessonScreenshotsOnUpload(false)
                         }}
                       />
                       Parse (Mathpix OCR)
@@ -688,18 +728,35 @@ export default function ResourceBankPage() {
                           if (next) {
                             setParseOnUpload(false)
                             setAiNormalizeOnUpload(false)
+                            setLessonScreenshotsOnUpload(false)
                           }
                         }}
                       />
                       Convert to DOCX (Mathpix)
                     </label>
+                    <label className={`flex items-center gap-2 text-sm ${lessonScreenshotsOnUpload ? 'text-white/90' : 'text-white/40'} select-none`}>
+                      <input
+                        type="checkbox"
+                        checked={lessonScreenshotsOnUpload}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setLessonScreenshotsOnUpload(next)
+                          if (next) {
+                            setParseOnUpload(false)
+                            setAiNormalizeOnUpload(false)
+                            setConvertDocxOnUpload(false)
+                          }
+                        }}
+                      />
+                      Lesson plan from screenshots (AI-assisted)
+                    </label>
                     <button
                       type="button"
                       className="btn btn-primary w-fit"
                       onClick={() => void handleUpload()}
-                      disabled={uploading || profileLoading || !effectiveGrade}
+                      disabled={uploading || lessonScreenshotsBusy || profileLoading || !effectiveGrade}
                     >
-                      {uploading ? 'Uploading…' : 'Upload'}
+                      {uploading || lessonScreenshotsBusy ? 'Uploading…' : 'Upload'}
                     </button>
                   </div>
                 </div>

@@ -1673,38 +1673,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [studentViewScale])
 
   const transformIinkPointerInfo = useCallback((info: any) => {
-    if (!stackedLayoutRef.current) return info
-    if (!info || typeof info !== 'object') return info
-
-    const rawClientX =
-      Number((info as any).clientX) ||
-      Number((info as any).pointer?.clientX) ||
-      Number((info as any).event?.clientX)
-    const rawClientY =
-      Number((info as any).clientY) ||
-      Number((info as any).pointer?.clientY) ||
-      Number((info as any).event?.clientY)
-
-    if (!Number.isFinite(rawClientX) || !Number.isFinite(rawClientY)) return info
-
-    const scaleEl = studentScaleRef.current || editorHostRef.current
-    if (!scaleEl) return info
-
-    const rect = scaleEl.getBoundingClientRect()
-    const localWidth = scaleEl.clientWidth || 0
-    const localHeight = scaleEl.clientHeight || 0
-    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top) || localWidth <= 0 || localHeight <= 0) {
-      return info
-    }
-
-    const scaleX = rect.width / Math.max(1, localWidth)
-    const scaleY = rect.height / Math.max(1, localHeight)
-    const safeScaleX = Number.isFinite(scaleX) && scaleX !== 0 ? scaleX : 1
-    const safeScaleY = Number.isFinite(scaleY) && scaleY !== 0 ? scaleY : 1
-
-    const localX = (rawClientX - rect.left) / safeScaleX
-    const localY = (rawClientY - rect.top) / safeScaleY
-    return { ...info, x: localX, y: localY }
+    return info
   }, [])
 
   useEffect(() => {
@@ -11223,10 +11192,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   <div
                     ref={studentScaleRef}
                     style={{
-                      transform: `scale(${studentViewScale})`,
-                      transformOrigin: 'top left',
-                      width: `${(100 * inkSurfaceWidthFactor) / studentViewScale}%`,
-                      height: `${100 / studentViewScale}%`,
+                      width: `${100 * inkSurfaceWidthFactor * studentViewScale}%`,
+                      height: `${100 * studentViewScale}%`,
                     }}
                   >
                     <div

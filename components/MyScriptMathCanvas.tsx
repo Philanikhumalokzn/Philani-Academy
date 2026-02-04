@@ -1674,23 +1674,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const transformIinkPointerInfo = useCallback((info: any) => {
     if (!stackedLayoutRef.current) return info
-    const scale = studentViewScaleRef.current
-    if (!Number.isFinite(scale) || scale === 1) return info
     if (!info || typeof info !== 'object') return info
     const x = Number((info as any).x)
     const y = Number((info as any).y)
     if (!Number.isFinite(x) || !Number.isFinite(y)) return info
-    const scaleEl = studentScaleRef.current || editorHostRef.current
-    if (!scaleEl) return { ...info, x: x / scale, y: y / scale }
+    const host = editorHostRef.current
+    if (!host) return info
 
-    const rect = scaleEl.getBoundingClientRect()
-    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top)) {
-      return { ...info, x: x / scale, y: y / scale }
+    const rect = host.getBoundingClientRect()
+    const localWidth = host.clientWidth || 0
+    const localHeight = host.clientHeight || 0
+    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top) || localWidth <= 0 || localHeight <= 0) {
+      return info
     }
 
-    const adjustedX = rect.left + (x - rect.left) / scale
-    const adjustedY = rect.top + (y - rect.top) / scale
-    return { ...info, x: adjustedX, y: adjustedY }
+    const scaleX = rect.width / Math.max(1, localWidth)
+    const scaleY = rect.height / Math.max(1, localHeight)
+    const alreadyLocal = x >= -2 && y >= -2 && x <= localWidth + 2 && y <= localHeight + 2
+    if (alreadyLocal || (!Number.isFinite(scaleX) && !Number.isFinite(scaleY))) return info
+
+    const localX = (x - rect.left) / (Number.isFinite(scaleX) && scaleX !== 0 ? scaleX : 1)
+    const localY = (y - rect.top) / (Number.isFinite(scaleY) && scaleY !== 0 ? scaleY : 1)
+    return { ...info, x: localX, y: localY }
   }, [])
 
   useEffect(() => {

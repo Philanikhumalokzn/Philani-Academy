@@ -120,8 +120,8 @@ function installIinkEraserPointerTypeShim(
     if (typeof candidate.onPointerDown !== 'function') return false
     if (typeof candidate.onPointerMove !== 'function') return false
     if (typeof candidate.onPointerUp !== 'function') return false
-    // Heuristic: the capture layer object also has an attach() method.
-    if (typeof candidate.attach !== 'function') return false
+    // Heuristic: the capture layer object often has an attach() method.
+    // Some builds don't expose attach; still allow patching as long as pointer handlers exist.
 
     const originalDown = candidate.onPointerDown.bind(candidate)
     const originalMove = candidate.onPointerMove.bind(candidate)
@@ -1680,7 +1680,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const x = Number((info as any).x)
     const y = Number((info as any).y)
     if (!Number.isFinite(x) || !Number.isFinite(y)) return info
-    return { ...info, x: x / scale, y: y / scale }
+    const host = editorHostRef.current
+    if (!host) return { ...info, x: x / scale, y: y / scale }
+
+    const hostRect = host.getBoundingClientRect()
+    if (!hostRect || !Number.isFinite(hostRect.left) || !Number.isFinite(hostRect.top)) {
+      return { ...info, x: x / scale, y: y / scale }
+    }
+
+    const localX = x - hostRect.left
+    const localY = y - hostRect.top
+    const scaledX = localX / scale
+    const scaledY = localY / scale
+    return { ...info, x: scaledX + hostRect.left, y: scaledY + hostRect.top }
   }, [])
 
   useEffect(() => {
@@ -1695,6 +1707,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const updatePointer = (evt: PointerEvent) => {
       state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    }
+
+    const rebaselinePointers = () => {
+      if (!state.active || state.pointers.size < 2) return
+      const info = getMidAndDistance()
+      if (!info) return
+      state.startDistance = info.distance
+      state.startScale = studentViewScaleRef.current
+      state.lastMid = info.mid
     }
 
     const getMidAndDistance = () => {
@@ -1765,6 +1786,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             viewport.scrollTop = midY * ratio - (info.mid.y - rect.top)
             studentViewScaleRef.current = nextScale
             setStudentViewScale(nextScale)
+            rebaselinePointers()
           }
 
           if (state.lastMid) {

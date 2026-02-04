@@ -9556,6 +9556,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     const getRenderer = () => {
+      if (useStackedStudentLayout) return null
       const editor = editorInstanceRef.current as any
       return editor?.renderer || editor?.Renderer || editor?.context?.renderer || null
     }
@@ -9663,8 +9664,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!Number.isFinite(distance) || distance <= 0 || lastDistance <= 0) return
 
       const ratio = distance / lastDistance
-      const minScale = getRenderer() ? MIN_RENDER_SCALE : MIN_STUDENT_SCALE
-      const maxScale = getRenderer() ? MAX_RENDER_SCALE : MAX_STUDENT_SCALE
+      const hasRenderer = Boolean(getRenderer())
+      const minScale = hasRenderer ? MIN_RENDER_SCALE : MIN_STUDENT_SCALE
+      const maxScale = hasRenderer ? MAX_RENDER_SCALE : MAX_STUDENT_SCALE
       const nextScale = Math.max(minScale, Math.min(maxScale, lastScale * ratio))
       const appliedRatio = nextScale / lastScale
 
@@ -11193,7 +11195,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
                   style={{
-                    touchAction: 'pan-x pan-y pinch-zoom',
+                    touchAction: 'pan-x pan-y',
                     paddingBottom: showBottomHorizontalScrollbar
                       ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
                       : undefined,

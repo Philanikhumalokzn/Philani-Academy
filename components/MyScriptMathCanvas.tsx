@@ -7001,6 +7001,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return {
         width: '100%',
         height: '100%',
+        touchAction: 'none',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }
@@ -7010,6 +7011,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         width: '100%',
         height: '100%',
         minHeight: '220px',
+        touchAction: 'pan-x pan-y',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }
@@ -7021,6 +7023,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return {
       width: '100%',
       ...sizing,
+      touchAction: 'none',
       pointerEvents: disableCanvasInput ? 'none' : undefined,
       cursor: disableCanvasInput ? 'default' : undefined,
     }
@@ -9523,6 +9526,179 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     return { handleAdjust, handleFit, clampScale }
   }, [useStackedStudentLayout])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const host = useStackedStudentLayout ? studentViewportRef.current : editorHostRef.current
+    if (!host) return
+
+    const MIN_RENDER_SCALE = 0.25
+    const MAX_RENDER_SCALE = 4
+    const MIN_STUDENT_SCALE = 0.6
+    const MAX_STUDENT_SCALE = 1.6
+
+    const pointers = new Map<number, { x: number; y: number }>()
+    let pinchActive = false
+    let lastDistance = 0
+    let lastScale = 1
+
+    const stopEvent = (event: PointerEvent) => {
+      try {
+        event.preventDefault()
+      } catch {}
+      try {
+        event.stopPropagation()
+      } catch {}
+      try {
+        ;(event as any).stopImmediatePropagation?.()
+      } catch {}
+    }
+
+    const getRenderer = () => {
+      const editor = editorInstanceRef.current as any
+      return editor?.renderer || editor?.Renderer || editor?.context?.renderer || null
+    }
+
+    const getRendererScale = (renderer: any) => {
+      const scale = renderer?.viewScale ?? renderer?.ViewScale
+      return typeof scale === 'number' && Number.isFinite(scale) ? scale : null
+    }
+
+    const invalidateRenderer = (renderer: any) => {
+      if (!renderer) return
+      const renderTarget = renderer.renderTarget || renderer.RenderTarget
+      if (renderTarget?.invalidate) {
+        const layerAll = (window as any)?.iink?.LayerType?.LAYER_TYPE_ALL
+          ?? (window as any)?.iink?.LayerType?.LayerType_ALL
+        try {
+          if (layerAll != null) {
+            renderTarget.invalidate(renderer, layerAll)
+          } else {
+            renderTarget.invalidate(renderer)
+          }
+          return
+        } catch {}
+      }
+      try {
+        renderer.invalidate?.()
+      } catch {}
+    }
+
+    const applyZoom = (ratio: number, nextScale: number, centerX: number, centerY: number) => {
+      if (!Number.isFinite(ratio) || ratio === 1) return
+      const renderer = getRenderer()
+      if (renderer) {
+        const zoomAt = renderer.zoomAt || renderer.ZoomAt
+        const zoom = renderer.zoom || renderer.Zoom
+        if (typeof zoomAt === 'function') {
+          try {
+            zoomAt.call(renderer, ratio, { x: centerX, y: centerY })
+          } catch {
+            try {
+              zoomAt.call(renderer, ratio, centerX, centerY)
+            } catch {}
+          }
+        } else if (typeof zoom === 'function') {
+          try {
+            zoom.call(renderer, ratio)
+          } catch {}
+        } else {
+          try {
+            if ('viewScale' in renderer) renderer.viewScale = nextScale
+            else if ('ViewScale' in renderer) renderer.ViewScale = nextScale
+          } catch {}
+        }
+        invalidateRenderer(renderer)
+        return
+      }
+
+      if (useStackedStudentLayout) {
+        setStudentViewScale(Math.max(MIN_STUDENT_SCALE, Math.min(MAX_STUDENT_SCALE, nextScale)))
+      }
+    }
+
+    const computeDistance = () => {
+      if (pointers.size < 2) return 0
+      const [a, b] = Array.from(pointers.values())
+      const dx = a.x - b.x
+      const dy = a.y - b.y
+      return Math.hypot(dx, dy)
+    }
+
+    const computeCenter = () => {
+      const rect = host.getBoundingClientRect()
+      if (pointers.size < 2) return { x: rect.width / 2, y: rect.height / 2 }
+      const [a, b] = Array.from(pointers.values())
+      return {
+        x: (a.x + b.x) / 2 - rect.left,
+        y: (a.y + b.y) / 2 - rect.top,
+      }
+    }
+
+    const beginPinch = () => {
+      if (pointers.size < 2) return
+      pinchActive = true
+      lastDistance = computeDistance()
+      const renderer = getRenderer()
+      const rendererScale = renderer ? getRendererScale(renderer) : null
+      lastScale = rendererScale ?? (useStackedStudentLayout ? studentViewScale : 1)
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch') return
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (pointers.size === 2) {
+        beginPinch()
+        stopEvent(event)
+      }
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (!pinchActive || pointers.size < 2) return
+
+      const distance = computeDistance()
+      if (!Number.isFinite(distance) || distance <= 0 || lastDistance <= 0) return
+
+      const ratio = distance / lastDistance
+      const minScale = getRenderer() ? MIN_RENDER_SCALE : MIN_STUDENT_SCALE
+      const maxScale = getRenderer() ? MAX_RENDER_SCALE : MAX_STUDENT_SCALE
+      const nextScale = Math.max(minScale, Math.min(maxScale, lastScale * ratio))
+      const appliedRatio = nextScale / lastScale
+
+      if (!Number.isFinite(appliedRatio) || appliedRatio === 1) return
+
+      const center = computeCenter()
+      applyZoom(appliedRatio, nextScale, center.x, center.y)
+      lastScale = nextScale
+      lastDistance = distance
+      stopEvent(event)
+    }
+
+    const endPointer = (event: PointerEvent) => {
+      if (pointers.has(event.pointerId)) {
+        pointers.delete(event.pointerId)
+      }
+      if (pointers.size < 2) {
+        pinchActive = false
+        lastDistance = 0
+      }
+    }
+
+    host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    host.addEventListener('pointerup', endPointer, { capture: true })
+    host.addEventListener('pointercancel', endPointer, { capture: true })
+
+    return () => {
+      host.removeEventListener('pointerdown', handlePointerDown, { capture: true } as any)
+      host.removeEventListener('pointermove', handlePointerMove, { capture: true } as any)
+      host.removeEventListener('pointerup', endPointer, { capture: true } as any)
+      host.removeEventListener('pointercancel', endPointer, { capture: true } as any)
+    }
+  }, [studentViewScale, useStackedStudentLayout])
 
   const renderToolbarBlock = () => (
     <div className="canvas-toolbar">

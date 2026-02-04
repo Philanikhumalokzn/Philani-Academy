@@ -11192,8 +11192,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   <div
                     ref={studentScaleRef}
                     style={{
-                      width: `${100 * inkSurfaceWidthFactor * studentViewScale}%`,
-                      height: `${100 * studentViewScale}%`,
+                      width: `${100 * inkSurfaceWidthFactor}%`,
+                      height: '100%',
+                      zoom: studentViewScale as any,
                     }}
                   >
                     <div

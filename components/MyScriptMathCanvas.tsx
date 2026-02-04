@@ -1680,19 +1680,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const x = Number((info as any).x)
     const y = Number((info as any).y)
     if (!Number.isFinite(x) || !Number.isFinite(y)) return info
-    const host = editorHostRef.current
-    if (!host) return { ...info, x: x / scale, y: y / scale }
+    const scaleEl = studentScaleRef.current || editorHostRef.current
+    if (!scaleEl) return { ...info, x: x / scale, y: y / scale }
 
-    const hostRect = host.getBoundingClientRect()
-    if (!hostRect || !Number.isFinite(hostRect.left) || !Number.isFinite(hostRect.top)) {
+    const rect = scaleEl.getBoundingClientRect()
+    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top)) {
       return { ...info, x: x / scale, y: y / scale }
     }
 
-    const localX = x - hostRect.left
-    const localY = y - hostRect.top
-    const scaledX = localX / scale
-    const scaledY = localY / scale
-    return { ...info, x: scaledX + hostRect.left, y: scaledY + hostRect.top }
+    const adjustedX = rect.left + (x - rect.left) / scale
+    const adjustedY = rect.top + (y - rect.top) / scale
+    return { ...info, x: adjustedX, y: adjustedY }
   }, [])
 
   useEffect(() => {
@@ -2075,6 +2073,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
+  const studentScaleRef = useRef<HTMLDivElement | null>(null)
   const multiTouchGestureRef = useRef<{
     pointers: Map<number, { x: number; y: number }>
     active: boolean
@@ -11210,6 +11209,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   }}
                 >
                   <div
+                    ref={studentScaleRef}
                     style={{
                       transform: `scale(${studentViewScale})`,
                       transformOrigin: 'top left',

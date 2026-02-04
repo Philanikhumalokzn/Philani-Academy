@@ -152,6 +152,35 @@ const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
   return createPortal(children, document.body)
 }
 
+type LocalCacheEntry<T> = {
+  updatedAt: string
+  data: T
+}
+
+const readLocalCache = <T,>(key: string): LocalCacheEntry<T> | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as LocalCacheEntry<T>
+  } catch {
+    return null
+  }
+}
+
+const writeLocalCache = <T,>(key: string, data: T) => {
+  if (typeof window === 'undefined') return
+  try {
+    const payload: LocalCacheEntry<T> = {
+      updatedAt: new Date().toISOString(),
+      data
+    }
+    window.localStorage.setItem(key, JSON.stringify(payload))
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export default function Dashboard() {
   const renderInlineEmphasis = useCallback((text: string, keyPrefix: string) => {
     const input = typeof text === 'string' ? text : ''
@@ -1262,6 +1291,15 @@ export default function Dashboard() {
   const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
   const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
 
+  const offlineCachePrefix = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:offline:${userKey}`
+  }, [session])
+
+  const makeOfflineCacheKey = useCallback((suffix: string) => {
+    return `${offlineCachePrefix}:${suffix}`
+  }, [offlineCachePrefix])
+
   const announcementReadStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     return `pa:readAnnouncements:${userKey}`
@@ -1275,6 +1313,17 @@ export default function Dashboard() {
   useEffect(() => {
     if (status !== 'authenticated') return
     let cancelled = false
+    const cacheKey = makeOfflineCacheKey('profile')
+    const cached = readLocalCache<{ avatar?: string | null; uiHandedness?: string | null; statusBio?: string | null }>(cacheKey)
+    if (cached?.data && !cancelled) {
+      const cachedAvatar = typeof cached.data.avatar === 'string' ? cached.data.avatar.trim() : ''
+      const cachedHand = typeof cached.data.uiHandedness === 'string' ? cached.data.uiHandedness.trim().toLowerCase() : ''
+      const cachedStatus = typeof cached.data.statusBio === 'string' ? cached.data.statusBio.trim() : ''
+      setProfileAvatarUrl(cachedAvatar || null)
+      setProfileUiHandedness(cachedHand === 'left' ? 'left' : 'right')
+      setProfileStatusBio(cachedStatus || null)
+      setStatusBioDraft(cachedStatus || '')
+    }
     ;(async () => {
       try {
         const res = await fetch('/api/profile', { credentials: 'same-origin' })
@@ -1290,6 +1339,13 @@ export default function Dashboard() {
         if (!cancelled) {
           setProfileStatusBio(nextStatus || null)
           setStatusBioDraft(nextStatus || '')
+        }
+        if (!cancelled) {
+          writeLocalCache(cacheKey, {
+            avatar: next || null,
+            uiHandedness: nextHand || null,
+            statusBio: nextStatus || null
+          })
         }
       } catch {
         // ignore
@@ -2557,8 +2613,24 @@ export default function Dashboard() {
       return
     }
 
+    const cacheKey = makeOfflineCacheKey(`resources:${selectedGrade}`)
+    const cached = readLocalCache<ResourceBankItem[]>(cacheKey)
+    if (cached?.data?.length) {
+      setBooksItems(cached.data)
+    }
+
     setBooksLoading(true)
     setBooksError(null)
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (cached?.data?.length) {
+        setBooksError('Offline. Showing last saved materials.')
+      } else {
+        setBooksItems([])
+        setBooksError('Offline. No saved materials yet.')
+      }
+      setBooksLoading(false)
+      return
+    }
     try {
       const url = isAdmin
         ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}`
@@ -2568,13 +2640,14 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data?.message || `Failed to load materials (${res.status})`)
       const items = Array.isArray(data?.items) ? data.items : []
       setBooksItems(items)
+      writeLocalCache(cacheKey, items)
     } catch (err: any) {
       setBooksError(err?.message || 'Failed to load materials')
-      setBooksItems([])
+      if (!cached?.data?.length) setBooksItems([])
     } finally {
       setBooksLoading(false)
     }
-  }, [isAdmin, selectedGrade, status])
+  }, [isAdmin, makeOfflineCacheKey, selectedGrade, status])
 
   const openBooksOverlay = useCallback(() => {
     setBooksOverlayOpen(true)
@@ -4115,14 +4188,29 @@ export default function Dashboard() {
       setSessionsLoading(false)
       return
     }
+    const cacheKey = makeOfflineCacheKey(`sessions:${gradeToFetch}`)
+    const cached = readLocalCache<any[]>(cacheKey)
+    if (cached?.data?.length) {
+      setSessions(cached.data)
+    }
     setSessionsLoading(true)
     setSessionsError(null)
-    setSessions([])
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (cached?.data?.length) {
+        setSessionsError('Offline. Showing last saved sessions.')
+      } else {
+        setSessions([])
+        setSessionsError('Offline. No saved sessions yet.')
+      }
+      setSessionsLoading(false)
+      return
+    }
     try {
       const res = await fetch(`/api/sessions?grade=${encodeURIComponent(gradeToFetch)}`, { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json()
         setSessions(data)
+        writeLocalCache(cacheKey, data)
         setSessionsError(null)
       } else {
         const data = await res.json().catch(() => ({}))
@@ -4166,13 +4254,29 @@ export default function Dashboard() {
       setAnnouncementsError('Select a grade to view announcements.')
       return
     }
+    const cacheKey = makeOfflineCacheKey(`announcements:${gradeToFetch}`)
+    const cached = readLocalCache<Announcement[]>(cacheKey)
+    if (cached?.data?.length) {
+      setAnnouncements(cached.data)
+    }
     setAnnouncementsError(null)
     setAnnouncementsLoading(true)
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (cached?.data?.length) {
+        setAnnouncementsError('Offline. Showing last saved announcements.')
+      } else {
+        setAnnouncements([])
+        setAnnouncementsError('Offline. No saved announcements yet.')
+      }
+      setAnnouncementsLoading(false)
+      return
+    }
     try {
       const res = await fetch(`/api/announcements?grade=${encodeURIComponent(gradeToFetch)}`, { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json()
         setAnnouncements(Array.isArray(data) ? data : [])
+        writeLocalCache(cacheKey, Array.isArray(data) ? data : [])
       } else {
         const data = await res.json().catch(() => ({}))
         if (res.status === 401) {
@@ -4185,7 +4289,7 @@ export default function Dashboard() {
     } catch (err) {
       console.error('fetchAnnouncements error', err)
       setAnnouncementsError(err instanceof Error ? err.message : 'Network error')
-      setAnnouncements([])
+      if (!cached?.data?.length) setAnnouncements([])
     } finally {
       setAnnouncementsLoading(false)
     }

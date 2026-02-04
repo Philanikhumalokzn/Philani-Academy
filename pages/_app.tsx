@@ -5,6 +5,7 @@ import type { AppProps } from 'next/app'
 import { SessionProvider } from 'next-auth/react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
+import { useEffect } from 'react'
 import NavBar from '../components/NavBar'
 import MobileTopChrome from '../components/MobileTopChrome'
 import AppErrorBoundary from '../components/AppErrorBoundary'
@@ -24,6 +25,18 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     || router.pathname === '/jaas-demo'
     || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/q/[questionId]'
     || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId]'
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator)) return
+    const onLoad = () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        // ignore
+      })
+    }
+    window.addEventListener('load', onLoad)
+    return () => window.removeEventListener('load', onLoad)
+  }, [])
 
   return (
     <SessionProvider session={session}>

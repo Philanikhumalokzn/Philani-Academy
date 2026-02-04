@@ -1673,7 +1673,74 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [studentViewScale])
 
   const transformIinkPointerInfo = useCallback((info: any) => {
-    return info
+    if (!stackedLayoutRef.current) return info
+    if (!info || typeof info !== 'object') return info
+
+    const rawClientX =
+      Number((info as any).clientX) ||
+      Number((info as any).pointer?.clientX) ||
+      Number((info as any).event?.clientX)
+    const rawClientY =
+      Number((info as any).clientY) ||
+      Number((info as any).pointer?.clientY) ||
+      Number((info as any).event?.clientY)
+
+    const scaleEl = studentScaleRef.current || editorHostRef.current
+    if (!scaleEl) return info
+
+    const rect = scaleEl.getBoundingClientRect()
+    const localWidth = scaleEl.clientWidth || 0
+    const localHeight = scaleEl.clientHeight || 0
+    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top) || localWidth <= 0 || localHeight <= 0) {
+      return info
+    }
+
+    const hasClient = Number.isFinite(rawClientX) && Number.isFinite(rawClientY)
+    const candidateX = hasClient ? rawClientX : Number((info as any).x)
+    const candidateY = hasClient ? rawClientY : Number((info as any).y)
+    if (!Number.isFinite(candidateX) || !Number.isFinite(candidateY)) return info
+
+    if (!hasClient) {
+      const alreadyLocal = candidateX >= -2 && candidateY >= -2 && candidateX <= localWidth + 2 && candidateY <= localHeight + 2
+      if (alreadyLocal) return info
+    }
+
+    let x = candidateX - rect.left
+    let y = candidateY - rect.top
+
+    const style = typeof window !== 'undefined' ? window.getComputedStyle(scaleEl) : null
+    if (style) {
+      const zoomValue = Number(style.zoom)
+      if (Number.isFinite(zoomValue) && zoomValue > 0) {
+        x /= zoomValue
+        y /= zoomValue
+      }
+
+      const transform = style.transform || ''
+      if (transform && transform !== 'none') {
+        try {
+          const matrix = new DOMMatrixReadOnly(transform)
+          const origin = (style.transformOrigin || '0px 0px').split(' ')
+          const parseOrigin = (value: string, size: number) => {
+            const v = value.trim()
+            if (v.endsWith('%')) return (parseFloat(v) / 100) * size
+            const n = parseFloat(v)
+            return Number.isFinite(n) ? n : 0
+          }
+          const originX = parseOrigin(origin[0] || '0px', rect.width)
+          const originY = parseOrigin(origin[1] || '0px', rect.height)
+          const pt = new DOMPoint(x - originX, y - originY)
+          const inv = matrix.inverse()
+          const mapped = pt.matrixTransform(inv)
+          x = mapped.x + originX
+          y = mapped.y + originY
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return { ...info, x, y }
   }, [])
 
   useEffect(() => {

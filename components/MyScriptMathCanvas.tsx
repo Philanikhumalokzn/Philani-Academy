@@ -1780,23 +1780,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (info) {
           const currentScale = studentViewScaleRef.current
           const nextScale = clampStudentScale(state.startScale * (info.distance / Math.max(1, state.startDistance)))
-          if (Math.abs(nextScale - currentScale) > 0.001) {
+          if (Math.abs(nextScale - currentScale) > 0.0005) {
             const rect = viewport.getBoundingClientRect()
-            const midX = info.mid.x - rect.left + viewport.scrollLeft
-            const midY = info.mid.y - rect.top + viewport.scrollTop
-            const ratio = nextScale / currentScale
-            viewport.scrollLeft = midX * ratio - (info.mid.x - rect.left)
-            viewport.scrollTop = midY * ratio - (info.mid.y - rect.top)
+            const clientX = info.mid.x
+            const clientY = info.mid.y
+            const localX = clientX - rect.left
+            const localY = clientY - rect.top
+            const contentX = (viewport.scrollLeft + localX) / Math.max(0.0001, currentScale)
+            const contentY = (viewport.scrollTop + localY) / Math.max(0.0001, currentScale)
+            const nextScrollLeft = contentX * nextScale - localX
+            const nextScrollTop = contentY * nextScale - localY
+            viewport.scrollLeft = nextScrollLeft
+            viewport.scrollTop = nextScrollTop
             studentViewScaleRef.current = nextScale
             setStudentViewScale(nextScale)
             rebaselinePointers()
-          }
-
-          if (state.lastMid) {
-            const dx = info.mid.x - state.lastMid.x
-            const dy = info.mid.y - state.lastMid.y
-            viewport.scrollLeft -= dx
-            viewport.scrollTop -= dy
           }
           state.lastMid = info.mid
         }

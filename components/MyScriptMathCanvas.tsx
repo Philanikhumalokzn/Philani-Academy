@@ -1685,6 +1685,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       Number((info as any).pointer?.clientY) ||
       Number((info as any).event?.clientY)
 
+    const pointerType = String((info as any).pointerType || '')
     const scaleEl = studentScaleRef.current || editorHostRef.current
     if (!scaleEl) return info
 
@@ -1700,10 +1701,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const candidateY = hasClient ? rawClientY : Number((info as any).y)
     if (!Number.isFinite(candidateX) || !Number.isFinite(candidateY)) return info
 
-    if (!hasClient) {
-      const alreadyLocal = candidateX >= -2 && candidateY >= -2 && candidateX <= localWidth + 2 && candidateY <= localHeight + 2
-      if (alreadyLocal) return info
-    }
+    const alreadyLocal = candidateX >= -2 && candidateY >= -2 && candidateX <= localWidth + 2 && candidateY <= localHeight + 2
+    if (alreadyLocal) return info
 
     let x = candidateX - rect.left
     let y = candidateY - rect.top
@@ -1711,6 +1710,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const style = typeof window !== 'undefined' ? window.getComputedStyle(scaleEl) : null
     if (style) {
       const zoomValue = Number(style.zoom)
+      if (!Number.isFinite(zoomValue) || zoomValue === 1) {
+        // If no zoom is applied and we're already in local bounds, skip remap.
+        if (!hasClient || pointerType === 'mouse') return info
+      }
       if (Number.isFinite(zoomValue) && zoomValue > 0) {
         x /= zoomValue
         y /= zoomValue

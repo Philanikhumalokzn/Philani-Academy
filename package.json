@@ -21,7 +21,6 @@
     "ably": "^1.2.42",
     "bcryptjs": "^2.4.3",
     "cacheable-request": "^7.0.4",
-    "pdf-lib": "^1.17.1",
     "formidable": "^3.5.4",
     "jsonwebtoken": "^9.0.0",
     "katex": "^0.16.25",

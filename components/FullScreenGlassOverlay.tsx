@@ -130,7 +130,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const panelSizing = panelSize || 'full'
 
   const headerClassName = overlayVariant === 'light'
-    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-center justify-between gap-3 bg-white/70 backdrop-blur-xl'
+    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-center justify-between gap-3 bg-white/70'
     : 'p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3'
 
   const titleClassName = overlayVariant === 'light'
@@ -146,7 +146,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     : 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white'
 
   const defaultPanelClassName = overlayVariant === 'light'
-    ? 'border border-slate-200/60 bg-white/70 backdrop-blur-xl shadow-2xl'
+    ? 'border border-slate-200/60 bg-white/95 shadow-2xl'
     : 'border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl'
 
   const panelSizeClassName = panelSizing === 'full' ? 'h-full w-full' : ''

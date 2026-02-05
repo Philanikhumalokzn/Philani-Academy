@@ -2698,7 +2698,10 @@ export default function Dashboard() {
       })()
       const response = await fetch(url, isSameOrigin ? undefined : { mode: 'no-cors' })
       if (!response) throw new Error('Unable to download file.')
-      await cache.put(url, response)
+      if (response.type === 'opaque') {
+        throw new Error('This file cannot be saved offline (server blocks access).')
+      }
+      await cache.put(url, response.clone())
       if (!offlineDocUrls.includes(url)) {
         setOfflineDocs([...offlineDocUrls, url])
       }

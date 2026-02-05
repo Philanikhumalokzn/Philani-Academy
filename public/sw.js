@@ -41,6 +41,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  if (request.headers && request.headers.has('range')) {
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -60,6 +63,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.method === 'GET') {
+    const reqUrl = new URL(request.url);
+    if (reqUrl.origin !== self.location.origin) {
+      return;
+    }
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;

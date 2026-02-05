@@ -1,16 +1,42 @@
-const CACHE_NAME = 'pa-offline-v1';
+const CACHE_NAME = 'pa-offline-v2';
 const DOCS_CACHE = 'pa-docs-v1';
 const OFFLINE_URL = '/offline.html';
 
+const collectNextStaticUrls = (htmlText) => {
+  if (!htmlText) return [];
+  const matches = htmlText.match(/\/_next\/static\/[^"'\s)]+/g) || [];
+  return Array.from(new Set(matches));
+};
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL]))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll([OFFLINE_URL]);
+      try {
+        const res = await fetch('/dashboard');
+        const html = await res.text();
+        const urls = collectNextStaticUrls(html);
+        await Promise.all(urls.map((url) => cache.add(url).catch(() => {})));
+      } catch {
+        // ignore
+      }
+    })
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((key) => ![CACHE_NAME, DOCS_CACHE].includes(key))
+          .map((key) => caches.delete(key))
+      );
+      await self.clients.claim();
+    })()
+  );
 });
 
 self.addEventListener('fetch', (event) => {

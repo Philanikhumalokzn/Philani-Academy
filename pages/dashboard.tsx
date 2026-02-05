@@ -1070,6 +1070,7 @@ export default function Dashboard() {
   const [pdfViewerTitle, setPdfViewerTitle] = useState('')
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
   const [pdfViewerInitialState, setPdfViewerInitialState] = useState<PdfViewerSnapshot | null>(null)
+  const [pdfViewerOfflineObjectUrl, setPdfViewerOfflineObjectUrl] = useState<string | null>(null)
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)
@@ -2728,10 +2729,39 @@ export default function Dashboard() {
     setPdfViewerTitle(item.title || 'Document')
     // Avoid showing filepaths/URLs in the UI.
     setPdfViewerSubtitle('')
-    setPdfViewerUrl(item.url)
-    setPdfViewerInitialState(null)
-    setPdfViewerOpen(true)
-  }, [])
+    const openWithUrl = (url: string) => {
+      setPdfViewerUrl(url)
+      setPdfViewerInitialState(null)
+      setPdfViewerOpen(true)
+    }
+
+    const tryOffline = async () => {
+      if (!item.url) return false
+      if (typeof navigator !== 'undefined' && navigator.onLine) return false
+      if (!isDocSavedOffline(item.url)) return false
+      if (!('caches' in window)) return false
+      try {
+        const cache = await caches.open('pa-docs-v1')
+        const match = await cache.match(item.url)
+        if (!match) return false
+        if (match.type === 'opaque') return false
+        const blob = await match.blob()
+        const objectUrl = URL.createObjectURL(blob)
+        setPdfViewerOfflineObjectUrl(objectUrl)
+        openWithUrl(objectUrl)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    void (async () => {
+      const openedOffline = await tryOffline()
+      if (!openedOffline && item.url) {
+        openWithUrl(item.url)
+      }
+    })()
+  }, [isDocSavedOffline])
 
   const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
     queueRestore(() => {
@@ -2757,6 +2787,14 @@ export default function Dashboard() {
     setChallengeImageEditFile(file)
     setChallengeImageEditOpen(true)
   }, [pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl, queueRestore])
+
+  useEffect(() => {
+    return () => {
+      if (pdfViewerOfflineObjectUrl) {
+        URL.revokeObjectURL(pdfViewerOfflineObjectUrl)
+      }
+    }
+  }, [pdfViewerOfflineObjectUrl])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -9649,7 +9687,13 @@ export default function Dashboard() {
           subtitle={pdfViewerSubtitle || undefined}
           initialState={pdfViewerInitialState || undefined}
           onPostImage={handlePdfPostCapture}
-          onClose={() => setPdfViewerOpen(false)}
+          onClose={() => {
+            setPdfViewerOpen(false)
+            if (pdfViewerOfflineObjectUrl) {
+              URL.revokeObjectURL(pdfViewerOfflineObjectUrl)
+              setPdfViewerOfflineObjectUrl(null)
+            }
+          }}
         />
       ) : null}
 

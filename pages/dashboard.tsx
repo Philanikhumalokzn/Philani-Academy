@@ -1,201 +1,5 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import dynamic from 'next/dynamic'
-import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
-import LiveOverlayWindow from '../components/LiveOverlayWindow'
-import BrandLogo from '../components/BrandLogo'
-import GradePillSelector, { type PillAnchorRect } from '../components/GradePillSelector'
-import UserLink from '../components/UserLink'
-import DiagramOverlayModule from '../components/DiagramOverlayModule'
-import TextOverlayModule from '../components/TextOverlayModule'
-import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
-import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import TaskManageMenu from '../components/TaskManageMenu'
-import PdfViewerOverlay from '../components/PdfViewerOverlay'
-import { getSession, signOut, useSession } from 'next-auth/react'
-import Link from 'next/link'
-import { useRouter } from 'next/router'
-import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
-import { isSpecialTestStudentEmail } from '../lib/testUsers'
-import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
-import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
-import { useTapToPeek } from '../lib/useTapToPeek'
-import { useOverlayRestore } from '../lib/overlayRestore'
-
-const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
-const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
-
-const MOBILE_HERO_BG_MIN_WIDTH = 1200
-const MOBILE_HERO_BG_MIN_HEIGHT = 600
-const MOBILE_HERO_BG_MAX_WIDTH = 2000
-const WINDOW_PADDING_X = 24
-const WINDOW_PADDING_Y = 24
-
-const buildDefaultMobileHeroSvg = () => {
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#020b35"/>
-      <stop offset="0.55" stop-color="#041448"/>
-      <stop offset="1" stop-color="#031641"/>
-    </linearGradient>
-    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#60a5fa" stop-opacity="0.15"/>
-    </linearGradient>
-  </defs>
-  <rect width="1920" height="1080" fill="url(#sky)"/>
-  <circle cx="1540" cy="260" r="220" fill="url(#glow)"/>
-  <path d="M0 850 L420 620 L720 760 L980 560 L1280 720 L1600 600 L1920 760 L1920 1080 L0 1080 Z" fill="#041a5a" opacity="0.9"/>
-  <path d="M0 910 L360 740 L660 860 L920 720 L1220 860 L1500 760 L1920 900 L1920 1080 L0 1080 Z" fill="#052a7a" opacity="0.55"/>
-  <path d="M0 980 L420 920 L860 1000 L1220 940 L1580 1010 L1920 960 L1920 1080 L0 1080 Z" fill="#00122f" opacity="0.65"/>
-</svg>`
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`
-}
-
-const DASHBOARD_SECTIONS = [
-  { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
-  { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
-  { id: 'announcements', label: 'Announcements', description: 'Communicate updates', roles: ['admin', 'teacher', 'student'] },
-  { id: 'sessions', label: 'Sessions', description: 'Schedule classes & materials', roles: ['admin', 'teacher', 'student'] },
-  { id: 'groups', label: 'Groups', description: 'Classmates & groupmates', roles: ['admin', 'teacher', 'student'] },
-  { id: 'discover', label: 'Discover', description: 'Find people & join groups', roles: ['admin', 'teacher', 'student'] },
-  { id: 'users', label: 'Learners', description: 'Manage enrolments', roles: ['admin'] },
-  { id: 'billing', label: 'Billing', description: 'Subscription plans', roles: ['admin'] }
-] as const
-
-type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
-type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
-type OverlaySectionId = Exclude<SectionId, 'overview'>
-
-type Announcement = {
-  id: string
-  title: string
-  content: string
-  grade: GradeValue
-  createdAt: string
-  createdBy?: string | null
-}
-
-type LessonMaterial = {
-  id: string
-  sessionId: string
-  title: string
-  filename: string
-  url: string
-  contentType?: string | null
-  size?: number | null
-  createdAt: string
-  createdBy?: string | null
-}
-
-type ResourceBankItem = {
-  id: string
-  grade: GradeValue
-  title: string
-  url: string
-  filename?: string | null
-  contentType?: string | null
-  size?: number | null
-  createdAt: string
-  tag?: string | null
-}
-
-type LatexSave = {
-  id: string
-  sessionKey: string
-  userId?: string | null
-  userEmail?: string | null
-  title: string
-  latex: string
-  shared: boolean
-  filename?: string | null
-  url?: string | null
-  createdAt: string
-}
-
-type LiveWindowKind = 'canvas'
-
-type WindowSnapshot = {
-  position: { x: number; y: number }
-  size: { width: number; height: number }
-}
-
-type LiveWindowConfig = {
-  id: string
-  kind: LiveWindowKind
-  title: string
-  subtitle?: string
-  roomIdOverride?: string
-  boardIdOverride?: string
-  isAdminOverride?: boolean
-  quizMode?: boolean
-  lessonAuthoring?: { phaseKey: string; pointId: string }
-  autoOpenDiagramTray?: boolean
-  position: { x: number; y: number }
-  size: { width: number; height: number }
-  minimized: boolean
-  z: number
-  mode: 'windowed' | 'fullscreen'
-  windowedSnapshot: WindowSnapshot | null
-}
-
-const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!mounted || typeof document === 'undefined') return null
-  return createPortal(children, document.body)
-}
-
-type LocalCacheEntry<T> = {
-  updatedAt: string
-  data: T
-}
-
-const readLocalCache = <T,>(key: string): LocalCacheEntry<T> | null => {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return null
-    return JSON.parse(raw) as LocalCacheEntry<T>
-  } catch {
-    return null
-  }
-}
-
-const writeLocalCache = <T,>(key: string, data: T) => {
-  if (typeof window === 'undefined') return
-  try {
-    const payload: LocalCacheEntry<T> = {
-      updatedAt: new Date().toISOString(),
-      data
-    }
-    window.localStorage.setItem(key, JSON.stringify(payload))
-  } catch {
-    // ignore storage errors
-  }
-}
-
-export default function Dashboard() {
-  const renderInlineEmphasis = useCallback((text: string, keyPrefix: string) => {
-    const input = typeof text === 'string' ? text : ''
-    if (!input) return input
-
-    const out: any[] = []
-    let i = 0
-    let k = 0
-
-    const pushText = (s: string) => {
-      if (!s) return
-      out.push(<span key={`${keyPrefix}-p-${k++}`}>{s}</span>)
-    }
-
-    while (i < input.length) {
+﻿            <div className="flex-1 flex flex-col pt-[96px] pb-4">
+              <div className="space-y-5">
       if (input.startsWith('**', i)) {
         const end = input.indexOf('**', i + 2)
         if (end > i + 2) {
@@ -349,200 +153,7 @@ export default function Dashboard() {
     if (typeof window === 'undefined') return
 
     const measure = () => {
-      const el = currentLessonCardRef.current
-      if (!el) return
-      const h = el.getBoundingClientRect().height
-      if (!Number.isFinite(h) || h <= 0) return
-      const next = Math.max(currentLessonCardNaturalHeightRef.current || 0, Math.round(h))
-      if (next !== currentLessonCardNaturalHeightRef.current) {
-        currentLessonCardNaturalHeightRef.current = next
-        setCurrentLessonCardNaturalHeight(next)
-      }
-    }
-
-    // Initial + resize re-measure.
-    const onResize = () => {
-      window.requestAnimationFrame(measure)
-    }
-
-    window.requestAnimationFrame(measure)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    let lastY = window.scrollY || 0
-    let rafId: number | null = null
-
-    const onScroll = () => {
-      const y = window.scrollY || 0
-      if (rafId) return
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null
-        const delta = y - lastY
-        lastY = y
-
-        const maxH = currentLessonCardNaturalHeightRef.current || 0
-        if (!maxH) return
-
-        // 1:1 proportional collapse: every px scrolled down collapses 1px; scrolling up expands 1px.
-        let next = currentLessonCardCollapsePxRef.current + delta
-        if (next < 0) next = 0
-        if (next > maxH) next = maxH
-        if (next === currentLessonCardCollapsePxRef.current) return
-        currentLessonCardCollapsePxRef.current = next
-        setCurrentLessonCardCollapsePx(next)
-      })
-    }
-
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      if (rafId) window.cancelAnimationFrame(rafId)
-    }
-  }, [])
-  type LessonPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
-  type LessonDiagramSnapshot = { title: string; imageUrl: string; annotations: any }
-  type LessonPointDraft = {
-    id: string
-    title: string
-    text: string
-    diagramSnapshot: LessonDiagramSnapshot | null
-    latex: string
-    latexHistory?: string[]
-  }
-
-  const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
-  const buildLessonAuthoringBoardId = (kind: 'diagram' | 'latex' | 'canvas', phaseKey: LessonPhaseKey, pointId: string) => {
-    return `lesson-author-${kind}-${phaseKey}-${pointId}`
-  }
-
-  const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
-  const boardIdToSessionKey = (boardId: string) => `myscript:${sanitizeIdentifier(boardId).toLowerCase()}`
-
-  const isTeacherOrAdminUser = Boolean(session && (session as any)?.user?.role && (((session as any).user.role === 'admin') || ((session as any).user.role === 'teacher')))
-
-  const newPointDraft = (): LessonPointDraft => ({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: '',
-    text: '',
-    diagramSnapshot: null,
-    latex: '',
-    latexHistory: [],
-  })
-
-  const [lessonScriptDraft, setLessonScriptDraft] = useState<Record<LessonPhaseKey, LessonPointDraft[]>>({
-    engage: [],
-    explore: [],
-    explain: [],
-    elaborate: [],
-    evaluate: [],
-  })
-
-  const diagramUploadInputRef = useRef<HTMLInputElement | null>(null)
-  const [diagramUploadTarget, setDiagramUploadTarget] = useState<null | { phaseKey: LessonPhaseKey; pointId: string; boardId: string }>(null)
-  const [diagramUploading, setDiagramUploading] = useState(false)
-  const [lessonAuthoringDiagramOverlay, setLessonAuthoringDiagramOverlay] = useState<null | {
-    phaseKey: LessonPhaseKey
-    pointId: string
-    boardId: string
-  }>(null)
-  const [lessonAuthoringDiagramCloseSignal, setLessonAuthoringDiagramCloseSignal] = useState(0)
-
-  const [createOverlayOpen, setCreateOverlayOpen] = useState(false)
-  const [createKind, setCreateKind] = useState<'quiz'>('quiz')
-  const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null)
-  const [challengeAudiencePickerOpen, setChallengeAudiencePickerOpen] = useState(false)
-  const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
-  const [challengePromptDraft, setChallengePromptDraft] = useState('')
-  const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
-  const [challengeMaxAttempts, setChallengeMaxAttempts] = useState<string>('unlimited')
-  const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
-  const [challengeParseOnUpload, setChallengeParseOnUpload] = useState(false)
-  const [challengeParsedJsonText, setChallengeParsedJsonText] = useState<string | null>(null)
-  const [challengeParsedOpen, setChallengeParsedOpen] = useState(false)
-  const [challengeUploading, setChallengeUploading] = useState(false)
-  const [challengePosting, setChallengePosting] = useState(false)
-  const [challengeDeleting, setChallengeDeleting] = useState(false)
-  const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
-
-  const openCreateChallengeComposer = useCallback(() => {
-    setCreateOverlayOpen(true)
-  }, [])
-
-  const openCreateChallengeScreenshotPicker = useCallback(() => {
-    setCreateOverlayOpen(true)
-    if (typeof window === 'undefined') return
-    let attempts = 0
-    const tick = () => {
-      const input = challengeUploadInputRef.current
-      if (input) {
-        try {
-          input.click()
-        } catch {
-          // ignore
-        }
-        return
-      }
-      attempts += 1
-      if (attempts > 12) return
-      window.setTimeout(tick, 50)
-    }
-    window.setTimeout(tick, 0)
-  }, [])
-
-  const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
-  const [challengeImageEditFile, setChallengeImageEditFile] = useState<File | null>(null)
-  const [challengeImageSourceFile, setChallengeImageSourceFile] = useState<File | null>(null)
-
-  const openDiagramPickerForPoint = useCallback((phaseKey: LessonPhaseKey, pointId: string) => {
-    const boardId = buildLessonAuthoringBoardId('diagram', phaseKey, pointId)
-    setDiagramUploadTarget({ phaseKey, pointId, boardId })
-    try {
-      diagramUploadInputRef.current?.click()
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  const persistLessonScriptDraftToStorage = useCallback((draft: Record<LessonPhaseKey, LessonPointDraft[]>) => {
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(LESSON_AUTHORING_STORAGE_KEY, JSON.stringify({ updatedAt: Date.now(), draft }))
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  const onDiagramFilePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (!diagramUploadTarget) return
-
-    const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', file.name) : null) ?? file.name
-    setDiagramUploading(true)
-    try {
-      const sessionKey = boardIdToSessionKey(diagramUploadTarget.boardId)
-      const form = new FormData()
-      form.append('file', file)
-      form.append('sessionKey', sessionKey)
-
-      const uploadRes = await fetch('/api/diagrams/upload', {
-        method: 'POST',
-        body: form,
-        credentials: 'same-origin',
-      })
-
-      if (!uploadRes.ok) {
-        const msg = await uploadRes.text().catch(() => '')
-        throw new Error(msg || `Upload failed (${uploadRes.status})`)
-      }
-
-      const uploadJson = (await uploadRes.json().catch(() => null)) as { url?: string } | null
-      const url = uploadJson?.url
+              <div className="space-y-5">
       if (!url) throw new Error('Upload succeeded but returned no URL')
 
       const createRes = await fetch('/api/diagrams', {
@@ -1051,7 +662,7 @@ export default function Dashboard() {
     }
   }, [status])
 
-  const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
+  const [studentMobileTab, setStudentMobileTab] = useState<StudentMobileTab>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
   const [booksLoading, setBooksLoading] = useState(false)
@@ -1081,7 +692,8 @@ export default function Dashboard() {
     sessions: HTMLDivElement | null
     groups: HTMLDivElement | null
     discover: HTMLDivElement | null
-  }>({ timeline: null, sessions: null, groups: null, discover: null })
+    profile: HTMLDivElement | null
+  }>({ timeline: null, sessions: null, groups: null, discover: null, profile: null })
   const studentMobileScrollRafRef = useRef<number | null>(null)
   const studentMobileScrollEndTimeoutRef = useRef<number | null>(null)
 
@@ -2553,14 +2165,15 @@ export default function Dashboard() {
   const sessionRole = (((session as any)?.user?.role as string | undefined) || 'student')
   const canManageSessionThumbnails = sessionRole === 'admin' || sessionRole === 'teacher'
 
-  const studentMobileTabIndex = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+  const studentMobileTabIndex = (tab: StudentMobileTab) => {
     if (tab === 'timeline') return 0
     if (tab === 'sessions') return 1
     if (tab === 'groups') return 2
-    return 3
+    if (tab === 'discover') return 3
+    return 4
   }
 
-  const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+  const scrollStudentPanelsToTab = useCallback((tab: StudentMobileTab) => {
     const el = studentMobilePanelsRef.current
     if (!el) return
     const panel = studentMobilePanelRefs.current[tab]
@@ -2590,6 +2203,11 @@ export default function Dashboard() {
       el.scrollLeft = left
     }
   }, [studentMobileTabIndex])
+
+  const selectStudentMobileTab = useCallback((tab: StudentMobileTab) => {
+    setStudentMobileTab(tab)
+    scrollStudentPanelsToTab(tab)
+  }, [scrollStudentPanelsToTab])
 
   const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover' | 'admin') => {
     setStudentQuickOverlay(tab)
@@ -2812,11 +2430,12 @@ export default function Dashboard() {
     if (studentMobileScrollRafRef.current) return
 
     const tabForIndex = (idx: number) =>
-      (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
+      (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : idx === 3 ? 'discover' : 'profile') as
         | 'timeline'
         | 'sessions'
         | 'groups'
         | 'discover'
+        | 'profile'
 
     studentMobileScrollRafRef.current = window.requestAnimationFrame(() => {
       studentMobileScrollRafRef.current = null
@@ -3549,6 +3168,198 @@ export default function Dashboard() {
     )
   }
 
+  const renderMobileProfileHeroCard = () => (
+    <section
+      data-mobile-chrome-ignore
+      className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
+      onDragEnter={(e) => {
+        e.preventDefault()
+        setMobileHeroBgDragActive(true)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setMobileHeroBgDragActive(true)
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault()
+        setMobileHeroBgDragActive(false)
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        setMobileHeroBgDragActive(false)
+        const file = e.dataTransfer?.files?.[0]
+        if (file) applyMobileHeroBackgroundFile(file)
+      }}
+      onClickCapture={(e) => {
+        const target = e.target as HTMLElement | null
+        if (!target) return
+        const tag = target.tagName?.toLowerCase()
+        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
+        showMobileHeroEdit()
+      }}
+    >
+      <div
+        className="absolute inset-0"
+        style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
+      <input
+        ref={heroBgInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) applyMobileHeroBackgroundFile(file)
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={themeBgInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) applyMobileThemeBackgroundFile(file)
+          e.target.value = ''
+        }}
+      />
+
+      <button
+        type="button"
+        aria-label="Edit theme background"
+        className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={(e) => {
+          e.stopPropagation()
+          themeBgInputRef.current?.click()
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+        </svg>
+      </button>
+
+      <button
+        type="button"
+        aria-label="Edit background"
+        className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={(e) => {
+          e.stopPropagation()
+          heroBgInputRef.current?.click()
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+        </svg>
+      </button>
+
+      <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
+        <div className="relative group w-20 h-20" data-avatar-edit-container="1">
+          <button
+            type="button"
+            className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
+            onClick={() => setAvatarEditArmed(v => !v)}
+            disabled={avatarUploading}
+            aria-label="Edit avatar"
+          >
+            {effectiveAvatarUrl ? (
+              <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
+            ) : (
+              <span>{learnerInitials}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            aria-label="Update avatar"
+            className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAvatarEditArmed(false)
+              avatarInputRef.current?.click()
+            }}
+            disabled={avatarUploading}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+        <div className="pb-1">
+          <p className="text-xl font-semibold leading-tight">{learnerName}</p>
+          <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
+            <span>{roleFlagText}</span>
+            {isVerifiedAccount && (
+              <span
+                className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
+                aria-label="Verified"
+                title="Verified"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                </svg>
+              </span>
+            )}
+          </div>
+
+          <div className="mt-1">
+            {statusBioEditing ? (
+              <div className="flex items-center gap-2">
+                <input
+                  value={statusBioDraft}
+                  maxLength={100}
+                  disabled={statusBioSaving}
+                  autoFocus
+                  onChange={(e) => setStatusBioDraft(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const ok = await saveStatusBio(statusBioDraft)
+                      if (ok) setStatusBioEditing(false)
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setStatusBioDraft(profileStatusBio || '')
+                      setStatusBioEditing(false)
+                    }
+                  }}
+                  onBlur={async () => {
+                    const ok = await saveStatusBio(statusBioDraft)
+                    if (ok) setStatusBioEditing(false)
+                  }}
+                  className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
+                  placeholder="Set a short status…"
+                  aria-label="Status or short bio"
+                />
+                <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="text-left text-sm text-white/85 hover:text-white"
+                onClick={() => {
+                  setStatusBioDraft(profileStatusBio || '')
+                  setStatusBioEditing(true)
+                }}
+                aria-label="Edit status"
+              >
+                {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
+        <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
+        <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
+          <span className="tracking-[0.10em]">P H I L A N I</span>
+          <span className="tracking-[0.10em]">A C A D E M Y</span>
+        </div>
+      </div>
+    </section>
+  )
+
   const renderStudentQuickActionsRow = () => {
     const baseBtn = isAdmin
       ? 'inline-flex flex-col items-center justify-center gap-1 h-12 w-12 rounded-2xl border border-white/10 bg-white/5 text-white/90 active:scale-[0.98] transition focus:outline-none focus:ring-2 focus:ring-white/20'
@@ -3556,13 +3367,13 @@ export default function Dashboard() {
 
     const activeBtn = 'bg-white/10 border-white/20 text-white'
 
-    const btnClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
+    const btnClass = (tab: StudentMobileTab) =>
       `${baseBtn} ${studentMobileTab === tab ? activeBtn : ''}`
 
-    const labelClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
+    const labelClass = (tab: StudentMobileTab) =>
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
-    const quickActionCount = isAdmin ? 7 : 6
+    const quickActionCount = isAdmin ? 8 : 7
     const buttonWidth = `calc(100% / ${quickActionCount})`
 
     return (
@@ -3669,6 +3480,21 @@ export default function Dashboard() {
             <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
           <span className={labelClass('discover')}>Discover</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${btnClass('profile')} flex-none snap-start`}
+          style={{ width: buttonWidth }}
+          onClick={() => selectStudentMobileTab('profile')}
+          aria-label="My profile"
+          title="My profile"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" strokeWidth="2" />
+            <path d="M4 20a8 8 0 0 1 16 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <span className={labelClass('profile')}>Profile</span>
         </button>
 
         {isAdmin && (
@@ -9007,276 +8833,87 @@ export default function Dashboard() {
         }
       >
         {isMobile ? (
-          isAdmin ? (
-            <div className="flex-1 flex flex-col py-4">
-              <div className="fixed inset-x-2 top-[0.9rem] z-30">
-                <div className="relative">
-                  <section
-                  data-mobile-chrome-ignore
-                  className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
-                  onDragEnter={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(true)
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(true)
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(false)
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(false)
-                    const file = e.dataTransfer?.files?.[0]
-                    if (file) applyMobileHeroBackgroundFile(file)
-                  }}
-                  onClickCapture={(e) => {
-                    const target = e.target as HTMLElement | null
-                    if (!target) return
-                    const tag = target.tagName?.toLowerCase()
-                    if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                    showMobileHeroEdit()
-                  }}
-                >
-                  <div
-                    className="absolute inset-0"
-                    style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                    aria-hidden="true"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
-                  <input
-                    ref={heroBgInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) applyMobileHeroBackgroundFile(file)
-                      e.target.value = ''
-                    }}
-                  />
-                  <input
-                    ref={themeBgInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) applyMobileThemeBackgroundFile(file)
-                      e.target.value = ''
-                    }}
-                  />
-
-                  <button
-                    type="button"
-                    aria-label="Edit theme background"
-                    className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      themeBgInputRef.current?.click()
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                    </svg>
-                  </button>
-
-                  <button
-                    type="button"
-                    aria-label="Edit background"
-                    className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      heroBgInputRef.current?.click()
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                    </svg>
-                  </button>
-                  <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                    <div className="relative group w-20 h-20" data-avatar-edit-container="1">
-                      <button
-                        type="button"
-                        className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                        onClick={() => setAvatarEditArmed(v => !v)}
-                        disabled={avatarUploading}
-                        aria-label="Edit avatar"
-                      >
-                        {effectiveAvatarUrl ? (
-                          <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                        ) : (
-                          <span>{learnerInitials}</span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Update avatar"
-                        className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setAvatarEditArmed(false)
-                          avatarInputRef.current?.click()
-                        }}
-                        disabled={avatarUploading}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="pb-1">
-                      <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                      <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
-                        <span>{roleFlagText}</span>
-                        {isVerifiedAccount && (
-                          <span
-                            className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
-                            aria-label="Verified"
-                            title="Verified"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                              <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                            </svg>
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-1">
-                        {statusBioEditing ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              value={statusBioDraft}
-                              maxLength={100}
-                              disabled={statusBioSaving}
-                              autoFocus
-                              onChange={(e) => setStatusBioDraft(e.target.value)}
-                              onKeyDown={async (e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  const ok = await saveStatusBio(statusBioDraft)
-                                  if (ok) setStatusBioEditing(false)
-                                }
-                                if (e.key === 'Escape') {
-                                  e.preventDefault()
-                                  setStatusBioDraft(profileStatusBio || '')
-                                  setStatusBioEditing(false)
-                                }
-                              }}
-                              onBlur={async () => {
-                                const ok = await saveStatusBio(statusBioDraft)
-                                if (ok) setStatusBioEditing(false)
-                              }}
-                              className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
-                              placeholder="Set a short status…"
-                              aria-label="Status or short bio"
-                            />
-                            <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="text-left text-sm text-white/85 hover:text-white"
-                            onClick={() => {
-                              setStatusBioDraft(profileStatusBio || '')
-                              setStatusBioEditing(true)
-                            }}
-                            aria-label="Edit status"
-                          >
-                            {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
-                    <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                    <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
-                      <span className="tracking-[0.10em]">P H I L A N I</span>
-                      <span className="tracking-[0.10em]">A C A D E M Y</span>
-                    </div>
-                  </div>
-                  </section>
-                </div>
-              </div>
-
-              <div
-                className="pt-[244px] space-y-5"
-                style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskSize: '100% 100%',
-                  maskSize: '100% 100%',
-                }}
-              >
+          <>
+            <div className="fixed inset-x-2 top-[0.9rem] z-30">
+              <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-2">
                 {renderStudentQuickActionsRow()}
-
-                <div
-                  ref={studentMobilePanelsRef}
-                  onScroll={onStudentPanelsScroll}
-                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
-                  style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
-                >
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.timeline = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderStudentTimelinePanel()}
-                  </div>
-
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.sessions = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderSection('sessions')}
-                  </div>
-
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.groups = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderSection('groups')}
-                  </div>
-
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.discover = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderSection('discover')}
-                  </div>
-                </div>
-
-                {status === 'authenticated' && (
-                  <div className="pt-2 flex justify-center">
-                    <button
-                      type="button"
-                      className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
-                      onClick={() => signOut({ callbackUrl: '/' })}
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
-          ) : (
-            <div className="flex-1 flex flex-col py-4">
+            {isAdmin ? (
+              <div className="flex-1 flex flex-col pt-[96px] pb-4">
+                <div className="space-y-5">
+                  <div
+                    ref={studentMobilePanelsRef}
+                    onScroll={onStudentPanelsScroll}
+                    className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory rounded-3xl border border-white/10 bg-white/5"
+                    style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
+                  >
+                    <div
+                      ref={el => {
+                        studentMobilePanelRefs.current.timeline = el
+                      }}
+                      className="w-full flex-none snap-start"
+                      style={{ scrollSnapStop: 'always' }}
+                    >
+                      {renderStudentTimelinePanel()}
+                    </div>
+
+                    <div
+                      ref={el => {
+                        studentMobilePanelRefs.current.sessions = el
+                      }}
+                      className="w-full flex-none snap-start"
+                      style={{ scrollSnapStop: 'always' }}
+                    >
+                      {renderSection('sessions')}
+                    </div>
+
+                    <div
+                      ref={el => {
+                        studentMobilePanelRefs.current.groups = el
+                      }}
+                      className="w-full flex-none snap-start"
+                      style={{ scrollSnapStop: 'always' }}
+                    >
+                      {renderSection('groups')}
+                    </div>
+
+                    <div
+                      ref={el => {
+                        studentMobilePanelRefs.current.discover = el
+                      }}
+                      className="w-full flex-none snap-start"
+                      style={{ scrollSnapStop: 'always' }}
+                    >
+                      {renderSection('discover')}
+                    </div>
+
+                    <div
+                      ref={el => {
+                        studentMobilePanelRefs.current.profile = el
+                      }}
+                      className="w-full flex-none snap-start"
+                      style={{ scrollSnapStop: 'always' }}
+                    >
+                      {renderMobileProfileHeroCard()}
+                    </div>
+                  </div>
+
+                  {status === 'authenticated' && (
+                    <div className="pt-2 flex justify-center">
+                      <button
+                        type="button"
+                        className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
+                        onClick={() => signOut({ callbackUrl: '/' })}
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+            <div className="flex-1 flex flex-col pt-[96px] pb-4">
               {mobilePanels.announcements && (
                 <FullScreenGlassOverlay
                   title="Announcements"
@@ -9293,211 +8930,7 @@ export default function Dashboard() {
                 </FullScreenGlassOverlay>
               )}
 
-              <div className="fixed inset-x-2 top-[0.9rem] z-30">
-              <div className="relative">
-              <section
-                data-mobile-chrome-ignore
-                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
-                onDragEnter={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(true)
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(true)
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(false)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(false)
-                  const file = e.dataTransfer?.files?.[0]
-                  if (file) applyMobileHeroBackgroundFile(file)
-                }}
-                onClickCapture={(e) => {
-                  const target = e.target as HTMLElement | null
-                  if (!target) return
-                  const tag = target.tagName?.toLowerCase()
-                  if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                  showMobileHeroEdit()
-                }}
-              >
-                <div
-                  className="absolute inset-0"
-                  style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                  aria-hidden="true"
-                />
-                <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
-                <input
-                  ref={heroBgInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) applyMobileHeroBackgroundFile(file)
-                    e.target.value = ''
-                  }}
-                />
-                <input
-                  ref={themeBgInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) applyMobileThemeBackgroundFile(file)
-                    e.target.value = ''
-                  }}
-                />
-
-                <button
-                  type="button"
-                  aria-label="Edit theme background"
-                  className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    themeBgInputRef.current?.click()
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  aria-label="Edit background"
-                  className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    heroBgInputRef.current?.click()
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                  </svg>
-                </button>
-                <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="relative group w-20 h-20" data-avatar-edit-container="1">
-                    <button
-                      type="button"
-                      className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                      onClick={() => setAvatarEditArmed(v => !v)}
-                      disabled={avatarUploading}
-                      aria-label="Edit avatar"
-                    >
-                      {effectiveAvatarUrl ? (
-                        <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{learnerInitials}</span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Update avatar"
-                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setAvatarEditArmed(false)
-                        avatarInputRef.current?.click()
-                      }}
-                      disabled={avatarUploading}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="pb-1">
-                    <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
-                      <span>{roleFlagText}</span>
-                      {isVerifiedAccount && (
-                        <span
-                          className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
-                          aria-label="Verified"
-                          title="Verified"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-1">
-                      {statusBioEditing ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={statusBioDraft}
-                            maxLength={100}
-                            disabled={statusBioSaving}
-                            autoFocus
-                            onChange={(e) => setStatusBioDraft(e.target.value)}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                const ok = await saveStatusBio(statusBioDraft)
-                                if (ok) setStatusBioEditing(false)
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setStatusBioDraft(profileStatusBio || '')
-                                setStatusBioEditing(false)
-                              }
-                            }}
-                            onBlur={async () => {
-                              const ok = await saveStatusBio(statusBioDraft)
-                              if (ok) setStatusBioEditing(false)
-                            }}
-                            className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
-                            placeholder="Set a short status…"
-                            aria-label="Status or short bio"
-                          />
-                          <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-left text-sm text-white/85 hover:text-white"
-                          onClick={() => {
-                            setStatusBioDraft(profileStatusBio || '')
-                            setStatusBioEditing(true)
-                          }}
-                          aria-label="Edit status"
-                        >
-                          {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
-                  <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                  <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
-                    <span className="tracking-[0.10em]">P H I L A N I</span>
-                    <span className="tracking-[0.10em]">A C A D E M Y</span>
-                  </div>
-                </div>
-              </section>
-              </div>
-              </div>
-
-              <div
-                className="pt-[244px] space-y-5"
-                style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskSize: '100% 100%',
-                  maskSize: '100% 100%',
-                }}
-              >
-              {renderStudentQuickActionsRow()}
+              <div className="space-y-5">
 
               <div
                 ref={studentMobilePanelsRef}
@@ -9544,6 +8977,16 @@ export default function Dashboard() {
                 >
                   {renderSection('discover')}
                 </div>
+
+                <div
+                  ref={el => {
+                    studentMobilePanelRefs.current.profile = el
+                  }}
+                  className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
+                >
+                  {renderMobileProfileHeroCard()}
+                </div>
               </div>
 
               {status === 'authenticated' && (
@@ -9559,7 +9002,8 @@ export default function Dashboard() {
               )}
               </div>
             </div>
-          )
+          )}
+          </>
         ) : (
           <>
             <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -9570,6 +9014,16 @@ export default function Dashboard() {
                   <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
                 </div>
               </div>
+
+                <div
+                  ref={el => {
+                    studentMobilePanelRefs.current.profile = el
+                  }}
+                  className="w-full flex-none snap-start"
+                  style={{ scrollSnapStop: 'always' }}
+                >
+                  {renderMobileProfileHeroCard()}
+                </div>
               <div className="flex flex-wrap items-center gap-3">
                 {session ? (
                   <div className="text-sm muted">Signed in as <span className="font-medium text-white">{session.user?.email}</span></div>

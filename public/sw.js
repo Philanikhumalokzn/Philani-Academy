@@ -1,4 +1,5 @@
 const CACHE_NAME = 'pa-offline-v1';
+const DOCS_CACHE = 'pa-docs-v1';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
@@ -14,6 +15,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -31,15 +33,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (request.method === 'GET' && request.url.startsWith(self.location.origin)) {
+  if (request.method === 'GET') {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request)
           .then((response) => {
-            if (response && response.ok) {
+            const cacheable = response && (response.ok || response.type === 'opaque');
+            if (cacheable) {
               const copy = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+              caches.open(DOCS_CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
             }
             return response;
           })

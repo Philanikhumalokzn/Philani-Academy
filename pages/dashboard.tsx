@@ -1057,6 +1057,9 @@ export default function Dashboard() {
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+  const [offlineDocUrls, setOfflineDocUrls] = useState<string[]>([])
+  const [offlineDocSavingUrls, setOfflineDocSavingUrls] = useState<string[]>([])
+  const [offlineDocErrorByUrl, setOfflineDocErrorByUrl] = useState<Record<string, string>>({})
   type PdfViewerSnapshot = {
     page: number
     zoom: number
@@ -1299,6 +1302,8 @@ export default function Dashboard() {
   const makeOfflineCacheKey = useCallback((suffix: string) => {
     return `${offlineCachePrefix}:${suffix}`
   }, [offlineCachePrefix])
+
+  const offlineDocsKey = useMemo(() => makeOfflineCacheKey('offline-docs'), [makeOfflineCacheKey])
 
   const announcementReadStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
@@ -2653,6 +2658,71 @@ export default function Dashboard() {
     setBooksOverlayOpen(true)
     void fetchBooksForGrade()
   }, [fetchBooksForGrade])
+
+  useEffect(() => {
+    if (!booksOverlayOpen) return
+    const cached = readLocalCache<string[]>(offlineDocsKey)
+    setOfflineDocUrls(Array.isArray(cached?.data) ? cached.data : [])
+  }, [booksOverlayOpen, offlineDocsKey])
+
+  const setOfflineDocs = useCallback((next: string[]) => {
+    setOfflineDocUrls(next)
+    writeLocalCache(offlineDocsKey, next)
+  }, [offlineDocsKey])
+
+  const isDocSavedOffline = useCallback((url: string) => {
+    return offlineDocUrls.includes(url)
+  }, [offlineDocUrls])
+
+  const saveDocOffline = useCallback(async (item: ResourceBankItem) => {
+    const url = item.url
+    if (!url) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setOfflineDocErrorByUrl(prev => ({ ...prev, [url]: 'Connect to the internet to save offline.' }))
+      return
+    }
+    if (offlineDocSavingUrls.includes(url)) return
+    setOfflineDocSavingUrls(prev => [...prev, url])
+    setOfflineDocErrorByUrl(prev => ({ ...prev, [url]: '' }))
+    try {
+      if (!('caches' in window)) throw new Error('Offline storage unavailable.')
+      const cache = await caches.open('pa-docs-v1')
+      const isSameOrigin = (() => {
+        try {
+          const resolved = new URL(url, window.location.origin)
+          return resolved.origin === window.location.origin
+        } catch {
+          return false
+        }
+      })()
+      const response = await fetch(url, isSameOrigin ? undefined : { mode: 'no-cors' })
+      if (!response) throw new Error('Unable to download file.')
+      await cache.put(url, response)
+      if (!offlineDocUrls.includes(url)) {
+        setOfflineDocs([...offlineDocUrls, url])
+      }
+    } catch (err: any) {
+      setOfflineDocErrorByUrl(prev => ({ ...prev, [url]: err?.message || 'Failed to save offline.' }))
+    } finally {
+      setOfflineDocSavingUrls(prev => prev.filter(u => u !== url))
+    }
+  }, [offlineDocSavingUrls, offlineDocUrls, setOfflineDocs])
+
+  const removeDocOffline = useCallback(async (item: ResourceBankItem) => {
+    const url = item.url
+    if (!url) return
+    try {
+      if ('caches' in window) {
+        const cache = await caches.open('pa-docs-v1')
+        await cache.delete(url)
+      }
+    } catch {
+      // ignore
+    }
+    if (offlineDocUrls.includes(url)) {
+      setOfflineDocs(offlineDocUrls.filter(u => u !== url))
+    }
+  }, [offlineDocUrls, setOfflineDocs])
 
   const openPdfViewer = useCallback((item: ResourceBankItem) => {
     setPdfViewerTitle(item.title || 'Document')
@@ -9506,37 +9576,65 @@ export default function Dashboard() {
 
             {booksItems.length > 0 ? (
               <ul className="space-y-2">
-                {booksItems.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
-                  >
-                    <div className="min-w-0">
-                      {isPdfResource(item) ? (
-                        <button
-                          type="button"
-                          className="font-medium text-white text-left hover:underline whitespace-normal break-words block"
-                          onClick={() => openPdfViewer(item)}
-                        >
-                          {item.title}
-                        </button>
-                      ) : (
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-white hover:underline whitespace-normal break-words block"
-                        >
-                          {item.title}
-                        </a>
-                      )}
-                      <div className="text-xs muted truncate">
-                        {item.tag ? `${item.tag} • ` : ''}
-                        {gradeToLabel(item.grade)}
+                {booksItems.map((item) => {
+                  const savedOffline = item.url ? isDocSavedOffline(item.url) : false
+                  const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
+                  const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
+                    >
+                      <div className="min-w-0">
+                        {isPdfResource(item) ? (
+                          <button
+                            type="button"
+                            className="font-medium text-white text-left hover:underline whitespace-normal break-words block"
+                            onClick={() => openPdfViewer(item)}
+                          >
+                            {item.title}
+                          </button>
+                        ) : (
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-white hover:underline whitespace-normal break-words block"
+                          >
+                            {item.title}
+                          </a>
+                        )}
+                        <div className="text-xs muted truncate">
+                          {item.tag ? `${item.tag} • ` : ''}
+                          {gradeToLabel(item.grade)}
+                        </div>
+                        {offlineError ? <div className="text-xs text-amber-200 mt-1">{offlineError}</div> : null}
                       </div>
-                    </div>
-                  </li>
-                ))}
+                      {item.url ? (
+                        <div className="flex items-center gap-2">
+                          {savedOffline ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost text-xs"
+                              onClick={() => void removeDocOffline(item)}
+                            >
+                              Remove offline
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-ghost text-xs"
+                              onClick={() => void saveDocOffline(item)}
+                              disabled={savingOffline}
+                            >
+                              {savingOffline ? 'Saving…' : 'Save offline'}
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
+                    </li>
+                  )
+                })}
               </ul>
             ) : null}
           </div>

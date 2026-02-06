@@ -1658,18 +1658,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const EDITABLE_SPLIT_RATIO = 0.55
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
-  // Stacked student layout: CSS scale used to be applied here, but to keep
-  // MyScript's internal coordinates aligned with what the user sees, we now
-  // keep the visual scale fixed at 1 and rely on the MyScript renderer for
-  // zoom. We retain this state only for potential UI controls that might need
-  // to know an abstract "zoom" level; it no longer drives a CSS transform.
   const [studentViewScale, setStudentViewScale] = useState(1)
   const studentViewScaleRef = useRef(1)
+  const [showFullCanvasBounds, setShowFullCanvasBounds] = useState(false)
   const clampStudentScale = useCallback((value: number) => Math.min(1.6, Math.max(0.6, value)), [])
 
   useEffect(() => {
     studentViewScaleRef.current = studentViewScale
   }, [studentViewScale])
+
+  useEffect(() => {
+    if (!showFullCanvasBounds) return
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+    viewport.scrollLeft = 0
+    viewport.scrollTop = 0
+  }, [showFullCanvasBounds])
 
   type NotesSaveRecord = {
     id: string
@@ -2028,7 +2032,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [studentSplitRatio])
 
   useEffect(() => {
-    if (!useStackedStudentLayout) return
+    if (!useStackedStudentLayout || showFullCanvasBounds) return
     requestEditorResize()
   }, [requestEditorResize, studentSplitRatio, useStackedStudentLayout])
 
@@ -7067,6 +7071,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return 12
   }, [isCompactViewport, useStackedStudentLayout])
 
+  const fullCanvasScale = useMemo(() => {
+    const widthScale = 1 / Math.max(1, inkSurfaceWidthFactor)
+    const heightScale = 0.5
+    return Math.min(widthScale, heightScale)
+  }, [inkSurfaceWidthFactor])
+
+  const effectiveStudentScale = showFullCanvasBounds ? fullCanvasScale : studentViewScale
+
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
@@ -9690,7 +9702,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       window.removeEventListener('pointerup', handlePointerUp, true as any)
       window.removeEventListener('pointercancel', handlePointerUp, true as any)
     }
-  }, [clampStudentScale, editorReinitNonce, useStackedStudentLayout])
+  }, [clampStudentScale, editorReinitNonce, showFullCanvasBounds, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -11210,6 +11222,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
 
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
+                {useStackedStudentLayout && (
+                  <button
+                    type="button"
+                    className="absolute top-2 right-2 z-20 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white/90 text-slate-700 shadow-sm"
+                    onClick={() => setShowFullCanvasBounds(prev => !prev)}
+                  >
+                    {showFullCanvasBounds ? 'Exit full canvas' : 'Show full canvas'}
+                  </button>
+                )}
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-hidden"
@@ -11226,7 +11247,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       // via a simple CSS scale. Because both the editor host
                       // and pointer coordinates share this transform, ink
                       // remains aligned with touch.
-                      transform: `scale(${studentViewScale})`,
+                      transform: `scale(${effectiveStudentScale})`,
                       transformOrigin: 'top left',
                       backgroundColor: '#ffffff',
                       backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',

@@ -9543,7 +9543,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     let lastDistance = 0
     let lastScale = 1
 
-    const stopEvent = (event: PointerEvent) => {
+    // Track whether pointer events are actually firing for touch input.
+    // On many modern mobile browsers, pointer events are supported and preferred,
+    // but on some environments only touch events fire. We listen to both, and
+    // once we see real touch pointer events we ignore the touch-event path.
+    let touchPointerEventsSeen = false
+
+    const stopEvent = (event: Event) => {
       try {
         event.preventDefault()
       } catch {}
@@ -9648,6 +9654,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerDown = (event: PointerEvent) => {
       if (event.pointerType !== 'touch') return
+      touchPointerEventsSeen = true
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
       if (pointers.size === 2) {
         beginPinch()
@@ -9689,16 +9696,107 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
 
+    // Pointer-events based pinch (desktop / modern browsers).
     host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
     host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
     host.addEventListener('pointerup', endPointer, { capture: true })
     host.addEventListener('pointercancel', endPointer, { capture: true })
+
+    // Touch-events fallback (for environments where pointer events are
+    // not emitted for touch, e.g. some mobile browsers / webviews).
+    const hasTouchEvents = 'ontouchstart' in window
+
+    let touchPinchActive = false
+    let touchStartDistance = 0
+    let touchStartScale = 1
+
+    const getTouchDistance = (touches: TouchList) => {
+      if (touches.length < 2) return 0
+      const a = touches[0]!
+      const b = touches[1]!
+      const dx = a.clientX - b.clientX
+      const dy = a.clientY - b.clientY
+      return Math.hypot(dx, dy)
+    }
+
+    const getTouchCenter = (touches: TouchList) => {
+      const rect = host.getBoundingClientRect()
+      if (touches.length < 2) {
+        return { x: rect.width / 2, y: rect.height / 2 }
+      }
+      const a = touches[0]!
+      const b = touches[1]!
+      return {
+        x: (a.clientX + b.clientX) / 2 - rect.left,
+        y: (a.clientY + b.clientY) / 2 - rect.top,
+      }
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (!hasTouchEvents) return
+      // If we've already seen real touch pointer events, prefer the
+      // pointer-based path and ignore raw touch events to avoid
+      // double-handling on browsers that fire both.
+      if (touchPointerEventsSeen) return
+      if (event.touches.length < 2) return
+      touchPinchActive = true
+      touchStartDistance = getTouchDistance(event.touches)
+      const renderer = getRenderer()
+      const rendererScale = renderer ? getRendererScale(renderer) : null
+      touchStartScale = rendererScale ?? (useStackedStudentLayout ? studentViewScale : 1)
+      stopEvent(event)
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!hasTouchEvents || touchPointerEventsSeen) return
+      if (!touchPinchActive || event.touches.length < 2) return
+
+      const distance = getTouchDistance(event.touches)
+      if (!Number.isFinite(distance) || distance <= 0 || touchStartDistance <= 0) return
+
+      const ratio = distance / touchStartDistance
+      const hasRenderer = Boolean(getRenderer())
+      const minScale = hasRenderer ? MIN_RENDER_SCALE : MIN_STUDENT_SCALE
+      const maxScale = hasRenderer ? MAX_RENDER_SCALE : MAX_STUDENT_SCALE
+      const nextScale = Math.max(minScale, Math.min(maxScale, touchStartScale * ratio))
+      const appliedRatio = nextScale / touchStartScale
+
+      if (!Number.isFinite(appliedRatio) || appliedRatio === 1) return
+
+      const center = getTouchCenter(event.touches)
+      applyZoom(appliedRatio, nextScale, center.x, center.y)
+      touchStartScale = nextScale
+      touchStartDistance = distance
+      stopEvent(event)
+    }
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (!hasTouchEvents || touchPointerEventsSeen) return
+      if (event.touches.length < 2) {
+        touchPinchActive = false
+        touchStartDistance = 0
+      }
+    }
+
+    if (hasTouchEvents) {
+      host.addEventListener('touchstart', handleTouchStart, { capture: true, passive: false })
+      host.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false })
+      host.addEventListener('touchend', handleTouchEnd, { capture: true })
+      host.addEventListener('touchcancel', handleTouchEnd, { capture: true })
+    }
 
     return () => {
       host.removeEventListener('pointerdown', handlePointerDown, { capture: true } as any)
       host.removeEventListener('pointermove', handlePointerMove, { capture: true } as any)
       host.removeEventListener('pointerup', endPointer, { capture: true } as any)
       host.removeEventListener('pointercancel', endPointer, { capture: true } as any)
+
+      if (hasTouchEvents) {
+        host.removeEventListener('touchstart', handleTouchStart as any, { capture: true } as any)
+        host.removeEventListener('touchmove', handleTouchMove as any, { capture: true } as any)
+        host.removeEventListener('touchend', handleTouchEnd as any, { capture: true } as any)
+        host.removeEventListener('touchcancel', handleTouchEnd as any, { capture: true } as any)
+      }
     }
   }, [studentViewScale, useStackedStudentLayout])
 

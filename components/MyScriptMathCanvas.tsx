@@ -9646,10 +9646,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const nextScale = clampStudentScale(state.startScale * distanceRatio)
           if (viewport && Math.abs(nextScale - currentScale) > 0.001) {
             const rect = viewport.getBoundingClientRect()
-            const midX = info.mid.x
-            const midY = info.mid.y
+            const midX = rect.left + rect.width / 2
+            const midY = rect.top + rect.height / 2
 
-            // Convert the midpoint into content-space coordinates before zoom.
+            // Convert the viewport center into content-space coordinates before zoom.
             const contentX = (midX - rect.left + viewport.scrollLeft) / Math.max(currentScale, 0.0001)
             const contentY = (midY - rect.top + viewport.scrollTop) / Math.max(currentScale, 0.0001)
 

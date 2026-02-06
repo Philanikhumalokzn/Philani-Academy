@@ -9633,14 +9633,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             studentViewScaleRef.current = nextScale
             setStudentViewScale(nextScale)
           }
-
-          if (state.lastMid) {
-            const dx = info.mid.x - state.lastMid.x
-            const dy = info.mid.y - state.lastMid.y
-            viewport.scrollLeft -= dx
-            viewport.scrollTop -= dy
-          }
-          state.lastMid = info.mid
         }
         suppressEvent(evt)
         return

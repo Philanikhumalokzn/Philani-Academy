@@ -198,6 +198,9 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
 const SCRIPT_ID = 'myscript-iink-ts-loader'
 const SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.js'
 const SCRIPT_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.js'
+const STYLE_ID = 'myscript-iink-ts-style'
+const STYLE_URL = 'https://cdn.jsdelivr.net/npm/iink-ts@3.0.2/dist/iink.min.css'
+const STYLE_FALLBACK_URL = 'https://unpkg.com/iink-ts@3.0.2/dist/iink.min.css'
 let scriptPromise: Promise<void> | null = null
 
 declare global {
@@ -230,6 +233,40 @@ function loadIinkRuntime(): Promise<void> {
   if (scriptPromise) {
     return scriptPromise
   }
+
+  const loadStyle = (id: string, href: string) =>
+    new Promise<void>((resolve, reject) => {
+      const existing = document.getElementById(id) as HTMLLinkElement | null
+
+      const handleError = () => {
+        console.error('Failed to load MyScript iink stylesheet from', href)
+        reject(new Error('Failed to load the MyScript iink stylesheet.'))
+      }
+
+      if (existing) {
+        if (existing.getAttribute('data-loaded') === 'true') {
+          resolve()
+          return
+        }
+        existing.remove()
+      }
+
+      const link = document.createElement('link')
+      link.id = id
+      link.rel = 'stylesheet'
+      link.href = href
+      link.crossOrigin = 'anonymous'
+      link.addEventListener(
+        'load',
+        () => {
+          link.setAttribute('data-loaded', 'true')
+          resolve()
+        },
+        { once: true }
+      )
+      link.addEventListener('error', handleError, { once: true })
+      document.head.appendChild(link)
+    })
 
   const loadScript = (id: string, src: string) =>
     new Promise<void>((resolve, reject) => {
@@ -273,6 +310,17 @@ function loadIinkRuntime(): Promise<void> {
   scriptPromise = (async () => {
     let lastError: unknown = null
 
+    const tryLoadStyle = async (id: string, href: string) => {
+      try {
+        await loadStyle(id, href)
+        return true
+      } catch (err) {
+        lastError = err
+        document.getElementById(id)?.remove()
+        return false
+      }
+    }
+
     const tryLoad = async (id: string, src: string) => {
       try {
         await loadScript(id, src)
@@ -282,6 +330,12 @@ function loadIinkRuntime(): Promise<void> {
         document.getElementById(id)?.remove()
         return false
       }
+    }
+
+    const styleOk = await tryLoadStyle(STYLE_ID, STYLE_URL)
+
+    if (!styleOk) {
+      await tryLoadStyle(`${STYLE_ID}-fallback`, STYLE_FALLBACK_URL)
     }
 
     const primaryOk = await tryLoad(SCRIPT_ID, SCRIPT_URL)
@@ -7039,8 +7093,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         minHeight: '220px',
         touchAction: 'none',
         backgroundColor: 'transparent',
-        outline: '1px dashed #94a3b8',
-        outlineOffset: '-1px',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }

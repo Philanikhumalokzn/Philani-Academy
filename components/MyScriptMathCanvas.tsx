@@ -9628,8 +9628,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const info = getMidAndDistance()
         if (info) {
           const distanceRatio = info.distance / Math.max(1, state.startDistance)
+          const currentScale = studentViewScaleRef.current
           const nextScale = clampStudentScale(state.startScale * distanceRatio)
-          if (Math.abs(nextScale - studentViewScaleRef.current) > 0.001) {
+          if (viewport && Math.abs(nextScale - currentScale) > 0.001) {
+            const rect = viewport.getBoundingClientRect()
+            const midX = info.mid.x
+            const midY = info.mid.y
+
+            // Convert the midpoint into content-space coordinates before zoom.
+            const contentX = (midX - rect.left + viewport.scrollLeft) / Math.max(currentScale, 0.0001)
+            const contentY = (midY - rect.top + viewport.scrollTop) / Math.max(currentScale, 0.0001)
+
+            // After zoom, keep that same content point under the same screen point
+            // by adjusting scrollLeft/scrollTop accordingly.
+            let newScrollLeft = contentX * nextScale - (midX - rect.left)
+            let newScrollTop = contentY * nextScale - (midY - rect.top)
+
+            const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+            const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+
+            newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft))
+            newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop))
+
+            viewport.scrollLeft = newScrollLeft
+            viewport.scrollTop = newScrollTop
+
             studentViewScaleRef.current = nextScale
             setStudentViewScale(nextScale)
           }

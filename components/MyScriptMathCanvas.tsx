@@ -9558,9 +9558,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // user's fingers.
   useEffect(() => {
     if (!useStackedStudentLayout) return
-    const host = editorHostRef.current
     const viewport = studentViewportRef.current
-    if (!host || !viewport) return
+    const editorHost = editorHostRef.current
+    const host = viewport || editorHost
+    if (!host || !editorHost) return
 
     const state = multiTouchGestureRef.current
 
@@ -9580,7 +9581,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const renderer = getRenderer()
       if (!renderer) return
 
-      const hostRect = host.getBoundingClientRect()
+      const hostRect = editorHost.getBoundingClientRect()
       // Convert client midpoint into renderer-local coords by subtracting the
       // host offset. This assumes the renderer origin aligns with the host's
       // top-left, which matches how the editor is integrated.
@@ -9618,7 +9619,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       } catch {}
     }
 
-    const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch'
+    const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
 
     const updatePointer = (evt: PointerEvent) => {
       state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
@@ -11255,7 +11256,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       transform: 'scale(1)',
                       transformOrigin: 'top left',
                       width: `${100 * inkSurfaceWidthFactor}%`,
-                      height: '100%',
+                      // Give extra vertical room so the viewport can scroll
+                      // vertically independent of zoom.
+                      height: '200%',
                     }}
                   >
                     <div

@@ -1663,40 +1663,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [showFullCanvasBounds, setShowFullCanvasBounds] = useState(false)
   const clampStudentScale = useCallback((value: number) => Math.min(1.6, Math.max(0.6, value)), [])
 
-  const applyStudentScaleCentered = useCallback((nextScale: number) => {
-    const viewport = studentViewportRef.current
-    const currentScale = studentViewScaleRef.current
-
-    if (!viewport) {
-      studentViewScaleRef.current = nextScale
-      setStudentViewScale(nextScale)
-      return
-    }
-
-    const rect = viewport.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const safeCurrent = Math.max(currentScale, 0.0001)
-
-    const contentX = (centerX - rect.left + viewport.scrollLeft) / safeCurrent
-    const contentY = (centerY - rect.top + viewport.scrollTop) / safeCurrent
-
-    let newScrollLeft = contentX * nextScale - (centerX - rect.left)
-    let newScrollTop = contentY * nextScale - (centerY - rect.top)
-
-    const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-
-    newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft))
-    newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop))
-
-    viewport.scrollLeft = newScrollLeft
-    viewport.scrollTop = newScrollTop
-
-    studentViewScaleRef.current = nextScale
-    setStudentViewScale(nextScale)
-  }, [])
-
   useEffect(() => {
     studentViewScaleRef.current = studentViewScale
   }, [studentViewScale])
@@ -9574,21 +9540,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   // On mount or layout change, pick a conservative default scale for student stacked view so full content is visible on small screens.
   useEffect(() => {
-    if (!useStackedStudentLayout || showFullCanvasBounds) return
+    if (!useStackedStudentLayout) return
     const viewport = studentViewportRef.current
     if (!viewport) return
     const width = viewport.clientWidth || 1
     const baseHeight = width * (4 / 5)
     const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
     const fitScale = Math.max(0.65, Math.min(1, availableHeight / baseHeight))
-    applyStudentScaleCentered(fitScale)
-  }, [applyStudentScaleCentered, showFullCanvasBounds, studentSplitRatio, useStackedStudentLayout])
+    setStudentViewScale(fitScale)
+  }, [useStackedStudentLayout, studentSplitRatio])
 
   const studentScaleControl = useMemo(() => {
     if (!useStackedStudentLayout) return null
     const step = 0.1
-    const handleAdjust = (delta: number) =>
-      applyStudentScaleCentered(clampStudentScale(studentViewScaleRef.current + delta))
+    const handleAdjust = (delta: number) => setStudentViewScale(curr => clampStudentScale(curr + delta))
     const handleFit = () => {
       const viewport = studentViewportRef.current
       if (!viewport) return
@@ -9596,10 +9561,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const baseHeight = width * (4 / 5)
       const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
       const fitScale = clampStudentScale(availableHeight / baseHeight)
-      applyStudentScaleCentered(fitScale)
+      setStudentViewScale(fitScale)
     }
     return { handleAdjust, handleFit, clampScale: clampStudentScale }
-  }, [applyStudentScaleCentered, clampStudentScale, useStackedStudentLayout])
+  }, [clampStudentScale, useStackedStudentLayout])
 
   // Stacked student layout: pinch-to-zoom by adjusting a CSS scale on the
   // wrapper. Because both the editor host and the pointer coordinates live in
@@ -9677,9 +9642,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const info = getMidAndDistance()
         if (info) {
           const distanceRatio = info.distance / Math.max(1, state.startDistance)
+          const currentScale = studentViewScaleRef.current
           const nextScale = clampStudentScale(state.startScale * distanceRatio)
-          if (Math.abs(nextScale - studentViewScaleRef.current) > 0.001) {
-            applyStudentScaleCentered(nextScale)
+          if (viewport && Math.abs(nextScale - currentScale) > 0.001) {
+            const rect = viewport.getBoundingClientRect()
+            const midX = rect.left + rect.width / 2
+            const midY = rect.top + rect.height / 2
+
+            // Convert the viewport center into content-space coordinates before zoom.
+            const contentX = (midX - rect.left + viewport.scrollLeft) / Math.max(currentScale, 0.0001)
+            const contentY = (midY - rect.top + viewport.scrollTop) / Math.max(currentScale, 0.0001)
+
+            // After zoom, keep that same content point under the same screen point
+            // by adjusting scrollLeft/scrollTop accordingly.
+            let newScrollLeft = contentX * nextScale - (midX - rect.left)
+            let newScrollTop = contentY * nextScale - (midY - rect.top)
+
+            const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+            const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+
+            newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft))
+            newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop))
+
+            viewport.scrollLeft = newScrollLeft
+            viewport.scrollTop = newScrollTop
+
+            studentViewScaleRef.current = nextScale
+            setStudentViewScale(nextScale)
           }
         }
         suppressEvent(evt)
@@ -11259,7 +11248,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       // and pointer coordinates share this transform, ink
                       // remains aligned with touch.
                       transform: `scale(${effectiveStudentScale})`,
-                      transformOrigin: 'top left',
+                      transformOrigin: 'center center',
                       backgroundColor: '#ffffff',
                       backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
                       backgroundSize: '24px 24px',

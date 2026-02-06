@@ -7038,6 +7038,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         height: '100%',
         minHeight: '220px',
         touchAction: 'none',
+        backgroundColor: 'transparent',
+        outline: '1px dashed #94a3b8',
+        outlineOffset: '-1px',
         pointerEvents: disableCanvasInput ? 'none' : undefined,
         cursor: disableCanvasInput ? 'default' : undefined,
       }

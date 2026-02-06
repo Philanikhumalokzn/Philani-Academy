@@ -9654,6 +9654,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerDown = (event: PointerEvent) => {
       if (event.pointerType !== 'touch') return
+
+      // Only handle touches that start inside the canvas viewport.
+      const rect = host.getBoundingClientRect()
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+        return
+      }
+
       touchPointerEventsSeen = true
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
       if (pointers.size === 2) {
@@ -9697,10 +9704,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     // Pointer-events based pinch (desktop / modern browsers).
-    host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
-    host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
-    host.addEventListener('pointerup', endPointer, { capture: true })
-    host.addEventListener('pointercancel', endPointer, { capture: true })
+    window.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    window.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    window.addEventListener('pointerup', endPointer, { capture: true })
+    window.addEventListener('pointercancel', endPointer, { capture: true })
 
     // Touch-events fallback (for environments where pointer events are
     // not emitted for touch, e.g. some mobile browsers / webviews).
@@ -9738,7 +9745,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // pointer-based path and ignore raw touch events to avoid
       // double-handling on browsers that fire both.
       if (touchPointerEventsSeen) return
+
       if (event.touches.length < 2) return
+
+      // Only begin a pinch if both touches are inside the canvas viewport.
+      const rect = host.getBoundingClientRect()
+      const a = event.touches[0]!
+      const b = event.touches[1]!
+      const aInRect = a.clientX >= rect.left && a.clientX <= rect.right && a.clientY >= rect.top && a.clientY <= rect.bottom
+      const bInRect = b.clientX >= rect.left && b.clientX <= rect.right && b.clientY >= rect.top && b.clientY <= rect.bottom
+      if (!aInRect || !bInRect) return
       touchPinchActive = true
       touchStartDistance = getTouchDistance(event.touches)
       const renderer = getRenderer()
@@ -9779,23 +9795,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     if (hasTouchEvents) {
-      host.addEventListener('touchstart', handleTouchStart, { capture: true, passive: false })
-      host.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false })
-      host.addEventListener('touchend', handleTouchEnd, { capture: true })
-      host.addEventListener('touchcancel', handleTouchEnd, { capture: true })
+      window.addEventListener('touchstart', handleTouchStart, { capture: true, passive: false })
+      window.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false })
+      window.addEventListener('touchend', handleTouchEnd, { capture: true })
+      window.addEventListener('touchcancel', handleTouchEnd, { capture: true })
     }
 
     return () => {
-      host.removeEventListener('pointerdown', handlePointerDown, { capture: true } as any)
-      host.removeEventListener('pointermove', handlePointerMove, { capture: true } as any)
-      host.removeEventListener('pointerup', endPointer, { capture: true } as any)
-      host.removeEventListener('pointercancel', endPointer, { capture: true } as any)
+      window.removeEventListener('pointerdown', handlePointerDown as any, { capture: true } as any)
+      window.removeEventListener('pointermove', handlePointerMove as any, { capture: true } as any)
+      window.removeEventListener('pointerup', endPointer as any, { capture: true } as any)
+      window.removeEventListener('pointercancel', endPointer as any, { capture: true } as any)
 
       if (hasTouchEvents) {
-        host.removeEventListener('touchstart', handleTouchStart as any, { capture: true } as any)
-        host.removeEventListener('touchmove', handleTouchMove as any, { capture: true } as any)
-        host.removeEventListener('touchend', handleTouchEnd as any, { capture: true } as any)
-        host.removeEventListener('touchcancel', handleTouchEnd as any, { capture: true } as any)
+        window.removeEventListener('touchstart', handleTouchStart as any, { capture: true } as any)
+        window.removeEventListener('touchmove', handleTouchMove as any, { capture: true } as any)
+        window.removeEventListener('touchend', handleTouchEnd as any, { capture: true } as any)
+        window.removeEventListener('touchcancel', handleTouchEnd as any, { capture: true } as any)
       }
     }
   }, [studentViewScale, useStackedStudentLayout])

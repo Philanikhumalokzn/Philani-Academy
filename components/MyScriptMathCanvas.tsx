@@ -11248,7 +11248,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       // and pointer coordinates share this transform, ink
                       // remains aligned with touch.
                       transform: `scale(${effectiveStudentScale})`,
-                      transformOrigin: 'center center',
+                      transformOrigin: 'top left',
                       backgroundColor: '#ffffff',
                       backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
                       backgroundSize: '24px 24px',

@@ -9552,72 +9552,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return { handleAdjust, handleFit, clampScale: clampStudentScale }
   }, [clampStudentScale, useStackedStudentLayout])
 
-  // Stacked student layout: pinch-to-zoom via the MyScript renderer.
-  // We no longer apply a CSS transform scale on the wrapper; instead we
-  // delegate zoom to the editor's renderer so that ink stays under the
-  // user's fingers.
+  // Stacked student layout: pinch-to-zoom by adjusting a CSS scale on the
+  // wrapper. Because both the editor host and the pointer coordinates live in
+  // the same transformed DOM space, this keeps ink visually under the
+  // fingers, while our custom scrollbars handle panning.
   useEffect(() => {
     if (!useStackedStudentLayout) return
     const viewport = studentViewportRef.current
-    const editorHost = editorHostRef.current
-    const host = viewport || editorHost
-    if (!host || !editorHost) return
+    const host = viewport || editorHostRef.current
+    if (!host) return
 
     const state = multiTouchGestureRef.current
-
-    const getRenderer = () => {
-      const editor = editorInstanceRef.current as any
-      return editor?.renderer || editor?.Renderer || editor?.context?.renderer || null
-    }
-
-    const getRendererScale = (renderer: any) => {
-      if (!renderer) return 1
-      const s = renderer.viewScale ?? renderer.ViewScale
-      return typeof s === 'number' && Number.isFinite(s) && s > 0 ? s : 1
-    }
-
-    const applyRendererZoomAt = (ratio: number, midClient: { x: number; y: number }) => {
-      if (!Number.isFinite(ratio) || ratio === 1) return
-      const renderer = getRenderer()
-      if (!renderer) return
-
-      const hostRect = editorHost.getBoundingClientRect()
-      // Convert client midpoint into renderer-local coords by subtracting the
-      // host offset. This assumes the renderer origin aligns with the host's
-      // top-left, which matches how the editor is integrated.
-      const localX = midClient.x - hostRect.left
-      const localY = midClient.y - hostRect.top
-
-      const zoomAt = renderer.zoomAt || renderer.ZoomAt
-      const zoom = renderer.zoom || renderer.Zoom
-
-      if (typeof zoomAt === 'function') {
-        try {
-          zoomAt.call(renderer, ratio, { x: localX, y: localY })
-          return
-        } catch {
-          try {
-            zoomAt.call(renderer, ratio, localX, localY)
-            return
-          } catch {}
-        }
-      }
-
-      if (typeof zoom === 'function') {
-        try {
-          zoom.call(renderer, ratio)
-          return
-        } catch {}
-      }
-
-      // Fallback: adjust a viewScale property directly.
-      try {
-        const current = getRendererScale(renderer)
-        const next = current * ratio
-        if ('viewScale' in renderer) (renderer as any).viewScale = next
-        else if ('ViewScale' in renderer) (renderer as any).ViewScale = next
-      } catch {}
-    }
 
     const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
 
@@ -9647,7 +9592,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!info) return
       state.active = true
       state.startDistance = info.distance
-      state.startScale = getRendererScale(getRenderer())
+      state.startScale = studentViewScaleRef.current
       state.lastMid = info.mid
       state.suppressedPointers = new Set(state.pointers.keys())
     }
@@ -9683,9 +9628,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const info = getMidAndDistance()
         if (info) {
           const distanceRatio = info.distance / Math.max(1, state.startDistance)
-          const ratio = clampStudentScale(state.startScale * distanceRatio) / Math.max(0.0001, state.startScale)
-          if (Math.abs(ratio - 1) > 0.001) {
-            applyRendererZoomAt(ratio, info.mid)
+          const nextScale = clampStudentScale(state.startScale * distanceRatio)
+          if (Math.abs(nextScale - studentViewScaleRef.current) > 0.001) {
+            studentViewScaleRef.current = nextScale
+            setStudentViewScale(nextScale)
           }
         }
         suppressEvent(evt)
@@ -11251,9 +11197,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 >
                   <div
                     style={{
-                      // Keep visual scale at 1; zoom is handled by the
-                      // MyScript renderer so ink stays aligned with touch.
-                      transform: 'scale(1)',
+                      // Visual zoom for stacked student view is applied here
+                      // via a simple CSS scale. Because both the editor host
+                      // and pointer coordinates share this transform, ink
+                      // remains aligned with touch.
+                      transform: `scale(${studentViewScale})`,
                       transformOrigin: 'top left',
                       width: `${100 * inkSurfaceWidthFactor}%`,
                       // Give extra vertical room so the viewport can scroll

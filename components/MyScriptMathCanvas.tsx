@@ -9635,12 +9635,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // Once the two-finger gesture is fully over (no active pointers
       // left), compare the stroke count before/after the pan:
       // - If exactly one new stroke appeared (after = baseline + 1),
-      //   treat it as the accidental pan stroke and undo it
-      //   immediately.
+      //   treat it as the accidental pan stroke and undo it after a
+      //   short delay to give MyScript time to commit it.
       // - Otherwise, fall back to the long debug timer so we can
       //   still observe what MyScript considers the latest stroke.
       if (gestureEnded) {
         const UNDO_DEBUG_DELAY_MS = 60000
+        const AUTO_UNDO_DELAY_MS = 50
         const afterCount = Number.isFinite(lastSymbolCountRef.current)
           ? lastSymbolCountRef.current
           : 0
@@ -9654,10 +9655,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         const shouldUndo = !lockedOutRef.current && Boolean(editorInstanceRef.current)
         if (shouldUndo) {
-          // Deterministic case: exactly one new stroke during/around this pan.
-          if (afterCount === baseline + 1) {
+          const hasSingleNewStroke = afterCount === baseline + 1
+          if (hasSingleNewStroke) {
+            // Deterministic case: exactly one new stroke during/around
+            // this pan. Undo it after a small delay.
             try {
-              editorInstanceRef.current?.undo?.()
+              setTimeout(() => {
+                try {
+                  editorInstanceRef.current?.undo?.()
+                } catch {}
+              }, AUTO_UNDO_DELAY_MS)
             } catch {}
           } else {
             // Fallback: keep the long debug timer so we can still see

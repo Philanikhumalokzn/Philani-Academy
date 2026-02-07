@@ -4675,27 +4675,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       }
 
-      // Heuristic: merge multiple adjacent simple fractions into a
-      // single big fraction when the entire line is just a run of
-      // \frac{digit}{digit} blocks with no operators between them.
-      // Example: \frac{1}{2} \frac{1}{3} -> \frac{11}{23}
-      try {
-        const fracPattern = /\\frac\{(\d+)\}\{(\d+)\}/g
-        const matches = Array.from(cleaned.matchAll(fracPattern))
-        if (matches.length >= 2) {
-          const stripped = cleaned.replace(fracPattern, '').replace(/\s+/g, '')
-          if (!stripped) {
-            const num = matches.map(m => m[1]).join('')
-            const den = matches.map(m => m[2]).join('')
-            if (num && den) {
-              cleaned = `\\frac{${num}}{${den}}`
-            }
-          }
-        }
-      } catch {
-        // Best-effort only; ignore if regex-based cleanup fails.
-      }
-
       // Second pass: safely parse JIIX so future geometry-aware cleanups
       // can reason about mis-split fraction bars or radicals.
       if (snapshot?.jiix) {

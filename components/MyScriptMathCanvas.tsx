@@ -679,8 +679,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
-  const [debugPanStrokeInfo, setDebugPanStrokeInfo] = useState<{ baseline: number; after: number } | null>(null)
-  const [debugPanPanelPos, setDebugPanPanelPos] = useState<{ x: number; y: number }>({ x: 12, y: 80 })
 
   const [isEraserMode, setIsEraserMode] = useState(false)
   const isEraserModeRef = useRef(false)
@@ -1911,19 +1909,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
-    baselineSymbolCount: number
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
-    baselineSymbolCount: 0,
   })
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const debugPanPanelDragRef = useRef<{ active: boolean; pointerId: number | null; offsetX: number; offsetY: number }>(
-    { active: false, pointerId: null, offsetX: 0, offsetY: 0 }
-  )
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -9563,10 +9556,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
-      // Capture stroke count at pan start for debugging.
-      state.baselineSymbolCount = Number.isFinite(lastSymbolCountRef.current)
-        ? lastSymbolCountRef.current
-        : 0
     }
 
     const endGestureIfNeeded = () => {
@@ -9633,51 +9622,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = hadPan && !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
-      // left), compare the stroke count before/after the pan:
-      // - If exactly one new stroke appeared (after = baseline + 1),
-      //   treat it as the accidental pan stroke and undo it after a
-      //   short delay to give MyScript time to commit it.
-      // - Otherwise, fall back to the long debug timer so we can
-      //   still observe what MyScript considers the latest stroke.
+      // left), schedule a single debug undo after a short delay so we
+      // can observe what stroke MyScript considers "latest" in this
+      // scenario.
       if (gestureEnded) {
-        const UNDO_DEBUG_DELAY_MS = 60000
-        const AUTO_UNDO_DELAY_MS = 50
-        const afterCount = Number.isFinite(lastSymbolCountRef.current)
-          ? lastSymbolCountRef.current
-          : 0
-        const baseline = typeof state.baselineSymbolCount === 'number'
-          ? state.baselineSymbolCount
-          : afterCount
-        setDebugPanStrokeInfo({ baseline, after: afterCount })
+        const UNDO_DEBUG_DELAY_MS = 1000
         if (debugPanUndoTimeoutRef.current) {
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null
         }
-        const shouldUndo = !lockedOutRef.current && Boolean(editorInstanceRef.current)
-        if (shouldUndo) {
-          const hasSingleNewStroke = afterCount === baseline + 1
-          if (hasSingleNewStroke) {
-            // Deterministic case: exactly one new stroke during/around
-            // this pan. Undo it after a small delay.
-            try {
-              setTimeout(() => {
-                try {
-                  editorInstanceRef.current?.undo?.()
-                } catch {}
-              }, AUTO_UNDO_DELAY_MS)
-            } catch {}
-          } else {
-            // Fallback: keep the long debug timer so we can still see
-            // what MyScript chooses to undo after this pan.
-            try {
-              debugPanUndoTimeoutRef.current = setTimeout(() => {
-                try {
-                  editorInstanceRef.current?.undo?.()
-                } catch {}
-                debugPanUndoTimeoutRef.current = null
-              }, UNDO_DEBUG_DELAY_MS)
-            } catch {}
-          }
+        const shouldUndo = !lockedOutRef.current
+        if (shouldUndo && editorInstanceRef.current) {
+          try {
+            debugPanUndoTimeoutRef.current = setTimeout(() => {
+              try {
+                editorInstanceRef.current?.undo?.()
+              } catch {}
+              debugPanUndoTimeoutRef.current = null
+            }, UNDO_DEBUG_DELAY_MS)
+          } catch {}
         }
       }
 
@@ -9727,36 +9690,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       host.removeEventListener('gestureend', stopGesture as EventListener)
     }
   }, [useStackedStudentLayout])
-
-  const handleDebugPanPanelPointerDown = useCallback((evt: React.PointerEvent<HTMLDivElement>) => {
-    debugPanPanelDragRef.current = {
-      active: true,
-      pointerId: evt.pointerId,
-      offsetX: evt.clientX - debugPanPanelPos.x,
-      offsetY: evt.clientY - debugPanPanelPos.y,
-    }
-    try {
-      ;(evt.target as HTMLElement | null)?.setPointerCapture?.(evt.pointerId)
-    } catch {}
-  }, [debugPanPanelPos.x, debugPanPanelPos.y])
-
-  const handleDebugPanPanelPointerMove = useCallback((evt: React.PointerEvent<HTMLDivElement>) => {
-    const drag = debugPanPanelDragRef.current
-    if (!drag.active || drag.pointerId !== evt.pointerId) return
-    const nextX = evt.clientX - drag.offsetX
-    const nextY = evt.clientY - drag.offsetY
-    setDebugPanPanelPos({ x: nextX, y: nextY })
-  }, [])
-
-  const handleDebugPanPanelPointerUp = useCallback((evt: React.PointerEvent<HTMLDivElement>) => {
-    const drag = debugPanPanelDragRef.current
-    if (drag.pointerId !== null && drag.pointerId === evt.pointerId) {
-      debugPanPanelDragRef.current = { active: false, pointerId: null, offsetX: 0, offsetY: 0 }
-      try {
-        ;(evt.target as HTMLElement | null)?.releasePointerCapture?.(evt.pointerId)
-      } catch {}
-    }
-  }, [])
 
   const renderToolbarBlock = () => (
     <div className="canvas-toolbar">
@@ -10143,20 +10076,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   return (
     <div className={isOverlayMode ? 'h-full' : undefined}>
-      {/* Small draggable debug panel for pan stroke counts; always visible for debugging. */}
-      <div
-        className="fixed z-50 bg-white/90 border border-slate-300 rounded px-2 py-1 text-[11px] text-slate-700 shadow-sm select-none"
-        style={{ left: debugPanPanelPos.x, top: debugPanPanelPos.y, touchAction: 'none', cursor: 'move' }}
-        onPointerDown={handleDebugPanPanelPointerDown}
-        onPointerMove={handleDebugPanPanelPointerMove}
-        onPointerUp={handleDebugPanPanelPointerUp}
-        onPointerCancel={handleDebugPanPanelPointerUp}
-      >
-        <span>
-          Pan strokes: before {debugPanStrokeInfo?.baseline ?? '-'}, after {debugPanStrokeInfo?.after ?? '-'}
-        </span>
-      </div>
-
       <div className={`flex flex-col gap-3${isOverlayMode ? ' h-full min-h-0' : ''}`}>
         {useStackedStudentLayout && (
           <div

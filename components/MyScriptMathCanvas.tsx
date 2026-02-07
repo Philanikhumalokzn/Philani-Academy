@@ -9633,9 +9633,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = hadPan && !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
-      // left), schedule a single debug undo after a short delay so we
-      // can observe what stroke MyScript considers "latest" in this
-      // scenario.
+      // left), compare the stroke count before/after the pan:
+      // - If exactly one new stroke appeared (after = baseline + 1),
+      //   treat it as the accidental pan stroke and undo it
+      //   immediately.
+      // - Otherwise, fall back to the long debug timer so we can
+      //   still observe what MyScript considers the latest stroke.
       if (gestureEnded) {
         const UNDO_DEBUG_DELAY_MS = 60000
         const afterCount = Number.isFinite(lastSymbolCountRef.current)
@@ -9649,16 +9652,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null
         }
-        const shouldUndo = !lockedOutRef.current
-        if (shouldUndo && editorInstanceRef.current) {
-          try {
-            debugPanUndoTimeoutRef.current = setTimeout(() => {
-              try {
-                editorInstanceRef.current?.undo?.()
-              } catch {}
-              debugPanUndoTimeoutRef.current = null
-            }, UNDO_DEBUG_DELAY_MS)
-          } catch {}
+        const shouldUndo = !lockedOutRef.current && Boolean(editorInstanceRef.current)
+        if (shouldUndo) {
+          // Deterministic case: exactly one new stroke during/around this pan.
+          if (afterCount === baseline + 1) {
+            try {
+              editorInstanceRef.current?.undo?.()
+            } catch {}
+          } else {
+            // Fallback: keep the long debug timer so we can still see
+            // what MyScript chooses to undo after this pan.
+            try {
+              debugPanUndoTimeoutRef.current = setTimeout(() => {
+                try {
+                  editorInstanceRef.current?.undo?.()
+                } catch {}
+                debugPanUndoTimeoutRef.current = null
+              }, UNDO_DEBUG_DELAY_MS)
+            } catch {}
+          }
         }
       }
 

@@ -1909,15 +1909,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
-    baselineSymbolCount: number
-    hadIncreaseDuringPan: boolean
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
-    baselineSymbolCount: 0,
-    hadIncreaseDuringPan: false,
   })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
@@ -5176,18 +5172,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
 
           const symbolCount = countSymbols(snapshot.symbols)
-
-          // While a local two-finger pan is active, remember if the
-          // symbol count increases compared to the baseline captured
-          // at gesture start. We ignore remote-applied changes here.
-          const panState = multiTouchPanRef.current
-          if (
-            panState.active &&
-            !isApplyingRemoteRef.current &&
-            symbolCount > panState.baselineSymbolCount
-          ) {
-            panState.hadIncreaseDuringPan = true
-          }
 
           // Update local symbol count tracking for accurate delta math for remote peers.
           lastSymbolCountRef.current = symbolCount
@@ -9570,13 +9554,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
-      // Capture the symbol count at the start of the pan so we can
-      // detect if anything new was committed while the gesture was
-      // active.
-      state.baselineSymbolCount = Number.isFinite(lastSymbolCountRef.current)
-        ? lastSymbolCountRef.current
-        : 0
-      state.hadIncreaseDuringPan = false
     }
 
     const endGestureIfNeeded = () => {
@@ -9642,23 +9619,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
-      // left), if we saw any local increase in symbol count while the
-      // gesture was active, perform a single undo. This targets the
-      // tiny stroke that was committed during the pan.
-      if (gestureEnded && state.hadIncreaseDuringPan) {
-        const UNDO_DELAY_MS = 80
-        const shouldUndo = !lockedOutRef.current
-        state.hadIncreaseDuringPan = false
-        if (shouldUndo && editorInstanceRef.current) {
-          try {
-            setTimeout(() => {
-              try {
-                editorInstanceRef.current?.undo?.()
-              } catch {}
-            }, UNDO_DELAY_MS)
-          } catch {}
-        }
-      }
+      // left), do not perform any automatic undo. Two-finger gestures
+      // are treated purely as pan/scroll.
 
       if (state.active || wasSuppressed) {
         suppressEvent(evt)

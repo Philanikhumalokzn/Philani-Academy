@@ -9654,6 +9654,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
+<<<<<<< HEAD
       // left), arm a single auto-undo that will trigger on the next
       // local MyScript change where the symbol count increases.
       if (gestureEnded) {
@@ -9665,6 +9666,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           active: true,
           baselineSymbolCount: baseline,
           deadlineTs: now + 1500,
+=======
+      // left), perform a single undo. This aims to remove the tiny
+      // initial stroke drawn by the first finger without touching
+      // earlier strokes.
+      if (gestureEnded) {
+        const UNDO_DELAY_MS = 80
+        const shouldUndo = !lockedOutRef.current
+        if (shouldUndo && editorInstanceRef.current) {
+          try {
+            setTimeout(() => {
+              try {
+                editorInstanceRef.current?.undo?.()
+              } catch {}
+            }, UNDO_DELAY_MS)
+          } catch {}
+>>>>>>> a208268f56d1bb4cb91cd657f2c3cdb80d4d4907
         }
       }
 

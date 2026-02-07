@@ -9627,12 +9627,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // the tiny initial stroke drawn by the first finger without
       // touching earlier strokes.
       if (gestureEnded && state.pendingUndo) {
-        try {
-          if (editorInstanceRef.current && !lockedOutRef.current) {
-            editorInstanceRef.current.undo?.()
-          }
-        } catch {}
+        // Defer undo slightly to give the engine a chance to
+        // commit any tiny stroke from the first finger before we
+        // remove it. This still isn't perfect, but it reduces the
+        // chance of targeting an older stroke.
+        const UNDO_DELAY_MS = 80
+        const shouldUndo = !lockedOutRef.current
         state.pendingUndo = false
+        if (shouldUndo && editorInstanceRef.current) {
+          try {
+            setTimeout(() => {
+              try {
+                editorInstanceRef.current?.undo?.()
+              } catch {}
+            }, UNDO_DELAY_MS)
+          } catch {}
+        }
       }
 
       if (state.active || wasSuppressed) {

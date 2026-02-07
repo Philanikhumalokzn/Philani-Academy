@@ -1909,13 +1909,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
-    pendingUndo: boolean
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
-    pendingUndo: false,
   })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
@@ -9549,15 +9547,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const mid = getMid()
       if (!mid) return
 
-      // Start treating this as a two-finger pan gesture. Mark that we
-      // should perform a single undo when the gesture fully ends
-      // (both fingers lifted), so the small initial stroke from the
-      // first finger can be reverted without repeatedly undoing
-      // earlier work.
+      // Start treating this as a two-finger pan gesture.
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
-      state.pendingUndo = true
     }
 
     const endGestureIfNeeded = () => {
@@ -9623,17 +9616,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
-      // left), perform a single undo if requested. This aims to remove
-      // the tiny initial stroke drawn by the first finger without
-      // touching earlier strokes.
-      if (gestureEnded && state.pendingUndo) {
-        // Defer undo slightly to give the engine a chance to
-        // commit any tiny stroke from the first finger before we
-        // remove it. This still isn't perfect, but it reduces the
-        // chance of targeting an older stroke.
+      // left), perform a single undo. This aims to remove the tiny
+      // initial stroke drawn by the first finger without touching
+      // earlier strokes.
+      if (gestureEnded) {
         const UNDO_DELAY_MS = 80
         const shouldUndo = !lockedOutRef.current
-        state.pendingUndo = false
         if (shouldUndo && editorInstanceRef.current) {
           try {
             setTimeout(() => {

@@ -1904,6 +1904,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
+  const multiTouchPanRef = useRef<{
+    pointers: Map<number, { x: number; y: number }>
+    active: boolean
+    lastMid: { x: number; y: number } | null
+    suppressedPointers: Set<number>
+  }>({
+    pointers: new Map(),
+    active: false,
+    lastMid: null,
+    suppressedPointers: new Set(),
+  })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -9500,6 +9511,132 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 
   // Zoom has been removed for stacked student layout to avoid any ink offset.
+  // Two-finger gestures are treated as 2D pan (scroll) instead of drawing.
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!useStackedStudentLayout) return
+
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+
+    const state = multiTouchPanRef.current
+
+    const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
+
+    const updatePointer = (evt: PointerEvent) => {
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    }
+
+    const getMid = () => {
+      if (state.pointers.size < 2) return null
+      const values = Array.from(state.pointers.values())
+      const a = values[0]
+      const b = values[1]
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    }
+
+    const suppressEvent = (evt: PointerEvent) => {
+      if (evt.cancelable) evt.preventDefault()
+      evt.stopImmediatePropagation()
+    }
+
+    const beginGestureIfReady = () => {
+      if (state.active) return
+      if (state.pointers.size < 2) return
+      const mid = getMid()
+      if (!mid) return
+
+      // As we transition into a two-finger pan, undo the most recent
+      // stroke so any tiny mark from the first finger is removed.
+      try {
+        if (editorInstanceRef.current && !lockedOutRef.current) {
+          editorInstanceRef.current.undo?.()
+        }
+      } catch {}
+
+      state.active = true
+      state.lastMid = mid
+      state.suppressedPointers = new Set(state.pointers.keys())
+    }
+
+    const endGestureIfNeeded = () => {
+      if (state.active && state.pointers.size < 2) {
+        state.active = false
+        state.lastMid = null
+      }
+      if (state.pointers.size === 0) {
+        state.suppressedPointers.clear()
+      }
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      updatePointer(evt)
+      if (state.pointers.size >= 2) {
+        beginGestureIfReady()
+        state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+      } else if (state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      updatePointer(evt)
+
+      if (state.active && state.pointers.size >= 2) {
+        const mid = getMid()
+        if (mid && state.lastMid) {
+          const dx = mid.x - state.lastMid.x
+          const dy = mid.y - state.lastMid.y
+
+          const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+          const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+
+          let nextLeft = viewport.scrollLeft - dx
+          let nextTop = viewport.scrollTop - dy
+
+          nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
+          nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
+
+          viewport.scrollLeft = nextLeft
+          viewport.scrollTop = nextTop
+        }
+        state.lastMid = getMid()
+        suppressEvent(evt)
+        return
+      }
+
+      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerUp = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      state.pointers.delete(evt.pointerId)
+      state.suppressedPointers.delete(evt.pointerId)
+      endGestureIfNeeded()
+      if (state.active || wasSuppressed) {
+        suppressEvent(evt)
+      }
+    }
+
+    viewport.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    viewport.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
+    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
+
+    return () => {
+      viewport.removeEventListener('pointerdown', handlePointerDown as any, true)
+      viewport.removeEventListener('pointermove', handlePointerMove as any, true)
+      window.removeEventListener('pointerup', handlePointerUp as any, true)
+      window.removeEventListener('pointercancel', handlePointerUp as any, true)
+    }
+  }, [multiTouchPanRef, studentViewportRef, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

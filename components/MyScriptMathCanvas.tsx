@@ -680,6 +680,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
   const [debugPanStrokeInfo, setDebugPanStrokeInfo] = useState<{ baseline: number; after: number } | null>(null)
+  const [debugPanPanelPos, setDebugPanPanelPos] = useState<{ x: number; y: number }>({ x: 12, y: 80 })
 
   const [isEraserMode, setIsEraserMode] = useState(false)
   const isEraserModeRef = useRef(false)
@@ -1920,6 +1921,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   })
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debugPanPanelDragRef = useRef<{ active: boolean; pointerId: number | null; offsetX: number; offsetY: number }>(
+    { active: false, pointerId: null, offsetX: 0, offsetY: 0 }
+  )
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -9705,6 +9709,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [useStackedStudentLayout])
 
+  const handleDebugPanPanelPointerDown = useCallback((evt: React.PointerEvent<HTMLDivElement>) => {
+    debugPanPanelDragRef.current = {
+      active: true,
+      pointerId: evt.pointerId,
+      offsetX: evt.clientX - debugPanPanelPos.x,
+      offsetY: evt.clientY - debugPanPanelPos.y,
+    }
+    try {
+      ;(evt.target as HTMLElement | null)?.setPointerCapture?.(evt.pointerId)
+    } catch {}
+  }, [debugPanPanelPos.x, debugPanPanelPos.y])
+
+  const handleDebugPanPanelPointerMove = useCallback((evt: React.PointerEvent<HTMLDivElement>) => {
+    const drag = debugPanPanelDragRef.current
+    if (!drag.active || drag.pointerId !== evt.pointerId) return
+    const nextX = evt.clientX - drag.offsetX
+    const nextY = evt.clientY - drag.offsetY
+    setDebugPanPanelPos({ x: nextX, y: nextY })
+  }, [])
+
+  const handleDebugPanPanelPointerUp = useCallback((evt: React.PointerEvent<HTMLDivElement>) => {
+    const drag = debugPanPanelDragRef.current
+    if (drag.pointerId !== null && drag.pointerId === evt.pointerId) {
+      debugPanPanelDragRef.current = { active: false, pointerId: null, offsetX: 0, offsetY: 0 }
+      try {
+        ;(evt.target as HTMLElement | null)?.releasePointerCapture?.(evt.pointerId)
+      } catch {}
+    }
+  }, [])
+
   const renderToolbarBlock = () => (
     <div className="canvas-toolbar">
       <div className="canvas-toolbar__buttons">
@@ -9741,11 +9775,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {isConverting ? 'Converting…' : 'Convert to Notes'}
         </button>
       </div>
-      {debugPanStrokeInfo && (
-        <div className="canvas-toolbar__debug" style={{ marginTop: 4, fontSize: 12 }}>
-          <span>Pan strokes: before {debugPanStrokeInfo.baseline}, after {debugPanStrokeInfo.after}</span>
-        </div>
-      )}
       {hasWriteAccess && (
         <div className="canvas-toolbar__buttons">
           <button
@@ -10095,6 +10124,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   return (
     <div className={isOverlayMode ? 'h-full' : undefined}>
+      {/* Small draggable debug panel for pan stroke counts; always visible for debugging. */}
+      <div
+        className="fixed z-50 bg-white/90 border border-slate-300 rounded px-2 py-1 text-[11px] text-slate-700 shadow-sm select-none"
+        style={{ left: debugPanPanelPos.x, top: debugPanPanelPos.y, touchAction: 'none', cursor: 'move' }}
+        onPointerDown={handleDebugPanPanelPointerDown}
+        onPointerMove={handleDebugPanPanelPointerMove}
+        onPointerUp={handleDebugPanPanelPointerUp}
+        onPointerCancel={handleDebugPanPanelPointerUp}
+      >
+        <span>
+          Pan strokes: before {debugPanStrokeInfo?.baseline ?? '-'}, after {debugPanStrokeInfo?.after ?? '-'}
+        </span>
+      </div>
+
       <div className={`flex flex-col gap-3${isOverlayMode ? ' h-full min-h-0' : ''}`}>
         {useStackedStudentLayout && (
           <div

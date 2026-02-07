@@ -1915,6 +1915,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastMid: null,
     suppressedPointers: new Set(),
   })
+  // Debug-only: used to schedule a single undo after a pan ends.
+  const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -9619,8 +9621,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
-      // left), do not perform any automatic undo. Two-finger gestures
-      // are treated purely as pan/scroll.
+      // left), schedule a single debug undo after a short delay so we
+      // can observe what stroke MyScript considers "latest" in this
+      // scenario.
+      if (gestureEnded) {
+        const UNDO_DEBUG_DELAY_MS = 1000
+        if (debugPanUndoTimeoutRef.current) {
+          clearTimeout(debugPanUndoTimeoutRef.current)
+          debugPanUndoTimeoutRef.current = null
+        }
+        const shouldUndo = !lockedOutRef.current
+        if (shouldUndo && editorInstanceRef.current) {
+          try {
+            debugPanUndoTimeoutRef.current = setTimeout(() => {
+              try {
+                editorInstanceRef.current?.undo?.()
+              } catch {}
+              debugPanUndoTimeoutRef.current = null
+            }, UNDO_DEBUG_DELAY_MS)
+          } catch {}
+        }
+      }
 
       if (state.active || wasSuppressed) {
         suppressEvent(evt)

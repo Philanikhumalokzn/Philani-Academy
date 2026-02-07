@@ -1904,18 +1904,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
+  const panUndoOnNextChangeRef = useRef<{
+    active: boolean
+    baselineSymbolCount: number
+    deadlineTs: number
+  }>({
+    active: false,
+    baselineSymbolCount: 0,
+    deadlineTs: 0,
+  })
   const multiTouchPanRef = useRef<{
     pointers: Map<number, { x: number; y: number }>
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
-    pendingUndo: boolean
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
-    pendingUndo: false,
   })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
@@ -5172,8 +5179,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
+
+          const symbolCount = countSymbols(snapshot.symbols)
+
+          // If a two-finger pan just ended, and this is the first local
+          // change that increases the symbol count within a short
+          // window, treat it as the accidental initial stroke and
+          // undo it once.
+          const panState = panUndoOnNextChangeRef.current
+          if (
+            panState.active &&
+            !isApplyingRemoteRef.current &&
+            now <= panState.deadlineTs &&
+            symbolCount > panState.baselineSymbolCount &&
+            !lockedOutRef.current
+          ) {
+            panUndoOnNextChangeRef.current = {
+              active: false,
+              baselineSymbolCount: 0,
+              deadlineTs: 0,
+            }
+            try {
+              editorInstanceRef.current?.undo?.()
+            } catch {}
+            // Let the subsequent change event from undo handle
+            // broadcasting the final, corrected state.
+            lastSymbolCountRef.current = symbolCount
+            return
+          }
+
           // Update local symbol count tracking for accurate delta math for remote peers.
-          lastSymbolCountRef.current = countSymbols(snapshot.symbols)
+          lastSymbolCountRef.current = symbolCount
           if (canSend) {
             broadcastSnapshot(false)
           }
@@ -9549,15 +9585,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const mid = getMid()
       if (!mid) return
 
-      // Start treating this as a two-finger pan gesture. Mark that we
-      // should perform a single undo when the gesture fully ends
-      // (both fingers lifted), so the small initial stroke from the
-      // first finger can be reverted without repeatedly undoing
-      // earlier work.
+      // Start treating this as a two-finger pan gesture.
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
-      state.pendingUndo = true
     }
 
     const endGestureIfNeeded = () => {
@@ -9623,25 +9654,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
-      // left), perform a single undo if requested. This aims to remove
-      // the tiny initial stroke drawn by the first finger without
-      // touching earlier strokes.
-      if (gestureEnded && state.pendingUndo) {
-        // Defer undo slightly to give the engine a chance to
-        // commit any tiny stroke from the first finger before we
-        // remove it. This still isn't perfect, but it reduces the
-        // chance of targeting an older stroke.
-        const UNDO_DELAY_MS = 80
-        const shouldUndo = !lockedOutRef.current
-        state.pendingUndo = false
-        if (shouldUndo && editorInstanceRef.current) {
-          try {
-            setTimeout(() => {
-              try {
-                editorInstanceRef.current?.undo?.()
-              } catch {}
-            }, UNDO_DELAY_MS)
-          } catch {}
+      // left), arm a single auto-undo that will trigger on the next
+      // local MyScript change where the symbol count increases.
+      if (gestureEnded) {
+        const now = Date.now()
+        const baseline = Number.isFinite(lastSymbolCountRef.current)
+          ? lastSymbolCountRef.current
+          : 0
+        panUndoOnNextChangeRef.current = {
+          active: true,
+          baselineSymbolCount: baseline,
+          deadlineTs: now + 1500,
         }
       }
 

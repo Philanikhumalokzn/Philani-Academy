@@ -9614,11 +9614,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerUp = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
+      const hadPan = state.active || state.suppressedPointers.size > 0
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
       endGestureIfNeeded()
-      const gestureEnded = !state.active && state.pointers.size === 0
+      const gestureEnded = hadPan && !state.active && state.pointers.size === 0
 
       // Once the two-finger gesture is fully over (no active pointers
       // left), schedule a single debug undo after a short delay so we

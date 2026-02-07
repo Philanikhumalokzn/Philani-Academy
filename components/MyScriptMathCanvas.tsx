@@ -9546,6 +9546,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (state.pointers.size < 2) return
       const mid = getMid()
       if (!mid) return
+
+      // As we transition into a two-finger pan, undo the most recent
+      // stroke so any tiny mark from the first finger is removed.
+      try {
+        if (editorInstanceRef.current && !lockedOutRef.current) {
+          editorInstanceRef.current.undo?.()
+        }
+      } catch {}
+
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())

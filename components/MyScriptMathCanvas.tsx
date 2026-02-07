@@ -679,6 +679,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
+  const [debugPanStrokeInfo, setDebugPanStrokeInfo] = useState<{ baseline: number; after: number } | null>(null)
 
   const [isEraserMode, setIsEraserMode] = useState(false)
   const isEraserModeRef = useRef(false)
@@ -1909,11 +1910,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
+    baselineSymbolCount: number
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
+    baselineSymbolCount: 0,
   })
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -9556,6 +9559,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
+      // Capture stroke count at pan start for debugging.
+      state.baselineSymbolCount = Number.isFinite(lastSymbolCountRef.current)
+        ? lastSymbolCountRef.current
+        : 0
     }
 
     const endGestureIfNeeded = () => {
@@ -9626,7 +9633,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // can observe what stroke MyScript considers "latest" in this
       // scenario.
       if (gestureEnded) {
-        const UNDO_DEBUG_DELAY_MS = 1
+        const UNDO_DEBUG_DELAY_MS = 60000
+        const afterCount = Number.isFinite(lastSymbolCountRef.current)
+          ? lastSymbolCountRef.current
+          : 0
+        const baseline = typeof state.baselineSymbolCount === 'number'
+          ? state.baselineSymbolCount
+          : afterCount
+        setDebugPanStrokeInfo({ baseline, after: afterCount })
         if (debugPanUndoTimeoutRef.current) {
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null
@@ -9727,6 +9741,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {isConverting ? 'Converting…' : 'Convert to Notes'}
         </button>
       </div>
+      {debugPanStrokeInfo && (
+        <div className="canvas-toolbar__debug" style={{ marginTop: 4, fontSize: 12 }}>
+          <span>Pan strokes: before {debugPanStrokeInfo.baseline}, after {debugPanStrokeInfo.after}</span>
+        </div>
+      )}
       {hasWriteAccess && (
         <div className="canvas-toolbar__buttons">
           <button

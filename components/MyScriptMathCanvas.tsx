@@ -1909,11 +1909,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
+    pendingUndo: boolean
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
+    pendingUndo: false,
   })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
@@ -9547,17 +9549,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const mid = getMid()
       if (!mid) return
 
-      // As we transition into a two-finger pan, undo the most recent
-      // stroke so any tiny mark from the first finger is removed.
-      try {
-        if (editorInstanceRef.current && !lockedOutRef.current) {
-          editorInstanceRef.current.undo?.()
-        }
-      } catch {}
-
+      // Start treating this as a two-finger pan gesture. Mark that we
+      // should perform a single undo when the gesture fully ends
+      // (both fingers lifted), so the small initial stroke from the
+      // first finger can be reverted without repeatedly undoing
+      // earlier work.
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
+      state.pendingUndo = true
     }
 
     const endGestureIfNeeded = () => {
@@ -9620,6 +9620,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
       endGestureIfNeeded()
+      const gestureEnded = !state.active && state.pointers.size === 0
+
+      // Once the two-finger gesture is fully over (no active pointers
+      // left), perform a single undo if requested. This aims to remove
+      // the tiny initial stroke drawn by the first finger without
+      // touching earlier strokes.
+      if (gestureEnded && state.pendingUndo) {
+        try {
+          if (editorInstanceRef.current && !lockedOutRef.current) {
+            editorInstanceRef.current.undo?.()
+          }
+        } catch {}
+        state.pendingUndo = false
+      }
+
       if (state.active || wasSuppressed) {
         suppressEvent(evt)
       }

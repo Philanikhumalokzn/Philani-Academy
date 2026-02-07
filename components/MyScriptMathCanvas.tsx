@@ -4657,6 +4657,61 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return text.replace(/0+$/, '').replace(/\.$/, '')
   }, [])
 
+  const cleanupStepLatexWithJiix = useCallback(
+    (latex: string, snapshot: SnapshotPayload | null): string => {
+      let cleaned = (latex || '').trim()
+      if (!cleaned) return cleaned
+
+      // First pass: try to normalize with the CortexJS Compute Engine if available.
+      if (computeEngine) {
+        try {
+          const expr = (computeEngine as any).parse(cleaned)
+          const normalized = typeof expr?.latex === 'function' ? expr.latex() : null
+          if (typeof normalized === 'string' && normalized.trim()) {
+            cleaned = normalized.trim()
+          }
+        } catch {
+          // If normalization fails, fall back to the original LaTeX.
+        }
+      }
+
+      // Heuristic: merge multiple adjacent simple fractions into a
+      // single big fraction when the entire line is just a run of
+      // \frac{digit}{digit} blocks with no operators between them.
+      // Example: \frac{1}{2} \frac{1}{3} -> \frac{11}{23}
+      try {
+        const fracPattern = /\\frac\{(\d+)\}\{(\d+)\}/g
+        const matches = Array.from(cleaned.matchAll(fracPattern))
+        if (matches.length >= 2) {
+          const stripped = cleaned.replace(fracPattern, '').replace(/\s+/g, '')
+          if (!stripped) {
+            const num = matches.map(m => m[1]).join('')
+            const den = matches.map(m => m[2]).join('')
+            if (num && den) {
+              cleaned = `\\frac{${num}}{${den}}`
+            }
+          }
+        }
+      } catch {
+        // Best-effort only; ignore if regex-based cleanup fails.
+      }
+
+      // Second pass: safely parse JIIX so future geometry-aware cleanups
+      // can reason about mis-split fraction bars or radicals.
+      if (snapshot?.jiix) {
+        try {
+          const jiix = JSON.parse(snapshot.jiix)
+          void jiix
+        } catch {
+          // Ignore invalid JIIX; cleanup remains best-effort.
+        }
+      }
+
+      return cleaned
+    },
+    [computeEngine]
+  )
+
   const appendComputedLineFromLastStep = useCallback(() => {
     let lastStep = adminSteps.length ? adminSteps[adminSteps.length - 1]?.latex || '' : ''
     if (!lastStep) {
@@ -7939,14 +7994,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return step
       }
 
-      const applyStudentStepCommit = (step: string, symbols: any[] | null) => {
+      const applyStudentStepCommit = (step: string, symbols: any[] | null, snapshot: SnapshotPayload | null) => {
+        const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
         let nextCombined = ''
         setStudentSteps(prev => {
           const next = [...prev]
           if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
-            next[studentEditIndex] = { latex: step, symbols }
+            next[studentEditIndex] = { latex: cleanedStep, symbols }
           } else {
-            next.push({ latex: step, symbols })
+            next.push({ latex: cleanedStep, symbols })
           }
           nextCombined = next.map(s => s.latex).filter(Boolean).join(' \\\\ ')
           return next
@@ -7962,7 +8018,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         // First-stage send: commit this line into combined latex and clear bottom canvas.
         const step = await getStepLatex()
         if (!step) return
-        applyStudentStepCommit(step, snap?.symbols ?? null)
+        applyStudentStepCommit(step, snap?.symbols ?? null, snap)
 
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
         try {
@@ -7980,7 +8036,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (hasInk && forceSubmit) {
         const step = await getStepLatex()
         if (step) {
-          applyStudentStepCommit(step, snap?.symbols ?? null)
+          applyStudentStepCommit(step, snap?.symbols ?? null, snap)
         }
       }
 
@@ -8287,12 +8343,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       const snapshot = captureFullSnapshot()
       const symbols = snapshot?.symbols ?? null
+      const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
       setAdminSteps(prev => {
         const next = [...prev]
         if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
-          next[adminEditIndex] = { latex: step, symbols }
+          next[adminEditIndex] = { latex: cleanedStep, symbols }
         } else {
-          next.push({ latex: step, symbols })
+          next.push({ latex: cleanedStep, symbols })
         }
         return next
       })

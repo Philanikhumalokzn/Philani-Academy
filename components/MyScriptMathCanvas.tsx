@@ -9626,7 +9626,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       // can observe what stroke MyScript considers "latest" in this
       // scenario.
       if (gestureEnded) {
-        const UNDO_DEBUG_DELAY_MS = 180
+        const UNDO_DEBUG_DELAY_MS = 1
         if (debugPanUndoTimeoutRef.current) {
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null

@@ -1658,22 +1658,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const EDITABLE_SPLIT_RATIO = 0.55
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
-  const [studentViewScale, setStudentViewScale] = useState(1)
-  const studentViewScaleRef = useRef(1)
-  const [showFullCanvasBounds, setShowFullCanvasBounds] = useState(false)
-  const clampStudentScale = useCallback((value: number) => Math.min(1.6, Math.max(0.6, value)), [])
-
-  useEffect(() => {
-    studentViewScaleRef.current = studentViewScale
-  }, [studentViewScale])
-
-  useEffect(() => {
-    if (!showFullCanvasBounds) return
-    const viewport = studentViewportRef.current
-    if (!viewport) return
-    viewport.scrollLeft = 0
-    viewport.scrollTop = 0
-  }, [showFullCanvasBounds])
 
   type NotesSaveRecord = {
     id: string
@@ -1920,21 +1904,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
-  const multiTouchGestureRef = useRef<{
-    pointers: Map<number, { x: number; y: number }>
-    active: boolean
-    startDistance: number
-    startScale: number
-    lastMid: { x: number; y: number } | null
-    suppressedPointers: Set<number>
-  }>({
-    pointers: new Map(),
-    active: false,
-    startDistance: 1,
-    startScale: 1,
-    lastMid: null,
-    suppressedPointers: new Set(),
-  })
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -2032,7 +2001,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [studentSplitRatio])
 
   useEffect(() => {
-    if (!useStackedStudentLayout || showFullCanvasBounds) return
+    if (!useStackedStudentLayout) return
     requestEditorResize()
   }, [requestEditorResize, studentSplitRatio, useStackedStudentLayout])
 
@@ -7071,14 +7040,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return 12
   }, [isCompactViewport, useStackedStudentLayout])
 
-  const fullCanvasScale = useMemo(() => {
-    const widthScale = 1 / Math.max(1, inkSurfaceWidthFactor)
-    const heightScale = 0.5
-    return Math.min(widthScale, heightScale)
-  }, [inkSurfaceWidthFactor])
-
-  const effectiveStudentScale = showFullCanvasBounds ? fullCanvasScale : studentViewScale
-
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
   const [horizontalPanThumbRatio, setHorizontalPanThumbRatio] = useState(1)
@@ -8527,7 +8488,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         horizontalPanRafRef.current = null
       }
     }
-  }, [inkSurfaceWidthFactor, studentViewScale, useStackedStudentLayout])
+  }, [inkSurfaceWidthFactor, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
@@ -8579,7 +8540,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         verticalPanRafRef.current = null
       }
     }
-  }, [inkSurfaceWidthFactor, studentViewScale, useStackedStudentLayout])
+  }, [inkSurfaceWidthFactor, useStackedStudentLayout])
 
   const smoothScrollViewportBy = useCallback((delta: number) => {
     const viewport = studentViewportRef.current
@@ -9538,171 +9499,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [applySavedNotesRecord, latestPersonalSave, latestSharedSave]
   )
 
-  // On mount or layout change, pick a conservative default scale for student stacked view so full content is visible on small screens.
-  useEffect(() => {
-    if (!useStackedStudentLayout) return
-    const viewport = studentViewportRef.current
-    if (!viewport) return
-    const width = viewport.clientWidth || 1
-    const baseHeight = width * (4 / 5)
-    const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
-    const fitScale = Math.max(0.65, Math.min(1, availableHeight / baseHeight))
-    setStudentViewScale(fitScale)
-  }, [useStackedStudentLayout, studentSplitRatio])
-
-  const studentScaleControl = useMemo(() => {
-    if (!useStackedStudentLayout) return null
-    const step = 0.1
-    const handleAdjust = (delta: number) => setStudentViewScale(curr => clampStudentScale(curr + delta))
-    const handleFit = () => {
-      const viewport = studentViewportRef.current
-      if (!viewport) return
-      const width = viewport.clientWidth || 1
-      const baseHeight = width * (4 / 5)
-      const availableHeight = Math.max(viewport.clientHeight || baseHeight, 1)
-      const fitScale = clampStudentScale(availableHeight / baseHeight)
-      setStudentViewScale(fitScale)
-    }
-    return { handleAdjust, handleFit, clampScale: clampStudentScale }
-  }, [clampStudentScale, useStackedStudentLayout])
-
-  // Stacked student layout: pinch-to-zoom by adjusting a CSS scale on the
-  // wrapper. Because both the editor host and the pointer coordinates live in
-  // the same transformed DOM space, this keeps ink visually under the
-  // fingers, while our custom scrollbars handle panning.
-  useEffect(() => {
-    if (!useStackedStudentLayout) return
-    const viewport = studentViewportRef.current
-    const host = viewport || editorHostRef.current
-    if (!host) return
-
-    const state = multiTouchGestureRef.current
-
-    const isTouchPointer = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
-
-    const updatePointer = (evt: PointerEvent) => {
-      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
-    }
-
-    const getMidAndDistance = () => {
-      if (state.pointers.size < 2) return null
-      const [a, b] = Array.from(state.pointers.values()).slice(0, 2)
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const distance = Math.max(1, Math.hypot(dx, dy))
-      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-      return { mid, distance }
-    }
-
-    const suppressEvent = (evt: PointerEvent) => {
-      if (evt.cancelable) evt.preventDefault()
-      evt.stopImmediatePropagation()
-    }
-
-    const beginGestureIfReady = () => {
-      if (state.active) return
-      if (state.pointers.size < 2) return
-      const info = getMidAndDistance()
-      if (!info) return
-      state.active = true
-      state.startDistance = info.distance
-      state.startScale = studentViewScaleRef.current
-      state.lastMid = info.mid
-      state.suppressedPointers = new Set(state.pointers.keys())
-    }
-
-    const endGestureIfNeeded = () => {
-      if (state.active && state.pointers.size < 2) {
-        state.active = false
-        state.startDistance = 1
-        state.lastMid = null
-      }
-      if (state.pointers.size === 0) {
-        state.suppressedPointers.clear()
-      }
-    }
-
-    const handlePointerDown = (evt: PointerEvent) => {
-      if (!isTouchPointer(evt)) return
-      updatePointer(evt)
-      if (state.pointers.size >= 2) {
-        beginGestureIfReady()
-        state.suppressedPointers.add(evt.pointerId)
-        suppressEvent(evt)
-      } else if (state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerMove = (evt: PointerEvent) => {
-      if (!isTouchPointer(evt)) return
-      updatePointer(evt)
-
-      if (state.active && state.pointers.size >= 2) {
-        const info = getMidAndDistance()
-        if (info) {
-          const distanceRatio = info.distance / Math.max(1, state.startDistance)
-          const currentScale = studentViewScaleRef.current
-          const nextScale = clampStudentScale(state.startScale * distanceRatio)
-          if (viewport && Math.abs(nextScale - currentScale) > 0.001) {
-            const rect = viewport.getBoundingClientRect()
-            const midX = rect.left + rect.width / 2
-            const midY = rect.top + rect.height / 2
-
-            // Convert the viewport center into content-space coordinates before zoom.
-            const contentX = (midX - rect.left + viewport.scrollLeft) / Math.max(currentScale, 0.0001)
-            const contentY = (midY - rect.top + viewport.scrollTop) / Math.max(currentScale, 0.0001)
-
-            // After zoom, keep that same content point under the same screen point
-            // by adjusting scrollLeft/scrollTop accordingly.
-            let newScrollLeft = contentX * nextScale - (midX - rect.left)
-            let newScrollTop = contentY * nextScale - (midY - rect.top)
-
-            const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-            const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-
-            newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft))
-            newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop))
-
-            viewport.scrollLeft = newScrollLeft
-            viewport.scrollTop = newScrollTop
-
-            studentViewScaleRef.current = nextScale
-            setStudentViewScale(nextScale)
-          }
-        }
-        suppressEvent(evt)
-        return
-      }
-
-      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerUp = (evt: PointerEvent) => {
-      if (!isTouchPointer(evt)) return
-      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
-      state.pointers.delete(evt.pointerId)
-      state.suppressedPointers.delete(evt.pointerId)
-      endGestureIfNeeded()
-      if (state.active || wasSuppressed) {
-        suppressEvent(evt)
-      }
-    }
-
-    host.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
-    host.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
-    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
-    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
-
-    return () => {
-      host.removeEventListener('pointerdown', handlePointerDown, true as any)
-      host.removeEventListener('pointermove', handlePointerMove, true as any)
-      window.removeEventListener('pointerup', handlePointerUp, true as any)
-      window.removeEventListener('pointercancel', handlePointerUp, true as any)
-    }
-  }, [clampStudentScale, editorReinitNonce, showFullCanvasBounds, useStackedStudentLayout])
+  // Zoom has been removed for stacked student layout to avoid any ink offset.
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -11222,15 +11019,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
 
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
-                {useStackedStudentLayout && (
-                  <button
-                    type="button"
-                    className="absolute top-2 right-2 z-20 text-[11px] px-2 py-1 rounded border border-slate-300 bg-white/90 text-slate-700 shadow-sm"
-                    onClick={() => setShowFullCanvasBounds(prev => !prev)}
-                  >
-                    {showFullCanvasBounds ? 'Exit full canvas' : 'Show full canvas'}
-                  </button>
-                )}
                 <div
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-hidden"
@@ -11243,12 +11031,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 >
                   <div
                     style={{
-                      // Visual zoom for stacked student view is applied here
-                      // via a simple CSS scale. Because both the editor host
-                      // and pointer coordinates share this transform, ink
-                      // remains aligned with touch.
-                      transform: `scale(${effectiveStudentScale})`,
-                      transformOrigin: 'top left',
                       backgroundColor: '#ffffff',
                       backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
                       backgroundSize: '24px 24px',

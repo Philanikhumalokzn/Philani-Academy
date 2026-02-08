@@ -130,8 +130,8 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const panelSizing = panelSize || 'full'
 
   const headerClassName = overlayVariant === 'light'
-    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-2 sm:gap-3 flex-wrap bg-white/70'
-    : 'p-3 sm:p-4 border-b border-white/10 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-2 sm:gap-3 flex-wrap'
+    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-start justify-between gap-3 bg-white/70'
+    : 'p-3 sm:p-4 border-b border-white/10 flex items-start justify-between gap-3'
 
   const titleClassName = overlayVariant === 'light'
     ? 'font-semibold text-slate-900 whitespace-normal break-words'
@@ -142,8 +142,8 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     : 'text-xs text-white/70 whitespace-normal break-words'
 
   const actionSlotClassName = overlayVariant === 'light'
-    ? 'w-full sm:w-auto flex flex-wrap items-center gap-2 text-slate-700'
-    : 'w-full sm:w-auto flex flex-wrap items-center gap-2'
+    ? 'shrink-0 flex items-center gap-2 text-slate-700'
+    : 'shrink-0 flex items-center gap-2'
 
   const closeBtnClassName = overlayVariant === 'light'
     ? 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'

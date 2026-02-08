@@ -2445,34 +2445,18 @@ export default function DiagramOverlayModule(props: {
           frameClassName="absolute inset-0 p-3 sm:p-6"
           panelClassName="rounded-xl"
           rightActions={
-            <>
-              {isAdmin && (
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  disabled={uploading}
-                  onClick={requestUpload}
-                >
-                  {uploading ? 'Uploading…' : 'Upload'}
-                </button>
-              )}
-              {isAdmin && (
-                <select
-                  className="input input-light w-[120px] sm:w-[160px] text-sm"
-                  value={diagramState.activeDiagramId ?? ''}
-                  onChange={async (e) => {
-                    const nextId = e.target.value || null
-                    await setOverlayState({ activeDiagramId: nextId, isOpen: true })
-                  }}
-                >
-                  {diagrams.map(d => (
-                    <option key={d.id} value={d.id}>{toDisplayFileName(d.title) || d.title || 'Untitled diagram'}</option>
-                  ))}
-                </select>
-              )}
-            </>
+            isAdmin ? (
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                disabled={uploading}
+                onClick={requestUpload}
+              >
+                {uploading ? 'Uploading…' : 'Upload'}
+              </button>
+            ) : null
           }
-          contentClassName="p-0 flex flex-col"
+          contentClassName="p-0 flex flex-col overflow-hidden"
         >
           <div
             ref={containerRef}
@@ -2480,8 +2464,9 @@ export default function DiagramOverlayModule(props: {
             onMouseDown={() => setContextMenu(null)}
           >
           {canPresent && (
-            <div className="absolute bottom-2 left-2 z-40 pointer-events-none">
-              <div className="pointer-events-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm">
+            <div className="absolute bottom-2 left-2 right-2 z-40 pointer-events-none">
+              <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
+                <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm whitespace-nowrap">
                 <button
                   type="button"
                   className={tool === 'select'
@@ -2669,6 +2654,7 @@ export default function DiagramOverlayModule(props: {
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L10 16l-4 0-2-2 0-4L16.5 3.5z" />
                   </svg>
                 </button>
+                </div>
               </div>
             </div>
           )}

@@ -1751,6 +1751,9 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     if (!diagramState.isOpen) return
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+    }
     setContextMenu(null)
 
     const diagramId = activeDiagram.id
@@ -1878,6 +1881,10 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+    }
 
     const p = toPoint(e)
     if (!p) return
@@ -2882,6 +2889,7 @@ export default function DiagramOverlayModule(props: {
                     : 'absolute inset-0 cursor-crosshair'
               : 'absolute inset-0 pointer-events-none'
             }
+            style={{ touchAction: 'none' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}

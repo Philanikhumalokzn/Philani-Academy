@@ -1,0 +1,2 @@
+-- This migration was superseded due to an encoding issue during creation.
+-- It is marked as applied in the database via `prisma migrate resolve`.

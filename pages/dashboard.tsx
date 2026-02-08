@@ -6654,6 +6654,7 @@ export default function Dashboard() {
                               name="live-session"
                               checked={!liveOverrideSessionId}
                               onChange={async () => {
+                                setLiveOverrideSessionId(null)
                                 setLiveSelectionBusy(true)
                                 try {
                                   await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
@@ -6682,13 +6683,16 @@ export default function Dashboard() {
                                     name="live-session"
                                     checked={liveOverrideSessionId === String(s.id)}
                                     onChange={async () => {
+                                      const nextOverrideId = String(s.id)
+                                      setLiveOverrideSessionId(nextOverrideId)
+                                      setResolvedLiveSessionId(nextOverrideId)
                                       setLiveSelectionBusy(true)
                                       try {
                                         const res = await fetch(`/api/sessions/live?grade=${encodeURIComponent(selectedGrade)}`, {
                                           method: 'PUT',
                                           credentials: 'same-origin',
                                           headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ grade: selectedGrade, overrideSessionId: String(s.id) }),
+                                          body: JSON.stringify({ grade: selectedGrade, overrideSessionId: nextOverrideId }),
                                         })
                                         if (!res.ok) {
                                           const data = await res.json().catch(() => ({}))

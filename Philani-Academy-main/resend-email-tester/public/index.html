@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Resend Email Tester</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f9fafb;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 16px;
+      }
+      .card {
+        width: 100%;
+        max-width: 520px;
+        background: #ffffff;
+        padding: 28px 32px;
+        border-radius: 16px;
+        box-shadow: 0 24px 60px -32px rgba(15, 23, 42, 0.35);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 1.8rem;
+        color: #0f172a;
+      }
+      p {
+        margin: 0 0 18px;
+        color: #334155;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: #1e293b;
+      }
+      input,
+      textarea {
+        width: 100%;
+        border: 1px solid #cbd5f5;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        margin-bottom: 18px;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      input:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+      button {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        background: #1d4ed8;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.1s ease;
+      }
+      button:hover {
+        background: #1e40af;
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .alert {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 18px;
+        display: none;
+        font-size: 0.95rem;
+      }
+      .alert.success {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .alert.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Resend Email Tester</h1>
+      <p>Send a manual test email through Resend to verify DNS and API key setup.</p>
+      <div id="alert" class="alert"></div>
+      <form id="send-form">
+        <label for="to">To (optional, overrides MAIL_TO)</label>
+        <input id="to" name="to" type="email" placeholder="someone@example.com" />
+
+        <label for="subject">Subject</label>
+        <input id="subject" name="subject" type="text" value="Resend Test Email" required />
+
+        <label for="message">Message</label>
+        <textarea id="message" name="message" rows="5">Hello! This is a Resend test email.</textarea>
+
+        <button type="submit">Send Test Email</button>
+      </form>
+    </div>
+
+    <script>
+      const form = document.getElementById('send-form')
+      const alertBox = document.getElementById('alert')
+
+      function showAlert(text, variant) {
+        alertBox.textContent = text
+        alertBox.className = `alert ${variant}`
+        alertBox.style.display = 'block'
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault()
+        alertBox.style.display = 'none'
+        const button = form.querySelector('button')
+        button.disabled = true
+
+        const payload = {
+          to: form.to.value.trim(),
+          subject: form.subject.value.trim(),
+          message: form.message.value.trim()
+        }
+
+        try {
+          const response = await fetch('/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+          const data = await response.json()
+          if (!response.ok) {
+            throw new Error(data?.error || 'Failed to send email')
+          }
+          showAlert('Email sent successfully. Check the inbox or Resend dashboard.', 'success')
+          form.reset()
+        } catch (err) {
+          showAlert(err.message || 'Unable to send email. See server logs for details.', 'error')
+        } finally {
+          button.disabled = false
+        }
+      })
+    </script>
+  </body>
+</html>

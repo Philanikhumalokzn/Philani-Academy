@@ -1,0 +1,632 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Switched to Postgres for production (serverless-friendly hosted DB)
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Grade {
+  GRADE_8
+  GRADE_9
+  GRADE_10
+  GRADE_11
+  GRADE_12
+}
+
+model User {
+  id        String  @id @default(cuid())
+  name      String?
+  firstName String  @default("")
+  lastName  String  @default("")
+  middleNames String?
+  email     String  @unique
+  password  String
+  role      String  @default("student")
+  grade     Grade?
+  avatar    String?
+  profileCoverUrl String?
+  profileThemeBgUrl String?
+  statusBio String? @db.VarChar(100)
+  uiHandedness String @default("right")
+  // shared: visible only to shared groups (default)
+  // discoverable: shows up in Discover search + minimal profile is viewable
+  // private: only you + admins/instructors
+  profileVisibility String @default("shared")
+  // grade: same-grade classmates + groupmates (default)
+  // school: same schoolName + groupmates
+  // province: same province + groupmates
+  // global: anyone (who can discover you)
+  discoverabilityScope String @default("grade")
+  dateOfBirth DateTime?
+  phoneNumber String @default("")
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  alternatePhone String?
+  recoveryEmail String?
+  emergencyContactName String @default("")
+  emergencyContactRelationship String?
+  emergencyContactPhone String @default("")
+  addressLine1 String @default("")
+  addressLine2 String?
+  city       String @default("")
+  province   String @default("")
+  postalCode String @default("")
+  country    String @default("South Africa")
+  schoolName String @default("")
+  idNumber   String?
+  consentToPolicies Boolean @default(false)
+  consentTimestamp DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  verifications ContactVerification[]
+  subscription UserSubscription?
+  learnerResponses LearnerResponse[]
+  assignmentResponses AssignmentResponse[]
+  assignmentSubmissions AssignmentSubmission[]
+  assignmentGrades AssignmentGrade[]
+
+  groupMemberships LearningGroupMember[]
+  groupsCreated LearningGroup[] @relation("GroupCreatedBy")
+
+  receivedGroupInvites GroupInvite[] @relation("GroupInvitedUser")
+  sentGroupInvites GroupInvite[] @relation("GroupInvitedBy")
+  groupJoinRequests GroupJoinRequest[] @relation("GroupJoinRequestedBy")
+  notifications Notification[]
+  challenges UserChallenge[]
+
+  followers UserFollow[] @relation("UserFollowers")
+  following UserFollow[] @relation("UserFollowing")
+
+  resourceBankItems ResourceBankItem[]
+}
+
+model School {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId, createdAt])
+  @@index([followingId, createdAt])
+}
+
+model ResourceBankItem {
+  id          String   @id @default(cuid())
+  grade       Grade
+  title       String
+  tag         String?
+  url         String
+  filename    String?
+  contentType String?
+  size        Int?
+  checksum    String?
+  source      String   @default("user")
+
+  parsedJson  Json?
+  parsedAt    DateTime?
+  parseError  String?  @db.Text
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+
+  @@index([grade, createdAt])
+  @@index([createdById, createdAt])
+  @@unique([grade, checksum])
+}
+
+model LearningGroup {
+  id            String   @id @default(cuid())
+  name          String
+  type          String
+  grade         Grade?
+  createdById   String?
+  createdBy     User?    @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  joinCode      String   @unique
+  joinCodeActive Boolean @default(true)
+  allowJoinRequests Boolean @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members       LearningGroupMember[]
+
+  invites       GroupInvite[]
+  joinRequests  GroupJoinRequest[]
+}
+
+model LearningGroupMember {
+  id         String   @id @default(cuid())
+  groupId    String
+  userId     String
+  memberRole String   @default("member")
+  createdAt  DateTime @default(now())
+
+  group      LearningGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model GroupInvite {
+  id            String   @id @default(cuid())
+  groupId       String
+  invitedUserId String
+  invitedById   String?
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  respondedAt   DateTime?
+
+  group         LearningGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  invitedUser   User          @relation("GroupInvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedBy     User?         @relation("GroupInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, invitedUserId, status])
+  @@index([invitedUserId, status])
+  @@index([groupId, status])
+}
+
+model GroupJoinRequest {
+  id            String   @id @default(cuid())
+  groupId       String
+  requestedById String
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  respondedAt   DateTime?
+
+  group         LearningGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  requestedBy   User          @relation("GroupJoinRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, requestedById, status])
+  @@index([requestedById, status])
+  @@index([groupId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String?
+  body      String?
+  data      Json?
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model UserSubscription {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String   @default("payfast")
+  planId      String?
+  status      String   @default("inactive")
+  activeUntil DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([activeUntil])
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SessionRecord {
+  id        String   @id @default(cuid())
+  title     String
+  description String?
+  thumbnailUrl String?
+  joinUrl   String
+  startsAt  DateTime
+  endsAt    DateTime
+  grade     Grade
+  jitsiPassword String?
+  jitsiActive   Boolean @default(false)
+  createdBy String
+  createdAt DateTime @default(now())
+  materials LessonMaterial[]
+  assignments Assignment[]
+  assignmentSubmissions AssignmentSubmission[]
+  assignmentSolutions AssignmentSolution[]
+  assignmentGrades AssignmentGrade[]
+  lessonScript SessionLessonScript?
+}
+
+model Assignment {
+  id                String   @id @default(cuid())
+  sessionId          String
+  session            SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title              String
+  // Stable, Gemini-decided header metadata computed at import time.
+  // Used by assignment question pages; does not change per student.
+  displayTitle        String?
+  sectionLabel        String?
+  sourceUrl          String?
+  sourceContentType  String?
+  sourceFilename     String?
+  // Teacher/admin grading instructions that apply to the whole assignment.
+  gradingPrompt      String?
+  createdBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  questions          AssignmentQuestion[]
+  responses          AssignmentResponse[]
+  submissions        AssignmentSubmission[]
+  solutions          AssignmentSolution[]
+  grades             AssignmentGrade[]
+
+  @@index([sessionId])
+  @@index([sessionId, createdAt])
+}
+
+model AssignmentGrade {
+  id           String   @id @default(cuid())
+  sessionId    String
+  assignmentId String
+  userId       String
+
+  // Strict correctness results per question (used to render tick/X).
+  // Shape: [{ questionId: string, correctness: 'correct'|'incorrect' }]
+  results      Json
+
+  // Raw model output used by the deterministic parser (admin debug).
+  rawGeminiOutput String? @db.Text
+
+  earnedPoints Int
+  totalPoints  Int
+  percentage   Float
+
+  provider     String   @default("gemini")
+  model        String?
+  gradedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignment   Assignment    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session      SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, userId])
+  @@index([sessionId])
+  @@index([assignmentId])
+  @@index([userId])
+  @@index([assignmentId, gradedAt])
+}
+
+model AssignmentSubmission {
+  id           String   @id @default(cuid())
+  sessionId     String
+  assignmentId  String
+  userId        String
+  submittedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session       SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, userId])
+  @@index([sessionId])
+  @@index([assignmentId, submittedAt])
+  @@index([userId, submittedAt])
+}
+
+model AssignmentQuestion {
+  id            String   @id @default(cuid())
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  order         Int
+  latex         String
+  points        Int?
+  // Teacher/admin grading instructions for this specific question.
+  gradingPrompt String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  responses      AssignmentResponse[]
+  solutions      AssignmentSolution[]
+
+  @@unique([assignmentId, order])
+  @@index([assignmentId, order])
+}
+
+model AssignmentSolution {
+  id            String   @id @default(cuid())
+  sessionId     String
+  assignmentId  String
+  questionId    String
+
+  latex         String?
+  fileUrl       String?
+  fileName      String?
+  contentType   String?
+  size          Int?
+
+  // Gemini-generated marking plan/rubric based on the teacher solution.
+  aiMarkingPlan      String?
+  // Teacher/admin edited marking plan that overrides aiMarkingPlan.
+  teacherMarkingPlan String?
+
+  // Gemini-generated worked solution (typically LaTeX) based on teacher solution + uploads.
+  aiWorkedSolution      String?
+  // Teacher/admin edited worked solution that overrides aiWorkedSolution.
+  teacherWorkedSolution String?
+
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  question      AssignmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  session       SessionRecord     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId])
+  @@index([assignmentId])
+  @@index([sessionId])
+  @@index([assignmentId, updatedAt])
+}
+
+model AssignmentResponse {
+  id           String   @id @default(cuid())
+  sessionId     String
+  assignmentId  String
+  questionId    String
+  userId        String
+  userEmail     String?
+  latex         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignment    Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  question      AssignmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, userId])
+  @@index([sessionId])
+  @@index([assignmentId, userId, updatedAt])
+  @@index([questionId, updatedAt])
+}
+
+model LessonScriptTemplate {
+  id              String   @id @default(cuid())
+  title           String
+  grade           Grade?
+  subject         String?
+  topic           String?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  versions        LessonScriptVersion[]
+
+  // Points to the version currently used by default.
+  currentVersionId String?
+  currentVersion   LessonScriptVersion? @relation("CurrentLessonScriptVersion", fields: [currentVersionId], references: [id])
+
+  sessionAssignments SessionLessonScript[]
+
+  @@index([grade])
+}
+
+model LessonScriptVersion {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    LessonScriptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Incrementing version number per template.
+  version     Int
+  content     Json
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  // Back-reference for the template's currentVersion pointer.
+  currentFor  LessonScriptTemplate[] @relation("CurrentLessonScriptVersion")
+
+  // Back-reference for session assignments pinned to a specific version.
+  sessionAssignments SessionLessonScript[] @relation("SessionLessonScriptVersion")
+
+  @@unique([templateId, version])
+  @@index([templateId])
+}
+
+model SessionLessonScript {
+  id               String   @id @default(cuid())
+  sessionId        String   @unique
+  session          SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  templateId       String?
+  template         LessonScriptTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  templateVersionId String?
+  templateVersion   LessonScriptVersion? @relation("SessionLessonScriptVersion", fields: [templateVersionId], references: [id], onDelete: SetNull)
+
+  // Optional full override content (stored as JSON). If set, it becomes the resolved script.
+  overrideContent  Json?
+
+  createdBy        String?
+  updatedBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([templateVersionId])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  grade     Grade
+  createdBy String?
+  createdAt DateTime @default(now())
+}
+
+model LessonMaterial {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     SessionRecord @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title       String
+  filename    String
+  url         String
+  contentType String?
+  size        Int?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+}
+
+model LatexSave {
+  id         String   @id @default(cuid())
+  sessionKey String
+  userId     String?
+  userEmail  String?
+  title      String
+  latex      String
+  noteId     String?
+  payload    Json?
+  shared     Boolean  @default(false)
+  filename   String?
+  url        String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sessionKey])
+  @@index([sessionKey, userId])
+  @@index([sessionKey, noteId])
+}
+
+model LearnerResponse {
+  id         String   @id @default(cuid())
+  sessionKey String
+  userId     String
+  ownerId    String?
+  userEmail  String?
+  quizId     String   @default("default")
+  quizLabel  String?
+  quizPhaseKey String?
+  quizPointId String?
+  quizPointIndex Int?
+  prompt     String?
+  latex      String
+  studentText String?
+
+  gradingJson Json?
+  feedback    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionKey])
+  @@index([sessionKey, updatedAt])
+  @@index([sessionKey, userId, updatedAt])
+  @@index([sessionKey, ownerId, updatedAt])
+  @@index([sessionKey, userId, quizId, createdAt])
+  @@index([sessionKey, quizPhaseKey, quizPointIndex, updatedAt])
+}
+
+model UserChallenge {
+  id          String   @id @default(cuid())
+  createdById String
+  title       String   @default("")
+  prompt      String   @db.Text
+  imageUrl    String?
+  grade       Grade?
+  // public: anyone who can view the profile
+  // grade: only same-grade learners + privileged roles
+  // private: only the author + privileged roles
+  audience    String   @default("public")
+
+  // Owner-controlled attempt visibility:
+  // - attemptsOpen: whether new submissions are accepted
+  // - solutionsVisible: whether the owner has chosen to reveal attempt contents
+  // - maxAttempts: max number of times a learner can submit (null = unlimited)
+  attemptsOpen    Boolean  @default(true)
+  solutionsVisible Boolean @default(false)
+  maxAttempts     Int?
+  closedAt        DateTime?
+  revealedAt      DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById, createdAt])
+  @@index([grade, createdAt])
+  @@index([audience, createdAt])
+}
+
+model Diagram {
+  id         String   @id @default(cuid())
+  sessionKey String
+  title      String   @default("")
+  imageUrl   String
+  order      Int      @default(0)
+  annotations Json?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sessionKey])
+}
+
+model DiagramSessionState {
+  sessionKey      String  @id
+  activeDiagramId String?
+  isOpen          Boolean @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  name          String
+  amount        Int
+  currency      String   @default("zar")
+  stripePriceId String?
+  payfastPlanId String?
+  active        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum VerificationKind {
+  EMAIL
+  PHONE
+}
+
+model ContactVerification {
+  id         String            @id @default(cuid())
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       VerificationKind
+  tokenHash  String            @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime          @default(now())
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Philani Academy</string>
+    <string name="title_activity_main">Philani Academy</string>
+    <string name="package_name">com.philani.academy</string>
+    <string name="custom_url_scheme">com.philani.academy</string>
+</resources>

@@ -2490,6 +2490,61 @@ export default function DiagramOverlayModule(props: {
                 </button>
                 <button
                   type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  aria-label="Undo"
+                  title="Undo"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 14l-4-4 4-4" />
+                    <path d="M20 20a8 8 0 0 0-8-8H5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  aria-label="Redo"
+                  title="Redo"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M15 6l4 4-4 4" />
+                    <path d="M4 20a8 8 0 0 1 8-8h7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  onClick={handleClearInk}
+                  aria-label="Clear ink"
+                  title="Clear ink"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => selection && void applyContextAction('rotate', activeDiagram.id, selection)}
+                  disabled={!selection || selectionIsLocked}
+                  aria-label="Rotate"
+                  title="Rotate 90°"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-3-6.7" />
+                    <path d="M21 3v6h-6" />
+                  </svg>
+                </button>
+                <div className="w-px h-6 bg-slate-200 mx-1" aria-hidden="true" />
+                <button
+                  type="button"
                   className={cropMode
                     ? 'p-2 rounded-md border border-green-400 bg-green-100 text-green-900'
                     : 'p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -2607,58 +2662,6 @@ export default function DiagramOverlayModule(props: {
                     <path d="M3 12h18" />
                     <path d="M7 5l5 6 5-6H7z" />
                     <path d="M7 19l5-6 5 6H7z" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  onClick={() => selection && void applyContextAction('rotate', activeDiagram.id, selection)}
-                  disabled={!selection || selectionIsLocked}
-                  aria-label="Rotate"
-                  title="Rotate 90°"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M21 12a9 9 0 1 1-3-6.7" />
-                    <path d="M21 3v6h-6" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  onClick={handleUndo}
-                  disabled={!canUndo}
-                  aria-label="Undo"
-                  title="Undo"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M9 14l-4-4 4-4" />
-                    <path d="M20 20a8 8 0 0 0-8-8H5" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  onClick={handleRedo}
-                  disabled={!canRedo}
-                  aria-label="Redo"
-                  title="Redo"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M15 6l4 4-4 4" />
-                    <path d="M4 20a8 8 0 0 1 8-8h7" />
-                  </svg>
-                </button>
-                <div className="w-px h-6 bg-slate-200 mx-1" aria-hidden="true" />
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  onClick={handleClearInk}
-                  aria-label="Clear ink"
-                  title="Clear ink"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M20 20H9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L10 16l-4 0-2-2 0-4L16.5 3.5z" />
                   </svg>
                 </button>
                 </div>

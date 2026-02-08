@@ -12,8 +12,14 @@ type InkStroke = {
 
 type NonRecognitionCanvasOverlayProps = {
   open: boolean
-  onClose: () => void
+  onOpenChange: (open: boolean) => void
   isCompactViewport: boolean
+  boardId?: string
+  realtimeScopeId?: string
+  gradeLabel?: string | null
+  userId: string
+  userDisplayName?: string
+  isAdmin: boolean
 }
 
 type StrokeTrackState = {
@@ -24,10 +30,39 @@ type StrokeTrackState = {
   leftPanArmed: boolean
 }
 
-const DEFAULT_INK_COLOR = '#0f172a'
-const DEFAULT_INK_WIDTH = 2.6
+const DEFAULT_INK_COLOR = '#ef4444'
+const DEFAULT_INK_WIDTH = 4
 
-export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactViewport }: NonRecognitionCanvasOverlayProps) {
+type FreehandRealtimeMessage =
+  | { kind: 'state'; isOpen: boolean; ts?: number; sender?: string }
+  | { kind: 'stroke-commit'; stroke: InkStroke; ts?: number; sender?: string }
+  | { kind: 'strokes-set'; strokes: InkStroke[]; ts?: number; sender?: string }
+  | { kind: 'clear'; ts?: number; sender?: string }
+
+const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
+
+const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeScopeId?: string) => {
+  const base = realtimeScopeId
+    ? sanitizeIdentifier(realtimeScopeId).toLowerCase()
+    : boardId
+      ? sanitizeIdentifier(boardId).toLowerCase()
+      : gradeLabel
+        ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
+        : 'shared'
+  return `myscript:${base}`
+}
+
+export default function NonRecognitionCanvasOverlay({
+  open,
+  onOpenChange,
+  isCompactViewport,
+  boardId,
+  realtimeScopeId,
+  gradeLabel,
+  userId,
+  userDisplayName,
+  isAdmin,
+}: NonRecognitionCanvasOverlayProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const strokesRef = useRef<InkStroke[]>([])
@@ -42,6 +77,147 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
   const surfaceSizeRef = useRef({ width: 1, height: 1 })
   const dprRef = useRef(1)
   const [surfaceSize, setSurfaceSize] = useState({ width: 1, height: 1 })
+
+  const [presenterOverride, setPresenterOverride] = useState(false)
+  const canPresent = Boolean(isAdmin) || presenterOverride
+  const canPresentRef = useRef(canPresent)
+  useEffect(() => {
+    canPresentRef.current = canPresent
+  }, [canPresent])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail as any
+      setPresenterOverride(Boolean(detail?.isPresenter ?? detail?.isActivePresenter ?? detail?.canPresent))
+    }
+    window.addEventListener('philani-canvas:presenter', handler as any)
+    return () => window.removeEventListener('philani-canvas:presenter', handler as any)
+  }, [])
+
+  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+  const channelRef = useRef<any>(null)
+  const clientIdRef = useRef('')
+  const suppressNextStatePublishRef = useRef(false)
+
+  useEffect(() => {
+    const base = sanitizeIdentifier(userId || 'anonymous')
+    clientIdRef.current = `${base}-${Math.random().toString(36).slice(2, 8)}`
+  }, [userId])
+
+  const publish = useCallback(async (message: FreehandRealtimeMessage) => {
+    const ch = channelRef.current
+    if (!ch) return
+    try {
+      await ch.publish('freehand', {
+        ...message,
+        ts: message.ts ?? Date.now(),
+        sender: message.sender ?? clientIdRef.current,
+      })
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!userId) return
+
+    let disposed = false
+    let channel: any = null
+    let realtime: any = null
+
+    const setup = async () => {
+      try {
+        const Ably = await import('ably')
+        realtime = new (Ably as any).Realtime.Promise({
+          authUrl: `/api/realtime/ably-token?clientId=${encodeURIComponent(clientIdRef.current)}`,
+          autoConnect: true,
+          closeOnUnload: false,
+          transports: ['web_socket', 'xhr_streaming', 'xhr_polling'],
+        })
+
+        await new Promise<void>((resolve, reject) => {
+          realtime.connection.once('connected', () => resolve())
+          realtime.connection.once('failed', (err: any) => reject(err))
+        })
+
+        if (disposed) return
+
+        channel = realtime.channels.get(channelName)
+        channelRef.current = channel
+        await channel.attach()
+
+        const handle = (message: any) => {
+          const data = message?.data as FreehandRealtimeMessage
+          if (!data || typeof data !== 'object') return
+          if ((data as any).sender && (data as any).sender === clientIdRef.current) return
+
+          if (data.kind === 'state') {
+            suppressNextStatePublishRef.current = true
+            onOpenChange(Boolean(data.isOpen))
+            return
+          }
+
+          if (data.kind === 'strokes-set') {
+            const incoming = Array.isArray(data.strokes) ? data.strokes : []
+            strokesRef.current = incoming
+            currentStrokeRef.current = null
+            requestRedraw()
+            return
+          }
+
+          if (data.kind === 'stroke-commit') {
+            if (!data.stroke) return
+            strokesRef.current = [...strokesRef.current, data.stroke]
+            requestRedraw()
+            return
+          }
+
+          if (data.kind === 'clear') {
+            strokesRef.current = []
+            currentStrokeRef.current = null
+            requestRedraw()
+          }
+        }
+
+        channel.subscribe('freehand', handle)
+
+        try {
+          await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
+          channel.presence.subscribe(async (presenceMsg: any) => {
+            if (!canPresentRef.current) return
+            if (presenceMsg?.action !== 'enter') return
+            await publish({ kind: 'state', isOpen: Boolean(open) })
+            if (open) {
+              await publish({ kind: 'strokes-set', strokes: strokesRef.current })
+            }
+          })
+        } catch {
+          // ignore
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    void setup()
+
+    return () => {
+      disposed = true
+      try {
+        channelRef.current = null
+        if (channel) {
+          channel.unsubscribe()
+          channel.detach?.()
+        }
+        if (realtime) {
+          realtime.close()
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [channelName, isAdmin, onOpenChange, open, publish, requestRedraw, userDisplayName, userId])
 
   const surfaceStyle = useMemo(() => {
     return {
@@ -84,15 +260,6 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
       if (stroke.points.length === 0) return
       ctx.strokeStyle = stroke.color
       ctx.lineWidth = stroke.width
-
-      if (stroke.points.length === 1) {
-        const dot = toCanvasPx(stroke.points[0])
-        ctx.beginPath()
-        ctx.arc(dot.x, dot.y, stroke.width / 2, 0, Math.PI * 2)
-        ctx.fillStyle = stroke.color
-        ctx.fill()
-        return
-      }
 
       const points = stroke.points.map(toCanvasPx)
       ctx.beginPath()
@@ -222,6 +389,7 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
   }, [])
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canPresentRef.current) return
     if (event.button !== 0) return
     const point = getStrokePoint(event)
     if (!point) return
@@ -236,19 +404,8 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
       points: [point],
     }
 
-    strokesRef.current.push(stroke)
     currentStrokeRef.current = stroke
-
-    const ctx = getCanvasContext()
-    if (ctx) {
-      const pos = toCanvasPx(point)
-      ctx.strokeStyle = stroke.color
-      ctx.lineWidth = stroke.width
-      ctx.beginPath()
-      ctx.arc(pos.x, pos.y, stroke.width / 2, 0, Math.PI * 2)
-      ctx.fillStyle = stroke.color
-      ctx.fill()
-    }
+    requestRedraw()
 
     strokeTrackRef.current = {
       active: true,
@@ -261,9 +418,10 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {}
-  }, [getCanvasContext, getStrokePoint, toCanvasPx])
+  }, [getStrokePoint, requestRedraw])
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canPresentRef.current) return
     if (!drawingRef.current) return
     if (pointerIdRef.current !== null && event.pointerId !== pointerIdRef.current) return
     const point = getStrokePoint(event)
@@ -313,13 +471,25 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
       if (!pending) return
       viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
     })
-  }, [getCanvasContext, getStrokePoint, toCanvasPx])
+  }, [getStrokePoint, requestRedraw])
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback(async () => {
+    if (!canPresentRef.current) return
     if (!drawingRef.current) return
     drawingRef.current = false
     pointerIdRef.current = null
+    const committed = currentStrokeRef.current
     currentStrokeRef.current = null
+
+    if (committed && committed.points.length >= 2) {
+      strokesRef.current = [...strokesRef.current, committed]
+      requestRedraw()
+      if (canPresentRef.current) {
+        await publish({ kind: 'stroke-commit', stroke: committed })
+      }
+    } else {
+      requestRedraw()
+    }
 
     const viewport = viewportRef.current
     if (!viewport) return
@@ -349,7 +519,7 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
     if (excessRight > 0) {
       smoothScrollViewportBy(excessRight * gain)
     }
-  }, [smoothScrollViewportBy])
+  }, [publish, requestRedraw, smoothScrollViewportBy])
 
   const handlePointerCancel = useCallback(() => {
     drawingRef.current = false
@@ -357,11 +527,26 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
     currentStrokeRef.current = null
   }, [])
 
-  const handleClear = useCallback(() => {
+  const handleClear = useCallback(async () => {
     strokesRef.current = []
     currentStrokeRef.current = null
     requestRedraw()
-  }, [requestRedraw])
+    if (canPresentRef.current) {
+      await publish({ kind: 'clear' })
+    }
+  }, [publish, requestRedraw])
+
+  useEffect(() => {
+    if (!canPresentRef.current) return
+    if (suppressNextStatePublishRef.current) {
+      suppressNextStatePublishRef.current = false
+      return
+    }
+    void publish({ kind: 'state', isOpen: Boolean(open) })
+    if (open) {
+      void publish({ kind: 'strokes-set', strokes: strokesRef.current })
+    }
+  }, [open, publish])
 
   useEffect(() => {
     return () => {
@@ -394,8 +579,8 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
       panelClassName="rounded-none"
       frameClassName="absolute inset-0"
       contentClassName="p-0 overflow-hidden"
-      onClose={onClose}
-      onBackdropClick={onClose}
+      onClose={() => onOpenChange(false)}
+      onBackdropClick={() => onOpenChange(false)}
       rightActions={
         <button
           type="button"

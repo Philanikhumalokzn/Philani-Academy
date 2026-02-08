@@ -12513,8 +12513,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       <NonRecognitionCanvasOverlay
         open={nonRecognitionCanvasOpen}
-        onClose={() => setNonRecognitionCanvasOpen(false)}
+        onOpenChange={setNonRecognitionCanvasOpen}
         isCompactViewport={isCompactViewport}
+        boardId={boardId}
+        realtimeScopeId={realtimeScopeId}
+        gradeLabel={gradeLabel}
+        userId={userId}
+        userDisplayName={userDisplayName}
+        isAdmin={isAdmin}
       />
 
       {finishQuestionModalOpen && (

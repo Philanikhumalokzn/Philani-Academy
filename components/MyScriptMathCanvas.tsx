@@ -5,6 +5,7 @@ import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import NonRecognitionCanvasOverlay from './NonRecognitionCanvasOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 
@@ -1474,8 +1475,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const binLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const binLongPressTriggeredRef = useRef(false)
 
+  const diagramLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const diagramLongPressTriggeredRef = useRef(false)
+
   const textIconLastTapRef = useRef<number | null>(null)
   const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [nonRecognitionCanvasOpen, setNonRecognitionCanvasOpen] = useState(false)
 
   const clearTopPanelSelection = useCallback(() => {
     setTopPanelSelectedStep(null)
@@ -10862,8 +10868,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         className="px-2 py-1"
                         title="Diagrams"
                         onClick={() => {
+                          if (diagramLongPressTriggeredRef.current) {
+                            diagramLongPressTriggeredRef.current = false
+                            return
+                          }
                           toggleMobileDiagramTray()
                           openPickerOrApplySingle('diagram')
+                        }}
+                        onPointerDown={(e) => {
+                          if (!hasWriteAccess) return
+                          diagramLongPressTriggeredRef.current = false
+                          if (diagramLongPressTimeoutRef.current) {
+                            clearTimeout(diagramLongPressTimeoutRef.current)
+                            diagramLongPressTimeoutRef.current = null
+                          }
+                          diagramLongPressTimeoutRef.current = setTimeout(() => {
+                            diagramLongPressTimeoutRef.current = null
+                            diagramLongPressTriggeredRef.current = true
+                            setNonRecognitionCanvasOpen(true)
+                          }, 520)
+                          try {
+                            e.currentTarget.setPointerCapture(e.pointerId)
+                          } catch {}
+                        }}
+                        onPointerUp={() => {
+                          if (diagramLongPressTimeoutRef.current) {
+                            clearTimeout(diagramLongPressTimeoutRef.current)
+                            diagramLongPressTimeoutRef.current = null
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          if (diagramLongPressTimeoutRef.current) {
+                            clearTimeout(diagramLongPressTimeoutRef.current)
+                            diagramLongPressTimeoutRef.current = null
+                          }
                         }}
                         disabled={Boolean(fatalError)}
                       >
@@ -12472,6 +12510,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
       </div>
+
+      <NonRecognitionCanvasOverlay
+        open={nonRecognitionCanvasOpen}
+        onClose={() => setNonRecognitionCanvasOpen(false)}
+        isCompactViewport={isCompactViewport}
+      />
 
       {finishQuestionModalOpen && (
         <FullScreenGlassOverlay

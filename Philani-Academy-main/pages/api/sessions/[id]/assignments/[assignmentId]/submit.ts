@@ -1,0 +1,142 @@
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { getToken } from 'next-auth/jwt'
+import prisma from '../../../../../../lib/prisma'
+import { normalizeGradeInput } from '../../../../../../lib/grades'
+import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../../../lib/subscription'
+import { isSpecialTestStudentEmail } from '../../../../../../lib/testUsers'
+
+const MAX_ASSIGNMENT_ID_LENGTH = 80
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const sessionIdParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
+  const assignmentIdParam = Array.isArray((req.query as any).assignmentId) ? (req.query as any).assignmentId[0] : (req.query as any).assignmentId
+
+  if (!sessionIdParam) return res.status(400).json({ message: 'Session id required' })
+  if (!assignmentIdParam) return res.status(400).json({ message: 'Assignment id required' })
+
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+  if (!token) return res.status(401).json({ message: 'Unauthorized' })
+
+  const role = (token as any)?.role as string | undefined
+  const authUserId = ((token as any)?.id || (token as any)?.sub || '') as string
+  const userEmail = ((token as any)?.email || null) as string | null
+  const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+
+  const isTestStudent = isSpecialTestStudentEmail(userEmail)
+
+  if (!authUserId) return res.status(401).json({ message: 'Unauthorized' })
+
+  const sessionRecord = await prisma.sessionRecord.findUnique({
+    where: { id: String(sessionIdParam) },
+    select: { grade: true, id: true, createdBy: true },
+  })
+  if (!sessionRecord) return res.status(404).json({ message: 'Session not found' })
+
+  if (role === 'teacher' || role === 'student') {
+    if (!tokenGrade) return res.status(403).json({ message: 'Grade not configured for this account' })
+    if (tokenGrade !== sessionRecord.grade) return res.status(403).json({ message: 'Access to this session is restricted to its grade' })
+  } else if (role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden' })
+  }
+
+  if (role === 'student') {
+    const gatingEnabled = await isSubscriptionGatingEnabled()
+    if (gatingEnabled) {
+      const status = await getUserSubscriptionStatus(authUserId)
+      if (!status.active) {
+        const denied = subscriptionRequiredResponse()
+        return res.status(denied.status).json(denied.body)
+      }
+    }
+  }
+
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST'])
+    return res.status(405).end(`Method ${req.method} Not Allowed`)
+  }
+
+  if (role !== 'student') {
+    return res.status(403).json({ message: 'Only learners may submit assignments' })
+  }
+
+  const assignmentId = String(assignmentIdParam).trim().slice(0, MAX_ASSIGNMENT_ID_LENGTH)
+
+  const assignment = await (prisma as any).assignment.findFirst({
+    where: { id: assignmentId, sessionId: sessionRecord.id },
+    select: { id: true, title: true },
+  })
+  if (!assignment) return res.status(404).json({ message: 'Assignment not found' })
+
+  const assignmentSubmission = (prisma as any).assignmentSubmission as any
+
+  const priorSubmission = await assignmentSubmission.findUnique({
+    where: {
+      assignmentId_userId: {
+        assignmentId,
+        userId: authUserId,
+      },
+    },
+    select: { submittedAt: true },
+  })
+
+  const record = await assignmentSubmission.upsert({
+    where: {
+      assignmentId_userId: {
+        assignmentId,
+        userId: authUserId,
+      },
+    },
+    update: {
+      sessionId: sessionRecord.id,
+      submittedAt: new Date(),
+    },
+    create: {
+      sessionId: sessionRecord.id,
+      assignmentId,
+      userId: authUserId,
+      submittedAt: new Date(),
+    },
+  })
+
+  // For the special test account: allow re-grading after resubmission by clearing any
+  // existing persisted grade (grade is re-generated on next GET /grade).
+  if (isTestStudent) {
+    try {
+      await (prisma as any).assignmentGrade.delete({
+        where: {
+          assignmentId_userId: {
+            assignmentId,
+            userId: authUserId,
+          },
+        },
+      })
+    } catch {
+      // ignore (no grade yet)
+    }
+  }
+
+  if (!priorSubmission?.submittedAt) {
+    try {
+      const adminUsers = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } })
+      const notifyUserIds = new Set<string>()
+      if (sessionRecord.createdBy) notifyUserIds.add(String(sessionRecord.createdBy))
+      for (const a of adminUsers) notifyUserIds.add(a.id)
+
+      await prisma.notification.createMany({
+        data: Array.from(notifyUserIds)
+          .filter((id) => id && id !== authUserId)
+          .map((id) => ({
+            userId: id,
+            type: 'assignment_submitted',
+            title: 'Assignment submitted',
+            body: `Submitted ${assignment.title || 'an assignment'}`,
+            data: { assignmentId, sessionId: sessionRecord.id, userId: authUserId },
+          })),
+      })
+    } catch (notifyErr) {
+      if (process.env.DEBUG === '1') console.error('Failed to create assignment submission notification', notifyErr)
+    }
+  }
+
+  return res.status(200).json({ submitted: true, submittedAt: record?.submittedAt || null })
+}

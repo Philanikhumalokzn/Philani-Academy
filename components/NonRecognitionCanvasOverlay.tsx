@@ -84,11 +84,21 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
       if (stroke.points.length === 0) return
       ctx.strokeStyle = stroke.color
       ctx.lineWidth = stroke.width
+
+      if (stroke.points.length === 1) {
+        const dot = toCanvasPx(stroke.points[0])
+        ctx.beginPath()
+        ctx.arc(dot.x, dot.y, stroke.width / 2, 0, Math.PI * 2)
+        ctx.fillStyle = stroke.color
+        ctx.fill()
+        return
+      }
+
+      const points = stroke.points.map(toCanvasPx)
       ctx.beginPath()
-      const first = toCanvasPx(stroke.points[0])
-      ctx.moveTo(first.x, first.y)
-      for (let i = 1; i < stroke.points.length; i += 1) {
-        const next = toCanvasPx(stroke.points[i])
+      ctx.moveTo(points[0].x, points[0].y)
+      for (let i = 1; i < points.length; i += 1) {
+        const next = points[i]
         ctx.lineTo(next.x, next.y)
       }
       ctx.stroke()
@@ -262,20 +272,9 @@ export default function NonRecognitionCanvasOverlay({ open, onClose, isCompactVi
     const stroke = currentStrokeRef.current
     if (!stroke) return
 
-    const prevPoint = stroke.points[stroke.points.length - 1]
     stroke.points.push(point)
 
-    const ctx = getCanvasContext()
-    if (ctx) {
-      const prev = toCanvasPx(prevPoint)
-      const next = toCanvasPx(point)
-      ctx.strokeStyle = stroke.color
-      ctx.lineWidth = stroke.width
-      ctx.beginPath()
-      ctx.moveTo(prev.x, prev.y)
-      ctx.lineTo(next.x, next.y)
-      ctx.stroke()
-    }
+    requestRedraw()
 
     const viewport = viewportRef.current
     if (!viewport) return

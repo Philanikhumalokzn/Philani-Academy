@@ -336,6 +336,7 @@ export default function Dashboard() {
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
 
   useEffect(() => {
     currentLessonCardNaturalHeightRef.current = currentLessonCardNaturalHeight
@@ -4171,6 +4172,87 @@ export default function Dashboard() {
     }
   }
 
+  const toLocalDateTimeValue = (value: unknown) => {
+    if (!value) return ''
+    const dt = value instanceof Date ? value : new Date(String(value))
+    if (Number.isNaN(dt.getTime())) return ''
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+  }
+
+  const buildLessonDraftFromOverride = (override: any) => {
+    const emptyDraft = { engage: [], explore: [], explain: [], elaborate: [], evaluate: [] } as Record<LessonPhaseKey, LessonPointDraft[]>
+    if (!override || typeof override !== 'object') return emptyDraft
+    if (override.schemaVersion !== 2 || !Array.isArray(override.phases)) return emptyDraft
+
+    const next = { ...emptyDraft }
+    override.phases.forEach((phase: any) => {
+      const key = phase?.key as LessonPhaseKey
+      if (!key || !(key in next)) return
+      const points = Array.isArray(phase?.points) ? phase.points : []
+      next[key] = points.map((point: any, idx: number) => {
+        const draft = newPointDraft()
+        draft.id = String(point?.id || `${key}-${idx}`)
+        draft.title = typeof point?.title === 'string' ? point.title : ''
+        const modules = Array.isArray(point?.modules) ? point.modules : []
+        modules.forEach((mod: any) => {
+          if (mod?.type === 'text' && typeof mod.text === 'string') {
+            draft.text = mod.text
+          }
+          if (mod?.type === 'latex' && typeof mod.latex === 'string') {
+            const lines = mod.latex.split('\\').map((line: string) => line.trim()).filter(Boolean)
+            draft.latex = lines.join('\n')
+          }
+          if (mod?.type === 'diagram') {
+            const diagram = mod.diagram
+            if (diagram && typeof diagram === 'object') {
+              draft.diagramSnapshot = {
+                title: typeof diagram.title === 'string' ? diagram.title : '',
+                imageUrl: typeof diagram.imageUrl === 'string' ? diagram.imageUrl : '',
+                annotations: diagram.annotations ?? null,
+              }
+            }
+          }
+        })
+        return draft
+      })
+    })
+    return next
+  }
+
+  const openEditSession = useCallback(async (sessionId: string) => {
+    const safeId = String(sessionId || '').trim()
+    if (!safeId) return
+    const sessionRec = sessionById.get(safeId)
+    if (!sessionRec) return
+
+    setEditingSessionId(safeId)
+    setCreateLessonOverlayOpen(true)
+    setTitle(String(sessionRec.title || ''))
+    setJoinUrl(String(sessionRec.joinUrl || ''))
+    const startsLocal = toLocalDateTimeValue(sessionRec.startsAt)
+    const endsLocal = toLocalDateTimeValue((sessionRec as any).endsAt || sessionRec.startsAt)
+    setStartsAt(startsLocal)
+    setEndsAt(endsLocal)
+    if (startsLocal) {
+      setMinStartsAt(startsLocal)
+      setMinEndsAt(startsLocal)
+    }
+    setSessionThumbnailUrlDraft((sessionRec as any)?.thumbnailUrl || null)
+
+    setLessonScriptDraft({ engage: [], explore: [], explain: [], elaborate: [], evaluate: [] })
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(safeId)}/lesson-script`, { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = await res.json().catch(() => null)
+      if (data?.resolved) {
+        setLessonScriptDraft(buildLessonDraftFromOverride(data.resolved))
+      }
+    } catch {
+      // ignore
+    }
+  }, [sessionById])
+
   async function createSession(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedGrade) {
@@ -4248,6 +4330,49 @@ export default function Dashboard() {
         endsAtIso = dt.toISOString()
       }
 
+      const overridePayload = buildLessonScriptOverride()
+
+      if (editingSessionId) {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(editingSessionId)}`, {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            joinUrl,
+            startsAt: startsAtIso,
+            endsAt: endsAtIso,
+            grade: selectedGrade,
+            thumbnailUrl: sessionThumbnailUrlDraft,
+          })
+        })
+
+        if (!res.ok) {
+          let data: any = null
+          try {
+            data = await res.json()
+          } catch (err) {
+            const txt = await res.text().catch(() => '')
+            data = { message: txt || `HTTP ${res.status}` }
+          }
+          alert(data?.message || `Error: ${res.status}`)
+          return
+        }
+
+        await fetch(`/api/sessions/${encodeURIComponent(editingSessionId)}/lesson-script`, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ overrideContent: overridePayload ?? null }),
+        })
+
+        alert('Session updated')
+        setEditingSessionId(null)
+        setCreateLessonOverlayOpen(false)
+        fetchSessionsForGrade(selectedGrade)
+        return
+      }
+
       const res = await fetch('/api/create-session', {
         method: 'POST',
         credentials: 'same-origin',
@@ -4258,7 +4383,7 @@ export default function Dashboard() {
           startsAt: startsAtIso,
           endsAt: endsAtIso,
           grade: selectedGrade,
-          lessonScriptOverrideContent: buildLessonScriptOverride(),
+          lessonScriptOverrideContent: overridePayload,
           thumbnailUrl: sessionThumbnailUrlDraft,
         })
       })
@@ -6304,6 +6429,15 @@ export default function Dashboard() {
                   >
                     Enter class
                   </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => openEditSession(String(resolvedCurrentLesson.id))}
+                    >
+                      Edit
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
@@ -6347,6 +6481,15 @@ export default function Dashboard() {
                       >
                         Enter class
                       </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => openEditSession(String(s.id))}
+                        >
+                          Edit
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
@@ -6377,7 +6520,10 @@ export default function Dashboard() {
               <button
                 type="button"
                 className="w-full flex items-center justify-between gap-3 text-left"
-                onClick={() => setCreateLessonOverlayOpen(true)}
+                onClick={() => {
+                  setEditingSessionId(null)
+                  setCreateLessonOverlayOpen(true)
+                }}
               >
                 <span className="text-lg font-semibold">Create lesson</span>
                 <span className="text-sm muted">Open</span>
@@ -6387,9 +6533,16 @@ export default function Dashboard() {
             {createLessonOverlayOpen && (
               <OverlayPortal>
                 <FullScreenGlassOverlay
-                  title="Create lesson"
-                  subtitle={`Create a session for ${activeGradeLabel} learners.`}
-                  onClose={() => setCreateLessonOverlayOpen(false)}
+                  title={editingSessionId ? 'Edit lesson' : 'Create lesson'}
+                  subtitle={
+                    editingSessionId
+                      ? `Update the session for ${activeGradeLabel} learners.`
+                      : `Create a session for ${activeGradeLabel} learners.`
+                  }
+                  onClose={() => {
+                    setCreateLessonOverlayOpen(false)
+                    setEditingSessionId(null)
+                  }}
                   zIndexClassName="z-50"
                 >
                   <div className="space-y-3">
@@ -6608,7 +6761,9 @@ export default function Dashboard() {
                             </div>
 
                         <div>
-                          <button className="btn btn-primary" type="submit">Create</button>
+                          <button className="btn btn-primary" type="submit">
+                            {editingSessionId ? 'Save changes' : 'Create'}
+                          </button>
                         </div>
                       </form>
                     )}
@@ -6799,6 +6954,15 @@ export default function Dashboard() {
                         >
                           Open class
                         </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="btn justify-center justify-self-start"
+                            onClick={() => openEditSession(String(s.id))}
+                          >
+                            Edit
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn justify-center justify-self-start"
@@ -6851,6 +7015,15 @@ export default function Dashboard() {
                         >
                           Open class
                         </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => openEditSession(String(s.id))}
+                          >
+                            Edit
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn"
@@ -6944,24 +7117,35 @@ export default function Dashboard() {
                     const s = sessionById.get(id)
                     return (
                       <li key={id}>
-                        <button
-                          type="button"
-                          className="w-full text-left p-3"
-                          onClick={() => {
-                            setSessionDetailsIndex(idx)
-                            setSessionDetailsView('details')
-                            setSessionDetailsTab('assignments')
-                          }}
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="font-medium break-words">{s?.title || 'Session'}</div>
-                            {s?.startsAt && (
-                              <div className="text-sm muted">
-                                {formatSessionRange(s.startsAt, (s as any).endsAt || s.startsAt)}
-                              </div>
-                            )}
-                          </div>
-                        </button>
+                        <div className="flex items-center justify-between gap-3 p-3">
+                          <button
+                            type="button"
+                            className="text-left flex-1"
+                            onClick={() => {
+                              setSessionDetailsIndex(idx)
+                              setSessionDetailsView('details')
+                              setSessionDetailsTab('assignments')
+                            }}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="font-medium break-words">{s?.title || 'Session'}</div>
+                              {s?.startsAt && (
+                                <div className="text-sm muted">
+                                  {formatSessionRange(s.startsAt, (s as any).endsAt || s.startsAt)}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                          {isAdmin && s?.id && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost text-xs"
+                              onClick={() => openEditSession(String(s.id))}
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
                       </li>
                     )
                   })}

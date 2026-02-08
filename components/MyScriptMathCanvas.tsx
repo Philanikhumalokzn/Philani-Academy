@@ -5,6 +5,7 @@ import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 
 function renderTextWithInlineKatex(inputRaw: string) {
@@ -11462,7 +11463,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             method: 'POST',
                             credentials: 'same-origin',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || file.name }),
+                            body: JSON.stringify({
+                              sessionKey: channelName,
+                              imageUrl: url,
+                              title: diagramTitleInput || toDisplayFileName(file.name) || file.name,
+                            }),
                           })
                           if (!createRes.ok) throw new Error('Create failed')
                           const createdPayload = await createRes.json()

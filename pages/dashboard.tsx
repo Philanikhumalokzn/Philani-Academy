@@ -21,6 +21,7 @@ import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoStep
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
+import { toDisplayFileName } from '../lib/fileName'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -523,7 +524,8 @@ export default function Dashboard() {
     if (!file) return
     if (!diagramUploadTarget) return
 
-    const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', file.name) : null) ?? file.name
+    const fallbackTitle = toDisplayFileName(file.name) || file.name
+    const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', fallbackTitle) : null) ?? fallbackTitle
     setDiagramUploading(true)
     try {
       const sessionKey = boardIdToSessionKey(diagramUploadTarget.boardId)
@@ -5314,7 +5316,7 @@ export default function Dashboard() {
   function handleMaterialFileChange(file: File | null) {
     setMaterialFile(file)
     if (file) {
-      setMaterialTitle(prev => prev || file.name.replace(/\.[^.]+$/, ''))
+      setMaterialTitle(prev => prev || toDisplayFileName(file.name) || file.name)
     } else {
       setMaterialTitle('')
     }

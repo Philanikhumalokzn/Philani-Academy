@@ -130,16 +130,20 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const panelSizing = panelSize || 'full'
 
   const headerClassName = overlayVariant === 'light'
-    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-center justify-between gap-3 bg-white/70'
-    : 'p-3 sm:p-4 border-b border-white/10 flex items-center justify-between gap-3'
+    ? 'p-3 sm:p-4 border-b border-slate-200/60 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-2 sm:gap-3 flex-wrap bg-white/70'
+    : 'p-3 sm:p-4 border-b border-white/10 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-2 sm:gap-3 flex-wrap'
 
   const titleClassName = overlayVariant === 'light'
-    ? 'font-semibold text-slate-900 truncate'
-    : 'font-semibold text-white truncate'
+    ? 'font-semibold text-slate-900 whitespace-normal break-words'
+    : 'font-semibold text-white whitespace-normal break-words'
 
   const subtitleClassName = overlayVariant === 'light'
-    ? 'text-xs text-slate-500 truncate'
-    : 'text-xs text-white/70 truncate'
+    ? 'text-xs text-slate-500 whitespace-normal break-words'
+    : 'text-xs text-white/70 whitespace-normal break-words'
+
+  const actionSlotClassName = overlayVariant === 'light'
+    ? 'w-full sm:w-auto flex flex-wrap items-center gap-2 text-slate-700'
+    : 'w-full sm:w-auto flex flex-wrap items-center gap-2'
 
   const closeBtnClassName = overlayVariant === 'light'
     ? 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
@@ -172,7 +176,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
           onClick={(e) => e.stopPropagation()}
         >
           <div className={headerClassName}>
-            <div className="shrink-0 flex items-center gap-2">
+            <div className={actionSlotClassName}>
               {leftActions}
             </div>
 
@@ -181,7 +185,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
               {subtitle ? <div className={subtitleClassName}>{subtitle}</div> : null}
             </div>
 
-            <div className="shrink-0 flex items-center gap-2">
+            <div className={actionSlotClassName}>
               {rightActions}
               {shouldShowCloseButton ? (
                 <button

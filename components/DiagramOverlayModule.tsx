@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import { toDisplayFileName } from '../lib/fileName'
 
 const IMAGE_SPACE = 'image' as const
 
@@ -373,7 +374,7 @@ export default function DiagramOverlayModule(props: {
           body: JSON.stringify({
             sessionKey: channelName,
             imageUrl: url,
-            title: title || file.name,
+            title: title || toDisplayFileName(file.name) || file.name,
           }),
         })
 
@@ -403,7 +404,8 @@ export default function DiagramOverlayModule(props: {
       if (e?.target) e.target.value = ''
       if (!file) return
 
-      const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', file.name) : null) ?? undefined
+      const fallbackTitle = toDisplayFileName(file.name) || file.name
+      const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', fallbackTitle) : null) ?? undefined
       try {
         await uploadAndCreateDiagram(file, title)
       } catch (err) {
@@ -584,7 +586,7 @@ export default function DiagramOverlayModule(props: {
                     <img src={d.imageUrl} alt={d.title || 'Diagram'} className="w-full h-full object-cover" />
                   ) : null}
                 </div>
-                <div className="mt-1 text-[11px] text-slate-700 truncate">{d.title || 'Diagram'}</div>
+                <div className="mt-1 text-[11px] text-slate-700 truncate">{toDisplayFileName(d.title) || d.title || 'Diagram'}</div>
               </button>
             ))
           )}
@@ -2406,7 +2408,12 @@ export default function DiagramOverlayModule(props: {
           rightActions={
             <>
               {isAdmin && (
-                <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={uploading}
+                  onClick={requestUpload}
+                >
                   {uploading ? 'Uploading…' : 'Upload'}
                 </button>
               )}
@@ -2421,7 +2428,7 @@ export default function DiagramOverlayModule(props: {
       {diagramState.isOpen && activeDiagram ? (
         <FullScreenGlassOverlay
           title="Diagram"
-          subtitle={activeDiagram.title || 'Untitled diagram'}
+          subtitle={toDisplayFileName(activeDiagram.title) || activeDiagram.title || 'Untitled diagram'}
           variant="light"
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
@@ -2440,13 +2447,18 @@ export default function DiagramOverlayModule(props: {
           rightActions={
             <>
               {isAdmin && (
-                <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={uploading}
+                  onClick={requestUpload}
+                >
                   {uploading ? 'Uploading…' : 'Upload'}
                 </button>
               )}
               {isAdmin && (
                 <select
-                  className="input"
+                  className="input input-light w-[120px] sm:w-[160px] text-sm"
                   value={diagramState.activeDiagramId ?? ''}
                   onChange={async (e) => {
                     const nextId = e.target.value || null
@@ -2454,7 +2466,7 @@ export default function DiagramOverlayModule(props: {
                   }}
                 >
                   {diagrams.map(d => (
-                    <option key={d.id} value={d.id}>{d.title || 'Untitled diagram'}</option>
+                    <option key={d.id} value={d.id}>{toDisplayFileName(d.title) || d.title || 'Untitled diagram'}</option>
                   ))}
                 </select>
               )}

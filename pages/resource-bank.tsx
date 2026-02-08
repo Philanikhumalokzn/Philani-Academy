@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
+import { toDisplayFileName } from '../lib/fileName'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
@@ -255,7 +256,7 @@ export default function ResourceBankPage() {
     if (!id) return
     setParsedViewerOpen(true)
     setParsedViewerLoading(true)
-    setParsedViewerTitle(item?.title || 'Parsed')
+    setParsedViewerTitle(toDisplayFileName(item?.title) || item?.title || 'Parsed')
     setParsedViewerText('')
     setParsedViewerJson(null)
     try {
@@ -430,7 +431,7 @@ export default function ResourceBankPage() {
   }
 
   const openPdfViewer = (item: ResourceBankItem) => {
-    setPdfViewerTitle(item.title || 'Document')
+    setPdfViewerTitle(toDisplayFileName(item.title) || item.title || 'Document')
     // Avoid showing filepaths/URLs in the UI.
     setPdfViewerSubtitle('')
     setPdfViewerUrl(item.url)
@@ -475,7 +476,7 @@ export default function ResourceBankPage() {
             {editOpen ? (
               <FullScreenGlassOverlay
                 title="Edit resource"
-                subtitle={editItem?.title || 'Resource'}
+                subtitle={toDisplayFileName(editItem?.title) || editItem?.title || 'Resource'}
                 zIndexClassName="z-50"
                 onClose={() => {
                   if (editing) return
@@ -558,13 +559,13 @@ export default function ResourceBankPage() {
             {parseDebugOpen ? (
               <FullScreenGlassOverlay
                 title="Parsing debugger"
-                subtitle={parseDebugItem?.title || 'Resource'}
+                subtitle={toDisplayFileName(parseDebugItem?.title) || parseDebugItem?.title || 'Resource'}
                 zIndexClassName="z-50"
                 onClose={() => setParseDebugOpen(false)}
               >
                 <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
                   <div className="text-sm">
-                    <div><span className="font-semibold">Filename:</span> {parseDebugItem?.filename || '—'}</div>
+                    <div><span className="font-semibold">Filename:</span> {toDisplayFileName(parseDebugItem?.filename) || parseDebugItem?.filename || '—'}</div>
                     <div><span className="font-semibold">Content type:</span> {parseDebugItem?.contentType || '—'}</div>
                     <div><span className="font-semibold">Size:</span> {typeof parseDebugItem?.size === 'number' ? `${Math.round(parseDebugItem.size / 1024)} KB` : '—'}</div>
                     <div><span className="font-semibold">Parsed at:</span> {parseDebugItem?.parsedAt ? new Date(parseDebugItem.parsedAt).toLocaleString() : '—'}</div>
@@ -721,7 +722,7 @@ export default function ResourceBankPage() {
                     {items.map((item) => (
                       <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
                         <div className="min-w-0">
-                          <div className="font-medium text-white truncate">{item.title}</div>
+                          <div className="font-medium text-white truncate">{toDisplayFileName(item.title) || item.title}</div>
                           <div className="text-xs muted">
                             {item.tag ? `${item.tag} • ` : ''}
                             {gradeToLabel(item.grade)}

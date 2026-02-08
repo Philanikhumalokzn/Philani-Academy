@@ -67,6 +67,9 @@ self.addEventListener('fetch', (event) => {
     if (reqUrl.origin !== self.location.origin) {
       return;
     }
+    if (reqUrl.pathname.startsWith('/api/')) {
+      return;
+    }
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;

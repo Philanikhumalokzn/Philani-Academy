@@ -1026,8 +1026,15 @@ export default function DiagramOverlayModule(props: {
 
   const gridBackgroundStyle = useMemo(() => {
     const size = Math.max(6, Math.round(24 * gridZoom))
-    return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px` }
+    return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px`, backgroundPosition: 'center center' }
   }, [gridZoom])
+
+  const gridContainerStyle = useMemo(() => {
+    if (!isGridDiagram) return { width: '100%', height: '100%' }
+    const scaledPct = GRID_OVERFLOW_SCALE * 100 * gridZoom
+    const sizePct = Math.max(100, scaledPct)
+    return { width: `${sizePct}%`, height: `${sizePct}%`, ...gridBackgroundStyle }
+  }, [gridBackgroundStyle, gridZoom, isGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2729,10 +2736,7 @@ export default function DiagramOverlayModule(props: {
           <div
             ref={containerRef}
             className="relative"
-            style={isGridDiagram
-              ? { width: `${GRID_OVERFLOW_SCALE * 100 * gridZoom}%`, height: `${GRID_OVERFLOW_SCALE * 100 * gridZoom}%`, ...gridBackgroundStyle }
-              : { width: '100%', height: '100%' }
-            }
+            style={gridContainerStyle}
           >
           {canPresent && (
             <div className={`${isGridDiagram ? 'sticky' : 'absolute'} bottom-2 left-2 right-2 z-40 pointer-events-none`}>

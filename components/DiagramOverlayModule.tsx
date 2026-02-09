@@ -5,6 +5,11 @@ import { toDisplayFileName } from '../lib/fileName'
 const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
+const GRID_BACKGROUND_STYLE = {
+  backgroundColor: '#ffffff',
+  backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
+  backgroundSize: '24px 24px',
+} as const
 
 type DiagramStrokePoint = { x: number; y: number }
 type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
@@ -2538,6 +2543,13 @@ export default function DiagramOverlayModule(props: {
             className="relative w-full flex-1 min-h-0"
             onMouseDown={() => setContextMenu(null)}
           >
+          {activeDiagram.imageUrl === GRID_DIAGRAM_URL && (
+            <div
+              className="absolute"
+              style={{ inset: '-50%', ...GRID_BACKGROUND_STYLE }}
+              aria-hidden="true"
+            />
+          )}
           {canPresent && (
             <div className="absolute bottom-2 left-2 right-2 z-40 pointer-events-none">
               <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
@@ -2945,7 +2957,7 @@ export default function DiagramOverlayModule(props: {
             ref={imageRef}
             src={activeDiagram.imageUrl}
             alt={activeDiagram.title || 'Diagram'}
-            className="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
+            className={`absolute inset-0 w-full h-full object-contain select-none pointer-events-none${activeDiagram.imageUrl === GRID_DIAGRAM_URL ? ' opacity-0' : ''}`}
             onLoad={() => redraw()}
           />
           <canvas

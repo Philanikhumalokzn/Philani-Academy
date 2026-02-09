@@ -313,7 +313,7 @@ export default function NonRecognitionCanvasOverlay({
     canvas.style.height = `${nextHeight}px`
 
     redrawAll()
-  }, [isCompactViewport, requestRedraw])
+  }, [isCompactViewport, redrawAll])
 
   useEffect(() => {
     if (!open) return
@@ -335,18 +335,22 @@ export default function NonRecognitionCanvasOverlay({
     }
   }, [open, resizeSurface])
 
-  const getStrokePoint = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+  const getStrokePointFromClient = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current
     if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
     const { width, height } = surfaceSizeRef.current
-    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-    const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height))
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
+    const y = Math.max(0, Math.min(clientY - rect.top, rect.height))
     return {
       x: width > 0 ? x / width : 0,
       y: height > 0 ? y / height : 0,
     }
   }, [])
+
+  const getStrokePoint = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => (
+    getStrokePointFromClient(event.clientX, event.clientY)
+  ), [getStrokePointFromClient])
 
   const smoothScrollViewportBy = useCallback((delta: number) => {
     const viewport = viewportRef.current
@@ -405,7 +409,7 @@ export default function NonRecognitionCanvasOverlay({
     }
 
     currentStrokeRef.current = stroke
-    requestRedraw()
+    redrawAll()
 
     strokeTrackRef.current = {
       active: true,
@@ -424,21 +428,28 @@ export default function NonRecognitionCanvasOverlay({
     if (!canPresentRef.current) return
     if (!drawingRef.current) return
     if (pointerIdRef.current !== null && event.pointerId !== pointerIdRef.current) return
-    const point = getStrokePoint(event)
-    if (!point) return
-
     const stroke = currentStrokeRef.current
     if (!stroke) return
 
-    stroke.points.push(point)
+    const coalesced = (event as any).getCoalescedEvents?.() as PointerEvent[] | undefined
+    const samples = (Array.isArray(coalesced) && coalesced.length)
+      ? coalesced
+      : [((event as any).nativeEvent ?? event) as PointerEvent]
 
-    requestRedraw()
+    for (const sample of samples) {
+      const point = getStrokePointFromClient(sample.clientX, sample.clientY)
+      if (!point) continue
+      stroke.points.push(point)
+    }
+
+    redrawAll()
 
     const viewport = viewportRef.current
     if (!viewport) return
 
     const track = strokeTrackRef.current
-    const nextX = event.clientX
+    const lastSample = samples[samples.length - 1]
+    const nextX = lastSample?.clientX ?? event.clientX
     const dx = nextX - track.lastX
     track.lastX = nextX
     track.minX = Math.min(track.minX, nextX)
@@ -471,7 +482,7 @@ export default function NonRecognitionCanvasOverlay({
       if (!pending) return
       viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
     })
-  }, [getStrokePoint, requestRedraw])
+  }, [getStrokePointFromClient, redrawAll])
 
   const handlePointerUp = useCallback(async () => {
     if (!canPresentRef.current) return
@@ -483,12 +494,12 @@ export default function NonRecognitionCanvasOverlay({
 
     if (committed && committed.points.length >= 2) {
       strokesRef.current = [...strokesRef.current, committed]
-      requestRedraw()
+      redrawAll()
       if (canPresentRef.current) {
         await publish({ kind: 'stroke-commit', stroke: committed })
       }
     } else {
-      requestRedraw()
+      redrawAll()
     }
 
     const viewport = viewportRef.current
@@ -519,7 +530,7 @@ export default function NonRecognitionCanvasOverlay({
     if (excessRight > 0) {
       smoothScrollViewportBy(excessRight * gain)
     }
-  }, [publish, requestRedraw, smoothScrollViewportBy])
+  }, [publish, redrawAll, smoothScrollViewportBy])
 
   const handlePointerCancel = useCallback(() => {
     drawingRef.current = false

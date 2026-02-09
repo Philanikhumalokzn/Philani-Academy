@@ -119,6 +119,76 @@ export default function NonRecognitionCanvasOverlay({
     }
   }, [])
 
+  const surfaceStyle = useMemo(() => {
+    return {
+      width: `${surfaceSize.width}px`,
+      height: `${surfaceSize.height}px`,
+      backgroundColor: '#ffffff',
+      backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
+      backgroundSize: '24px 24px',
+    }
+  }, [surfaceSize.height, surfaceSize.width])
+
+  const getCanvasContext = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    return ctx
+  }, [])
+
+  const toCanvasPx = useCallback((point: InkPoint) => {
+    const { width, height } = surfaceSizeRef.current
+    return {
+      x: point.x * width,
+      y: point.y * height,
+    }
+  }, [])
+
+  const redrawAll = useCallback(() => {
+    const canvas = canvasRef.current
+    const ctx = getCanvasContext()
+    if (!canvas || !ctx) return
+
+    const dpr = dprRef.current || 1
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    const drawStroke = (stroke: InkStroke) => {
+      if (stroke.points.length === 0) return
+      ctx.strokeStyle = stroke.color
+      ctx.lineWidth = stroke.width
+
+      const points = stroke.points.map(toCanvasPx)
+      ctx.beginPath()
+      ctx.moveTo(points[0].x, points[0].y)
+      for (let i = 1; i < points.length; i += 1) {
+        const next = points[i]
+        ctx.lineTo(next.x, next.y)
+      }
+      ctx.stroke()
+    }
+
+    strokesRef.current.forEach(drawStroke)
+    if (currentStrokeRef.current) {
+      drawStroke(currentStrokeRef.current)
+    }
+  }, [getCanvasContext, toCanvasPx])
+
+  const requestRedraw = useCallback(() => {
+    if (typeof window === 'undefined') {
+      redrawAll()
+      return
+    }
+    if (redrawRafRef.current) return
+    redrawRafRef.current = window.requestAnimationFrame(() => {
+      redrawRafRef.current = null
+      redrawAll()
+    })
+  }, [redrawAll])
+
   useEffect(() => {
     if (!userId) return
 
@@ -218,76 +288,6 @@ export default function NonRecognitionCanvasOverlay({
       }
     }
   }, [channelName, isAdmin, onOpenChange, open, publish, requestRedraw, userDisplayName, userId])
-
-  const surfaceStyle = useMemo(() => {
-    return {
-      width: `${surfaceSize.width}px`,
-      height: `${surfaceSize.height}px`,
-      backgroundColor: '#ffffff',
-      backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
-      backgroundSize: '24px 24px',
-    }
-  }, [surfaceSize.height, surfaceSize.width])
-
-  const getCanvasContext = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return null
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    return ctx
-  }, [])
-
-  const toCanvasPx = useCallback((point: InkPoint) => {
-    const { width, height } = surfaceSizeRef.current
-    return {
-      x: point.x * width,
-      y: point.y * height,
-    }
-  }, [])
-
-  const redrawAll = useCallback(() => {
-    const canvas = canvasRef.current
-    const ctx = getCanvasContext()
-    if (!canvas || !ctx) return
-
-    const dpr = dprRef.current || 1
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    const drawStroke = (stroke: InkStroke) => {
-      if (stroke.points.length === 0) return
-      ctx.strokeStyle = stroke.color
-      ctx.lineWidth = stroke.width
-
-      const points = stroke.points.map(toCanvasPx)
-      ctx.beginPath()
-      ctx.moveTo(points[0].x, points[0].y)
-      for (let i = 1; i < points.length; i += 1) {
-        const next = points[i]
-        ctx.lineTo(next.x, next.y)
-      }
-      ctx.stroke()
-    }
-
-    strokesRef.current.forEach(drawStroke)
-    if (currentStrokeRef.current) {
-      drawStroke(currentStrokeRef.current)
-    }
-  }, [getCanvasContext, toCanvasPx])
-
-  const requestRedraw = useCallback(() => {
-    if (typeof window === 'undefined') {
-      redrawAll()
-      return
-    }
-    if (redrawRafRef.current) return
-    redrawRafRef.current = window.requestAnimationFrame(() => {
-      redrawRafRef.current = null
-      redrawAll()
-    })
-  }, [redrawAll])
 
   const resizeSurface = useCallback(() => {
     const viewport = viewportRef.current

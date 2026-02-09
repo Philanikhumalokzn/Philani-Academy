@@ -5,7 +5,6 @@ import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
-import NonRecognitionCanvasOverlay from './NonRecognitionCanvasOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 
@@ -1480,8 +1479,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const textIconLastTapRef = useRef<number | null>(null)
   const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const [nonRecognitionCanvasOpen, setNonRecognitionCanvasOpen] = useState(false)
 
   const clearTopPanelSelection = useCallback(() => {
     setTopPanelSelectedStep(null)
@@ -10885,7 +10882,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           diagramLongPressTimeoutRef.current = setTimeout(() => {
                             diagramLongPressTimeoutRef.current = null
                             diagramLongPressTriggeredRef.current = true
-                            setNonRecognitionCanvasOpen(true)
+                            try {
+                              window.dispatchEvent(new CustomEvent('philani-diagrams:open-grid'))
+                            } catch {}
                           }, 520)
                           try {
                             e.currentTarget.setPointerCapture(e.pointerId)
@@ -12510,18 +12509,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
       </div>
-
-      <NonRecognitionCanvasOverlay
-        open={nonRecognitionCanvasOpen}
-        onOpenChange={setNonRecognitionCanvasOpen}
-        isCompactViewport={isCompactViewport}
-        boardId={boardId}
-        realtimeScopeId={realtimeScopeId}
-        gradeLabel={gradeLabel}
-        userId={userId}
-        userDisplayName={userDisplayName}
-        isAdmin={isAdmin}
-      />
 
       {finishQuestionModalOpen && (
         <FullScreenGlassOverlay

@@ -3,6 +3,8 @@ import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 
 const IMAGE_SPACE = 'image' as const
+const GRID_DIAGRAM_TITLE = 'Grid Background'
+const GRID_DIAGRAM_URL = '/diagram-grid.svg'
 
 type DiagramStrokePoint = { x: number; y: number }
 type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
@@ -489,6 +491,63 @@ export default function DiagramOverlayModule(props: {
     }
   }, [isAdmin, persistState, publish])
 
+  const openGridDiagram = useCallback(async () => {
+    if (!canPresentRef.current) return
+    const normalizedTitle = GRID_DIAGRAM_TITLE.toLowerCase()
+    const existing = diagramsRef.current.find(d => (d.title || '').trim().toLowerCase() === normalizedTitle)
+    if (existing) {
+      await setOverlayState({ activeDiagramId: existing.id, isOpen: true })
+      return
+    }
+
+    if (!isAdmin || !channelName) {
+      await setOverlayState({ ...diagramStateRef.current, isOpen: true })
+      return
+    }
+
+    try {
+      const createRes = await fetch('/api/diagrams', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionKey: channelName,
+          imageUrl: GRID_DIAGRAM_URL,
+          title: GRID_DIAGRAM_TITLE,
+        }),
+      })
+
+      if (createRes.ok) {
+        const payload = await createRes.json().catch(() => null)
+        const diagram = payload?.diagram
+        if (diagram?.id) {
+          const record: DiagramRecord = {
+            id: String(diagram.id),
+            title: typeof diagram.title === 'string' ? diagram.title : GRID_DIAGRAM_TITLE,
+            imageUrl: typeof diagram.imageUrl === 'string' && diagram.imageUrl ? diagram.imageUrl : GRID_DIAGRAM_URL,
+            order: typeof diagram.order === 'number' ? diagram.order : 0,
+            annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
+          }
+
+          const current = diagramsRef.current
+          if (!current.some(d => d.id === record.id)) {
+            const next = [...current, record]
+            next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+            diagramsRef.current = next
+            setDiagrams(next)
+          }
+
+          await setOverlayState({ activeDiagramId: record.id, isOpen: true })
+          return
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    await setOverlayState({ ...diagramStateRef.current, isOpen: true })
+  }, [channelName, isAdmin, normalizeAnnotations, setOverlayState])
+
   const handleClose = useCallback(async () => {
     // Ensure lesson-authoring snapshots are persisted before closing.
     const saved = saveDiagramIntoLessonDraft()
@@ -618,6 +677,15 @@ export default function DiagramOverlayModule(props: {
       window.removeEventListener('philani-diagrams:toggle-tray', handler as any)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      void openGridDiagram()
+    }
+    window.addEventListener('philani-diagrams:open-grid', handler as any)
+    return () => window.removeEventListener('philani-diagrams:open-grid', handler as any)
+  }, [openGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

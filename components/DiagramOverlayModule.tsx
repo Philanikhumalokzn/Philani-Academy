@@ -5,7 +5,8 @@ import { toDisplayFileName } from '../lib/fileName'
 const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
-const GRID_OVERFLOW_SCALE = 2.4
+const GRID_OVERFLOW_SCALE = 10
+const GRID_INITIAL_ZOOM = 1.5
 const GRID_MIN_ZOOM = 0.6
 const GRID_MAX_ZOOM = 2.6
 const GRID_BACKGROUND_STYLE = {
@@ -1023,6 +1024,23 @@ export default function DiagramOverlayModule(props: {
   useEffect(() => {
     gridZoomRef.current = gridZoom
   }, [gridZoom])
+
+  const centerGridViewport = useCallback(() => {
+    const viewport = gridViewportRef.current
+    if (!viewport) return
+    const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+    viewport.scrollLeft = maxScrollLeft / 2
+    viewport.scrollTop = maxScrollTop / 2
+  }, [])
+
+  useEffect(() => {
+    if (!diagramState.isOpen || !isGridDiagram) return
+    setGridZoom(GRID_INITIAL_ZOOM)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => centerGridViewport())
+    })
+  }, [centerGridViewport, diagramState.isOpen, isGridDiagram, diagramState.activeDiagramId])
 
   const gridBackgroundStyle = useMemo(() => {
     const size = Math.max(6, Math.round(24 * gridZoom))

@@ -6,6 +6,8 @@ const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
 const GRID_OVERFLOW_SCALE = 2.4
+const GRID_MIN_ZOOM = 0.6
+const GRID_MAX_ZOOM = 2.6
 const GRID_BACKGROUND_STYLE = {
   backgroundColor: '#ffffff',
   backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
@@ -1010,7 +1012,22 @@ export default function DiagramOverlayModule(props: {
     pointers: new Map<number, { x: number; y: number }>(),
     lastMid: null as null | { x: number; y: number },
     suppressedPointers: new Set<number>(),
+    startDistance: 0,
+    startZoom: 1,
+    anchorX: 0,
+    anchorY: 0,
   })
+
+  const [gridZoom, setGridZoom] = useState(1)
+  const gridZoomRef = useRef(1)
+  useEffect(() => {
+    gridZoomRef.current = gridZoom
+  }, [gridZoom])
+
+  const gridBackgroundStyle = useMemo(() => {
+    const size = Math.max(6, Math.round(24 * gridZoom))
+    return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px` }
+  }, [gridZoom])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1047,6 +1064,16 @@ export default function DiagramOverlayModule(props: {
       state.active = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
+      const values = Array.from(state.pointers.values())
+      const dx = values[0].x - values[1].x
+      const dy = values[0].y - values[1].y
+      state.startDistance = Math.max(1, Math.hypot(dx, dy))
+      state.startZoom = gridZoomRef.current
+      const rect = viewport.getBoundingClientRect()
+      const localX = mid.x - rect.left
+      const localY = mid.y - rect.top
+      state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
+      state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
     }
 
     const endGestureIfNeeded = () => {
@@ -1078,14 +1105,25 @@ export default function DiagramOverlayModule(props: {
       if (state.active && state.pointers.size >= 2) {
         const mid = getMid()
         if (mid && state.lastMid) {
-          const dx = mid.x - state.lastMid.x
-          const dy = mid.y - state.lastMid.y
+          const values = Array.from(state.pointers.values())
+          const dx = values[0].x - values[1].x
+          const dy = values[0].y - values[1].y
+          const dist = Math.max(1, Math.hypot(dx, dy))
+          const nextZoom = Math.max(GRID_MIN_ZOOM, Math.min(GRID_MAX_ZOOM, (state.startZoom * dist) / state.startDistance))
+
+          const rect = viewport.getBoundingClientRect()
+          const localX = mid.x - rect.left
+          const localY = mid.y - rect.top
+
+          if (Math.abs(nextZoom - gridZoomRef.current) > 0.001) {
+            setGridZoom(nextZoom)
+          }
 
           const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
           const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
 
-          let nextLeft = viewport.scrollLeft - dx
-          let nextTop = viewport.scrollTop - dy
+          let nextLeft = state.anchorX * nextZoom - localX
+          let nextTop = state.anchorY * nextZoom - localY
 
           nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
           nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
@@ -2692,7 +2730,7 @@ export default function DiagramOverlayModule(props: {
             ref={containerRef}
             className="relative"
             style={isGridDiagram
-              ? { width: `${GRID_OVERFLOW_SCALE * 100}%`, height: `${GRID_OVERFLOW_SCALE * 100}%`, ...GRID_BACKGROUND_STYLE }
+              ? { width: `${GRID_OVERFLOW_SCALE * 100 * gridZoom}%`, height: `${GRID_OVERFLOW_SCALE * 100 * gridZoom}%`, ...gridBackgroundStyle }
               : { width: '100%', height: '100%' }
             }
           >

@@ -985,6 +985,9 @@ export default function DiagramOverlayModule(props: {
   }, [activeDiagram?.id, syncHistoryFlags])
 
   const getContainRect = useCallback((containerW: number, containerH: number) => {
+    if (activeDiagram?.imageUrl === GRID_DIAGRAM_URL) {
+      return { x: 0, y: 0, w: Math.max(1, containerW), h: Math.max(1, containerH) }
+    }
     const img = imageRef.current
     const naturalW = img?.naturalWidth ?? 0
     const naturalH = img?.naturalHeight ?? 0
@@ -997,7 +1000,7 @@ export default function DiagramOverlayModule(props: {
     const x = (containerW - w) / 2
     const y = (containerH - h) / 2
     return { x, y, w, h }
-  }, [])
+  }, [activeDiagram?.imageUrl])
 
   const mapClientToImageSpace = useCallback((clientX: number, clientY: number) => {
     const host = containerRef.current

@@ -312,7 +312,7 @@ export default function NonRecognitionCanvasOverlay({
     canvas.style.width = `${nextWidth}px`
     canvas.style.height = `${nextHeight}px`
 
-    requestRedraw()
+    redrawAll()
   }, [isCompactViewport, requestRedraw])
 
   useEffect(() => {
@@ -418,7 +418,7 @@ export default function NonRecognitionCanvasOverlay({
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {}
-  }, [getStrokePoint, requestRedraw])
+  }, [getStrokePoint, redrawAll])
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canPresentRef.current) return

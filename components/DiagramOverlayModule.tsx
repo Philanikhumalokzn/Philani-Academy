@@ -7,7 +7,7 @@ const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
 const GRID_OVERFLOW_SCALE = 2.4
 const GRID_MIN_ZOOM = 1
-const GRID_MAX_ZOOM = 2.6
+const GRID_MAX_ZOOM = 5
 const GRID_BACKGROUND_STYLE = {
   backgroundColor: '#ffffff',
   backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',

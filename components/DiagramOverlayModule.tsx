@@ -1046,12 +1046,6 @@ export default function DiagramOverlayModule(props: {
     gridZoomRef.current = gridZoom
   }, [gridZoom])
 
-  const [gridOffset, setGridOffset] = useState({ x: 0, y: 0 })
-  const gridOffsetRef = useRef({ x: 0, y: 0 })
-  useEffect(() => {
-    gridOffsetRef.current = gridOffset
-  }, [gridOffset])
-
   const gridBackgroundStyle = useMemo(() => {
     const size = Math.max(6, Math.round(24 * gridZoom))
     return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px`, backgroundPosition: 'center center' }
@@ -1061,9 +1055,7 @@ export default function DiagramOverlayModule(props: {
     if (!isGridDiagram) return { width: '100%', height: '100%' }
     const scaledPct = GRID_OVERFLOW_SCALE * 100 * gridZoom
     const sizePct = Math.max(100, scaledPct)
-    const offset = gridOffsetRef.current
-    const transform = (offset.x || offset.y) ? `translate(${offset.x}px, ${offset.y}px)` : undefined
-    return { width: `${sizePct}%`, height: `${sizePct}%`, transform, transformOrigin: '0 0', ...gridBackgroundStyle }
+    return { width: `${sizePct}%`, height: `${sizePct}%`, ...gridBackgroundStyle }
   }, [gridBackgroundStyle, gridZoom, isGridDiagram])
 
   const isTouchLikePointer = useCallback((pointerType: string) => pointerType === 'touch' || pointerType === 'pen', [])
@@ -1092,9 +1084,8 @@ export default function DiagramOverlayModule(props: {
     const rect = viewport.getBoundingClientRect()
     const localX = mid.x - rect.left
     const localY = mid.y - rect.top
-    const offset = gridOffsetRef.current
-    state.anchorX = (viewport.scrollLeft - offset.x + localX) / Math.max(0.01, state.startZoom)
-    state.anchorY = (viewport.scrollTop - offset.y + localY) / Math.max(0.01, state.startZoom)
+    state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
+    state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
   }, [getGridMidpoint])
 
   const updateGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
@@ -1118,27 +1109,14 @@ export default function DiagramOverlayModule(props: {
     const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
     const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
 
-    const desiredLeft = state.anchorX * nextZoom - localX
-    const desiredTop = state.anchorY * nextZoom - localY
+    let nextLeft = state.anchorX * nextZoom - localX
+    let nextTop = state.anchorY * nextZoom - localY
 
-    if (maxScrollLeft > 0 || maxScrollTop > 0) {
-      const nextLeft = Math.max(0, Math.min(desiredLeft, maxScrollLeft))
-      const nextTop = Math.max(0, Math.min(desiredTop, maxScrollTop))
-      viewport.scrollLeft = nextLeft
-      viewport.scrollTop = nextTop
-      if (gridOffsetRef.current.x !== 0 || gridOffsetRef.current.y !== 0) {
-        setGridOffset({ x: 0, y: 0 })
-      }
-    } else {
-      // No scroll range: use a virtual offset to keep the pinch midpoint stable.
-      const nextOffset = { x: -desiredLeft, y: -desiredTop }
-      if (Math.abs(nextOffset.x - gridOffsetRef.current.x) > 0.5 || Math.abs(nextOffset.y - gridOffsetRef.current.y) > 0.5) {
-        setGridOffset(nextOffset)
-      }
-      viewport.scrollLeft = 0
-      viewport.scrollTop = 0
-    }
+    nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
+    nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
 
+    viewport.scrollLeft = nextLeft
+    viewport.scrollTop = nextTop
     state.lastMid = mid
   }, [getGridMidpoint])
 

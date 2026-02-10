@@ -1968,6 +1968,35 @@ export default function DiagramOverlayModule(props: {
     })
   }, [performRedraw])
 
+  const drawLiveStrokeSegment = useCallback(() => {
+    const canvas = canvasRef.current
+    const host = containerRef.current
+    const stroke = currentStrokeRef.current
+    if (!canvas || !host || !stroke || stroke.points.length < 2) return
+
+    const rect = host.getBoundingClientRect()
+    const w = Math.max(1, Math.floor(rect.width))
+    const h = Math.max(1, Math.floor(rect.height))
+    if (canvas.width !== w || canvas.height !== h) {
+      performRedraw()
+      return
+    }
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const pts = stroke.points
+    const p1 = mapImageToCanvasPx(pts[pts.length - 2], w, h)
+    const p2 = mapImageToCanvasPx(pts[pts.length - 1], w, h)
+    ctx.strokeStyle = stroke.color
+    ctx.lineWidth = Math.max(1, stroke.width)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.beginPath()
+    ctx.moveTo(p1.x, p1.y)
+    ctx.lineTo(p2.x, p2.y)
+    ctx.stroke()
+  }, [mapImageToCanvasPx, performRedraw])
+
   useEffect(() => {
     redraw()
   }, [redraw, diagrams, diagramState.activeDiagramId, diagramState.isOpen])
@@ -2418,6 +2447,10 @@ export default function DiagramOverlayModule(props: {
     const stroke = currentStrokeRef.current
     if (!stroke) return
     stroke.points.push(p)
+    if (tool === 'pen') {
+      drawLiveStrokeSegment()
+      return
+    }
     redraw()
   }
 

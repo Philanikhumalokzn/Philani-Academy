@@ -316,7 +316,7 @@ export default function DiagramOverlayModule(props: {
       const serverState = payload.state
       const nextState: DiagramState = {
         activeDiagramId: typeof serverState?.activeDiagramId === 'string' ? serverState.activeDiagramId : null,
-        isOpen: typeof serverState?.isOpen === 'boolean' ? serverState.isOpen : false,
+        isOpen: false,
       }
       if (!nextState.activeDiagramId && nextDiagrams.length) nextState.activeDiagramId = nextDiagrams[0].id
       setDiagramState(nextState)
@@ -500,11 +500,33 @@ export default function DiagramOverlayModule(props: {
     }
   }, [isAdmin, persistState, publish])
 
+  const clearDiagramAnnotations = useCallback(async (diagramId: string) => {
+    const emptyAnnotations: DiagramAnnotations = { space: IMAGE_SPACE, strokes: [], arrows: [] }
+    const next = diagramsRef.current.map(d => (d.id === diagramId ? { ...d, annotations: emptyAnnotations } : d))
+    diagramsRef.current = next
+    setDiagrams(next)
+
+    if (!isAdmin || localOnly) return
+    try {
+      await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annotations: emptyAnnotations }),
+      })
+    } catch {
+      // ignore
+    }
+  }, [isAdmin, localOnly])
+
   const openGridDiagram = useCallback(async () => {
     if (!canPresentRef.current) return
     const normalizedTitle = GRID_DIAGRAM_TITLE.toLowerCase()
     const existing = diagramsRef.current.find(d => (d.title || '').trim().toLowerCase() === normalizedTitle)
     if (existing) {
+      if (isAdmin) {
+        await clearDiagramAnnotations(existing.id)
+      }
       await setOverlayState({ activeDiagramId: existing.id, isOpen: true })
       return
     }
@@ -555,7 +577,7 @@ export default function DiagramOverlayModule(props: {
     }
 
     await setOverlayState({ ...diagramStateRef.current, isOpen: true })
-  }, [channelName, isAdmin, normalizeAnnotations, setOverlayState])
+  }, [channelName, clearDiagramAnnotations, isAdmin, normalizeAnnotations, setOverlayState])
 
   const handleClose = useCallback(async () => {
     // Ensure lesson-authoring snapshots are persisted before closing.

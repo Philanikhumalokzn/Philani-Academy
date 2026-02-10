@@ -1046,6 +1046,32 @@ export default function DiagramOverlayModule(props: {
     gridZoomRef.current = gridZoom
   }, [gridZoom])
 
+  const lastGridOpenIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!diagramState.isOpen || !isGridDiagram || !activeDiagram?.id) return
+    if (lastGridOpenIdRef.current === activeDiagram.id) return
+    lastGridOpenIdRef.current = activeDiagram.id
+
+    setGridZoom(GRID_MAX_ZOOM)
+    const viewport = gridViewportRef.current
+    if (!viewport) return
+
+    const centerViewport = () => {
+      const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      viewport.scrollLeft = maxLeft / 2
+      viewport.scrollTop = maxTop / 2
+    }
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(centerViewport)
+      })
+    } else {
+      centerViewport()
+    }
+  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram])
+
   const gridBackgroundStyle = useMemo(() => {
     const size = Math.max(6, Math.round(24 * gridZoom))
     return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px`, backgroundPosition: 'center center' }

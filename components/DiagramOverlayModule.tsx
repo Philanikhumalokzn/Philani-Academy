@@ -6,7 +6,7 @@ const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
 const GRID_OVERFLOW_SCALE = 2.4
-const GRID_MIN_ZOOM = 0.01
+const GRID_MIN_ZOOM = 1 / GRID_OVERFLOW_SCALE
 const GRID_MAX_ZOOM = 2.6
 const GRID_BACKGROUND_STYLE = {
   backgroundColor: '#ffffff',

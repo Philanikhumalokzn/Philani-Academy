@@ -923,6 +923,7 @@ export default function DiagramOverlayModule(props: {
   const gridViewportRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const redrawFrameRef = useRef<number | null>(null)
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
   const currentArrowRef = useRef<DiagramArrow | null>(null)
@@ -1732,7 +1733,7 @@ export default function DiagramOverlayModule(props: {
     return next
   }
 
-  const redraw = useCallback(() => {
+  const performRedraw = useCallback(() => {
     const canvas = canvasRef.current
     const host = containerRef.current
     if (!canvas || !host) return
@@ -1796,6 +1797,27 @@ export default function DiagramOverlayModule(props: {
       ctx.fill()
     }
 
+    const drawStrokePath = (pts: DiagramStrokePoint[]) => {
+      if (!pts.length) return
+      const p0 = mapImageToCanvasPx(pts[0], w, h)
+      ctx.moveTo(p0.x, p0.y)
+      if (pts.length === 1) return
+      if (pts.length === 2) {
+        const p1 = mapImageToCanvasPx(pts[1], w, h)
+        ctx.lineTo(p1.x, p1.y)
+        return
+      }
+      for (let i = 1; i < pts.length - 1; i++) {
+        const pi = mapImageToCanvasPx(pts[i], w, h)
+        const pj = mapImageToCanvasPx(pts[i + 1], w, h)
+        const midX = (pi.x + pj.x) / 2
+        const midY = (pi.y + pj.y) / 2
+        ctx.quadraticCurveTo(pi.x, pi.y, midX, midY)
+      }
+      const last = mapImageToCanvasPx(pts[pts.length - 1], w, h)
+      ctx.lineTo(last.x, last.y)
+    }
+
     const items: Array<
       | { kind: 'arrow'; z: number; arrow: DiagramArrow }
       | { kind: 'stroke'; z: number; stroke: DiagramStroke }
@@ -1822,12 +1844,7 @@ export default function DiagramOverlayModule(props: {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
-      const p0 = mapImageToCanvasPx(pts[0], w, h)
-      ctx.moveTo(p0.x, p0.y)
-      for (let i = 1; i < pts.length; i++) {
-        const pi = mapImageToCanvasPx(pts[i], w, h)
-        ctx.lineTo(pi.x, pi.y)
-      }
+      drawStrokePath(pts)
       ctx.stroke()
     }
 
@@ -1839,12 +1856,7 @@ export default function DiagramOverlayModule(props: {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
-      const p0 = mapImageToCanvasPx(pts[0], w, h)
-      ctx.moveTo(p0.x, p0.y)
-      for (let i = 1; i < pts.length; i++) {
-        const pi = mapImageToCanvasPx(pts[i], w, h)
-        ctx.lineTo(pi.x, pi.y)
-      }
+      drawStrokePath(pts)
       ctx.stroke()
     }
 
@@ -1943,6 +1955,18 @@ export default function DiagramOverlayModule(props: {
       }
     }
   }, [activeDiagram, annotationsForRender, cropMode, getContainRect, mapImageToCanvasPx, normalizeAnnotations, normalizeCropRect])
+
+  const redraw = useCallback(() => {
+    if (typeof window === 'undefined') {
+      performRedraw()
+      return
+    }
+    if (redrawFrameRef.current !== null) return
+    redrawFrameRef.current = window.requestAnimationFrame(() => {
+      redrawFrameRef.current = null
+      performRedraw()
+    })
+  }, [performRedraw])
 
   useEffect(() => {
     redraw()

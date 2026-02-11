@@ -931,6 +931,14 @@ export default function DiagramOverlayModule(props: {
   const toolGestureDiagramIdRef = useRef<string | null>(null)
   const toolGesturePointerIdRef = useRef<number | null>(null)
   const toolGestureMutatedRef = useRef(false)
+  const pendingTouchRef = useRef<null | {
+    pointerId: number
+    diagramId: string
+    tool: DiagramTool
+    startPoint: DiagramStrokePoint
+    startTs: number
+    snapshot: DiagramAnnotations | null
+  }>(null)
   const previewRef = useRef<null | { diagramId: string; annotations: DiagramAnnotations | null }>(null)
   const migratedDiagramIdsRef = useRef<Set<string>>(new Set())
 
@@ -1102,6 +1110,8 @@ export default function DiagramOverlayModule(props: {
   const beginGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
     if (state.active) return
     if (state.pointers.size < 2) return
+    cancelActiveToolGesture()
+    clearPendingTouch()
     const mid = getGridMidpoint(state)
     if (!mid) return
     state.active = true
@@ -1117,7 +1127,7 @@ export default function DiagramOverlayModule(props: {
     const localY = mid.y - rect.top
     state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
     state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
-  }, [getGridMidpoint])
+  }, [cancelActiveToolGesture, clearPendingTouch, getGridMidpoint])
 
   const updateGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
     if (!state.active || state.pointers.size < 2) return
@@ -2145,6 +2155,17 @@ export default function DiagramOverlayModule(props: {
     clearToolGesture()
   }, [applyAnnotations, clearToolGesture])
 
+  const clearPendingTouch = useCallback((pointerId?: number | null) => {
+    if (pointerId != null && pendingTouchRef.current?.pointerId !== pointerId) return
+    pendingTouchRef.current = null
+  }, [])
+
+  const shouldGateTouchStroke = useCallback((pointerType: string, activeTool: DiagramTool) => {
+    if (!isGridDiagram) return false
+    if (pointerType !== 'touch') return false
+    return activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow'
+  }, [isGridDiagram])
+
   const pushUndoSnapshot = useCallback((diagramId: string) => {
     try {
       const diag = diagramsRef.current.find(d => d.id === diagramId)
@@ -2321,6 +2342,7 @@ export default function DiagramOverlayModule(props: {
     // Eraser tool
     if (tool === 'eraser') {
       drawingRef.current = true
+      beginToolGesture(diagramId, e.pointerId, cloneAnnotations(diagramsRef.current.find(d => d.id === diagramId)?.annotations ?? null))
       await eraseAt(diagramId, p)
       try {
         ;(e.target as any).setPointerCapture?.(e.pointerId)
@@ -2331,6 +2353,7 @@ export default function DiagramOverlayModule(props: {
     // Arrow tool
     if (tool === 'arrow') {
       drawingRef.current = true
+      beginToolGesture(diagramId, e.pointerId, null)
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       currentArrowRef.current = { id, color: '#ef4444', width: 4, headSize: 12, start: p, end: p }
       redraw()
@@ -2342,6 +2365,7 @@ export default function DiagramOverlayModule(props: {
 
     // Pen tool
     drawingRef.current = true
+    beginToolGesture(diagramId, e.pointerId, null)
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     currentStrokeRef.current = { id, color: '#ef4444', width: 4, points: [p] }
     redraw()
@@ -2383,6 +2407,51 @@ export default function DiagramOverlayModule(props: {
 
     const p = toPoint(e)
     if (!p) return
+
+    const pending = pendingTouchRef.current
+    if (pending && pending.pointerId === e.pointerId) {
+      const panState = gridPanRef.current
+      if (panState.pointers.size >= 2 || panState.active) {
+        clearPendingTouch(e.pointerId)
+        return
+      }
+      const dt = Date.now() - pending.startTs
+      const dx = p.x - pending.startPoint.x
+      const dy = p.y - pending.startPoint.y
+      const distSq = dx * dx + dy * dy
+      const minMoveSq = 0.003 * 0.003
+      if (dt < 90 && distSq < minMoveSq) {
+        return
+      }
+
+      clearPendingTouch(e.pointerId)
+      if (pending.tool === 'eraser') {
+        drawingRef.current = true
+        beginToolGesture(diagramId, e.pointerId, pending.snapshot)
+        toolGestureMutatedRef.current = true
+        void eraseAt(diagramId, pending.startPoint)
+        void eraseAt(diagramId, p)
+        return
+      }
+
+      if (pending.tool === 'arrow') {
+        drawingRef.current = true
+        beginToolGesture(diagramId, e.pointerId, null)
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        currentArrowRef.current = { id, color: '#ef4444', width: 4, headSize: 12, start: pending.startPoint, end: p }
+        redraw()
+        return
+      }
+
+      if (pending.tool === 'pen') {
+        drawingRef.current = true
+        beginToolGesture(diagramId, e.pointerId, null)
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        currentStrokeRef.current = { id, color: '#ef4444', width: 4, points: [pending.startPoint, p] }
+        drawLiveStrokeSegment()
+        return
+      }
+    }
 
     if (cropMode) {
       const drag = cropDragRef.current
@@ -2465,6 +2534,7 @@ export default function DiagramOverlayModule(props: {
       const last = eraseThrottleRef.current
       if (last && now - last.lastTs < 40 && last.lastKey === key) return
       eraseThrottleRef.current = { lastTs: now, lastKey: key }
+      toolGestureMutatedRef.current = true
       void eraseAt(diagramId, p)
       return
     }
@@ -2491,6 +2561,10 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+    if (pendingTouchRef.current?.pointerId === e.pointerId) {
+      clearPendingTouch(e.pointerId)
+      return
+    }
     clearToolGesture(e.pointerId)
     if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
       const panState = gridPanRef.current
@@ -3428,6 +3502,18 @@ export default function DiagramOverlayModule(props: {
               const pt = mapClientToImageSpace(e.clientX, e.clientY)
               const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null
               setSelection(hit)
+              setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
+            }}
+          />
+        </div>
+        </div>
+        </FullScreenGlassOverlay>
+      ) : null}
+    </>
+  )
+}
+
+(DiagramOverlayModule as any).displayName = 'DiagramOverlayModule'
               setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
             }}
           />

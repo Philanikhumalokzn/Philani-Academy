@@ -927,6 +927,10 @@ export default function DiagramOverlayModule(props: {
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
   const currentArrowRef = useRef<DiagramArrow | null>(null)
+  const toolGestureSnapshotRef = useRef<DiagramAnnotations | null>(null)
+  const toolGestureDiagramIdRef = useRef<string | null>(null)
+  const toolGesturePointerIdRef = useRef<number | null>(null)
+  const toolGestureMutatedRef = useRef(false)
   const previewRef = useRef<null | { diagramId: string; annotations: DiagramAnnotations | null }>(null)
   const migratedDiagramIdsRef = useRef<Set<string>>(new Set())
 
@@ -2112,6 +2116,35 @@ export default function DiagramOverlayModule(props: {
     redraw()
   }, [persistAnnotations, publish, pushDiagramTimeline, redraw])
 
+  const beginToolGesture = useCallback((diagramId: string, pointerId: number, snapshot: DiagramAnnotations | null) => {
+    toolGestureDiagramIdRef.current = diagramId
+    toolGesturePointerIdRef.current = pointerId
+    toolGestureSnapshotRef.current = snapshot
+    toolGestureMutatedRef.current = false
+  }, [])
+
+  const clearToolGesture = useCallback((pointerId?: number | null) => {
+    if (pointerId != null && toolGesturePointerIdRef.current !== pointerId) return
+    toolGestureDiagramIdRef.current = null
+    toolGesturePointerIdRef.current = null
+    toolGestureSnapshotRef.current = null
+    toolGestureMutatedRef.current = false
+  }, [])
+
+  const cancelActiveToolGesture = useCallback(() => {
+    const diagramId = toolGestureDiagramIdRef.current
+    const snapshot = toolGestureSnapshotRef.current
+    if (diagramId && snapshot && toolGestureMutatedRef.current) {
+      applyAnnotations(diagramId, snapshot)
+    }
+    drawingRef.current = false
+    currentStrokeRef.current = null
+    currentArrowRef.current = null
+    previewRef.current = null
+    dragRef.current = null
+    clearToolGesture()
+  }, [applyAnnotations, clearToolGesture])
+
   const pushUndoSnapshot = useCallback((diagramId: string) => {
     try {
       const diag = diagramsRef.current.find(d => d.id === diagramId)
@@ -2458,6 +2491,7 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+    clearToolGesture(e.pointerId)
     if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
       const panState = gridPanRef.current
       const wasSuppressed = panState.suppressedPointers.has(e.pointerId)

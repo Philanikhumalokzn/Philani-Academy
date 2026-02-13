@@ -1097,6 +1097,45 @@ export default function DiagramOverlayModule(props: {
     return { width: `${sizePct}%`, height: `${sizePct}%`, ...gridBackgroundStyle }
   }, [gridBackgroundStyle, gridZoom, isGridDiagram])
 
+  const applyAnnotationsRef = useRef((diagramId: string, annotations: DiagramAnnotations) => {
+    void diagramId
+    void annotations
+  })
+
+  const beginToolGesture = useCallback((diagramId: string, pointerId: number, snapshot: DiagramAnnotations | null) => {
+    toolGestureDiagramIdRef.current = diagramId
+    toolGesturePointerIdRef.current = pointerId
+    toolGestureSnapshotRef.current = snapshot
+    toolGestureMutatedRef.current = false
+  }, [])
+
+  const clearToolGesture = useCallback((pointerId?: number | null) => {
+    if (pointerId != null && toolGesturePointerIdRef.current !== pointerId) return
+    toolGestureDiagramIdRef.current = null
+    toolGesturePointerIdRef.current = null
+    toolGestureSnapshotRef.current = null
+    toolGestureMutatedRef.current = false
+  }, [])
+
+  const cancelActiveToolGesture = useCallback(() => {
+    const diagramId = toolGestureDiagramIdRef.current
+    const snapshot = toolGestureSnapshotRef.current
+    if (diagramId && snapshot && toolGestureMutatedRef.current) {
+      applyAnnotationsRef.current(diagramId, snapshot)
+    }
+    drawingRef.current = false
+    currentStrokeRef.current = null
+    currentArrowRef.current = null
+    previewRef.current = null
+    dragRef.current = null
+    clearToolGesture()
+  }, [clearToolGesture])
+
+  const clearPendingTouch = useCallback((pointerId?: number | null) => {
+    if (pointerId != null && pendingTouchRef.current?.pointerId !== pointerId) return
+    pendingTouchRef.current = null
+  }, [])
+
   const isTouchLikePointer = useCallback((pointerType: string) => pointerType === 'touch' || pointerType === 'pen', [])
 
   const getGridMidpoint = useCallback((state: typeof gridPanRef.current) => {
@@ -2126,39 +2165,7 @@ export default function DiagramOverlayModule(props: {
     redraw()
   }, [persistAnnotations, publish, pushDiagramTimeline, redraw])
 
-  const beginToolGesture = useCallback((diagramId: string, pointerId: number, snapshot: DiagramAnnotations | null) => {
-    toolGestureDiagramIdRef.current = diagramId
-    toolGesturePointerIdRef.current = pointerId
-    toolGestureSnapshotRef.current = snapshot
-    toolGestureMutatedRef.current = false
-  }, [])
-
-  const clearToolGesture = useCallback((pointerId?: number | null) => {
-    if (pointerId != null && toolGesturePointerIdRef.current !== pointerId) return
-    toolGestureDiagramIdRef.current = null
-    toolGesturePointerIdRef.current = null
-    toolGestureSnapshotRef.current = null
-    toolGestureMutatedRef.current = false
-  }, [])
-
-  const cancelActiveToolGesture = useCallback(() => {
-    const diagramId = toolGestureDiagramIdRef.current
-    const snapshot = toolGestureSnapshotRef.current
-    if (diagramId && snapshot && toolGestureMutatedRef.current) {
-      applyAnnotations(diagramId, snapshot)
-    }
-    drawingRef.current = false
-    currentStrokeRef.current = null
-    currentArrowRef.current = null
-    previewRef.current = null
-    dragRef.current = null
-    clearToolGesture()
-  }, [applyAnnotations, clearToolGesture])
-
-  const clearPendingTouch = useCallback((pointerId?: number | null) => {
-    if (pointerId != null && pendingTouchRef.current?.pointerId !== pointerId) return
-    pendingTouchRef.current = null
-  }, [])
+  applyAnnotationsRef.current = applyAnnotations
 
   const shouldGateTouchStroke = useCallback((pointerType: string, activeTool: DiagramTool) => {
     if (!isGridDiagram) return false
@@ -3502,18 +3509,6 @@ export default function DiagramOverlayModule(props: {
               const pt = mapClientToImageSpace(e.clientX, e.clientY)
               const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null
               setSelection(hit)
-              setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
-            }}
-          />
-        </div>
-        </div>
-        </FullScreenGlassOverlay>
-      ) : null}
-    </>
-  )
-}
-
-(DiagramOverlayModule as any).displayName = 'DiagramOverlayModule'
               setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
             }}
           />

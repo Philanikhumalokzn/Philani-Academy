@@ -9706,6 +9706,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerUp = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
+      if (evt.type === 'pointercancel' && !evt.isTrusted) {
+        return
+      }
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
       if (state.pendingTouch?.pointerId === evt.pointerId) {
         state.pendingTouch = null

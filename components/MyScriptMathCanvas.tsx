@@ -1913,14 +1913,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
+    pendingTouch: null | { pointerId: number; startTs: number; startX: number; startY: number }
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
+    pendingTouch: null,
   })
-  // Debug-only: used to schedule a single undo after a pan ends.
-  const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
@@ -9611,7 +9611,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const handlePointerDown = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
       updatePointer(evt)
+
+      if (evt.pointerType === 'touch' && state.pointers.size === 1) {
+        state.pendingTouch = {
+          pointerId: evt.pointerId,
+          startTs: Date.now(),
+          startX: evt.clientX,
+          startY: evt.clientY,
+        }
+      }
+
       if (state.pointers.size >= 2) {
+        const pending = state.pendingTouch
+        if (pending && pending.pointerId !== evt.pointerId) {
+          const elapsed = Date.now() - pending.startTs
+          if (elapsed <= 180 && !lockedOutRef.current && editorInstanceRef.current) {
+            try {
+              editorInstanceRef.current?.undo?.()
+            } catch {}
+          }
+          state.pendingTouch = null
+        }
         beginGestureIfReady()
         state.suppressedPointers.add(evt.pointerId)
         suppressEvent(evt)
@@ -9623,6 +9643,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const handlePointerMove = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
       updatePointer(evt)
+
+      const pending = state.pendingTouch
+      if (pending && pending.pointerId === evt.pointerId) {
+        const dt = Date.now() - pending.startTs
+        const dx = evt.clientX - pending.startX
+        const dy = evt.clientY - pending.startY
+        const distSq = dx * dx + dy * dy
+        if (dt > 120 || distSq > 64) {
+          state.pendingTouch = null
+        }
+      }
 
       if (state.active && state.pointers.size >= 2) {
         const mid = getMid()
@@ -9654,35 +9685,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerUp = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
-      const hadPan = state.active || state.suppressedPointers.size > 0
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      if (state.pendingTouch?.pointerId === evt.pointerId) {
+        state.pendingTouch = null
+      }
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
       endGestureIfNeeded()
-      const gestureEnded = hadPan && !state.active && state.pointers.size === 0
-
-      // Once the two-finger gesture is fully over (no active pointers
-      // left), schedule a single debug undo after a short delay so we
-      // can observe what stroke MyScript considers "latest" in this
-      // scenario.
-      if (gestureEnded) {
-        const UNDO_DELAY_MS = 250
-        if (debugPanUndoTimeoutRef.current) {
-          clearTimeout(debugPanUndoTimeoutRef.current)
-          debugPanUndoTimeoutRef.current = null
-        }
-        const shouldUndo = !lockedOutRef.current
-        if (shouldUndo && editorInstanceRef.current) {
-          try {
-            debugPanUndoTimeoutRef.current = setTimeout(() => {
-              try {
-                editorInstanceRef.current?.undo?.()
-              } catch {}
-              debugPanUndoTimeoutRef.current = null
-            }, UNDO_DELAY_MS)
-          } catch {}
-        }
-      }
 
       if (state.active || wasSuppressed) {
         suppressEvent(evt)
@@ -9699,6 +9708,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       viewport.removeEventListener('pointermove', handlePointerMove as any, true)
       window.removeEventListener('pointerup', handlePointerUp as any, true)
       window.removeEventListener('pointercancel', handlePointerUp as any, true)
+      state.pointers.clear()
+      state.suppressedPointers.clear()
+      state.active = false
+      state.lastMid = null
+      state.pendingTouch = null
     }
   }, [multiTouchPanRef, studentViewportRef, useStackedStudentLayout])
 

@@ -9566,6 +9566,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!viewport) return
 
     const state = multiTouchPanRef.current
+    const editorHost = editorHostRef.current
 
     const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
 
@@ -9584,6 +9585,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const suppressEvent = (evt: PointerEvent) => {
       if (evt.cancelable) evt.preventDefault()
       evt.stopImmediatePropagation()
+    }
+
+    const cancelPendingTouchStroke = (pending: { pointerId: number; startTs: number; startX: number; startY: number }) => {
+      const targets: EventTarget[] = []
+      if (viewport) targets.push(viewport)
+      if (editorHost && editorHost !== viewport) targets.push(editorHost)
+
+      for (const target of targets) {
+        try {
+          const cancelEvt = new PointerEvent('pointercancel', {
+            pointerId: pending.pointerId,
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX: pending.startX,
+            clientY: pending.startY,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          })
+          target.dispatchEvent(cancelEvt)
+        } catch {}
+      }
     }
 
     const beginGestureIfReady = () => {
@@ -9625,10 +9648,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const pending = state.pendingTouch
         if (pending && pending.pointerId !== evt.pointerId) {
           const elapsed = Date.now() - pending.startTs
-          if (elapsed <= 180 && !lockedOutRef.current && editorInstanceRef.current) {
-            try {
-              editorInstanceRef.current?.undo?.()
-            } catch {}
+          if (elapsed <= 180) {
+            cancelPendingTouchStroke(pending)
           }
           state.pendingTouch = null
         }

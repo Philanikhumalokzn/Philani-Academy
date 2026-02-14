@@ -10462,40 +10462,40 @@ export default function Dashboard() {
       )}
 
       {lessonAuthoringDiagramOverlay && (
-        <FullScreenGlassOverlay
-          title="Diagram editor"
-          subtitle="Lesson authoring"
-          onClose={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
-          onBackdropClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
-          zIndexClassName="z-[110]"
-          showCloseButton={false}
-          panelClassName="bg-transparent border-0 shadow-none"
-          contentClassName="p-0 overflow-hidden"
-          rightActions={(
-            <button
-              type="button"
-              className="live-call-overlay__close"
-              onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
-              aria-label="Close diagram editor"
-            >
-              ×
-            </button>
-          )}
-        >
-          <div className="relative h-full min-h-0">
-            <DiagramOverlayModule
-              boardId={lessonAuthoringDiagramOverlay.boardId}
-              gradeLabel={null}
-              userId={realtimeUserId}
-              userDisplayName={realtimeDisplayName}
-              isAdmin={isTeacherOrAdminUser}
-              lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
-              autoOpen
-              onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}
-              closeSignal={lessonAuthoringDiagramCloseSignal}
-            />
+        <div className="live-call-overlay live-call-overlay--canvas-open live-call-overlay--diagram-open" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="live-call-overlay__backdrop"
+            onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
+            aria-label="Close diagram editor"
+          />
+          <div className="live-call-overlay__panel">
+            <div className="live-call-overlay__video relative">
+              <DiagramOverlayModule
+                boardId={lessonAuthoringDiagramOverlay.boardId}
+                gradeLabel={null}
+                userId={realtimeUserId}
+                userDisplayName={realtimeDisplayName}
+                isAdmin={isTeacherOrAdminUser}
+                lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
+                autoOpen
+                onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}
+                closeSignal={lessonAuthoringDiagramCloseSignal}
+              />
+
+              <div className="live-call-overlay__floating-actions">
+                <button
+                  type="button"
+                  className="live-call-overlay__close"
+                  onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
+                  aria-label="Close diagram editor"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
           </div>
-        </FullScreenGlassOverlay>
+        </div>
       )}
 
       {challengeGradingOverlayOpen && selectedChallengeId && (

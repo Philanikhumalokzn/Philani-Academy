@@ -1118,6 +1118,11 @@ td{color:#f8fafc;}
 .live-call-overlay__video{flex:1;background:#010b2d;border-radius:24px;overflow:hidden;position:relative;box-shadow:inset 0 0 35px rgba(0,0,0,0.4);min-height:0;}
 .live-call-overlay__video iframe{width:100%;height:100%;}
 .live-call-overlay__placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.75rem;padding:2rem;text-align:center;}
+.live-call-overlay--canvas-open{align-items:stretch;justify-content:stretch;}
+.live-call-overlay--canvas-open .live-call-overlay__panel{width:100vw;max-width:none;height:100vh;height:100dvh;padding:0;border-radius:0;border:none;}
+.live-call-overlay--canvas-open .live-call-overlay__panel::before{display:none;}
+.live-call-overlay--canvas-open .live-call-overlay__video{border-radius:0;box-shadow:none;}
+.live-call-overlay--diagram-open .live-call-overlay__floating-actions{top:calc(12px + var(--app-safe-top));right:12px;}
 .live-call-overlay__status{display:flex;align-items:center;gap:0.75rem;font-size:0.9rem;background:rgba(0,0,0,0.25);padding:0.8rem 1rem;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,0.25);}
 .live-call-overlay__status-indicator{width:12px;height:12px;border-radius:50%;background:#22c55e;box-shadow:0 0 12px rgba(34,197,94,0.8);}
 .live-overlay-stage{position:absolute;inset:0;padding:0;pointer-events:none;z-index:5;}
@@ -1209,6 +1214,8 @@ td{color:#f8fafc;}
   .live-call-overlay__panel{width:100vw;height:min(92vh,100dvh);padding:0.85rem 0.85rem 0.95rem;border-radius:24px 24px 0 0;border:none;}
   .live-call-overlay__video{border-radius:16px;box-shadow:none;}
   .live-call-overlay__floating-actions{top:10px;right:10px;gap:0.5rem;}
+  .live-call-overlay--canvas-open .live-call-overlay__panel{width:100vw;max-width:none;height:100vh;height:100dvh;padding:0;border-radius:0;border:none;}
+  .live-call-overlay--canvas-open .live-call-overlay__video{border-radius:0;box-shadow:none;}
   .live-call-overlay--canvas-open:not(.live-call-overlay--chrome-visible) .live-call-overlay__floating-actions{opacity:0;pointer-events:none;}
   .live-call-overlay--canvas-open.live-call-overlay--chrome-visible .live-call-overlay__floating-actions{opacity:1;pointer-events:auto;}
   .live-call-overlay--canvas-open.live-call-overlay--chrome-visible .live-call-overlay__floating-actions{right:184px;}

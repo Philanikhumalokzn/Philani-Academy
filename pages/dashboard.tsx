@@ -3465,7 +3465,7 @@ export default function Dashboard() {
   )
 
   const renderTimelineCard = () => (
-    <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+    <section className="space-y-3 p-4">
       <div className="flex items-center justify-between gap-3">
         <div />
         <div className="flex items-center gap-2">
@@ -3504,7 +3504,7 @@ export default function Dashboard() {
     const adminSections = availableSections.filter(s => s.id !== 'overview')
 
     return (
-      <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <section className="space-y-3 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="font-semibold text-white">Admin tools</div>
           <button
@@ -3751,7 +3751,7 @@ export default function Dashboard() {
           })()}
         >
           <div ref={currentLessonCardRef}>
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <div className="p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold text-white">Current lesson</div>
                 {sessionRole === 'admin' || sessionRole === 'teacher' ? (
@@ -3911,7 +3911,7 @@ export default function Dashboard() {
         </div>
 
           <div className="space-y-3">
-            <div className="rounded-3xl border border-white/15 bg-gradient-to-br from-blue-500/10 via-white/5 to-white/5 p-4 shadow-[0_0_30px_rgba(59,130,246,0.18)]">
+            <div className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.2em] text-blue-200/70">Posts</div>
@@ -3977,7 +3977,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <div className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-semibold text-white">Feed</div>

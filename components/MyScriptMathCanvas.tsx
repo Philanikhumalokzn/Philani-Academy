@@ -1921,6 +1921,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     suppressedPointers: new Set(),
     pendingTouch: null,
   })
+  // Debug-only: used to schedule a single undo after a pan ends.
+  const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useOverlayRestore } from '../lib/overlayRestore'
 
 let bodyScrollLockCount = 0
@@ -22,7 +22,6 @@ export type FullScreenGlassOverlayProps = {
 
   variant?: 'dark' | 'light'
   position?: 'fixed' | 'absolute'
-  showCloseButton?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -47,7 +46,6 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     variant,
     position,
     panelSize,
-    showCloseButton,
     leftActions,
     rightActions,
     className,
@@ -56,7 +54,15 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     children
   } = props
 
-  const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+  const [dragOffsetY, setDragOffsetY] = useState(0)
+  const [isSettling, setIsSettling] = useState(false)
+  const dragStateRef = useRef<null | {
+    pointerId: number
+    startY: number
+    lastY: number
+    lastAt: number
+    velocityY: number
+  }>(null)
   const { popRestore } = useOverlayRestore()
 
   useEffect(() => {
@@ -117,17 +123,10 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closeDisabled, handleRequestClose])
 
-  useEffect(() => {
-    // Focus the close button for accessibility.
-    // Use rAF to ensure it exists after render.
-    const raf = requestAnimationFrame(() => closeBtnRef.current?.focus())
-    return () => cancelAnimationFrame(raf)
-  }, [])
-
   const overlayVariant = variant || 'dark'
   const rootPosition = position || 'fixed'
-  const shouldShowCloseButton = showCloseButton !== undefined ? showCloseButton : true
   const panelSizing = panelSize || 'auto'
+  const canSwipeDownClose = rootPosition === 'fixed' && panelSizing !== 'full' && !closeDisabled
 
   const headerClassName = overlayVariant === 'light'
     ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-start justify-between gap-3 bg-white/70'
@@ -145,10 +144,6 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'shrink-0 flex items-center gap-2 text-slate-700'
     : 'shrink-0 flex items-center gap-2'
 
-  const closeBtnClassName = overlayVariant === 'light'
-    ? 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-    : 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white'
-
   const defaultPanelClassName = overlayVariant === 'light'
     ? 'border border-slate-200/60 bg-white/95 shadow-2xl'
     : 'border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl'
@@ -160,6 +155,77 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const contentClassBase = panelSizing === 'full'
     ? 'flex-1 min-h-0 overflow-y-auto p-3 sm:p-5'
     : 'overflow-y-auto p-3 sm:p-5'
+
+  const stopDrag = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.removeEventListener('pointermove', onDragMove)
+    window.removeEventListener('pointerup', onDragEnd)
+    window.removeEventListener('pointercancel', onDragEnd)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const settleTo = useCallback((nextOffset: number, after?: () => void) => {
+    setIsSettling(true)
+    setDragOffsetY(nextOffset)
+    window.setTimeout(() => {
+      setIsSettling(false)
+      if (after) after()
+    }, 170)
+  }, [])
+
+  const onDragMove = useCallback((event: PointerEvent) => {
+    const drag = dragStateRef.current
+    if (!drag) return
+    if (event.pointerId !== drag.pointerId) return
+    const now = performance.now()
+    const dyFromStart = Math.max(0, event.clientY - drag.startY)
+    const dyStep = event.clientY - drag.lastY
+    const dt = Math.max(1, now - drag.lastAt)
+    drag.velocityY = dyStep / dt
+    drag.lastY = event.clientY
+    drag.lastAt = now
+    setDragOffsetY(dyFromStart)
+  }, [])
+
+  const onDragEnd = useCallback((event: PointerEvent) => {
+    const drag = dragStateRef.current
+    if (!drag) return
+    if (event.pointerId !== drag.pointerId) return
+    dragStateRef.current = null
+    stopDrag()
+
+    const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
+    const closeDistance = Math.min(180, Math.max(84, viewportH * 0.18))
+    const fastSwipe = drag.velocityY > 0.8
+    const shouldClose = dragOffsetY >= closeDistance || fastSwipe
+
+    if (shouldClose) {
+      settleTo(viewportH, handleRequestClose)
+      return
+    }
+    settleTo(0)
+  }, [dragOffsetY, handleRequestClose, settleTo, stopDrag])
+
+  const onThumbPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!canSwipeDownClose) return
+    if (event.button !== 0) return
+    event.preventDefault()
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      lastY: event.clientY,
+      lastAt: performance.now(),
+      velocityY: 0,
+    }
+    setIsSettling(false)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointermove', onDragMove, { passive: true })
+      window.addEventListener('pointerup', onDragEnd)
+      window.addEventListener('pointercancel', onDragEnd)
+    }
+  }, [canSwipeDownClose, onDragEnd, onDragMove])
+
+  useEffect(() => () => stopDrag(), [stopDrag])
 
   return (
     <div
@@ -180,8 +246,19 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
         <div
           className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
+          style={canSwipeDownClose
+            ? {
+                transform: `translateY(${dragOffsetY}px)`,
+                transition: isSettling ? 'transform 170ms ease-out' : 'none',
+                willChange: 'transform',
+              }
+            : undefined}
         >
-          <div className="pt-2 pb-1 flex items-center justify-center">
+          <div
+            className="pt-2 pb-1 flex items-center justify-center touch-none"
+            onPointerDown={onThumbPointerDown}
+            aria-label="Drag down to close"
+          >
             <div className={overlayVariant === 'light' ? 'h-1.5 w-12 rounded-full bg-slate-300/90' : 'h-1.5 w-12 rounded-full bg-white/35'} />
           </div>
 
@@ -197,26 +274,6 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
 
             <div className={actionSlotClassName}>
               {rightActions}
-              {shouldShowCloseButton ? (
-                <button
-                  ref={closeBtnRef}
-                  type="button"
-                  className={closeBtnClassName}
-                  onClick={handleRequestClose}
-                  disabled={closeDisabled}
-                  aria-label="Close"
-                  title="Close"
-                >
-                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                    <path
-                      d="M6 6l8 8M14 6l-8 8"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              ) : null}
             </div>
           </div>
 

@@ -4204,7 +4204,13 @@ export default function Dashboard() {
       return Boolean(target.closest('[role="dialog"]'))
     }
 
+    const hasAnyDialogOpen = () => {
+      if (typeof document === 'undefined') return false
+      return Boolean(document.querySelector('[role="dialog"]'))
+    }
+
     const canStart = (target?: EventTarget | null) => {
+      if (hasAnyDialogOpen()) return false
       if (topStackOverlayOpen || liveOverlayOpen) return false
       if (isInsideDialog(target ?? null)) return false
       return window.scrollY <= 0

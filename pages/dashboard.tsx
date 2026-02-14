@@ -9265,13 +9265,41 @@ export default function Dashboard() {
       {isMobile && isCapacitorWrappedApp && (pullRefreshActive || pullRefreshLoading) && (
         <div className="fixed inset-x-0 top-2 z-[75] flex justify-center pointer-events-none">
           <div
-            className="rounded-full border border-white/20 bg-[#031641]/85 backdrop-blur px-3 py-1 text-xs text-white/90"
+            className="rounded-full border border-white/20 bg-[#031641]/85 backdrop-blur p-2 text-white/90"
             style={{
               transform: `translateY(${Math.max(0, pullRefreshOffset - 18)}px)`,
               opacity: pullRefreshLoading ? 1 : Math.min(1, pullRefreshOffset / 64),
             }}
+            aria-label="Pull to refresh"
           >
-            {pullRefreshLoading ? 'Refreshing…' : pullRefreshOffset >= 84 ? 'Release to refresh' : 'Pull to refresh'}
+            <svg
+              viewBox="0 0 24 24"
+              className={`h-5 w-5 ${pullRefreshLoading ? 'animate-spin' : ''}`}
+              style={{
+                transform: pullRefreshLoading
+                  ? undefined
+                  : `rotate(${Math.min(300, Math.max(0, (pullRefreshOffset / 84) * 300))}deg)`,
+                transition: pullRefreshLoading ? undefined : 'transform 90ms linear',
+              }}
+              aria-hidden="true"
+            >
+              <path
+                d="M20 12a8 8 0 1 1-2.34-5.66"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M20 4v6h-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </div>
         </div>
       )}

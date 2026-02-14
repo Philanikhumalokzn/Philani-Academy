@@ -155,8 +155,12 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     : 'w-full max-h-[92vh]'
 
   const contentClassBase = panelSizing === 'full'
-    ? 'flex-1 min-h-0 overflow-y-auto p-3 sm:p-5'
-    : 'overflow-y-auto p-3 sm:p-5'
+    ? 'flex-1 min-h-0 overflow-y-auto pt-3 px-3 pb-[calc(0.75rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(1.25rem+var(--app-safe-bottom))]'
+    : 'overflow-y-auto pt-3 px-3 pb-[calc(0.75rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(1.25rem+var(--app-safe-bottom))]'
+
+  const frameSafeAreaStyle = rootPosition === 'fixed'
+    ? { paddingBottom: 'var(--app-safe-bottom)' }
+    : undefined
 
   const stopDrag = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -244,6 +248,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
       <div
         className={frameClassName || 'absolute inset-0 flex items-end justify-center p-0 sm:p-4'}
         onClick={handleBackdropClick}
+        style={frameSafeAreaStyle}
       >
         <div
           className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}

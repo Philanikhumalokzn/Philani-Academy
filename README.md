@@ -42,6 +42,9 @@ Notes
 - When deploying to Vercel, create a Blob store and expose the `BLOB_READ_WRITE_TOKEN` environment variable so lesson material uploads work. Without it the API falls back to writing into `public/materials`, which only functions during local development.
 - PayFast onsite subscription setup is documented in `docs/PAYFAST_ONSITE.md`. Follow it when enabling inline payments.
 - Mathpix backup handwriting recognition requires `MATHPIX_APP_ID` and `MATHPIX_APP_KEY` on the server (used by `POST /api/mathpix/strokes`).
+- Build note: Next.js 16 currently emits a persistent `baseline-browser-mapping` staleness warning from its compiled `browserslist` bundle even when `baseline-browser-mapping` is up to date.
+- This repo includes `scripts/silence_baseline_warning.js` and runs it automatically via `postinstall` and `npm run build` (`silence:baseline-warning`) to keep CI and local build logs clean.
+- If you upgrade Next.js and the warning behavior changes, re-check whether this patch is still needed.
 
 Email & phone verification
 - Signups and admin-invited users now receive a 6-digit email verification code. Learners confirm it on `/verify-email`, which posts to `POST /api/auth/verify-email`.

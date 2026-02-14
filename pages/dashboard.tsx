@@ -925,8 +925,7 @@ export default function Dashboard() {
     Boolean(liveOverlayOpen) ||
     Boolean(lessonAuthoringDiagramOverlay) ||
     Boolean(createLessonOverlayOpen) ||
-    Boolean(liveLessonSelectorOverlayOpen) ||
-    Boolean(sessionDetailsOpen)
+    Boolean(liveLessonSelectorOverlayOpen)
 
   const sessionDetailsHiddenByChildOverlay = assignmentOverlayOpen || assignmentQuestionOverlayOpen
 
@@ -9472,8 +9471,8 @@ export default function Dashboard() {
                   title="Announcements"
                   onClose={closeMobileAnnouncements}
                   onBackdropClick={closeMobileAnnouncements}
-                  zIndexClassName="z-50 md:hidden"
-                  className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                  zIndexClassName="z-50"
+                  className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
                   panelClassName="rounded-3xl bg-[#06184a]"
                   contentClassName="p-0"
                 >
@@ -10276,8 +10275,8 @@ export default function Dashboard() {
           }
           onClose={closeStudentQuickOverlay}
           onBackdropClick={closeStudentQuickOverlay}
-          zIndexClassName="z-50 md:hidden"
-          className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          zIndexClassName="z-50"
+          className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           <div className="space-y-3">
             {studentQuickOverlay === 'timeline'
@@ -10306,8 +10305,8 @@ export default function Dashboard() {
           title="Sessions"
           onClose={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
           onBackdropClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
-          zIndexClassName="z-50 md:hidden"
-          className={`md:hidden transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          zIndexClassName="z-50"
+          className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           {renderSessionsSection()}
         </FullScreenGlassOverlay>
@@ -10463,37 +10462,40 @@ export default function Dashboard() {
       )}
 
       {lessonAuthoringDiagramOverlay && (
-        <div className="live-call-overlay live-call-overlay--dim-backdrop" role="dialog" aria-modal="true">
-          <div
-            className="live-call-overlay__backdrop"
-            onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
-          />
-          <div className="live-call-overlay__panel">
-            <div className="live-call-overlay__video relative">
-              <DiagramOverlayModule
-                boardId={lessonAuthoringDiagramOverlay.boardId}
-                gradeLabel={null}
-                userId={realtimeUserId}
-                userDisplayName={realtimeDisplayName}
-                isAdmin={isTeacherOrAdminUser}
-                lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
-                autoOpen
-                onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}
-                closeSignal={lessonAuthoringDiagramCloseSignal}
-              />
-              <div className="live-call-overlay__floating-actions">
-                <button
-                  type="button"
-                  className="live-call-overlay__close"
-                  onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
-                  aria-label="Close diagram editor"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
+        <FullScreenGlassOverlay
+          title="Diagram editor"
+          subtitle="Lesson authoring"
+          onClose={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
+          onBackdropClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
+          zIndexClassName="z-[110]"
+          showCloseButton={false}
+          panelClassName="bg-transparent border-0 shadow-none"
+          contentClassName="p-0 overflow-hidden"
+          rightActions={(
+            <button
+              type="button"
+              className="live-call-overlay__close"
+              onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
+              aria-label="Close diagram editor"
+            >
+              ×
+            </button>
+          )}
+        >
+          <div className="relative h-full min-h-0">
+            <DiagramOverlayModule
+              boardId={lessonAuthoringDiagramOverlay.boardId}
+              gradeLabel={null}
+              userId={realtimeUserId}
+              userDisplayName={realtimeDisplayName}
+              isAdmin={isTeacherOrAdminUser}
+              lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
+              autoOpen
+              onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}
+              closeSignal={lessonAuthoringDiagramCloseSignal}
+            />
           </div>
-        </div>
+        </FullScreenGlassOverlay>
       )}
 
       {challengeGradingOverlayOpen && selectedChallengeId && (

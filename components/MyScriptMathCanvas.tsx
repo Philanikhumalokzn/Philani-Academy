@@ -7,8 +7,6 @@ import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
-  // Debug-only: used to schedule a single undo after a pan ends.
-  const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 function renderTextWithInlineKatex(inputRaw: string) {
   const input = typeof inputRaw === 'string' ? inputRaw : ''

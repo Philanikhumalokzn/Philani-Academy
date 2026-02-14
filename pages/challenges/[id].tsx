@@ -1146,7 +1146,7 @@ export default function ChallengeAttemptPage() {
             <OverlayPortal>
               <div
                 ref={imageViewerRootRef}
-                className="fixed inset-0 z-[10050] flex items-center justify-center"
+                className="fixed inset-0 z-[10050] flex items-end justify-center"
                 role="dialog"
                 aria-modal="true"
                 aria-label="Challenge image viewer"
@@ -1194,7 +1194,7 @@ export default function ChallengeAttemptPage() {
                 </button>
 
                 <div
-                  className="relative z-[10055] max-w-[100vw] max-h-[100vh] flex items-center justify-center"
+                  className="relative z-[10055] mt-auto h-[min(92vh,100dvh)] w-full max-w-[1100px] rounded-t-[24px] border border-white/10 bg-black/70 backdrop-blur-xl flex items-center justify-center"
                   onPointerDown={(e) => {
                     const root = imageViewerRootRef.current
                     const rect = root?.getBoundingClientRect()
@@ -1353,6 +1353,7 @@ export default function ChallengeAttemptPage() {
                     }
                   }}
                 >
+                  <div className="pointer-events-none absolute left-1/2 top-2 z-[10056] h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/60" aria-hidden="true" />
                   <div
                     style={{
                       transform: `translate3d(${imageViewerTx}px, ${imageViewerTy}px, 0) scale(${imageViewerScale})`,

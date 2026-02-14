@@ -561,7 +561,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   return (
     <div
-      className="fixed inset-0 z-50"
+      className="fixed inset-0 z-50 flex items-end justify-center"
       role="dialog"
       aria-modal="true"
       onPointerMove={kickChromeAutoHide}
@@ -571,11 +571,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     >
       <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={onClose} />
 
-      <div className="absolute inset-0" onClick={onClose}>
+      <div className="relative z-10 mt-auto h-[min(92vh,100dvh)] w-full max-w-[1200px]" onClick={onClose}>
         <div
-          className="relative h-full w-full overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
+          className="relative h-full w-full overflow-hidden rounded-t-[24px] border border-white/10 bg-white/10 backdrop-blur-xl"
           onClick={(e) => e.stopPropagation()}
         >
+          <div className="pointer-events-none absolute left-1/2 top-2 z-30 h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/60" aria-hidden="true" />
+
           <div
             className={`absolute left-3 right-3 top-3 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-center transition-opacity duration-200 ${chromeClassName} pointer-events-none`}
             aria-hidden={!chromeVisible}

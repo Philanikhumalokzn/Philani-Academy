@@ -4199,14 +4199,20 @@ export default function Dashboard() {
       setPullRefreshActive(false)
     }
 
-    const canStart = () => {
+    const isInsideDialog = (target: EventTarget | null) => {
+      if (!target || !(target instanceof Element)) return false
+      return Boolean(target.closest('[role="dialog"]'))
+    }
+
+    const canStart = (target?: EventTarget | null) => {
       if (topStackOverlayOpen || liveOverlayOpen) return false
+      if (isInsideDialog(target ?? null)) return false
       return window.scrollY <= 0
     }
 
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) return
-      if (!canStart()) return
+      if (!canStart(event.target)) return
       tracking = true
       armed = false
       startY = event.touches[0].clientY

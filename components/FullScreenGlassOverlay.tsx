@@ -127,7 +127,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const overlayVariant = variant || 'dark'
   const rootPosition = position || 'fixed'
   const shouldShowCloseButton = showCloseButton !== undefined ? showCloseButton : true
-  const panelSizing = panelSize || 'full'
+  const panelSizing = panelSize || 'auto'
 
   const headerClassName = overlayVariant === 'light'
     ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-start justify-between gap-3 bg-white/70'
@@ -156,6 +156,10 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const panelSizeClassName = panelSizing === 'full'
     ? 'w-full h-[92vh]'
     : 'w-full max-h-[92vh]'
+
+  const contentClassBase = panelSizing === 'full'
+    ? 'flex-1 min-h-0 overflow-y-auto p-3 sm:p-5'
+    : 'overflow-y-auto p-3 sm:p-5'
 
   return (
     <div
@@ -216,7 +220,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
             </div>
           </div>
 
-          <div className={`flex-1 overflow-y-auto p-3 sm:p-5 ${contentClassName || ''}`}>{children}</div>
+          <div className={`${contentClassBase} ${contentClassName || ''}`}>{children}</div>
         </div>
       </div>
     </div>

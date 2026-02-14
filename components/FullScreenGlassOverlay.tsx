@@ -22,6 +22,7 @@ export type FullScreenGlassOverlayProps = {
 
   variant?: 'dark' | 'light'
   position?: 'fixed' | 'absolute'
+  showCloseButton?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -46,6 +47,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     variant,
     position,
     panelSize,
+    showCloseButton: _showCloseButton,
     leftActions,
     rightActions,
     className,

@@ -328,6 +328,10 @@ export default function Dashboard() {
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const dashboardMainRef = useRef<HTMLElement | null>(null)
+  const [pullRefreshOffset, setPullRefreshOffset] = useState(0)
+  const [pullRefreshActive, setPullRefreshActive] = useState(false)
+  const [pullRefreshLoading, setPullRefreshLoading] = useState(false)
   const currentLessonCardRef = useRef<HTMLDivElement | null>(null)
   const [currentLessonCardNaturalHeight, setCurrentLessonCardNaturalHeight] = useState(0)
   const currentLessonCardNaturalHeightRef = useRef(0)
@@ -926,6 +930,17 @@ export default function Dashboard() {
     Boolean(lessonAuthoringDiagramOverlay) ||
     Boolean(createLessonOverlayOpen) ||
     Boolean(liveLessonSelectorOverlayOpen)
+
+  const isCapacitorWrappedApp = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const cap = (window as any)?.Capacitor
+    try {
+      if (typeof cap?.isNativePlatform === 'function') return Boolean(cap.isNativePlatform())
+    } catch {
+      // ignore runtime detection errors
+    }
+    return Boolean(cap?.isNative)
+  }, [])
 
   const sessionDetailsHiddenByChildOverlay = assignmentOverlayOpen || assignmentQuestionOverlayOpen
 
@@ -4163,6 +4178,94 @@ export default function Dashboard() {
     window.addEventListener('resize', updateViewport)
     return () => window.removeEventListener('resize', updateViewport)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isMobile || !isCapacitorWrappedApp) return
+    if (pullRefreshLoading) return
+
+    const root = dashboardMainRef.current
+    if (!root) return
+
+    const THRESHOLD = 84
+    const MAX_PULL = 132
+    let tracking = false
+    let startY = 0
+    let armed = false
+
+    const resetPull = () => {
+      armed = false
+      setPullRefreshOffset(0)
+      setPullRefreshActive(false)
+    }
+
+    const canStart = () => {
+      if (topStackOverlayOpen || liveOverlayOpen) return false
+      return window.scrollY <= 0
+    }
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return
+      if (!canStart()) return
+      tracking = true
+      armed = false
+      startY = event.touches[0].clientY
+      setPullRefreshActive(true)
+      setPullRefreshOffset(0)
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (!tracking) return
+      if (!canStart()) {
+        tracking = false
+        resetPull()
+        return
+      }
+      const currentY = event.touches[0]?.clientY ?? startY
+      const deltaY = currentY - startY
+
+      if (deltaY <= 0) {
+        setPullRefreshOffset(0)
+        armed = false
+        return
+      }
+
+      const damped = Math.min(MAX_PULL, deltaY * 0.52)
+      setPullRefreshOffset(damped)
+      armed = damped >= THRESHOLD
+
+      if (deltaY > 4) event.preventDefault()
+    }
+
+    const endGesture = () => {
+      if (!tracking) return
+      tracking = false
+      const shouldRefresh = armed
+      resetPull()
+      if (!shouldRefresh) return
+
+      setPullRefreshLoading(true)
+      window.setTimeout(() => {
+        try {
+          window.location.reload()
+        } catch {
+          setPullRefreshLoading(false)
+        }
+      }, 60)
+    }
+
+    root.addEventListener('touchstart', onTouchStart, { passive: true })
+    root.addEventListener('touchmove', onTouchMove, { passive: false })
+    root.addEventListener('touchend', endGesture, { passive: true })
+    root.addEventListener('touchcancel', endGesture, { passive: true })
+
+    return () => {
+      root.removeEventListener('touchstart', onTouchStart)
+      root.removeEventListener('touchmove', onTouchMove)
+      root.removeEventListener('touchend', endGesture)
+      root.removeEventListener('touchcancel', endGesture)
+    }
+  }, [isMobile, isCapacitorWrappedApp, liveOverlayOpen, pullRefreshLoading, topStackOverlayOpen])
 
   const updateGradeSelection = (grade: GradeValue) => {
     if (selectedGrade === grade) return
@@ -9152,12 +9255,26 @@ export default function Dashboard() {
   return (
     <>
       <main
+        ref={dashboardMainRef}
         className={
           isMobile
             ? 'mobile-dashboard-theme relative text-white overflow-x-hidden min-h-[100dvh]'
             : 'deep-page min-h-screen pb-16'
         }
       >
+      {isMobile && isCapacitorWrappedApp && (pullRefreshActive || pullRefreshLoading) && (
+        <div className="fixed inset-x-0 top-2 z-[75] flex justify-center pointer-events-none">
+          <div
+            className="rounded-full border border-white/20 bg-[#031641]/85 backdrop-blur px-3 py-1 text-xs text-white/90"
+            style={{
+              transform: `translateY(${Math.max(0, pullRefreshOffset - 18)}px)`,
+              opacity: pullRefreshLoading ? 1 : Math.min(1, pullRefreshOffset / 64),
+            }}
+          >
+            {pullRefreshLoading ? 'Refreshing…' : pullRefreshOffset >= 84 ? 'Release to refresh' : 'Pull to refresh'}
+          </div>
+        </div>
+      )}
       <input
         ref={diagramUploadInputRef}
         type="file"

@@ -153,7 +153,9 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'border border-slate-200/60 bg-white/95 shadow-2xl'
     : 'border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl'
 
-  const panelSizeClassName = panelSizing === 'full' ? 'h-full w-full' : ''
+  const panelSizeClassName = panelSizing === 'full'
+    ? 'w-full h-[92vh]'
+    : 'w-full max-h-[92vh]'
 
   return (
     <div
@@ -168,13 +170,17 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
       />
 
       <div
-        className={frameClassName || 'absolute inset-0 p-2 sm:p-6'}
+        className={frameClassName || 'absolute inset-0 flex items-end justify-center p-0 sm:p-4'}
         onClick={handleBackdropClick}
       >
         <div
-          className={`overflow-hidden rounded-2xl flex flex-col ${panelSizeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
+          className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
         >
+          <div className="pt-2 pb-1 flex items-center justify-center">
+            <div className={overlayVariant === 'light' ? 'h-1.5 w-12 rounded-full bg-slate-300/90' : 'h-1.5 w-12 rounded-full bg-white/35'} />
+          </div>
+
           <div className={headerClassName}>
             <div className={actionSlotClassName}>
               {leftActions}

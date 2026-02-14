@@ -3901,26 +3901,27 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-semibold text-white">Past lessons</div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost text-xs"
-                    onClick={() => openPastSessionsList(pastSessionIds)}
-                    disabled={pastSessionIds.length === 0}
-                  >
-                    Open
-                  </button>
-                </div>
-                {pastSessionIds.length === 0 ? (
-                  <div className="text-sm text-white/70">No past lessons yet.</div>
-                ) : (
-                  <div className="text-sm text-white/70">
-                    {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
-                  </div>
-                )}
+            </div>
+
+            <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-white">Past lessons</div>
+                <button
+                  type="button"
+                  className="btn btn-ghost text-xs"
+                  onClick={() => openPastSessionsList(pastSessionIds)}
+                  disabled={pastSessionIds.length === 0}
+                >
+                  Open
+                </button>
               </div>
+              {pastSessionIds.length === 0 ? (
+                <div className="mt-2 text-sm text-white/70">No past lessons yet.</div>
+              ) : (
+                <div className="mt-2 text-sm text-white/70">
+                  {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -3929,8 +3930,8 @@ export default function Dashboard() {
             <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-blue-200/70">Posts</div>
-                  <div className="text-base font-semibold text-white">Share a challenge</div>
+                  <div className="font-semibold text-white">Share a challenge</div>
+                  <div className="text-xs text-white/60">Posts</div>
                 </div>
                 <button
                   type="button"

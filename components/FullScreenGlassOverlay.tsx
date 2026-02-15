@@ -167,8 +167,8 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const showDragThumb = panelSizing !== 'full'
 
   const contentClassBase = panelSizing === 'full'
-    ? 'flex-1 min-h-0 overflow-y-auto pt-3 px-3 pb-[calc(0.75rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(1.25rem+var(--app-safe-bottom))]'
-    : 'overflow-y-auto pt-3 px-3 pb-[calc(0.75rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(1.25rem+var(--app-safe-bottom))]'
+    ? 'flex-1 min-h-0 overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]'
+    : 'overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]'
 
   const frameSafeAreaStyle = rootPosition === 'fixed'
     ? { paddingBottom: 'var(--app-safe-bottom)' }

@@ -622,6 +622,32 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           </div>
 
           <div
+            className={`absolute z-20 transition-opacity duration-200 ${chromeClassName}`}
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+              right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
+            }}
+            aria-hidden={!chromeVisible}
+          >
+            <button
+              type="button"
+              className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full border border-slate-200/70 bg-white/90 hover:bg-white text-slate-900 shadow-sm"
+              onClick={onClose}
+              aria-label="Close"
+              title="Close"
+            >
+              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                <path
+                  d="M6 6l8 8M14 6l-8 8"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div
             className={`absolute left-2 right-2 sm:left-4 sm:right-4 z-20 flex items-center justify-center gap-3 text-xs sm:text-sm text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
             aria-hidden={!chromeVisible}
@@ -706,22 +732,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
                   <path d="M4 14h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </a>
-              <button
-                type="button"
-                className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full border border-slate-200/70 bg-white/90 hover:bg-white text-slate-900 shadow-sm"
-                onClick={onClose}
-                aria-label="Close"
-                title="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                  <path
-                    d="M6 6l8 8M14 6l-8 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
             </div>
           </div>
 

@@ -2224,14 +2224,30 @@ export default function DiagramOverlayModule(props: {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const pts = stroke.points
-    const p1 = mapImageToCanvasPx(pts[pts.length - 2], w, h)
+
     const p2 = mapImageToCanvasPx(pts[pts.length - 1], w, h)
+    const p1 = mapImageToCanvasPx(pts[pts.length - 2], w, h)
     ctx.strokeStyle = stroke.color
     ctx.lineWidth = Math.max(1, stroke.width)
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.beginPath()
-    ctx.moveTo(p1.x, p1.y)
+
+    if (pts.length === 2) {
+      ctx.moveTo(p1.x, p1.y)
+      ctx.lineTo(p2.x, p2.y)
+      ctx.stroke()
+      return
+    }
+
+    const p0 = mapImageToCanvasPx(pts[pts.length - 3], w, h)
+    const startX = pts.length === 3 ? p0.x : (p0.x + p1.x) / 2
+    const startY = pts.length === 3 ? p0.y : (p0.y + p1.y) / 2
+    const midX = (p1.x + p2.x) / 2
+    const midY = (p1.y + p2.y) / 2
+
+    ctx.moveTo(startX, startY)
+    ctx.quadraticCurveTo(p1.x, p1.y, midX, midY)
     ctx.lineTo(p2.x, p2.y)
     ctx.stroke()
   }, [mapImageToCanvasPx, performRedraw])

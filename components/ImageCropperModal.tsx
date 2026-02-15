@@ -150,7 +150,24 @@ export default function ImageCropperModal(props: {
           </div>
         ) : null}
 
-        <div className="absolute inset-0">
+        <button
+          type="button"
+          className="absolute z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white hover:bg-black/60 disabled:opacity-50"
+          style={{
+            top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+            right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
+          }}
+          onClick={onCancel}
+          disabled={saving}
+          aria-label="Close"
+          title="Close"
+        >
+          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+            <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        <div className="absolute inset-x-0 top-0" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)' }}>
           {objectUrl ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <ReactCrop
@@ -179,6 +196,44 @@ export default function ImageCropperModal(props: {
           )}
         </div>
 
+        <div
+          className="absolute z-10 flex flex-col items-center gap-3"
+          style={{
+            right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 150px)',
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn-ghost h-11 w-11 !px-0"
+            onClick={() => void rotateBy(-90)}
+            disabled={saving || rotating || !workingFile}
+            aria-label="Rotate left"
+            title="Rotate left"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
+              <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-ghost h-11 w-11 !px-0"
+            onClick={() => void rotateBy(90)}
+            disabled={saving || rotating || !workingFile}
+            aria-label="Rotate right"
+            title="Rotate right"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
+              <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          {rotating ? <div className="text-[11px] text-white/80">Rotating…</div> : null}
+        </div>
+
         <div className="absolute inset-x-0 z-10" style={{ bottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div className="px-3 pb-3 pt-16 sm:px-5 sm:pb-5 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -200,35 +255,6 @@ export default function ImageCropperModal(props: {
                   </svg>
                 </button>
 
-                <button
-                  type="button"
-                  className="btn btn-ghost h-9 w-9 !px-0"
-                  onClick={() => void rotateBy(-90)}
-                  disabled={saving || rotating || !workingFile}
-                  aria-label="Rotate left"
-                  title="Rotate left"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
-                    <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-ghost h-9 w-9 !px-0"
-                  onClick={() => void rotateBy(90)}
-                  disabled={saving || rotating || !workingFile}
-                  aria-label="Rotate right"
-                  title="Rotate right"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
-                    <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-
-                {rotating ? <div className="text-xs text-white/70">Rotating…</div> : null}
               </div>
 
               <div className="flex items-center gap-2">

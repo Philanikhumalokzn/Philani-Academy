@@ -16,11 +16,8 @@ const TextOverlayModule = dynamic(() => import('../components/TextOverlayModule'
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 const makeChannelName = (boardId: string) => `myscript:${sanitizeIdentifier(boardId).toLowerCase()}`
 
-const useIsMobile = (maxWidth = 768) => {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.innerWidth < maxWidth
-  })
+const useIsMobile = (maxWidth = 768, initialValue = false) => {
+  const [isMobile, setIsMobile] = useState(initialValue)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -35,14 +32,14 @@ const useIsMobile = (maxWidth = 768) => {
   return isMobile
 }
 
-export default function BoardPage() {
+export default function BoardPage({ initialIsMobile = false }: { initialIsMobile?: boolean }) {
   const router = useRouter()
   useRedirectToDashboardOnReload(true)
   const { data: session, status } = useSession()
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
   const [gradePickerOpen, setGradePickerOpen] = useState(false)
-  const isMobile = useIsMobile(768)
+  const isMobile = useIsMobile(768, initialIsMobile)
   const canvasStageRef = useRef<HTMLDivElement | null>(null)
 
   const lessonAuthoring = router.isReady && router.query.lessonAuthoring === '1'
@@ -479,4 +476,15 @@ export default function BoardPage() {
       </div>
     </div>
   )
+}
+
+export async function getServerSideProps(context: any) {
+  const chMobile = String(context?.req?.headers?.['sec-ch-ua-mobile'] ?? '')
+  const ua = String(context?.req?.headers?.['user-agent'] ?? '')
+  const initialIsMobile = chMobile === '?1'
+    ? true
+    : chMobile === '?0'
+      ? false
+      : /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini|IEMobile/i.test(ua)
+  return { props: { initialIsMobile } }
 }

@@ -182,7 +182,7 @@ const writeLocalCache = <T,>(key: string, data: T) => {
   }
 }
 
-export default function Dashboard() {
+export default function Dashboard({ initialIsMobile = false }: { initialIsMobile?: boolean }) {
   const renderInlineEmphasis = useCallback((text: string, keyPrefix: string) => {
     const input = typeof text === 'string' ? text : ''
     if (!input) return input
@@ -327,7 +327,7 @@ export default function Dashboard() {
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(initialIsMobile)
   const dashboardMainRef = useRef<HTMLElement | null>(null)
   const [pullRefreshOffset, setPullRefreshOffset] = useState(0)
   const [pullRefreshActive, setPullRefreshActive] = useState(false)
@@ -11538,5 +11538,12 @@ export default function Dashboard() {
 export async function getServerSideProps(context: any) {
   // protect page server-side if desired
   const session = await getSession(context)
-  return { props: { session } }
+  const chMobile = String(context?.req?.headers?.['sec-ch-ua-mobile'] ?? '')
+  const ua = String(context?.req?.headers?.['user-agent'] ?? '')
+  const initialIsMobile = chMobile === '?1'
+    ? true
+    : chMobile === '?0'
+      ? false
+      : /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini|IEMobile/i.test(ua)
+  return { props: { session, initialIsMobile } }
 }

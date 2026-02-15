@@ -58,8 +58,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     startDist: number
     startZoom: number
     lastDist: number
+    lastCenterX: number
     lastCenterY: number
-  }>({ active: false, startDist: 0, startZoom: 110, lastDist: 0, lastCenterY: 0 })
+    pendingZoom: number | null
+  }>({ active: false, startDist: 0, startZoom: 110, lastDist: 0, lastCenterX: 0, lastCenterY: 0, pendingZoom: null })
+  const liveZoomRef = useRef(110)
+  const lastTouchZoomApplyTsRef = useRef(0)
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -70,6 +74,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }, [isMobile])
 
   const effectiveZoom = clamp(zoom, 50, 220)
+  useEffect(() => {
+    liveZoomRef.current = effectiveZoom
+  }, [effectiveZoom])
   const effectivePage = Math.max(1, page)
 
   const totalPages = Math.max(1, numPages || 1)
@@ -250,6 +257,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
     }
 
+    const getTouchCenterX = (touches: TouchList) => {
+      const a = touches[0]
+      const b = touches[1]
+      if (!a || !b) return 0
+      return (a.clientX + b.clientX) / 2
+    }
+
     const getTouchCenterY = (touches: TouchList) => {
       const a = touches[0]
       const b = touches[1]
@@ -264,7 +278,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.startDist = startDist
         pinchStateRef.current.startZoom = effectiveZoom
         pinchStateRef.current.lastDist = startDist
+        pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
         pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
+        pinchStateRef.current.pendingZoom = null
         touchState.active = false
         return
       }
@@ -281,20 +297,35 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (pinchStateRef.current.active && e.touches.length === 2) {
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
+        const centerX = getTouchCenterX(e.touches)
         const centerY = getTouchCenterY(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
         const distDelta = Math.abs(dist - pinchStateRef.current.lastDist)
+        const centerDeltaX = centerX - pinchStateRef.current.lastCenterX
         const centerDeltaY = centerY - pinchStateRef.current.lastCenterY
 
         if (distDelta > 6) {
           const scale = dist / pinchStateRef.current.startDist
           const nextZoom = clamp(Math.round(pinchStateRef.current.startZoom * scale), 50, 220)
-          setZoom(nextZoom)
-        } else if (Math.abs(centerDeltaY) > 0.5) {
+          pinchStateRef.current.pendingZoom = nextZoom
+          const now = Date.now()
+          if (now - lastTouchZoomApplyTsRef.current >= 80 && Math.abs(nextZoom - liveZoomRef.current) >= 2) {
+            setZoom(nextZoom)
+            liveZoomRef.current = nextZoom
+            lastTouchZoomApplyTsRef.current = now
+            pinchStateRef.current.pendingZoom = null
+          }
+        }
+
+        if (Math.abs(centerDeltaX) > 0.25) {
+          el.scrollLeft -= centerDeltaX
+        }
+        if (Math.abs(centerDeltaY) > 0.25) {
           el.scrollTop -= centerDeltaY
         }
 
         pinchStateRef.current.lastDist = dist
+        pinchStateRef.current.lastCenterX = centerX
         pinchStateRef.current.lastCenterY = centerY
         kickChromeAutoHide()
         return
@@ -307,18 +338,27 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        const startDist = getPinchDistance(e.touches)
         pinchStateRef.current.active = true
-        pinchStateRef.current.startDist = getPinchDistance(e.touches)
+        pinchStateRef.current.startDist = startDist
         pinchStateRef.current.startZoom = effectiveZoom
-        pinchStateRef.current.lastDist = pinchStateRef.current.startDist
+        pinchStateRef.current.lastDist = startDist
+        pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
         pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
+        pinchStateRef.current.pendingZoom = null
         touchState.active = false
         return
       }
       if (pinchStateRef.current.active) {
+        const pendingZoom = pinchStateRef.current.pendingZoom
+        if (typeof pendingZoom === 'number' && pendingZoom !== liveZoomRef.current) {
+          setZoom(pendingZoom)
+          liveZoomRef.current = pendingZoom
+        }
         pinchStateRef.current.active = false
         pinchStateRef.current.startDist = 0
         pinchStateRef.current.lastDist = 0
+        pinchStateRef.current.pendingZoom = null
         return
       }
       if (!touchState.active) return
@@ -484,10 +524,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     try {
       const pageObj = await pdfDoc.getPage(pageNum)
       const baseScale = effectiveZoom / 100
-      const baseViewport = pageObj.getViewport({ scale: baseScale })
+      const naturalViewport = pageObj.getViewport({ scale: 1 })
       const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
       const fitScale = availableWidth
-        ? clamp(availableWidth / baseViewport.width, 0.5, 2)
+        ? clamp(availableWidth / naturalViewport.width, 0.5, 2)
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
@@ -504,6 +544,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       renderTasksRef.current.set(pageNum, task)
       await task.promise
     } catch (err: any) {
+      const message = String(err?.message || '')
+      const name = String(err?.name || '')
+      if (name === 'RenderingCancelledException' || /rendering cancelled|canceled|cancelled/i.test(message)) {
+        return
+      }
       setError(err?.message || 'Failed to render PDF page')
     }
   }, [pdfDoc, open, effectiveZoom, contentSize.width])

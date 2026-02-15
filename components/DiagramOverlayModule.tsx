@@ -2993,6 +2993,7 @@ export default function DiagramOverlayModule(props: {
           variant="light"
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
+          panelSize="full"
           onClose={() => {
             if (!(canPresent || isAdmin)) return
             void handleClose()
@@ -3003,8 +3004,8 @@ export default function DiagramOverlayModule(props: {
           }}
           closeDisabled={!(canPresent || isAdmin)}
           showCloseButton={Boolean(canPresent || isAdmin)}
-          frameClassName="absolute inset-0 p-3 sm:p-6"
-          panelClassName="rounded-xl"
+          frameClassName="absolute inset-0 flex items-end justify-center p-0"
+          panelClassName="!rounded-none"
           rightActions={
             <>
               {isAdmin && (
@@ -3032,6 +3033,7 @@ export default function DiagramOverlayModule(props: {
           variant="light"
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
+          panelSize="full"
           onClose={() => {
             if (!isAdmin) return
             void handleClose()
@@ -3042,8 +3044,8 @@ export default function DiagramOverlayModule(props: {
           }}
           closeDisabled={!isAdmin}
           showCloseButton={isAdmin}
-          frameClassName="absolute inset-0 p-3 sm:p-6"
-          panelClassName="rounded-xl"
+          frameClassName="absolute inset-0 flex items-end justify-center p-0"
+          panelClassName="!rounded-none"
           rightActions={
             isAdmin ? (
               <button
@@ -3069,7 +3071,10 @@ export default function DiagramOverlayModule(props: {
             style={gridContainerStyle}
           >
           {canPresent && (
-            <div className={`${isGridDiagram ? 'sticky' : 'absolute'} bottom-2 left-2 right-2 z-40 pointer-events-none`}>
+            <div
+              className={`${isGridDiagram ? 'sticky' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
+              style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
+            >
               <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
                 <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm whitespace-nowrap">
                 <button

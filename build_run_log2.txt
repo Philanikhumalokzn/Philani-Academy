@@ -1,0 +1,159 @@
+
+> philani-academy@0.1.0 build
+> cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true npm run prisma:generate && npm run silence:baseline-warning && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next build
+
+
+> philani-academy@0.1.0 prisma:generate
+> npx prisma generate && node scripts/fix_prisma_client.js
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma\schema.prisma.
+
+✔ Generated Prisma Client (v7.3.0) to .\node_modules\@prisma\client in 563ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
+[fix_prisma_client] OK: synced generated client into @prisma/client/.prisma
+
+> philani-academy@0.1.0 silence:baseline-warning
+> node scripts/silence_baseline_warning.js
+
+[silence-baseline-warning] already clean (warning call not found)
+   ▲ Next.js 16.0.7 (Turbopack)
+
+   Running TypeScript ...
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 15.3s
+   Collecting page data using 7 workers ...
+   Generating static pages using 7 workers (0/14) ...
+   Generating static pages using 7 workers (3/14) 
+   Generating static pages using 7 workers (6/14) 
+   Generating static pages using 7 workers (10/14) 
+ ✓ Generating static pages using 7 workers (14/14) in 1951.8ms
+   Finalizing page optimization ...
+
+Route (pages)
+┌ ƒ /
+├   /_app
+├ ○ /404
+├ ƒ /api/ai/quiz-feedback
+├ ƒ /api/ai/quiz-prompt
+├ ƒ /api/ai/quiz-timer
+├ ƒ /api/announcements
+├ ƒ /api/announcements/[id]
+├ ƒ /api/auth/[...nextauth]
+├ ƒ /api/auth/resend-verification
+├ ƒ /api/auth/verify-email
+├ ƒ /api/challenges
+├ ƒ /api/challenges/[id]
+├ ƒ /api/challenges/feed
+├ ƒ /api/challenges/upload
+├ ƒ /api/create-session
+├ ƒ /api/debug/blob-status
+├ ƒ /api/debug/db-health
+├ ƒ /api/debug/health
+├ ƒ /api/debug/jaas-token
+├ ƒ /api/debug/send-test-email
+├ ƒ /api/debug/token
+├ ƒ /api/diagrams
+├ ƒ /api/diagrams/[id]
+├ ƒ /api/diagrams/state
+├ ƒ /api/diagrams/upload
+├ ƒ /api/discover/user/[id]
+├ ƒ /api/discover/users
+├ ƒ /api/follow/[id]
+├ ƒ /api/groups
+├ ƒ /api/groups/[id]
+├ ƒ /api/groups/[id]/invite
+├ ƒ /api/groups/[id]/regenerate-join-code
+├ ƒ /api/groups/[id]/request-join
+├ ƒ /api/groups/invites/[id]/respond
+├ ƒ /api/groups/join
+├ ƒ /api/groups/mine
+├ ƒ /api/groups/requests/[id]/respond
+├ ƒ /api/jaas/health
+├ ƒ /api/lesson-scripts/templates
+├ ƒ /api/lesson-scripts/templates/[id]/versions
+├ ƒ /api/materials/[id]
+├ ƒ /api/mathpix/strokes
+├ ƒ /api/notifications
+├ ƒ /api/payfast/checkout
+├ ƒ /api/payfast/create-plan
+├ ƒ /api/payfast/notify
+├ ƒ /api/payfast/onsite-token
+├ ƒ /api/pdf-worker
+├ ƒ /api/plans
+├ ƒ /api/plans/[id]
+├ ƒ /api/profile
+├ ƒ /api/profile/avatar
+├ ƒ /api/profile/change-password
+├ ƒ /api/profile/cover
+├ ƒ /api/profile/theme-bg
+├ ƒ /api/profile/view/[id]
+├ ƒ /api/profile/view/[id]/challenges
+├ ƒ /api/realtime/ably-token
+├ ƒ /api/resources
+├ ƒ /api/resources/[id]
+├ ƒ /api/resources/[id]/parsed
+├ ƒ /api/resources/blob-upload
+├ ƒ /api/resources/convert-docx
+├ ƒ /api/resources/register
+├ ƒ /api/schools
+├ ƒ /api/sessions
+├ ƒ /api/sessions/[id]
+├ ƒ /api/sessions/[id]/assignments
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/grade
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/grading-prompts
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/responses
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/solutions
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/solutions/marking-plan
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/solutions/upload
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/solutions/worked-solution
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/submissions
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/submissions/[userId]
+├ ƒ /api/sessions/[id]/assignments/[assignmentId]/submit
+├ ƒ /api/sessions/[id]/assignments/import
+├ ƒ /api/sessions/[id]/latex-saves
+├ ƒ /api/sessions/[id]/latex-saves/[saveId]
+├ ƒ /api/sessions/[id]/lesson-script
+├ ƒ /api/sessions/[id]/materials
+├ ƒ /api/sessions/[id]/password
+├ ƒ /api/sessions/[id]/present
+├ ƒ /api/sessions/[id]/responses
+├ ƒ /api/sessions/[id]/room
+├ ƒ /api/sessions/[id]/status
+├ ƒ /api/sessions/[id]/thumbnail
+├ ƒ /api/sessions/[id]/token
+├ ƒ /api/sessions/admin/token
+├ ƒ /api/sessions/grade/[grade]/token
+├ ƒ /api/sessions/live
+├ ƒ /api/sessions/upload-thumbnail
+├ ƒ /api/signup
+├ ƒ /api/stripe/create-checkout-session
+├ ƒ /api/stripe/webhook
+├ ƒ /api/subscription/gating
+├ ƒ /api/subscription/status
+├ ƒ /api/users
+├ ƒ /api/users/[id]
+├ ○ /auth/signin (481 ms)
+├ ƒ /board
+├ ○ /challenges/[id] (481 ms)
+├ ƒ /dashboard
+├ ○ /diagram (334 ms)
+├ ○ /jaas-demo (490 ms)
+├ ○ /privacy (481 ms)
+├ ○ /profile (483 ms)
+├ ○ /resource-bank (333 ms)
+├ ○ /sessions/[sessionId]/assignments/[assignmentId]/q/[questionId] (395 ms)
+├ ○ /sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId] (391 ms)
+├ ○ /signup (482 ms)
+├ ○ /subscribe (482 ms)
+├ ƒ /u/[id]
+└ ○ /verify-email (482 ms)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

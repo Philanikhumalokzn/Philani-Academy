@@ -89,6 +89,7 @@ body{
   body{overflow-x:hidden;}
   :root{
     --card-padding: 0.85rem;
+    --mobile-rail: 0.5rem;
   }
   .mobile-dashboard-theme .btn{
     padding:0.55rem 0.95rem;
@@ -96,10 +97,15 @@ body{
   }
 
   .mobile-row-width{
-    width:calc(100% - 1rem) !important;
-    margin-left:0.5rem !important;
-    margin-right:0.5rem !important;
+    width:calc(100% - (var(--mobile-rail) * 2)) !important;
+    margin-left:var(--mobile-rail) !important;
+    margin-right:var(--mobile-rail) !important;
     box-sizing:border-box !important;
+  }
+
+  .mobile-rail-fixed{
+    left:var(--mobile-rail) !important;
+    right:var(--mobile-rail) !important;
   }
 }
 

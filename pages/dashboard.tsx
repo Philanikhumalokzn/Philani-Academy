@@ -9356,7 +9356,7 @@ export default function Dashboard() {
         {isMobile ? (
           isAdmin ? (
             <div className="flex-1 flex flex-col py-4">
-              <div className="fixed inset-x-2 top-[0.9rem] z-30">
+              <div className="fixed inset-x-0 mobile-rail-fixed top-[0.9rem] z-30">
                 <div className="relative">
                   <section
                   data-mobile-chrome-ignore
@@ -9640,7 +9640,7 @@ export default function Dashboard() {
                 </FullScreenGlassOverlay>
               )}
 
-              <div className="fixed inset-x-2 top-[0.9rem] z-30">
+              <div className="fixed inset-x-0 mobile-rail-fixed top-[0.9rem] z-30">
               <div className="relative">
               <section
                 data-mobile-chrome-ignore

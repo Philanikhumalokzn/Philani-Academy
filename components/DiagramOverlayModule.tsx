@@ -207,21 +207,11 @@ export default function DiagramOverlayModule(props: {
     defaultVisible: false,
     disabled: !diagramState.isOpen || !isGridDiagram || !isAdmin,
   })
-  const { visible: cropControlsVisible, peek: peekCropControls, clearTimer: clearCropControlsTimer } = useTapToPeek({
-    autoHideMs: 1800,
-    defaultVisible: false,
-    disabled: !diagramState.isOpen || !cropMode || !canPresent,
-  })
 
   useEffect(() => {
     if (diagramState.isOpen && isGridDiagram && isAdmin) return
     clearGridCloseTimer()
   }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
-
-  useEffect(() => {
-    if (diagramState.isOpen && cropMode && canPresent) return
-    clearCropControlsTimer()
-  }, [canPresent, clearCropControlsTimer, cropMode, diagramState.isOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -976,6 +966,15 @@ export default function DiagramOverlayModule(props: {
 
   const [tool, setTool] = useState<DiagramTool>('pen')
   const [cropMode, setCropMode] = useState(false)
+  const { visible: cropControlsVisible, peek: peekCropControls, clearTimer: clearCropControlsTimer } = useTapToPeek({
+    autoHideMs: 1800,
+    defaultVisible: false,
+    disabled: !diagramState.isOpen || !cropMode || !canPresent,
+  })
+  useEffect(() => {
+    if (diagramState.isOpen && cropMode && canPresent) return
+    clearCropControlsTimer()
+  }, [canPresent, clearCropControlsTimer, cropMode, diagramState.isOpen])
   const [cropRect, setCropRect] = useState<CropRect | null>(null)
   const cropRectRef = useRef<CropRect | null>(null)
   useEffect(() => {

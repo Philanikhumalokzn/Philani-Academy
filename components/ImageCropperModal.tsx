@@ -153,37 +153,53 @@ export default function ImageCropperModal(props: {
       closeDisabled={saving}
       zIndexClassName="z-[90]"
       panelSize="full"
+      hideHeader
       frameClassName="absolute inset-0 flex items-end justify-center p-0"
       panelClassName="!rounded-none"
       contentClassName="relative p-0 overflow-hidden"
     >
-      <div className="relative h-full w-full bg-black">
+      <div
+        className="relative h-full w-full bg-black"
+        onPointerDown={handleCropSurfaceInteraction}
+        onPointerMove={handleCropSurfaceInteraction}
+        onTouchStart={handleCropSurfaceInteraction}
+        onTouchMove={handleCropSurfaceInteraction}
+      >
         {error ? (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
             {error}
           </div>
         ) : null}
 
-        <button
-          type="button"
-          className="absolute z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white hover:bg-black/60 disabled:opacity-50"
-          style={{
-            top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
-            right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
-          }}
-          onClick={onCancel}
-          disabled={saving}
-          aria-label="Close"
-          title="Close"
+        <div
+          className={`absolute inset-x-0 top-0 z-20 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 6px)' }}
         >
-          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-            <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
+          <div className="px-3 pb-3 sm:px-5 bg-gradient-to-b from-black/70 via-black/35 to-transparent">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-white text-[clamp(1.45rem,5.4vw,2.05rem)] font-semibold leading-tight">{title || 'Edit screenshot'}</div>
+                <div className="text-white/80 text-[clamp(0.85rem,3.8vw,1rem)] leading-snug">Crop and rotate before uploading.</div>
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white hover:bg-black/60 disabled:opacity-50"
+                onClick={onCancel}
+                disabled={saving}
+                aria-label="Close"
+                title="Close"
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div
           className="absolute inset-x-0 top-0"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 104px)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 82px)' }}
           onPointerDown={handleCropSurfaceInteraction}
           onPointerMove={handleCropSurfaceInteraction}
           onTouchStart={handleCropSurfaceInteraction}
@@ -224,7 +240,7 @@ export default function ImageCropperModal(props: {
           className={`absolute z-10 flex flex-col items-center gap-3 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
           style={{
             right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 116px)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 76px)',
           }}
         >
           <button
@@ -262,7 +278,7 @@ export default function ImageCropperModal(props: {
           className={`absolute inset-x-0 z-10 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
           style={{ bottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          <div className="px-3 pb-2 pt-12 sm:px-5 sm:pb-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+          <div className="px-3 pb-1 pt-8 sm:px-5 sm:pb-2 sm:pt-9 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button

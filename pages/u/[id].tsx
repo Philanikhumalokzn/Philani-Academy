@@ -1,4 +1,4 @@
-import { getSession, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import type { GetServerSideProps } from 'next'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -224,7 +224,18 @@ export default function PublicUserProfilePage() {
   }, [status])
 
   useEffect(() => {
-    if (status !== 'authenticated') return
+    void loadProfile()
+    void loadChallenges()
+  }, [loadChallenges, loadProfile])
+
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      setViewerId('')
+      setMyGroups([])
+      setSelectedGroupId('')
+      return
+    }
+
     let cancelled = false
     ;(async () => {
       try {
@@ -237,15 +248,12 @@ export default function PublicUserProfilePage() {
         // ignore
       }
     })()
-
-    void loadProfile()
     void loadMyGroups()
-    void loadChallenges()
 
     return () => {
       cancelled = true
     }
-  }, [loadChallenges, loadMyGroups, loadProfile, status])
+  }, [loadMyGroups, status])
 
   useEffect(() => {
     if (!selectedGroupId) {
@@ -536,12 +544,6 @@ export default function PublicUserProfilePage() {
   )
 }
 
-export const getServerSideProps: GetServerSideProps = async (ctx) => {
-  const session = await getSession(ctx)
-  if (!session) {
-    return {
-      redirect: { destination: '/', permanent: false },
-    }
-  }
+export const getServerSideProps: GetServerSideProps = async (_ctx) => {
   return { props: {} }
 }

@@ -4,13 +4,12 @@ import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../../../lib/
 import { normalizeGradeInput } from '../../../../../lib/grades'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const requesterId = await getUserIdFromReq(req)
-  if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
-
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])
     return res.status(405).end()
   }
+
+  const requesterId = await getUserIdFromReq(req)
 
   const targetId = String(req.query.id || '')
   if (!targetId) return res.status(400).json({ message: 'Missing user id' })
@@ -24,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })
   if (!target) return res.status(404).json({ message: 'User not found' })
 
-  const isSelf = requesterId === targetId
+  const isSelf = Boolean(requesterId && requesterId === targetId)
 
   if (!isPrivileged && !isSelf) {
     const visibility = String(target.profileVisibility || 'shared')
@@ -33,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  const requesterGrade = normalizeGradeInput(await getUserGrade(req))
+  const requesterGrade = requesterId ? normalizeGradeInput(await getUserGrade(req)) : null
 
   // Schema contains UserChallenge but TS may not see prisma.userChallenge yet.
   const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
@@ -66,23 +65,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })
 
   // Attach requester attempt counts (for non-owner viewers and response button logic)
-  const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
-  const challengeIds = items.map(i => `challenge:${i.id}`)
-
-  const userResponses = await learnerResponse.groupBy({
-    by: ['sessionKey'],
-    where: {
-      sessionKey: { in: challengeIds },
-      userId: requesterId,
-    },
-    _count: {
-      id: true,
-    },
-  })
-
   const attemptCounts = new Map<string, number>()
-  for (const r of userResponses) {
-    attemptCounts.set(String(r.sessionKey), r._count.id)
+  if (requesterId) {
+    const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+    const challengeIds = items.map(i => `challenge:${i.id}`)
+    const userResponses = await learnerResponse.groupBy({
+      by: ['sessionKey'],
+      where: {
+        sessionKey: { in: challengeIds },
+        userId: requesterId,
+      },
+      _count: {
+        id: true,
+      },
+    })
+
+    for (const r of userResponses) {
+      attemptCounts.set(String(r.sessionKey), r._count.id)
+    }
   }
 
   const out = items.map(item => ({

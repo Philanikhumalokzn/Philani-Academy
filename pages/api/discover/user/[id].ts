@@ -5,7 +5,6 @@ import { canViewOrDiscoverTarget } from '../../../../lib/discover'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requesterId = await getUserIdFromReq(req)
-  if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
 
   const targetId = String(req.query.id || '')
   if (!targetId) return res.status(400).json({ message: 'Missing user id' })
@@ -15,22 +14,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end()
   }
 
-  const role = (await getUserRole(req)) || 'student'
-  const isPrivileged = role === 'admin' || role === 'teacher'
+  let isPrivileged = false
+  let requesterInfo: {
+    id: string
+    role: string
+    grade: string | null
+    schoolName: string
+    province: string
+  } | null = null
 
-  const requester = await prisma.user.findUnique({
-    where: { id: requesterId },
-    select: { id: true, role: true, grade: true, schoolName: true, province: true },
-  })
+  if (requesterId) {
+    const role = (await getUserRole(req)) || 'student'
+    isPrivileged = role === 'admin' || role === 'teacher'
 
-  if (!requester) return res.status(401).json({ message: 'Unauthorized' })
+    const requester = await prisma.user.findUnique({
+      where: { id: requesterId },
+      select: { id: true, role: true, grade: true, schoolName: true, province: true },
+    })
 
-  const requesterInfo = {
-    id: requester.id,
-    role: requester.role,
-    grade: requester.grade ? String(requester.grade) : null,
-    schoolName: String((requester as any).schoolName || ''),
-    province: String((requester as any).province || ''),
+    if (requester) {
+      requesterInfo = {
+        id: requester.id,
+        role: requester.role,
+        grade: requester.grade ? String(requester.grade) : null,
+        schoolName: String((requester as any).schoolName || ''),
+        province: String((requester as any).province || ''),
+      }
+    }
   }
 
   const user = await prisma.user.findUnique({
@@ -79,38 +89,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!user) return res.status(404).json({ message: 'User not found' })
 
-  const sharedGroupsCount = await prisma.learningGroupMember.count({
-    where: {
-      userId: requesterId,
-      group: {
-        members: {
-          some: { userId: targetId },
+  const isSelf = Boolean(requesterInfo && requesterInfo.id === targetId)
+  const visibility = String((user as any).profileVisibility || 'shared')
+
+  if (!requesterInfo) {
+    if (visibility === 'private') {
+      return res.status(403).json({ message: 'This profile is private' })
+    }
+  } else {
+    const sharedGroupsCount = await prisma.learningGroupMember.count({
+      where: {
+        userId: requesterInfo.id,
+        group: {
+          members: {
+            some: { userId: targetId },
+          },
         },
       },
-    },
-  })
+    })
 
-  if (!canViewOrDiscoverTarget({ requester: requesterInfo, target: user as any, sharedGroupsCount, isPrivileged })) {
-    return res.status(403).json({ message: 'This profile is not discoverable to you' })
+    if (!canViewOrDiscoverTarget({ requester: requesterInfo, target: user as any, sharedGroupsCount, isPrivileged })) {
+      return res.status(403).json({ message: 'This profile is not discoverable to you' })
+    }
   }
 
+  const canViewSensitive = isPrivileged || isSelf
+
   const userFollow = (prisma as any).userFollow as any
-  const isFollowing = requesterId !== targetId
-    ? Boolean(await userFollow?.findUnique?.({ where: { followerId_followingId: { followerId: requesterId, followingId: targetId } } }).catch(() => null))
+  const isFollowing = requesterInfo && requesterInfo.id !== targetId
+    ? Boolean(await userFollow?.findUnique?.({ where: { followerId_followingId: { followerId: requesterInfo.id, followingId: targetId } } }).catch(() => null))
     : false
 
   const followerCount = await userFollow?.count?.({ where: { followingId: targetId } }).catch(() => 0)
   const followingCount = await userFollow?.count?.({ where: { followerId: targetId } }).catch(() => 0)
+  const displayName = user.name || (canViewSensitive ? user.email : 'User')
 
   return res.status(200).json({
     id: user.id,
-    name: user.name || user.email,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    middleNames: user.middleNames,
-    dateOfBirth: user.dateOfBirth ? user.dateOfBirth.toISOString() : null,
-    idNumber: (user as any).idNumber ?? null,
+    name: displayName,
+    email: canViewSensitive ? user.email : null,
+    firstName: canViewSensitive ? user.firstName : null,
+    lastName: canViewSensitive ? user.lastName : null,
+    middleNames: canViewSensitive ? user.middleNames : null,
+    dateOfBirth: canViewSensitive && user.dateOfBirth ? user.dateOfBirth.toISOString() : null,
+    idNumber: canViewSensitive ? (user as any).idNumber ?? null : null,
     role: user.role,
     grade: user.grade,
     avatar: user.avatar,
@@ -118,25 +140,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     profileThemeBgUrl: (user as any).profileThemeBgUrl ?? null,
     statusBio: user.statusBio,
     schoolName: user.schoolName,
-    phoneNumber: (user as any).phoneNumber ?? null,
-    alternatePhone: (user as any).alternatePhone ?? null,
-    recoveryEmail: (user as any).recoveryEmail ?? null,
-    emergencyContactName: (user as any).emergencyContactName ?? null,
-    emergencyContactRelationship: (user as any).emergencyContactRelationship ?? null,
-    emergencyContactPhone: (user as any).emergencyContactPhone ?? null,
-    addressLine1: (user as any).addressLine1 ?? null,
-    addressLine2: (user as any).addressLine2 ?? null,
-    city: (user as any).city ?? null,
-    province: (user as any).province ?? null,
-    postalCode: (user as any).postalCode ?? null,
-    country: (user as any).country ?? null,
-    uiHandedness: (user as any).uiHandedness ?? null,
-    consentToPolicies: Boolean((user as any).consentToPolicies),
-    consentTimestamp: (user as any).consentTimestamp ? new Date((user as any).consentTimestamp).toISOString() : null,
+    phoneNumber: canViewSensitive ? (user as any).phoneNumber ?? null : null,
+    alternatePhone: canViewSensitive ? (user as any).alternatePhone ?? null : null,
+    recoveryEmail: canViewSensitive ? (user as any).recoveryEmail ?? null : null,
+    emergencyContactName: canViewSensitive ? (user as any).emergencyContactName ?? null : null,
+    emergencyContactRelationship: canViewSensitive ? (user as any).emergencyContactRelationship ?? null : null,
+    emergencyContactPhone: canViewSensitive ? (user as any).emergencyContactPhone ?? null : null,
+    addressLine1: canViewSensitive ? (user as any).addressLine1 ?? null : null,
+    addressLine2: canViewSensitive ? (user as any).addressLine2 ?? null : null,
+    city: canViewSensitive ? (user as any).city ?? null : null,
+    province: canViewSensitive ? (user as any).province ?? null : null,
+    postalCode: canViewSensitive ? (user as any).postalCode ?? null : null,
+    country: canViewSensitive ? (user as any).country ?? null : null,
+    uiHandedness: canViewSensitive ? (user as any).uiHandedness ?? null : null,
+    consentToPolicies: canViewSensitive ? Boolean((user as any).consentToPolicies) : false,
+    consentTimestamp: canViewSensitive && (user as any).consentTimestamp ? new Date((user as any).consentTimestamp).toISOString() : null,
     verified: user.role === 'admin' || user.role === 'teacher',
     followerCount: typeof followerCount === 'number' ? followerCount : 0,
     followingCount: typeof followingCount === 'number' ? followingCount : 0,
-    isFollowing,
+    isFollowing: Boolean(isFollowing),
     groups: (user.groupsCreated || []).map((g: any) => ({
       id: g.id,
       name: g.name,

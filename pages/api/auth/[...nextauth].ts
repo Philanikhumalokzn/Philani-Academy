@@ -48,7 +48,14 @@ export default NextAuth({
       }
     })
   ],
-  session: { strategy: 'jwt' },
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
+  },
+  jwt: {
+    maxAge: 30 * 24 * 60 * 60,
+  },
   secret: process.env.NEXTAUTH_SECRET,
   pages: {
     signIn: '/auth/signin',
@@ -86,12 +93,14 @@ export default NextAuth({
       return token
     },
     async session({ session, token }) {
-      (session as any).user.role = token.role
-      ;(session as any).user.grade = token.grade ?? null
+      const safeSession = session as any
+      safeSession.user = safeSession.user || {}
+      safeSession.user.role = token.role
+      safeSession.user.grade = token.grade ?? null
       if (typeof (token as any)?.image === 'string' && (token as any).image.trim()) {
-        ;(session as any).user.image = (token as any).image.trim()
+        safeSession.user.image = (token as any).image.trim()
       }
-      return session
-    }
+      return safeSession
+    },
   }
 })

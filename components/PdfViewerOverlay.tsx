@@ -1028,20 +1028,23 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             <div ref={contentRef} className="w-full flex flex-col items-center gap-6 p-4 sm:p-6">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>
-              ) : (loading || !initialRenderReady) ? (
-                <div className="text-sm muted">Preparing PDF…</div>
+              ) : loading ? (
+                <div className="text-sm muted">Loading PDF…</div>
               ) : (
-                Array.from({ length: totalPages }, (_, idx) => {
-                  const pageNum = idx + 1
-                  return (
-                    <canvas
-                      key={`pdf-page-${pageNum}`}
-                      ref={setPageCanvasRef(pageNum)}
-                      className="block bg-white shadow-sm"
-                      data-page={pageNum}
-                    />
-                  )
-                })
+                <>
+                  {!initialRenderReady ? <div className="text-sm muted">Preparing PDF…</div> : null}
+                  {Array.from({ length: totalPages }, (_, idx) => {
+                    const pageNum = idx + 1
+                    return (
+                      <canvas
+                        key={`pdf-page-${pageNum}`}
+                        ref={setPageCanvasRef(pageNum)}
+                        className="block bg-white shadow-sm"
+                        data-page={pageNum}
+                      />
+                    )
+                  })}
+                </>
               )}
             </div>
           </div>

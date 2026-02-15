@@ -2718,7 +2718,19 @@ export default function Dashboard() {
         setOfflineDocs([...offlineDocUrls, url])
       }
     } catch (err: any) {
-      setOfflineDocErrorByUrl(prev => ({ ...prev, [url]: err?.message || 'Failed to save offline.' }))
+      const rawMessage = String(err?.message || '')
+      let displayMessage = rawMessage || 'Failed to save offline.'
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        displayMessage = 'Connect to the internet to save offline.'
+      } else if (/failed to fetch|network\s*error|networkerror|load failed|fetch failed/i.test(rawMessage)) {
+        displayMessage = 'Unable to save offline: source server blocks download access.'
+      } else {
+        const statusMatch = rawMessage.match(/\((\d{3})\)/)
+        if (statusMatch?.[1]) {
+          displayMessage = `Unable to save offline (${statusMatch[1]}).`
+        }
+      }
+      setOfflineDocErrorByUrl(prev => ({ ...prev, [url]: displayMessage }))
     } finally {
       setOfflineDocSavingUrls(prev => prev.filter(u => u !== url))
     }

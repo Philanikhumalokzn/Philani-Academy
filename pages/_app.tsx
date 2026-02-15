@@ -11,6 +11,55 @@ import MobileTopChrome from '../components/MobileTopChrome'
 import AppErrorBoundary from '../components/AppErrorBoundary'
 import { OverlayRestoreProvider } from '../lib/overlayRestore'
 
+const CHUNK_RECOVERY_RELOAD_KEY = 'pa:chunk-recovery-reload:v1'
+const CHUNK_RECOVERY_RELOAD_WINDOW_MS = 60_000
+
+const getChunkErrorText = (value: unknown): string => {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (value instanceof Error) return `${value.name || ''} ${value.message || ''}`.trim()
+  if (typeof value === 'object') {
+    const anyValue = value as any
+    const name = typeof anyValue?.name === 'string' ? anyValue.name : ''
+    const message = typeof anyValue?.message === 'string' ? anyValue.message : ''
+    const reason = typeof anyValue?.reason === 'string' ? anyValue.reason : ''
+    const text = `${name} ${message} ${reason}`.trim()
+    if (text) return text
+  }
+  try {
+    return String(value)
+  } catch {
+    return ''
+  }
+}
+
+const isRecoverableChunkLoadError = (value: unknown): boolean => {
+  const text = getChunkErrorText(value).toLowerCase()
+  if (!text) return false
+  return (
+    text.includes('chunkloaderror')
+    || text.includes('loading chunk')
+    || text.includes('failed to fetch dynamically imported module')
+    || text.includes('dynamically imported module')
+    || text.includes('importing a module script failed')
+    || text.includes('/_next/static/')
+  )
+}
+
+const reloadForChunkRecoveryOnce = () => {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.sessionStorage.getItem(CHUNK_RECOVERY_RELOAD_KEY)
+    const lastTs = raw ? Number(raw) : 0
+    const tooSoon = Number.isFinite(lastTs) && lastTs > 0 && (Date.now() - lastTs) < CHUNK_RECOVERY_RELOAD_WINDOW_MS
+    if (tooSoon) return
+    window.sessionStorage.setItem(CHUNK_RECOVERY_RELOAD_KEY, String(Date.now()))
+  } catch {
+    // ignore storage failures
+  }
+  window.location.reload()
+}
+
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   const router = useRouter()
   const hideNavBar = router.pathname === '/board'
@@ -36,6 +85,30 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     }
     window.addEventListener('load', onLoad)
     return () => window.removeEventListener('load', onLoad)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const onWindowError = (event: ErrorEvent) => {
+      if (isRecoverableChunkLoadError(event?.error) || isRecoverableChunkLoadError(event?.message) || isRecoverableChunkLoadError(event?.filename)) {
+        reloadForChunkRecoveryOnce()
+      }
+    }
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isRecoverableChunkLoadError(event?.reason)) {
+        reloadForChunkRecoveryOnce()
+      }
+    }
+
+    window.addEventListener('error', onWindowError)
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
+
+    return () => {
+      window.removeEventListener('error', onWindowError)
+      window.removeEventListener('unhandledrejection', onUnhandledRejection)
+    }
   }, [])
 
   return (

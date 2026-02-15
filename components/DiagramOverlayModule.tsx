@@ -8,7 +8,7 @@ const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
 const GRID_OVERFLOW_SCALE = 2.4
 const GRID_MIN_ZOOM = 1
-const GRID_MAX_ZOOM = 5
+const GRID_MAX_ZOOM = 4
 const GRID_BACKGROUND_STYLE = {
   backgroundColor: '#ffffff',
   backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
@@ -934,7 +934,6 @@ export default function DiagramOverlayModule(props: {
   const gridViewportRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
-  const redrawFrameRef = useRef<number | null>(null)
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
   const currentArrowRef = useRef<DiagramArrow | null>(null)
@@ -2196,61 +2195,8 @@ export default function DiagramOverlayModule(props: {
   }, [activeDiagram, annotationsForRender, cropMode, getContainRect, mapImageToCanvasPx, normalizeAnnotations, normalizeCropRect])
 
   const redraw = useCallback(() => {
-    if (typeof window === 'undefined') {
-      performRedraw()
-      return
-    }
-    if (redrawFrameRef.current !== null) return
-    redrawFrameRef.current = window.requestAnimationFrame(() => {
-      redrawFrameRef.current = null
-      performRedraw()
-    })
+    performRedraw()
   }, [performRedraw])
-
-  const drawLiveStrokeSegment = useCallback(() => {
-    const canvas = canvasRef.current
-    const host = containerRef.current
-    const stroke = currentStrokeRef.current
-    if (!canvas || !host || !stroke || stroke.points.length < 2) return
-
-    const rect = host.getBoundingClientRect()
-    const w = Math.max(1, Math.floor(rect.width))
-    const h = Math.max(1, Math.floor(rect.height))
-    if (canvas.width !== w || canvas.height !== h) {
-      performRedraw()
-      return
-    }
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const pts = stroke.points
-
-    const p2 = mapImageToCanvasPx(pts[pts.length - 1], w, h)
-    const p1 = mapImageToCanvasPx(pts[pts.length - 2], w, h)
-    ctx.strokeStyle = stroke.color
-    ctx.lineWidth = Math.max(1, stroke.width)
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.beginPath()
-
-    if (pts.length === 2) {
-      ctx.moveTo(p1.x, p1.y)
-      ctx.lineTo(p2.x, p2.y)
-      ctx.stroke()
-      return
-    }
-
-    const p0 = mapImageToCanvasPx(pts[pts.length - 3], w, h)
-    const startX = pts.length === 3 ? p0.x : (p0.x + p1.x) / 2
-    const startY = pts.length === 3 ? p0.y : (p0.y + p1.y) / 2
-    const midX = (p1.x + p2.x) / 2
-    const midY = (p1.y + p2.y) / 2
-
-    ctx.moveTo(startX, startY)
-    ctx.quadraticCurveTo(p1.x, p1.y, midX, midY)
-    ctx.lineTo(p2.x, p2.y)
-    ctx.stroke()
-  }, [mapImageToCanvasPx, performRedraw])
 
   useEffect(() => {
     redraw()
@@ -2674,7 +2620,7 @@ export default function DiagramOverlayModule(props: {
         beginToolGesture(diagramId, e.pointerId, null)
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         currentStrokeRef.current = { id, color: '#ef4444', width: 4, points: [pending.startPoint, p] }
-        drawLiveStrokeSegment()
+        redraw()
         return
       }
     }
@@ -2777,7 +2723,7 @@ export default function DiagramOverlayModule(props: {
     if (!stroke) return
     stroke.points.push(p)
     if (tool === 'pen') {
-      drawLiveStrokeSegment()
+      redraw()
       return
     }
     redraw()

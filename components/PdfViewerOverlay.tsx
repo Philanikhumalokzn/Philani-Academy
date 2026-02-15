@@ -40,6 +40,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const defaultPageAspectRef = useRef(1.4142)
   const scrollRafRef = useRef<number | null>(null)
   const renderRafRef = useRef<number | null>(null)
+  const renderPumpRunningRef = useRef(false)
+  const renderPumpPendingRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
+  const scrollDirectionRef = useRef<1 | -1>(1)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
     autoHideMs: 2500,
@@ -600,43 +604,112 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     }
   }, [pdfDoc, open, effectiveZoom, contentSize.width])
 
-  const renderVisiblePages = useCallback(async () => {
-    if (!pdfDoc || !open) return
+  const getCurrentRenderSignature = useCallback(() => `${effectiveZoom}:${contentSize.width || 0}`, [effectiveZoom, contentSize.width])
+
+  const getRenderCandidates = useCallback(() => {
+    const candidates: Array<{ pageNum: number; priority: number }> = []
+    const seen = new Set<number>()
+
+    const pushCandidate = (pageNum: number, priority: number) => {
+      if (pageNum < 1 || pageNum > totalPages) return
+      if (seen.has(pageNum)) return
+      seen.add(pageNum)
+      candidates.push({ pageNum, priority })
+    }
 
     const scrollEl = scrollContainerRef.current
-    const visiblePages = new Set<number>()
     if (scrollEl) {
       const top = scrollEl.scrollTop
       const bottom = top + scrollEl.clientHeight
+      const viewportCenter = top + scrollEl.clientHeight / 2
       pageCanvasRefs.current.forEach((canvas, pageNum) => {
         const pageTop = canvas.offsetTop
         const pageBottom = pageTop + canvas.offsetHeight
         if (pageBottom >= top - 200 && pageTop <= bottom + 200) {
-          visiblePages.add(pageNum)
+          const pageCenter = pageTop + canvas.offsetHeight / 2
+          const dist = Math.abs(pageCenter - viewportCenter)
+          pushCandidate(pageNum, dist)
         }
       })
     }
 
-    for (let p = Math.max(1, safePage - 2); p <= Math.min(totalPages, safePage + 2); p += 1) {
-      visiblePages.add(p)
+    for (let p = Math.max(1, safePage - 3); p <= Math.min(totalPages, safePage + 3); p += 1) {
+      pushCandidate(p, 10_000 + Math.abs(p - safePage) * 100)
     }
 
-    const pages = Array.from(visiblePages).sort((a, b) => Math.abs(a - safePage) - Math.abs(b - safePage))
-    for (const pageNum of pages) {
+    const lookAheadStart = scrollDirectionRef.current > 0 ? safePage + 1 : safePage - 1
+    const lookAheadEnd = scrollDirectionRef.current > 0 ? safePage + 6 : safePage - 6
+    const step = scrollDirectionRef.current > 0 ? 1 : -1
+    for (let p = lookAheadStart; step > 0 ? p <= lookAheadEnd : p >= lookAheadEnd; p += step) {
+      pushCandidate(p, 20_000 + Math.abs(p - safePage) * 150)
+    }
+
+    if (!seen.has(safePage)) {
+      pushCandidate(safePage, 0)
+    }
+
+    candidates.sort((a, b) => a.priority - b.priority)
+    return candidates.map(item => item.pageNum)
+  }, [safePage, totalPages])
+
+  const getNextPageToRender = useCallback(() => {
+    const signature = getCurrentRenderSignature()
+    const candidates = getRenderCandidates()
+    for (const pageNum of candidates) {
       const canvas = pageCanvasRefs.current.get(pageNum)
       if (!canvas) continue
-      await renderPageToCanvas(pageNum, canvas)
+      const lastSignature = renderedSignatureRef.current.get(pageNum)
+      if (lastSignature !== signature || canvas.width === 0 || canvas.height === 0) {
+        return pageNum
+      }
     }
-  }, [pdfDoc, open, renderPageToCanvas, totalPages, safePage])
+    return null
+  }, [getCurrentRenderSignature, getRenderCandidates])
+
+  const runRenderPump = useCallback(async () => {
+    if (renderPumpRunningRef.current) return
+    if (!open || !pdfDoc) return
+
+    renderPumpRunningRef.current = true
+    try {
+      let renderedThisPass = 0
+      while (renderedThisPass < 2) {
+        const pageNum = getNextPageToRender()
+        if (!pageNum) {
+          renderPumpPendingRef.current = false
+          break
+        }
+
+        renderPumpPendingRef.current = false
+        const canvas = pageCanvasRefs.current.get(pageNum)
+        if (!canvas) break
+
+        await renderPageToCanvas(pageNum, canvas)
+        renderedThisPass += 1
+      }
+    } finally {
+      renderPumpRunningRef.current = false
+      if (!open || !pdfDoc) return
+      if (renderPumpPendingRef.current || getNextPageToRender() !== null) {
+        if (typeof window !== 'undefined' && !renderRafRef.current) {
+          renderRafRef.current = window.requestAnimationFrame(() => {
+            renderRafRef.current = null
+            void runRenderPump()
+          })
+        }
+      }
+    }
+  }, [getNextPageToRender, open, pdfDoc, renderPageToCanvas])
 
   const queueVisibleRender = useCallback(() => {
     if (typeof window === 'undefined') return
+    renderPumpPendingRef.current = true
     if (renderRafRef.current) return
     renderRafRef.current = window.requestAnimationFrame(() => {
       renderRafRef.current = null
-      void renderVisiblePages()
+      void runRenderPump()
     })
-  }, [renderVisiblePages])
+  }, [runRenderPump])
 
   useEffect(() => {
     if (!open) return
@@ -673,6 +746,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
+        const nextTop = scrollEl.scrollTop
+        if (nextTop > lastScrollTopRef.current) scrollDirectionRef.current = 1
+        if (nextTop < lastScrollTopRef.current) scrollDirectionRef.current = -1
+        lastScrollTopRef.current = nextTop
         updatePageFromScroll()
         queueVisibleRender()
       })
@@ -697,27 +774,26 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }, [open, updatePageFromScroll, queueVisibleRender])
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      if (cancelled) return
-      await renderVisiblePages()
-      if (cancelled || !open) return
-      if (!initialState) return
-      if (restoredScrollRef.current) return
-      const scrollEl = scrollContainerRef.current
-      if (!scrollEl) return
-      if (typeof initialState.scrollTop === 'number') {
-        scrollEl.scrollTop = initialState.scrollTop
-      } else if (typeof initialState.page === 'number') {
-        scrollToPage(initialState.page)
-      }
-      restoredScrollRef.current = true
-    })()
+    queueVisibleRender()
+    if (!open) return
+    if (!initialState) return
+    if (restoredScrollRef.current) return
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) return
+    if (typeof initialState.scrollTop === 'number') {
+      scrollEl.scrollTop = initialState.scrollTop
+      lastScrollTopRef.current = initialState.scrollTop
+    } else if (typeof initialState.page === 'number') {
+      scrollToPage(initialState.page)
+    }
+    restoredScrollRef.current = true
+
     return () => {
-      cancelled = true
+      renderPumpPendingRef.current = false
+      renderPumpRunningRef.current = false
       cancelRenderTasks()
     }
-  }, [renderVisiblePages, cancelRenderTasks, initialState, open, scrollToPage])
+  }, [queueVisibleRender, cancelRenderTasks, initialState, open, scrollToPage])
 
   useEffect(() => {
     if (!open) return

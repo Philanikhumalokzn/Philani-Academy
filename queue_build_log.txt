@@ -1,0 +1,31 @@
+
+> philani-academy@0.1.0 build
+> cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true npm run prisma:generate && npm run silence:baseline-warning && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next build
+
+
+> philani-academy@0.1.0 prisma:generate
+> npx prisma generate && node scripts/fix_prisma_client.js
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma\schema.prisma.
+
+✔ Generated Prisma Client (v7.3.0) to .\node_modules\@prisma\client in 1.02s
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
+[fix_prisma_client] OK: synced generated client into @prisma/client/.prisma
+
+> philani-academy@0.1.0 silence:baseline-warning
+> node scripts/silence_baseline_warning.js
+
+[silence-baseline-warning] already clean (warning call not found)
+   ▲ Next.js 16.0.7 (Turbopack)
+
+   Running TypeScript ...
+   Creating an optimized production build ...
+
+> Build error occurred
+Error: ENOENT: no such file or directory, open 'C:\Users\Sphindile\OneDrive\Documents\Khumalo\Philani-Academy\.next\static\YNbnp3ynFohq5GGkEM_Zj\_buildManifest.js.tmp.l79kxzn102c'
+    at ignore-listed frames

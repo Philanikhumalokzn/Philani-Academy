@@ -2705,18 +2705,13 @@ export default function Dashboard() {
     try {
       if (!('caches' in window)) throw new Error('Offline storage unavailable.')
       const cache = await caches.open('pa-docs-v1')
-      const isSameOrigin = (() => {
-        try {
-          const resolved = new URL(url, window.location.origin)
-          return resolved.origin === window.location.origin
-        } catch {
-          return false
-        }
-      })()
-      const response = await fetch(url, isSameOrigin ? undefined : { mode: 'no-cors' })
+      const response = await fetch(url)
       if (!response) throw new Error('Unable to download file.')
+      if (!response.ok) {
+        throw new Error(`Unable to download file (${response.status}).`)
+      }
       if (response.type === 'opaque') {
-        throw new Error('This file cannot be saved offline (server blocks access).')
+        throw new Error('Unable to save this file offline.')
       }
       await cache.put(url, response.clone())
       if (!offlineDocUrls.includes(url)) {

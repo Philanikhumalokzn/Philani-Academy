@@ -23,6 +23,7 @@ export type FullScreenGlassOverlayProps = {
   variant?: 'dark' | 'light'
   position?: 'fixed' | 'absolute'
   showCloseButton?: boolean
+  hideHeader?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -48,6 +49,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     position,
     panelSize,
     showCloseButton: _showCloseButton,
+    hideHeader = false,
     leftActions,
     rightActions,
     className,
@@ -277,20 +279,22 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
             </div>
           ) : null}
 
-          <div className={`${headerClassName} ${headerSafeTopClassName}`}>
-            <div className={actionSlotClassName}>
-              {leftActions}
-            </div>
+          {hideHeader ? null : (
+            <div className={`${headerClassName} ${headerSafeTopClassName}`}>
+              <div className={actionSlotClassName}>
+                {leftActions}
+              </div>
 
-            <div className="min-w-0 flex-1">
-              <div className={titleClassName}>{title}</div>
-              {subtitle ? <div className={subtitleClassName}>{subtitle}</div> : null}
-            </div>
+              <div className="min-w-0 flex-1">
+                <div className={titleClassName}>{title}</div>
+                {subtitle ? <div className={subtitleClassName}>{subtitle}</div> : null}
+              </div>
 
-            <div className={actionSlotClassName}>
-              {rightActions}
+              <div className={actionSlotClassName}>
+                {rightActions}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className={`${contentClassBase} ${contentClassName || ''}`}>{children}</div>
         </div>

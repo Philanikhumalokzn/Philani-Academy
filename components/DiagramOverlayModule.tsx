@@ -3034,6 +3034,7 @@ export default function DiagramOverlayModule(props: {
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
           panelSize="full"
+          hideHeader={isGridDiagram}
           onClose={() => {
             if (!isAdmin) return
             void handleClose()
@@ -3047,7 +3048,7 @@ export default function DiagramOverlayModule(props: {
           frameClassName="absolute inset-0 flex items-end justify-center p-0"
           panelClassName="!rounded-none"
           rightActions={
-            isAdmin ? (
+            isAdmin && !isGridDiagram ? (
               <button
                 type="button"
                 className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -3072,7 +3073,7 @@ export default function DiagramOverlayModule(props: {
           >
           {canPresent && (
             <div
-              className={`${isGridDiagram ? 'sticky' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
+              className={`${isGridDiagram ? 'fixed' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
               style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
             >
               <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
+import { useTapToPeek } from '../lib/useTapToPeek'
 
 const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
@@ -201,6 +202,16 @@ export default function DiagramOverlayModule(props: {
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
   }, [diagramState.activeDiagramId, diagrams])
   const isGridDiagram = activeDiagram?.imageUrl === GRID_DIAGRAM_URL
+  const { visible: gridCloseVisible, peek: peekGridCloseButton, clearTimer: clearGridCloseTimer } = useTapToPeek({
+    autoHideMs: 1800,
+    defaultVisible: false,
+    disabled: !diagramState.isOpen || !isGridDiagram || !isAdmin,
+  })
+
+  useEffect(() => {
+    if (diagramState.isOpen && isGridDiagram && isAdmin) return
+    clearGridCloseTimer()
+  }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3059,12 +3070,42 @@ export default function DiagramOverlayModule(props: {
               </button>
             ) : null
           }
-          contentClassName="p-0 flex flex-col overflow-hidden"
+          contentClassName="relative p-0 flex flex-col overflow-hidden"
         >
+          {isGridDiagram && isAdmin ? (
+            <div
+              className={`absolute z-50 transition-opacity duration-200 ${gridCloseVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+              style={{
+                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+                right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
+              }}
+              aria-hidden={!gridCloseVisible}
+            >
+              <button
+                type="button"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm hover:bg-white"
+                onTouchStart={peekGridCloseButton}
+                onClick={() => void handleClose()}
+                aria-label="Close diagram"
+                title="Close"
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
+
           <div
             ref={gridViewportRef}
             className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-auto' : 'overflow-hidden'}`}
             onMouseDown={() => setContextMenu(null)}
+            onTouchStart={() => {
+              if (isGridDiagram && isAdmin) peekGridCloseButton()
+            }}
+            onTouchMove={() => {
+              if (isGridDiagram && isAdmin) peekGridCloseButton()
+            }}
           >
           <div
             ref={containerRef}
@@ -3075,6 +3116,9 @@ export default function DiagramOverlayModule(props: {
             <div
               className={`${isGridDiagram ? 'fixed' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
               style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
+              onTouchStart={() => {
+                if (isGridDiagram && isAdmin) peekGridCloseButton()
+              }}
             >
               <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
                 <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm whitespace-nowrap">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
 import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import { useTapToPeek } from '../lib/useTapToPeek'
 
 export default function ImageCropperModal(props: {
   open: boolean
@@ -34,6 +35,11 @@ export default function ImageCropperModal(props: {
   const [rotating, setRotating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { visible: controlsVisible, peek: peekControls, clearTimer: clearControlsTimer } = useTapToPeek({
+    autoHideMs: 1800,
+    defaultVisible: false,
+    disabled: !open,
+  })
 
   const objectUrl = useMemo(() => {
     if (!open) return null
@@ -65,6 +71,14 @@ export default function ImageCropperModal(props: {
     setSaving(false)
     setError(null)
   }, [open, file, initialCrop])
+
+  useEffect(() => {
+    if (!open) clearControlsTimer()
+  }, [clearControlsTimer, open])
+
+  const handleCropSurfaceInteraction = useCallback(() => {
+    peekControls()
+  }, [peekControls])
 
   const rotateBy = useCallback(async (deltaDeg: number) => {
     if (!workingFile) return
@@ -167,12 +181,22 @@ export default function ImageCropperModal(props: {
           </svg>
         </button>
 
-        <div className="absolute inset-x-0 top-0" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)' }}>
+        <div
+          className="absolute inset-x-0 top-0"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 104px)' }}
+          onPointerDown={handleCropSurfaceInteraction}
+          onPointerMove={handleCropSurfaceInteraction}
+          onTouchStart={handleCropSurfaceInteraction}
+          onTouchMove={handleCropSurfaceInteraction}
+        >
           {objectUrl ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <ReactCrop
                 crop={crop}
-                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                onChange={(_, percentCrop) => {
+                  setCrop(percentCrop)
+                  peekControls()
+                }}
                 onComplete={(px) => setCompletedCropPx(px)}
                 keepSelection
                 aspect={aspectRatio}
@@ -197,10 +221,10 @@ export default function ImageCropperModal(props: {
         </div>
 
         <div
-          className="absolute z-10 flex flex-col items-center gap-3"
+          className={`absolute z-10 flex flex-col items-center gap-3 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
           style={{
             right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 150px)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 116px)',
           }}
         >
           <button
@@ -234,8 +258,11 @@ export default function ImageCropperModal(props: {
           {rotating ? <div className="text-[11px] text-white/80">Rotating…</div> : null}
         </div>
 
-        <div className="absolute inset-x-0 z-10" style={{ bottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="px-3 pb-3 pt-16 sm:px-5 sm:pb-5 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+        <div
+          className={`absolute inset-x-0 z-10 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          style={{ bottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <div className="px-3 pb-2 pt-12 sm:px-5 sm:pb-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button

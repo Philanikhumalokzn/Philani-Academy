@@ -1,25 +1,11 @@
-const CACHE_NAME = 'pa-offline-v2';
+const CACHE_NAME = 'pa-offline-v3';
 const DOCS_CACHE = 'pa-docs-v1';
 const OFFLINE_URL = '/offline.html';
-
-const collectNextStaticUrls = (htmlText) => {
-  if (!htmlText) return [];
-  const matches = htmlText.match(/\/_next\/static\/[^"'\s)]+/g) || [];
-  return Array.from(new Set(matches));
-};
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
       await cache.addAll([OFFLINE_URL]);
-      try {
-        const res = await fetch('/dashboard');
-        const html = await res.text();
-        const urls = collectNextStaticUrls(html);
-        await Promise.all(urls.map((url) => cache.add(url).catch(() => {})));
-      } catch {
-        // ignore
-      }
     })
   );
   self.skipWaiting();
@@ -34,6 +20,26 @@ self.addEventListener('activate', (event) => {
           .filter((key) => ![CACHE_NAME, DOCS_CACHE].includes(key))
           .map((key) => caches.delete(key))
       );
+
+      // Purge any stale Next.js runtime chunks that may have been cached by older SW logic.
+      for (const cacheName of [CACHE_NAME, DOCS_CACHE]) {
+        const cache = await caches.open(cacheName);
+        const requests = await cache.keys();
+        await Promise.all(
+          requests.map((req) => {
+            try {
+              const u = new URL(req.url);
+              if (u.origin === self.location.origin && u.pathname.startsWith('/_next/')) {
+                return cache.delete(req);
+              }
+            } catch {
+              // ignore malformed URLs
+            }
+            return Promise.resolve(false);
+          })
+        );
+      }
+
       await self.clients.claim();
     })()
   );
@@ -65,6 +71,10 @@ self.addEventListener('fetch', (event) => {
   if (request.method === 'GET') {
     const reqUrl = new URL(request.url);
     if (reqUrl.origin !== self.location.origin) {
+      return;
+    }
+    if (reqUrl.pathname.startsWith('/_next/')) {
+      // Never cache Next.js runtime/chunk assets in SW. Stale chunks cause client-side crashes.
       return;
     }
     if (reqUrl.pathname.startsWith('/api/')) {

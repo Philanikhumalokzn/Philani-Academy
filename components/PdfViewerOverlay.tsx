@@ -44,6 +44,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const renderPumpPendingRef = useRef(false)
   const lastScrollTopRef = useRef(0)
   const scrollDirectionRef = useRef<1 | -1>(1)
+  const scrollIdleTimeoutRef = useRef<number | null>(null)
+  const isFastScrollingRef = useRef(false)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
     autoHideMs: 2500,
@@ -103,6 +105,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (task?.cancel) task.cancel()
     })
     renderTasksRef.current.clear()
+  }, [])
+
+  const clearScrollIdleTimeout = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (scrollIdleTimeoutRef.current) {
+      window.clearTimeout(scrollIdleTimeoutRef.current)
+      scrollIdleTimeoutRef.current = null
+    }
   }, [])
 
   const applyPlaceholderCanvasSize = useCallback((canvas: HTMLCanvasElement, pageNum: number) => {
@@ -543,6 +553,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   useEffect(() => {
     if (open) return
     cancelRenderTasks()
+    clearScrollIdleTimeout()
+    isFastScrollingRef.current = false
     renderedSignatureRef.current.clear()
     pageAspectRatiosRef.current.clear()
     defaultPageAspectRef.current = 1.4142
@@ -550,7 +562,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       pdfDoc.destroy()
     }
     setPdfDoc(null)
-  }, [open, pdfDoc, cancelRenderTasks])
+  }, [open, pdfDoc, cancelRenderTasks, clearScrollIdleTimeout])
 
   const renderPageToCanvas = useCallback(async (pageNum: number, canvas: HTMLCanvasElement) => {
     if (!pdfDoc || !open) return
@@ -580,7 +592,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
-      const outputScale = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1
+      const outputScale = typeof window !== 'undefined'
+        ? Math.min(window.devicePixelRatio || 1, isFastScrollingRef.current ? 1 : 2)
+        : 1
       canvas.width = Math.floor(viewport.width * outputScale)
       canvas.height = Math.floor(viewport.height * outputScale)
       canvas.style.width = `${Math.floor(viewport.width)}px`
@@ -604,7 +618,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     }
   }, [pdfDoc, open, effectiveZoom, contentSize.width])
 
-  const getCurrentRenderSignature = useCallback(() => `${effectiveZoom}:${contentSize.width || 0}`, [effectiveZoom, contentSize.width])
+  const getCurrentRenderSignature = useCallback(
+    () => `${effectiveZoom}:${contentSize.width || 0}:${isFastScrollingRef.current ? 'fast' : 'full'}`,
+    [effectiveZoom, contentSize.width]
+  )
 
   const getRenderCandidates = useCallback(() => {
     const candidates: Array<{ pageNum: number; priority: number }> = []
@@ -672,8 +689,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     renderPumpRunningRef.current = true
     try {
+      const renderBudget = isFastScrollingRef.current ? 1 : 2
       let renderedThisPass = 0
-      while (renderedThisPass < 2) {
+      while (renderedThisPass < renderBudget) {
         const pageNum = getNextPageToRender()
         if (!pageNum) {
           renderPumpPendingRef.current = false
@@ -746,6 +764,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
+        if (!isFastScrollingRef.current) {
+          isFastScrollingRef.current = true
+          renderedSignatureRef.current.clear()
+        }
+        clearScrollIdleTimeout()
+        scrollIdleTimeoutRef.current = window.setTimeout(() => {
+          scrollIdleTimeoutRef.current = null
+          if (!isFastScrollingRef.current) return
+          isFastScrollingRef.current = false
+          renderedSignatureRef.current.clear()
+          queueVisibleRender()
+        }, 140)
+
         const nextTop = scrollEl.scrollTop
         if (nextTop > lastScrollTopRef.current) scrollDirectionRef.current = 1
         if (nextTop < lastScrollTopRef.current) scrollDirectionRef.current = -1
@@ -762,6 +793,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     return () => {
       scrollEl.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
+      clearScrollIdleTimeout()
       if (scrollRafRef.current) {
         window.cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
@@ -771,7 +803,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         renderRafRef.current = null
       }
     }
-  }, [open, updatePageFromScroll, queueVisibleRender])
+  }, [open, updatePageFromScroll, queueVisibleRender, clearScrollIdleTimeout])
 
   useEffect(() => {
     queueVisibleRender()
@@ -791,9 +823,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     return () => {
       renderPumpPendingRef.current = false
       renderPumpRunningRef.current = false
+      clearScrollIdleTimeout()
       cancelRenderTasks()
     }
-  }, [queueVisibleRender, cancelRenderTasks, initialState, open, scrollToPage])
+  }, [queueVisibleRender, cancelRenderTasks, initialState, open, scrollToPage, clearScrollIdleTimeout])
 
   useEffect(() => {
     if (!open) return

@@ -74,14 +74,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }>({ active: false, startDist: 0, startZoom: 110, lastDist: 0, lastCenterX: 0, lastCenterY: 0, pendingZoom: null })
   const liveZoomRef = useRef(110)
   const lastTouchZoomApplyTsRef = useRef(0)
-  const isMobile = useMemo(() => {
-    if (typeof navigator === 'undefined') return false
-    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-  }, [])
   const canUseWorker = useMemo(() => {
     if (typeof window === 'undefined') return false
-    return typeof (window as any).Worker !== 'undefined' && !isMobile
-  }, [isMobile])
+    return typeof (window as any).Worker !== 'undefined'
+  }, [])
 
   const effectiveZoom = clamp(zoom, 50, 220)
   useEffect(() => {

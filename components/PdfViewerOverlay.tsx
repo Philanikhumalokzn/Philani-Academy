@@ -36,6 +36,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
   const renderedSignatureRef = useRef<Map<number, string>>(new Map())
+  const pageAspectRatiosRef = useRef<Map<number, number>>(new Map())
+  const defaultPageAspectRef = useRef(1.4142)
   const scrollRafRef = useRef<number | null>(null)
   const renderRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
@@ -98,6 +100,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     })
     renderTasksRef.current.clear()
   }, [])
+
+  const applyPlaceholderCanvasSize = useCallback((canvas: HTMLCanvasElement, pageNum: number) => {
+    const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
+    if (!availableWidth) return
+    const baseScale = effectiveZoom / 100
+    const aspect = pageAspectRatiosRef.current.get(pageNum) || defaultPageAspectRef.current || 1.4142
+    const nextWidth = Math.max(1, Math.floor(availableWidth * baseScale))
+    const nextHeight = Math.max(1, Math.floor(nextWidth * aspect))
+    canvas.style.width = `${nextWidth}px`
+    canvas.style.height = `${nextHeight}px`
+    canvas.style.minHeight = `${nextHeight}px`
+  }, [contentSize.width, effectiveZoom])
 
   const scrollToPage = useCallback((pageNum: number) => {
     const canvas = pageCanvasRefs.current.get(pageNum)
@@ -451,6 +465,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     setPage(initialState?.page ?? 1)
     setZoom(initialState?.zoom ?? 110)
     renderedSignatureRef.current.clear()
+    pageAspectRatiosRef.current.clear()
+    defaultPageAspectRef.current = 1.4142
     restoredScrollRef.current = false
 
     ;(async () => {
@@ -484,6 +500,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           if (doc?.destroy) await doc.destroy()
           return
         }
+
+        try {
+          const firstPage = await doc.getPage(1)
+          const firstViewport = firstPage.getViewport({ scale: 1 })
+          if (firstViewport?.width && firstViewport?.height) {
+            defaultPageAspectRef.current = clamp(firstViewport.height / firstViewport.width, 0.5, 3)
+            pageAspectRatiosRef.current.set(1, defaultPageAspectRef.current)
+          }
+        } catch {
+          // ignore ratio bootstrap errors
+        }
+
         setPdfDoc(doc)
         setNumPages(doc?.numPages || 0)
       } catch (err: any) {
@@ -512,6 +540,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (open) return
     cancelRenderTasks()
     renderedSignatureRef.current.clear()
+    pageAspectRatiosRef.current.clear()
+    defaultPageAspectRef.current = 1.4142
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
@@ -533,6 +563,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       const pageObj = await pdfDoc.getPage(pageNum)
       const baseScale = effectiveZoom / 100
       const naturalViewport = pageObj.getViewport({ scale: 1 })
+      if (naturalViewport?.width && naturalViewport?.height) {
+        const ratio = clamp(naturalViewport.height / naturalViewport.width, 0.5, 3)
+        pageAspectRatiosRef.current.set(pageNum, ratio)
+        if (!defaultPageAspectRef.current || !Number.isFinite(defaultPageAspectRef.current)) {
+          defaultPageAspectRef.current = ratio
+        }
+      }
       const availableWidth = contentSize.width || contentRef.current?.clientWidth || 0
       const fitScale = availableWidth
         ? clamp(availableWidth / naturalViewport.width, 0.5, 2)
@@ -544,6 +581,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       canvas.height = Math.floor(viewport.height * outputScale)
       canvas.style.width = `${Math.floor(viewport.width)}px`
       canvas.style.height = `${Math.floor(viewport.height)}px`
+      canvas.style.minHeight = `${Math.floor(viewport.height)}px`
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
 
       const existing = renderTasksRef.current.get(pageNum)
@@ -621,6 +659,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   useEffect(() => {
     if (!open) return
+    pageCanvasRefs.current.forEach((canvas, pageNum) => {
+      applyPlaceholderCanvasSize(canvas, pageNum)
+    })
+  }, [open, totalPages, effectiveZoom, contentSize.width, applyPlaceholderCanvasSize])
+
+  useEffect(() => {
+    if (!open) return
     const scrollEl = scrollContainerRef.current
     if (!scrollEl) return
 
@@ -673,6 +718,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       cancelRenderTasks()
     }
   }, [renderVisiblePages, cancelRenderTasks, initialState, open, scrollToPage])
+
+  useEffect(() => {
+    if (!open) return
+    queueVisibleRender()
+  }, [open, queueVisibleRender, effectiveZoom, contentSize.width, safePage])
 
   if (!open) return null
 

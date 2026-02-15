@@ -561,7 +561,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-50"
       role="dialog"
       aria-modal="true"
       onPointerMove={kickChromeAutoHide}
@@ -571,15 +571,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     >
       <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={onClose} />
 
-      <div className="relative z-10 mt-auto h-[min(92vh,100dvh)] w-full max-w-[1200px]" onClick={onClose}>
+      <div className="relative z-10 h-[100dvh] w-full" onClick={onClose}>
         <div
-          className="relative h-full w-full overflow-hidden rounded-t-[24px] border border-white/10 bg-white/10 backdrop-blur-xl"
+          className="relative h-full w-full overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="pointer-events-none absolute left-1/2 top-2 z-30 h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/60" aria-hidden="true" />
-
           <div
-            className={`absolute left-3 right-3 top-3 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-center transition-opacity duration-200 ${chromeClassName} pointer-events-none`}
+            className={`absolute left-3 right-3 sm:left-4 sm:right-4 z-20 flex items-center justify-center transition-opacity duration-200 ${chromeClassName} pointer-events-none`}
+            style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
             aria-hidden={!chromeVisible}
           >
             <div className="max-w-[82vw] text-center">
@@ -589,7 +588,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           </div>
 
           <div
-            className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 flex items-center justify-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
+            className={`absolute left-2 right-2 sm:left-4 sm:right-4 z-20 flex items-center justify-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
+            style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
             aria-hidden={!chromeVisible}
           >
             <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">

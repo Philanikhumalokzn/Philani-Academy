@@ -160,6 +160,10 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'w-full h-[100dvh] max-h-[100dvh]'
     : 'w-full max-h-[92vh]'
 
+  const panelTopSafeClassName = panelSizing !== 'full' && rootPosition === 'fixed'
+    ? 'mt-[calc(var(--app-safe-top)+0.5rem)]'
+    : ''
+
   const showDragThumb = panelSizing !== 'full'
 
   const contentClassBase = panelSizing === 'full'
@@ -259,7 +263,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
         style={frameSafeAreaStyle}
       >
         <div
-          className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
+          className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${panelTopSafeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
           style={canSwipeDownClose
             ? {

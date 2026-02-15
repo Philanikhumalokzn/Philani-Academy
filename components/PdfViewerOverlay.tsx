@@ -35,7 +35,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const contentRef = useRef<HTMLDivElement | null>(null)
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
+  const renderedSignatureRef = useRef<Map<number, string>>(new Map())
   const scrollRafRef = useRef<number | null>(null)
+  const renderRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
     autoHideMs: 2500,
@@ -106,14 +108,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const updatePageFromScroll = useCallback(() => {
     const scrollEl = scrollContainerRef.current
     if (!scrollEl) return
-    const viewportRect = scrollEl.getBoundingClientRect()
-    const viewportCenter = viewportRect.top + viewportRect.height / 2
+    const viewportCenter = scrollEl.scrollTop + scrollEl.clientHeight / 2
     let bestPage = safePage
     let bestDist = Number.POSITIVE_INFINITY
 
     pageCanvasRefs.current.forEach((canvas, pageNum) => {
-      const rect = canvas.getBoundingClientRect()
-      const center = rect.top + rect.height / 2
+      const center = canvas.offsetTop + canvas.offsetHeight / 2
       const dist = Math.abs(center - viewportCenter)
       if (dist < bestDist) {
         bestDist = dist
@@ -450,6 +450,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     setNumPages(0)
     setPage(initialState?.page ?? 1)
     setZoom(initialState?.zoom ?? 110)
+    renderedSignatureRef.current.clear()
     restoredScrollRef.current = false
 
     ;(async () => {
@@ -510,6 +511,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   useEffect(() => {
     if (open) return
     cancelRenderTasks()
+    renderedSignatureRef.current.clear()
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
@@ -521,6 +523,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const context = canvas.getContext('2d')
     if (!context) return
 
+    const renderSignature = `${effectiveZoom}:${contentSize.width || 0}`
+    const lastSignature = renderedSignatureRef.current.get(pageNum)
+    if (lastSignature === renderSignature && canvas.width > 0 && canvas.height > 0) {
+      return
+    }
+
     try {
       const pageObj = await pdfDoc.getPage(pageNum)
       const baseScale = effectiveZoom / 100
@@ -531,7 +539,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
-      const outputScale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      const outputScale = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1
       canvas.width = Math.floor(viewport.width * outputScale)
       canvas.height = Math.floor(viewport.height * outputScale)
       canvas.style.width = `${Math.floor(viewport.width)}px`
@@ -543,6 +551,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       const task = pageObj.render({ canvasContext: context, viewport })
       renderTasksRef.current.set(pageNum, task)
       await task.promise
+      renderedSignatureRef.current.set(pageNum, renderSignature)
     } catch (err: any) {
       const message = String(err?.message || '')
       const name = String(err?.name || '')
@@ -553,15 +562,43 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     }
   }, [pdfDoc, open, effectiveZoom, contentSize.width])
 
-  const renderAllPages = useCallback(async () => {
+  const renderVisiblePages = useCallback(async () => {
     if (!pdfDoc || !open) return
-    const pages = Array.from({ length: totalPages }, (_, idx) => idx + 1)
+
+    const scrollEl = scrollContainerRef.current
+    const visiblePages = new Set<number>()
+    if (scrollEl) {
+      const top = scrollEl.scrollTop
+      const bottom = top + scrollEl.clientHeight
+      pageCanvasRefs.current.forEach((canvas, pageNum) => {
+        const pageTop = canvas.offsetTop
+        const pageBottom = pageTop + canvas.offsetHeight
+        if (pageBottom >= top - 200 && pageTop <= bottom + 200) {
+          visiblePages.add(pageNum)
+        }
+      })
+    }
+
+    for (let p = Math.max(1, safePage - 2); p <= Math.min(totalPages, safePage + 2); p += 1) {
+      visiblePages.add(p)
+    }
+
+    const pages = Array.from(visiblePages).sort((a, b) => Math.abs(a - safePage) - Math.abs(b - safePage))
     for (const pageNum of pages) {
       const canvas = pageCanvasRefs.current.get(pageNum)
       if (!canvas) continue
       await renderPageToCanvas(pageNum, canvas)
     }
-  }, [pdfDoc, open, renderPageToCanvas, totalPages])
+  }, [pdfDoc, open, renderPageToCanvas, totalPages, safePage])
+
+  const queueVisibleRender = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (renderRafRef.current) return
+    renderRafRef.current = window.requestAnimationFrame(() => {
+      renderRafRef.current = null
+      void renderVisiblePages()
+    })
+  }, [renderVisiblePages])
 
   useEffect(() => {
     if (!open) return
@@ -592,6 +629,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
         updatePageFromScroll()
+        queueVisibleRender()
       })
     }
 
@@ -606,14 +644,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         window.cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
       }
+      if (renderRafRef.current) {
+        window.cancelAnimationFrame(renderRafRef.current)
+        renderRafRef.current = null
+      }
     }
-  }, [open, updatePageFromScroll])
+  }, [open, updatePageFromScroll, queueVisibleRender])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       if (cancelled) return
-      await renderAllPages()
+      await renderVisiblePages()
       if (cancelled || !open) return
       if (!initialState) return
       if (restoredScrollRef.current) return
@@ -630,7 +672,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       cancelled = true
       cancelRenderTasks()
     }
-  }, [renderAllPages, cancelRenderTasks, initialState, open, scrollToPage])
+  }, [renderVisiblePages, cancelRenderTasks, initialState, open, scrollToPage])
 
   if (!open) return null
 

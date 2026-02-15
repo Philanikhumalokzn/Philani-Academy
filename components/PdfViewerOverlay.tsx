@@ -42,6 +42,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const renderRafRef = useRef<number | null>(null)
   const renderPumpRunningRef = useRef(false)
   const renderPumpPendingRef = useRef(false)
+  const initialRenderedPagesRef = useRef(0)
   const lastScrollTopRef = useRef(0)
   const scrollDirectionRef = useRef<1 | -1>(1)
   const lastWheelTsRef = useRef(0)
@@ -52,6 +53,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+  const [initialRenderReady, setInitialRenderReady] = useState(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
     pointerId: number | null
@@ -76,10 +78,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
   }, [])
+  const isAndroid = useMemo(() => {
+    if (typeof navigator === 'undefined') return false
+    return /Android/i.test(navigator.userAgent)
+  }, [])
+  const isCapacitor = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return Boolean((window as any).Capacitor)
+  }, [])
+  const forceWorkerOnCapacitorAndroid = useMemo(() => isCapacitor && isAndroid, [isCapacitor, isAndroid])
   const canUseWorker = useMemo(() => {
     if (typeof window === 'undefined') return false
-    return typeof (window as any).Worker !== 'undefined' && !isMobile
-  }, [isMobile])
+    return typeof (window as any).Worker !== 'undefined' && (!isMobile || forceWorkerOnCapacitorAndroid)
+  }, [isMobile, forceWorkerOnCapacitorAndroid])
 
   const effectiveZoom = clamp(zoom, 50, 220)
   useEffect(() => {
@@ -468,6 +479,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     setNumPages(0)
     setPage(initialState?.page ?? 1)
     setZoom(initialState?.zoom ?? 110)
+    setInitialRenderReady(false)
+    initialRenderedPagesRef.current = 0
     renderedSignatureRef.current.clear()
     pageAspectRatiosRef.current.clear()
     defaultPageAspectRef.current = 1.4142
@@ -543,6 +556,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   useEffect(() => {
     if (open) return
     cancelRenderTasks()
+    setInitialRenderReady(false)
+    initialRenderedPagesRef.current = 0
     renderedSignatureRef.current.clear()
     pageAspectRatiosRef.current.clear()
     defaultPageAspectRef.current = 1.4142
@@ -594,6 +609,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       renderTasksRef.current.set(pageNum, task)
       await task.promise
       renderedSignatureRef.current.set(pageNum, renderSignature)
+
+      if (!initialRenderReady) {
+        initialRenderedPagesRef.current += 1
+        if (pageNum === safePage || initialRenderedPagesRef.current >= 2) {
+          setInitialRenderReady(true)
+        }
+      }
     } catch (err: any) {
       const message = String(err?.message || '')
       const name = String(err?.name || '')
@@ -602,7 +624,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, effectiveZoom, contentSize.width])
+  }, [pdfDoc, open, effectiveZoom, contentSize.width, initialRenderReady, safePage])
 
   const getCurrentRenderSignature = useCallback(() => `${effectiveZoom}:${contentSize.width || 0}`, [effectiveZoom, contentSize.width])
 
@@ -1006,8 +1028,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             <div ref={contentRef} className="w-full flex flex-col items-center gap-6 p-4 sm:p-6">
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>
-              ) : loading ? (
-                <div className="text-sm muted">Loading PDF…</div>
+              ) : (loading || !initialRenderReady) ? (
+                <div className="text-sm muted">Preparing PDF…</div>
               ) : (
                 Array.from({ length: totalPages }, (_, idx) => {
                   const pageNum = idx + 1

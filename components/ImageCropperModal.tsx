@@ -138,6 +138,9 @@ export default function ImageCropperModal(props: {
       onBackdropClick={onCancel}
       closeDisabled={saving}
       zIndexClassName="z-[90]"
+      panelSize="full"
+      frameClassName="absolute inset-0 flex items-end justify-center p-0"
+      panelClassName="!rounded-none"
       contentClassName="relative p-0 overflow-hidden"
     >
       <div className="relative h-full w-full bg-black">
@@ -176,7 +179,7 @@ export default function ImageCropperModal(props: {
           )}
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 z-10">
+        <div className="absolute inset-x-0 z-10" style={{ bottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <div className="px-3 pb-3 pt-16 sm:px-5 sm:pb-5 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">

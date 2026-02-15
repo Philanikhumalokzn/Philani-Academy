@@ -134,6 +134,10 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-start justify-between gap-3 bg-white/70'
     : 'p-3 sm:p-4 border-b border-white/10 flex items-start justify-between gap-3'
 
+  const headerSafeTopClassName = panelSizing === 'full' && rootPosition === 'fixed'
+    ? 'pt-[calc(0.75rem+var(--app-safe-top))] sm:pt-[calc(1rem+var(--app-safe-top))]'
+    : ''
+
   const titleClassName = overlayVariant === 'light'
     ? 'font-semibold text-slate-900 whitespace-normal break-words'
     : 'font-semibold text-white whitespace-normal break-words'
@@ -151,8 +155,10 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     : 'border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl'
 
   const panelSizeClassName = panelSizing === 'full'
-    ? 'w-full h-[92vh]'
+    ? 'w-full h-[100dvh] max-h-[100dvh]'
     : 'w-full max-h-[92vh]'
+
+  const showDragThumb = panelSizing !== 'full'
 
   const contentClassBase = panelSizing === 'full'
     ? 'flex-1 min-h-0 overflow-y-auto pt-3 px-3 pb-[calc(0.75rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(1.25rem+var(--app-safe-bottom))]'
@@ -261,15 +267,17 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
               }
             : undefined}
         >
-          <div
-            className="pt-2 pb-1 flex items-center justify-center touch-none"
-            onPointerDown={onThumbPointerDown}
-            aria-label="Drag down to close"
-          >
-            <div className={overlayVariant === 'light' ? 'h-1.5 w-12 rounded-full bg-slate-300/90' : 'h-1.5 w-12 rounded-full bg-white/35'} />
-          </div>
+          {showDragThumb ? (
+            <div
+              className="pt-2 pb-1 flex items-center justify-center touch-none"
+              onPointerDown={onThumbPointerDown}
+              aria-label="Drag down to close"
+            >
+              <div className={overlayVariant === 'light' ? 'h-1.5 w-12 rounded-full bg-slate-300/90' : 'h-1.5 w-12 rounded-full bg-white/35'} />
+            </div>
+          ) : null}
 
-          <div className={headerClassName}>
+          <div className={`${headerClassName} ${headerSafeTopClassName}`}>
             <div className={actionSlotClassName}>
               {leftActions}
             </div>

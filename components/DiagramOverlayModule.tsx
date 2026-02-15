@@ -950,6 +950,18 @@ export default function DiagramOverlayModule(props: {
     startTs: number
     snapshot: DiagramAnnotations | null
   }>(null)
+  const gridEdgePanRafRef = useRef<number | null>(null)
+  const gridEdgePanPendingDxRef = useRef(0)
+  const gridEdgeAutoPanAnimRef = useRef<number | null>(null)
+  const gridStrokeTrackRef = useRef({
+    active: false,
+    pointerId: null as number | null,
+    lastX: 0,
+    minX: 0,
+    maxX: 0,
+    leftPanArmed: false,
+    rightPanArmed: false,
+  })
   const previewRef = useRef<null | { diagramId: string; annotations: DiagramAnnotations | null }>(null)
   const migratedDiagramIdsRef = useRef<Set<string>>(new Set())
 
@@ -1148,6 +1160,169 @@ export default function DiagramOverlayModule(props: {
   }, [])
 
   const isTouchLikePointer = useCallback((pointerType: string) => pointerType === 'touch' || pointerType === 'pen', [])
+
+  const smoothScrollGridViewportBy = useCallback((dx: number) => {
+    const viewport = gridViewportRef.current
+    if (!viewport || !Number.isFinite(dx)) return
+    if (Math.abs(dx) < 0.5) return
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (maxScroll <= 0) return
+    const targetLeft = Math.max(0, Math.min(viewport.scrollLeft + dx, maxScroll))
+    if (Math.abs(targetLeft - viewport.scrollLeft) < 0.5) return
+
+    if (typeof window === 'undefined') {
+      viewport.scrollLeft = targetLeft
+      return
+    }
+
+    if (gridEdgeAutoPanAnimRef.current) {
+      window.cancelAnimationFrame(gridEdgeAutoPanAnimRef.current)
+      gridEdgeAutoPanAnimRef.current = null
+    }
+
+    const startLeft = viewport.scrollLeft
+    const total = targetLeft - startLeft
+    const durationMs = 180
+    const startTs = performance.now()
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+
+    const step = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - startTs) / durationMs))
+      viewport.scrollLeft = startLeft + total * ease(t)
+      if (t < 1) {
+        gridEdgeAutoPanAnimRef.current = window.requestAnimationFrame(step)
+      } else {
+        gridEdgeAutoPanAnimRef.current = null
+      }
+    }
+
+    gridEdgeAutoPanAnimRef.current = window.requestAnimationFrame(step)
+  }, [])
+
+  const stopGridStrokeTracking = useCallback(() => {
+    const track = gridStrokeTrackRef.current
+    if (!track.active) return
+    track.active = false
+    track.pointerId = null
+
+    const pending = gridEdgePanPendingDxRef.current
+    gridEdgePanPendingDxRef.current = 0
+    if (pending) {
+      const viewport = gridViewportRef.current
+      if (viewport) {
+        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+        if (maxScroll > 0) {
+          viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined' && gridEdgePanRafRef.current) {
+      window.cancelAnimationFrame(gridEdgePanRafRef.current)
+      gridEdgePanRafRef.current = null
+    }
+  }, [])
+
+  const finalizeGridStrokeAutoPan = useCallback(() => {
+    const viewport = gridViewportRef.current
+    const track = gridStrokeTrackRef.current
+    if (!viewport) {
+      stopGridStrokeTracking()
+      return
+    }
+
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (maxScroll <= 0) {
+      stopGridStrokeTracking()
+      return
+    }
+
+    const rect = viewport.getBoundingClientRect()
+    const midX = rect.left + rect.width * 0.5
+
+    if (track.leftPanArmed || track.rightPanArmed) {
+      const delta = track.lastX - midX
+      if (Math.abs(delta) > 1) smoothScrollGridViewportBy(delta)
+      stopGridStrokeTracking()
+      return
+    }
+
+    const gain = 0.9
+    const excessRight = track.maxX - midX
+    if (excessRight > 0) {
+      smoothScrollGridViewportBy(excessRight * gain)
+      stopGridStrokeTracking()
+      return
+    }
+
+    const excessLeft = track.minX - midX
+    if (excessLeft < 0) {
+      smoothScrollGridViewportBy(excessLeft * gain)
+      stopGridStrokeTracking()
+      return
+    }
+
+    stopGridStrokeTracking()
+  }, [smoothScrollGridViewportBy, stopGridStrokeTracking])
+
+  const updateGridStrokeAutoPan = useCallback((clientX: number) => {
+    if (!isGridDiagram) return
+    const viewport = gridViewportRef.current
+    const track = gridStrokeTrackRef.current
+    if (!viewport || !track.active) return
+
+    const prevX = track.lastX
+    const dx = clientX - prevX
+    track.lastX = clientX
+    track.minX = Math.min(track.minX, clientX)
+    track.maxX = Math.max(track.maxX, clientX)
+
+    const rect = viewport.getBoundingClientRect()
+    const leftEdgeTrigger = rect.left + rect.width * 0.1
+    const rightEdgeTrigger = rect.right - rect.width * 0.1
+    if (clientX <= leftEdgeTrigger) track.leftPanArmed = true
+    if (clientX >= rightEdgeTrigger) track.rightPanArmed = true
+
+    let pendingDx = 0
+    if (track.leftPanArmed && dx < 0) pendingDx += dx
+    if (track.rightPanArmed && dx > 0) pendingDx += dx
+    if (!pendingDx) return
+
+    gridEdgePanPendingDxRef.current += pendingDx
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (maxScroll <= 0) {
+      gridEdgePanPendingDxRef.current = 0
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + gridEdgePanPendingDxRef.current, maxScroll))
+      gridEdgePanPendingDxRef.current = 0
+      return
+    }
+
+    if (gridEdgePanRafRef.current) return
+    gridEdgePanRafRef.current = window.requestAnimationFrame(() => {
+      gridEdgePanRafRef.current = null
+      const pending = gridEdgePanPendingDxRef.current
+      gridEdgePanPendingDxRef.current = 0
+      if (!pending) return
+      viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
+    })
+  }, [isGridDiagram])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && gridEdgePanRafRef.current) {
+        window.cancelAnimationFrame(gridEdgePanRafRef.current)
+        gridEdgePanRafRef.current = null
+      }
+      if (typeof window !== 'undefined' && gridEdgeAutoPanAnimRef.current) {
+        window.cancelAnimationFrame(gridEdgeAutoPanAnimRef.current)
+        gridEdgeAutoPanAnimRef.current = null
+      }
+    }
+  }, [])
 
   const getGridMidpoint = useCallback((state: typeof gridPanRef.current) => {
     if (state.pointers.size < 2) return null
@@ -2266,6 +2441,18 @@ export default function DiagramOverlayModule(props: {
     if (e.pointerType === 'touch') {
       e.preventDefault()
     }
+
+    if (isGridDiagram && (tool === 'pen' || tool === 'arrow' || tool === 'eraser')) {
+      const track = gridStrokeTrackRef.current
+      track.active = true
+      track.pointerId = e.pointerId
+      track.lastX = e.clientX
+      track.minX = e.clientX
+      track.maxX = e.clientX
+      track.leftPanArmed = false
+      track.rightPanArmed = false
+    }
+
     setContextMenu(null)
 
     const diagramId = activeDiagram.id
@@ -2417,6 +2604,11 @@ export default function DiagramOverlayModule(props: {
     if (isGridDiagram) {
       const panState = gridPanRef.current
       if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+
+    const track = gridStrokeTrackRef.current
+    if (track.active && track.pointerId === e.pointerId) {
+      updateGridStrokeAutoPan(e.clientX)
     }
 
     if (e.pointerType === 'touch') {
@@ -2579,6 +2771,10 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+    const track = gridStrokeTrackRef.current
+    if (track.active && track.pointerId === e.pointerId) {
+      finalizeGridStrokeAutoPan()
+    }
     if (pendingTouchRef.current?.pointerId === e.pointerId) {
       clearPendingTouch(e.pointerId)
       return
@@ -3114,7 +3310,7 @@ export default function DiagramOverlayModule(props: {
           >
           {canPresent && (
             <div
-              className={`${isGridDiagram ? 'fixed' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
+              className={`${isGridDiagram ? 'fixed bottom-0' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
               style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
               onTouchStart={() => {
                 if (isGridDiagram && isAdmin) peekGridCloseButton()

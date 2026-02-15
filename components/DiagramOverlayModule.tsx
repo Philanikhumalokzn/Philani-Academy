@@ -207,11 +207,21 @@ export default function DiagramOverlayModule(props: {
     defaultVisible: false,
     disabled: !diagramState.isOpen || !isGridDiagram || !isAdmin,
   })
+  const { visible: cropControlsVisible, peek: peekCropControls, clearTimer: clearCropControlsTimer } = useTapToPeek({
+    autoHideMs: 1800,
+    defaultVisible: false,
+    disabled: !diagramState.isOpen || !cropMode || !canPresent,
+  })
 
   useEffect(() => {
     if (diagramState.isOpen && isGridDiagram && isAdmin) return
     clearGridCloseTimer()
   }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
+
+  useEffect(() => {
+    if (diagramState.isOpen && cropMode && canPresent) return
+    clearCropControlsTimer()
+  }, [canPresent, clearCropControlsTimer, cropMode, diagramState.isOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2422,6 +2432,7 @@ export default function DiagramOverlayModule(props: {
     if (!p) return
 
     if (cropMode) {
+      if (isTouchLikePointer(e.pointerType)) peekCropControls()
       setSelection(null)
       previewRef.current = null
       dragRef.current = null
@@ -2626,6 +2637,7 @@ export default function DiagramOverlayModule(props: {
     }
 
     if (cropMode) {
+      if (isTouchLikePointer(e.pointerType)) peekCropControls()
       const drag = cropDragRef.current
       if (!drag) return
       if (drag.mode === 'new') {
@@ -2756,6 +2768,7 @@ export default function DiagramOverlayModule(props: {
     }
 
     if (cropMode) {
+      if (isTouchLikePointer(e.pointerType)) peekCropControls()
       cropDragRef.current = null
       const normalized = normalizeCropRect(cropRectRef.current)
       if (!normalized || normalized.w < 0.002 || normalized.h < 0.002) {
@@ -3260,9 +3273,11 @@ export default function DiagramOverlayModule(props: {
             onMouseDown={() => setContextMenu(null)}
             onTouchStart={() => {
               if (isGridDiagram && isAdmin) peekGridCloseButton()
+              if (cropMode && canPresent) peekCropControls()
             }}
             onTouchMove={() => {
               if (isGridDiagram && isAdmin) peekGridCloseButton()
+              if (cropMode && canPresent) peekCropControls()
             }}
           >
           <div
@@ -3273,13 +3288,14 @@ export default function DiagramOverlayModule(props: {
           {canPresent && (
             <div
               className={`${isGridDiagram ? 'fixed bottom-0' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
-              style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
+              style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 2px)' }}
               onTouchStart={() => {
                 if (isGridDiagram && isAdmin) peekGridCloseButton()
+                if (cropMode && canPresent) peekCropControls()
               }}
             >
               <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
-                <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm whitespace-nowrap">
+                <div className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm whitespace-nowrap transition-opacity duration-200 ${cropMode ? (cropControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'}`}>
                 <button
                   type="button"
                   className={tool === 'select'

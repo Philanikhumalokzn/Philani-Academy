@@ -107,6 +107,16 @@ body{
     left:var(--mobile-rail) !important;
     right:var(--mobile-rail) !important;
   }
+
+  .mobile-section-rail{
+    margin-left:var(--mobile-rail) !important;
+    margin-right:var(--mobile-rail) !important;
+  }
+
+  .mobile-section-rail__panel{
+    flex:0 0 calc(100vw - (var(--mobile-rail) * 2));
+    width:calc(100vw - (var(--mobile-rail) * 2));
+  }
 }
 
 /* Common containers */

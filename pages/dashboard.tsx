@@ -1088,6 +1088,87 @@ export default function Dashboard() {
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
   const [pdfViewerInitialState, setPdfViewerInitialState] = useState<PdfViewerSnapshot | null>(null)
   const [pdfViewerOfflineObjectUrl, setPdfViewerOfflineObjectUrl] = useState<string | null>(null)
+
+  const openIncomingPdfPayload = useCallback((payload: any) => {
+    const base64Raw = String(payload?.base64 || '')
+    if (!base64Raw) return
+
+    const mimeType = String(payload?.mimeType || 'application/pdf')
+    const fileName = String(payload?.fileName || 'Document.pdf')
+    const base64 = base64Raw.includes(',') ? base64Raw.split(',').pop() || '' : base64Raw
+    if (!base64) return
+
+    try {
+      const binary = typeof window !== 'undefined' ? window.atob(base64) : ''
+      if (!binary) return
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+
+      const blob = new Blob([bytes], { type: mimeType })
+      const objectUrl = URL.createObjectURL(blob)
+
+      if (pdfViewerOfflineObjectUrl) {
+        URL.revokeObjectURL(pdfViewerOfflineObjectUrl)
+      }
+
+      setPdfViewerOfflineObjectUrl(objectUrl)
+      setPdfViewerTitle(fileName || 'Document')
+      setPdfViewerSubtitle('')
+      setPdfViewerUrl(objectUrl)
+      setPdfViewerInitialState(null)
+      setPdfViewerOpen(true)
+    } catch {
+      // ignore malformed payloads
+    }
+  }, [pdfViewerOfflineObjectUrl])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isCapacitorWrappedApp) return
+
+    const cap = (window as any)?.Capacitor
+    const plugin = cap?.Plugins?.IncomingPdf
+    if (!plugin || typeof plugin.consumePendingPdf !== 'function') return
+
+    let cancelled = false
+    let listenerHandle: { remove?: () => Promise<void> } | null = null
+
+    const consume = async () => {
+      try {
+        const result = await plugin.consumePendingPdf()
+        if (cancelled) return
+        if (!result?.available || !result?.base64) return
+        openIncomingPdfPayload(result)
+      } catch {
+        // ignore plugin read errors
+      }
+    }
+
+    void consume()
+
+    void (async () => {
+      if (typeof plugin.addListener !== 'function') return
+      try {
+        const handle = await plugin.addListener('pendingPdf', () => {
+          void consume()
+        })
+        if (cancelled) {
+          await handle?.remove?.()
+          return
+        }
+        listenerHandle = handle
+      } catch {
+        // ignore listener setup errors
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      void listenerHandle?.remove?.()
+    }
+  }, [isCapacitorWrappedApp, openIncomingPdfPayload])
   const [gradeWorkspaceSelectorOpen, setGradeWorkspaceSelectorOpen] = useState(false)
   const [gradeWorkspaceSelectorAnchor, setGradeWorkspaceSelectorAnchor] = useState<PillAnchorRect | null>(null)
   const [gradeWorkspaceSelectorExternalDrag, setGradeWorkspaceSelectorExternalDrag] = useState<{ pointerId: number; startClientY: number } | null>(null)

@@ -97,10 +97,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const renderOutputScale = useMemo(() => {
     if (typeof window === 'undefined') return 1
     const dpr = window.devicePixelRatio || 1
-    if (isCapacitorAndroidWebView) return Math.min(dpr, 1.2)
-    if (isMobile) return Math.min(dpr, 1.5)
     return Math.min(dpr, 2)
-  }, [isCapacitorAndroidWebView, isMobile])
+  }, [])
   const prefetchDistance = useMemo(() => (isCapacitorAndroidWebView ? 4 : 6), [isCapacitorAndroidWebView])
   const bitmapKeepDistance = useMemo(() => (isCapacitorAndroidWebView ? 2 : 4), [isCapacitorAndroidWebView])
   const maxRendersPerPass = useMemo(() => (isCapacitorAndroidWebView ? 1 : 2), [isCapacitorAndroidWebView])

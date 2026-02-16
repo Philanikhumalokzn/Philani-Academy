@@ -86,6 +86,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (typeof window === 'undefined') return false
     return Boolean((window as any).Capacitor)
   }, [])
+  const isCapacitorAndroidWebView = useMemo(() => isCapacitor && isAndroid, [isCapacitor, isAndroid])
   const forceWorkerOnCapacitorAndroid = useMemo(() => isCapacitor && isAndroid, [isCapacitor, isAndroid])
   const canUseWorker = useMemo(() => {
     if (typeof window === 'undefined') return false
@@ -93,6 +94,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }, [isMobile, forceWorkerOnCapacitorAndroid])
 
   const effectiveZoom = clamp(zoom, 50, 220)
+  const renderOutputScale = useMemo(() => {
+    if (typeof window === 'undefined') return 1
+    const dpr = window.devicePixelRatio || 1
+    if (isCapacitorAndroidWebView) return Math.min(dpr, 1.2)
+    if (isMobile) return Math.min(dpr, 1.5)
+    return Math.min(dpr, 2)
+  }, [isCapacitorAndroidWebView, isMobile])
+  const prefetchDistance = useMemo(() => (isCapacitorAndroidWebView ? 4 : 6), [isCapacitorAndroidWebView])
+  const bitmapKeepDistance = useMemo(() => (isCapacitorAndroidWebView ? 2 : 4), [isCapacitorAndroidWebView])
+  const maxRendersPerPass = useMemo(() => (isCapacitorAndroidWebView ? 1 : 2), [isCapacitorAndroidWebView])
   useEffect(() => {
     liveZoomRef.current = effectiveZoom
   }, [effectiveZoom])
@@ -551,7 +562,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         // ignore
       }
     }
-  }, [open, url, initialState?.page, initialState?.zoom])
+  }, [open, url, initialState?.page, initialState?.zoom, canUseWorker])
 
   useEffect(() => {
     if (open) return
@@ -595,7 +606,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
-      const outputScale = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1
+      const outputScale = renderOutputScale
       canvas.width = Math.floor(viewport.width * outputScale)
       canvas.height = Math.floor(viewport.height * outputScale)
       canvas.style.width = `${Math.floor(viewport.width)}px`
@@ -624,9 +635,32 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, effectiveZoom, contentSize.width, initialRenderReady, safePage])
+  }, [pdfDoc, open, effectiveZoom, contentSize.width, initialRenderReady, safePage, renderOutputScale])
 
   const getCurrentRenderSignature = useCallback(() => `${effectiveZoom}:${contentSize.width || 0}`, [effectiveZoom, contentSize.width])
+
+  const evictFarPageBitmaps = useCallback(() => {
+    if (!open) return
+    pageCanvasRefs.current.forEach((canvas, pageNum) => {
+      if (Math.abs(pageNum - safePage) <= bitmapKeepDistance) return
+      if (canvas.width === 0 && canvas.height === 0) return
+
+      const existing = renderTasksRef.current.get(pageNum)
+      if (existing?.cancel) {
+        try {
+          existing.cancel()
+        } catch {
+          // ignore
+        }
+      }
+      renderTasksRef.current.delete(pageNum)
+      renderedSignatureRef.current.delete(pageNum)
+
+      canvas.width = 0
+      canvas.height = 0
+      applyPlaceholderCanvasSize(canvas, pageNum)
+    })
+  }, [applyPlaceholderCanvasSize, bitmapKeepDistance, open, safePage])
 
   const getRenderCandidates = useCallback(() => {
     const candidates: Array<{ pageNum: number; priority: number }> = []
@@ -644,10 +678,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       const top = scrollEl.scrollTop
       const bottom = top + scrollEl.clientHeight
       const viewportCenter = top + scrollEl.clientHeight / 2
+      const viewportPaddingPx = isCapacitorAndroidWebView ? 120 : 200
       pageCanvasRefs.current.forEach((canvas, pageNum) => {
         const pageTop = canvas.offsetTop
         const pageBottom = pageTop + canvas.offsetHeight
-        if (pageBottom >= top - 200 && pageTop <= bottom + 200) {
+        if (pageBottom >= top - viewportPaddingPx && pageTop <= bottom + viewportPaddingPx) {
           const pageCenter = pageTop + canvas.offsetHeight / 2
           const dist = Math.abs(pageCenter - viewportCenter)
           pushCandidate(pageNum, dist)
@@ -660,7 +695,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     }
 
     const lookAheadStart = scrollDirectionRef.current > 0 ? safePage + 1 : safePage - 1
-    const lookAheadEnd = scrollDirectionRef.current > 0 ? safePage + 6 : safePage - 6
+    const lookAheadEnd = scrollDirectionRef.current > 0 ? safePage + prefetchDistance : safePage - prefetchDistance
     const step = scrollDirectionRef.current > 0 ? 1 : -1
     for (let p = lookAheadStart; step > 0 ? p <= lookAheadEnd : p >= lookAheadEnd; p += step) {
       pushCandidate(p, 20_000 + Math.abs(p - safePage) * 150)
@@ -672,7 +707,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     candidates.sort((a, b) => a.priority - b.priority)
     return candidates.map(item => item.pageNum)
-  }, [safePage, totalPages])
+  }, [safePage, totalPages, prefetchDistance, isCapacitorAndroidWebView])
 
   const getNextPageToRender = useCallback(() => {
     const signature = getCurrentRenderSignature()
@@ -695,7 +730,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     renderPumpRunningRef.current = true
     try {
       let renderedThisPass = 0
-      while (renderedThisPass < 2) {
+      while (renderedThisPass < maxRendersPerPass) {
         const pageNum = getNextPageToRender()
         if (!pageNum) {
           renderPumpPendingRef.current = false
@@ -721,7 +756,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         }
       }
     }
-  }, [getNextPageToRender, open, pdfDoc, renderPageToCanvas])
+  }, [getNextPageToRender, open, pdfDoc, renderPageToCanvas, maxRendersPerPass])
 
   const queueVisibleRender = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -761,6 +796,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   useEffect(() => {
     if (!open) return
+    evictFarPageBitmaps()
+  }, [open, safePage, effectiveZoom, evictFarPageBitmaps])
+
+  useEffect(() => {
+    if (!open) return
     const scrollEl = scrollContainerRef.current
     if (!scrollEl) return
 
@@ -773,6 +813,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         if (nextTop < lastScrollTopRef.current) scrollDirectionRef.current = -1
         lastScrollTopRef.current = nextTop
         updatePageFromScroll()
+        evictFarPageBitmaps()
         queueVisibleRender()
       })
     }
@@ -793,7 +834,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         renderRafRef.current = null
       }
     }
-  }, [open, updatePageFromScroll, queueVisibleRender])
+  }, [open, updatePageFromScroll, queueVisibleRender, evictFarPageBitmaps])
 
   useEffect(() => {
     queueVisibleRender()

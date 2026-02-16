@@ -952,6 +952,7 @@ export default function DiagramOverlayModule(props: {
   const gridEdgePanRafRef = useRef<number | null>(null)
   const gridEdgePanPendingDxRef = useRef(0)
   const gridEdgeAutoPanAnimRef = useRef<number | null>(null)
+  const gridEdgeAutoPanStartDelayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const gridStrokeTrackRef = useRef({
     active: false,
     pointerId: null as number | null,
@@ -1207,7 +1208,24 @@ export default function DiagramOverlayModule(props: {
     gridEdgeAutoPanAnimRef.current = window.requestAnimationFrame(step)
   }, [])
 
+  const scheduleGridStrokeAutoPan = useCallback((dx: number) => {
+    if (!Number.isFinite(dx) || Math.abs(dx) < 1) return
+    if (gridEdgeAutoPanStartDelayTimeoutRef.current) {
+      clearTimeout(gridEdgeAutoPanStartDelayTimeoutRef.current)
+      gridEdgeAutoPanStartDelayTimeoutRef.current = null
+    }
+    const AUTO_SCROLL_START_DELAY_MS = 1000
+    gridEdgeAutoPanStartDelayTimeoutRef.current = setTimeout(() => {
+      gridEdgeAutoPanStartDelayTimeoutRef.current = null
+      smoothScrollGridViewportBy(dx)
+    }, AUTO_SCROLL_START_DELAY_MS)
+  }, [smoothScrollGridViewportBy])
+
   const stopGridStrokeTracking = useCallback(() => {
+    if (gridEdgeAutoPanStartDelayTimeoutRef.current) {
+      clearTimeout(gridEdgeAutoPanStartDelayTimeoutRef.current)
+      gridEdgeAutoPanStartDelayTimeoutRef.current = null
+    }
     const track = gridStrokeTrackRef.current
     if (!track.active) return
     track.active = false
@@ -1250,7 +1268,7 @@ export default function DiagramOverlayModule(props: {
 
     if (track.leftPanArmed || track.rightPanArmed) {
       const delta = track.lastX - midX
-      if (Math.abs(delta) > 1) smoothScrollGridViewportBy(delta)
+      if (Math.abs(delta) > 1) scheduleGridStrokeAutoPan(delta)
       stopGridStrokeTracking()
       return
     }
@@ -1258,20 +1276,20 @@ export default function DiagramOverlayModule(props: {
     const gain = 0.9
     const excessRight = track.maxX - midX
     if (excessRight > 0) {
-      smoothScrollGridViewportBy(excessRight * gain)
+      scheduleGridStrokeAutoPan(excessRight * gain)
       stopGridStrokeTracking()
       return
     }
 
     const excessLeft = track.minX - midX
     if (excessLeft < 0) {
-      smoothScrollGridViewportBy(excessLeft * gain)
+      scheduleGridStrokeAutoPan(excessLeft * gain)
       stopGridStrokeTracking()
       return
     }
 
     stopGridStrokeTracking()
-  }, [smoothScrollGridViewportBy, stopGridStrokeTracking])
+  }, [scheduleGridStrokeAutoPan, stopGridStrokeTracking])
 
   const updateGridStrokeAutoPan = useCallback((clientX: number) => {
     if (!isGridDiagram) return
@@ -1328,6 +1346,10 @@ export default function DiagramOverlayModule(props: {
       if (typeof window !== 'undefined' && gridEdgeAutoPanAnimRef.current) {
         window.cancelAnimationFrame(gridEdgeAutoPanAnimRef.current)
         gridEdgeAutoPanAnimRef.current = null
+      }
+      if (gridEdgeAutoPanStartDelayTimeoutRef.current) {
+        clearTimeout(gridEdgeAutoPanStartDelayTimeoutRef.current)
+        gridEdgeAutoPanStartDelayTimeoutRef.current = null
       }
     }
   }, [])

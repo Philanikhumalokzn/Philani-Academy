@@ -8494,6 +8494,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
   )
   const autoPanAnimRef = useRef<number | null>(null)
+  const autoPanStartDelayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const leftPanPendingDxRef = useRef(0)
   const leftPanRafRef = useRef<number | null>(null)
   useEffect(() => {
@@ -8646,8 +8647,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!hasWriteAccess) return
     const host = editorHostRef.current
     if (!host) return
+    const AUTO_SCROLL_START_DELAY_MS = 1000
+
+    const clearPendingAutoPanStart = () => {
+      if (!autoPanStartDelayTimeoutRef.current) return
+      clearTimeout(autoPanStartDelayTimeoutRef.current)
+      autoPanStartDelayTimeoutRef.current = null
+    }
+
+    const scheduleAutoPanStart = (delta: number) => {
+      if (Math.abs(delta) < 1) return
+      clearPendingAutoPanStart()
+      autoPanStartDelayTimeoutRef.current = setTimeout(() => {
+        autoPanStartDelayTimeoutRef.current = null
+        smoothScrollViewportBy(delta)
+      }, AUTO_SCROLL_START_DELAY_MS)
+    }
 
     const onDown = (event: PointerEvent) => {
+      clearPendingAutoPanStart()
       strokeTrackRef.current.active = true
       strokeTrackRef.current.startX = event.clientX
       strokeTrackRef.current.lastX = event.clientX
@@ -8725,14 +8743,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const targetX = rect.left + rect.width * 0.5
         const delta = strokeTrackRef.current.lastX - targetX
         if (delta < -1) {
-          smoothScrollViewportBy(delta)
+          scheduleAutoPanStart(delta)
         }
         return
       }
 
       const excessRight = strokeTrackRef.current.maxX - midX
       if (excessRight > 0) {
-        smoothScrollViewportBy(excessRight * gain)
+        scheduleAutoPanStart(excessRight * gain)
       }
     }
 
@@ -8746,6 +8764,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       host.removeEventListener('pointermove', onMove as any)
       host.removeEventListener('pointerup', onUpLike as any)
       host.removeEventListener('pointercancel', onUpLike as any)
+      clearPendingAutoPanStart()
       if (autoPanAnimRef.current && typeof window !== 'undefined') {
         try {
           window.cancelAnimationFrame(autoPanAnimRef.current)

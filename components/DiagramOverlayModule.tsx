@@ -1423,54 +1423,16 @@ export default function DiagramOverlayModule(props: {
       state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
     }
 
-    const getMid = () => {
-      if (state.pointers.size < 2) return null
-      const values = Array.from(state.pointers.values())
-      const a = values[0]
-      const b = values[1]
-      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-    }
-
     const suppressEvent = (evt: PointerEvent) => {
       if (evt.cancelable) evt.preventDefault()
       evt.stopImmediatePropagation()
-    }
-
-    const beginGestureIfReady = () => {
-      if (state.active) return
-      if (state.pointers.size < 2) return
-      const mid = getMid()
-      if (!mid) return
-      state.active = true
-      state.lastMid = mid
-      state.suppressedPointers = new Set(state.pointers.keys())
-      const values = Array.from(state.pointers.values())
-      const dx = values[0].x - values[1].x
-      const dy = values[0].y - values[1].y
-      state.startDistance = Math.max(1, Math.hypot(dx, dy))
-      state.startZoom = gridZoomRef.current
-      const rect = viewport.getBoundingClientRect()
-      const localX = mid.x - rect.left
-      const localY = mid.y - rect.top
-      state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
-      state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
-    }
-
-    const endGestureIfNeeded = () => {
-      if (state.active && state.pointers.size < 2) {
-        state.active = false
-        state.lastMid = null
-      }
-      if (state.pointers.size === 0) {
-        state.suppressedPointers.clear()
-      }
     }
 
     const handlePointerDown = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
       updatePointer(evt)
       if (state.pointers.size >= 2) {
-        beginGestureIfReady()
+        beginGridGesture(state, viewport)
         state.suppressedPointers.add(evt.pointerId)
         suppressEvent(evt)
       } else if (state.suppressedPointers.has(evt.pointerId)) {
@@ -1483,35 +1445,7 @@ export default function DiagramOverlayModule(props: {
       updatePointer(evt)
 
       if (state.active && state.pointers.size >= 2) {
-        const mid = getMid()
-        if (mid && state.lastMid) {
-          const values = Array.from(state.pointers.values())
-          const dx = values[0].x - values[1].x
-          const dy = values[0].y - values[1].y
-          const dist = Math.max(1, Math.hypot(dx, dy))
-          const nextZoom = Math.max(GRID_MIN_ZOOM, Math.min(GRID_MAX_ZOOM, (state.startZoom * dist) / state.startDistance))
-
-          const rect = viewport.getBoundingClientRect()
-          const localX = mid.x - rect.left
-          const localY = mid.y - rect.top
-
-          if (Math.abs(nextZoom - gridZoomRef.current) > 0.001) {
-            setGridZoom(nextZoom)
-          }
-
-          const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-          const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-
-          let nextLeft = state.anchorX * nextZoom - localX
-          let nextTop = state.anchorY * nextZoom - localY
-
-          nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-          nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-          viewport.scrollLeft = nextLeft
-          viewport.scrollTop = nextTop
-        }
-        state.lastMid = getMid()
+        updateGridGesture(state, viewport)
         suppressEvent(evt)
         return
       }
@@ -1526,7 +1460,7 @@ export default function DiagramOverlayModule(props: {
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
-      endGestureIfNeeded()
+      endGridGestureIfNeeded(state)
 
       if (state.active || wasSuppressed) {
         suppressEvent(evt)
@@ -1548,7 +1482,7 @@ export default function DiagramOverlayModule(props: {
       state.suppressedPointers.clear()
       state.lastMid = null
     }
-  }, [isGridDiagram])
+  }, [beginGridGesture, endGridGestureIfNeeded, isGridDiagram, updateGridGesture])
 
   const mapClientToImageSpace = useCallback((clientX: number, clientY: number) => {
     const host = containerRef.current
@@ -2398,21 +2332,12 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     if (!diagramState.isOpen) return
-    if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
-      const viewport = gridViewportRef.current
-      const panState = gridPanRef.current
-      if (viewport) {
-        panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
-        if (panState.pointers.size >= 2) {
-          beginGridGesture(panState, viewport)
-          panState.suppressedPointers.add(e.pointerId)
-          if (e.cancelable) e.preventDefault()
-        }
-      }
-    }
     if (isGridDiagram) {
       const panState = gridPanRef.current
-      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+      if (panState.active || panState.suppressedPointers.has(e.pointerId) || panState.pointers.size >= 2) {
+        if (e.cancelable) e.preventDefault()
+        return
+      }
     }
     if (e.pointerType === 'touch') {
       e.preventDefault()
@@ -2561,19 +2486,8 @@ export default function DiagramOverlayModule(props: {
     const diagramId = activeDiagram?.id
     if (!diagramId) return
     if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
-      const viewport = gridViewportRef.current
       const panState = gridPanRef.current
-      if (viewport) {
-        if (panState.pointers.has(e.pointerId)) {
-          panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
-        }
-        if (panState.active && panState.pointers.size >= 2) {
-          updateGridGesture(panState, viewport)
-          if (e.cancelable) e.preventDefault()
-          return
-        }
-      }
-      if (panState.pointers.size >= 2 || panState.suppressedPointers.has(e.pointerId)) {
+      if (panState.active || panState.pointers.size >= 2 || panState.suppressedPointers.has(e.pointerId)) {
         if (e.cancelable) e.preventDefault()
         return
       }
@@ -2760,11 +2674,7 @@ export default function DiagramOverlayModule(props: {
     clearToolGesture(e.pointerId)
     if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
       const panState = gridPanRef.current
-      const wasSuppressed = panState.suppressedPointers.has(e.pointerId)
-      panState.pointers.delete(e.pointerId)
-      panState.suppressedPointers.delete(e.pointerId)
-      endGridGestureIfNeeded(panState)
-      if (panState.active || wasSuppressed) return
+      if (panState.active || panState.pointers.size >= 2 || panState.suppressedPointers.has(e.pointerId)) return
     }
     if (isGridDiagram) {
       const panState = gridPanRef.current

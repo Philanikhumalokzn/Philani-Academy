@@ -1077,16 +1077,11 @@ export default function DiagramOverlayModule(props: {
     active: false,
     pointers: new Map<number, { x: number; y: number }>(),
     lastMid: null as null | { x: number; y: number },
-    startMid: null as null | { x: number; y: number },
     suppressedPointers: new Set<number>(),
     startDistance: 0,
     startZoom: 1,
     anchorX: 0,
     anchorY: 0,
-    startLocalX: 0,
-    startLocalY: 0,
-    intent: 'undecided' as 'undecided' | 'pan' | 'zoom',
-    intentStartedAt: 0,
   })
 
   const [gridZoom, setGridZoom] = useState(1)
@@ -1370,11 +1365,6 @@ export default function DiagramOverlayModule(props: {
     const localY = mid.y - rect.top
     state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
     state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
-    state.startMid = mid
-    state.startLocalX = localX
-    state.startLocalY = localY
-    state.intent = 'undecided'
-    state.intentStartedAt = Date.now()
   }, [cancelActiveToolGesture, clearPendingTouch, getGridMidpoint])
 
   const updateGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
@@ -1391,52 +1381,21 @@ export default function DiagramOverlayModule(props: {
     const localX = mid.x - rect.left
     const localY = mid.y - rect.top
 
-    if (state.intent === 'undecided') {
-      const INTENT_LOCK_WINDOW_MS = 120
-      const PAN_THRESHOLD_PX = 12
-      const ZOOM_THRESHOLD_RATIO = 0.06
-      const startMid = state.startMid || mid
-      const panDeltaPx = Math.hypot(mid.x - startMid.x, mid.y - startMid.y)
-      const zoomDeltaRatio = Math.abs((dist / Math.max(1, state.startDistance)) - 1)
-      const panScore = panDeltaPx / PAN_THRESHOLD_PX
-      const zoomScore = zoomDeltaRatio / ZOOM_THRESHOLD_RATIO
-      const elapsedMs = Date.now() - state.intentStartedAt
-      if (panScore >= 1 || zoomScore >= 1 || elapsedMs >= INTENT_LOCK_WINDOW_MS) {
-        state.intent = zoomScore > panScore ? 'zoom' : 'pan'
-      }
+    if (Math.abs(nextZoom - gridZoomRef.current) > 0.001) {
+      setGridZoom(nextZoom)
     }
 
     const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
     const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
 
-    if (state.intent === 'zoom') {
-      if (Math.abs(nextZoom - gridZoomRef.current) > 0.001) {
-        setGridZoom(nextZoom)
-      }
+    let nextLeft = state.anchorX * nextZoom - localX
+    let nextTop = state.anchorY * nextZoom - localY
 
-      let nextLeft = state.anchorX * nextZoom - state.startLocalX
-      let nextTop = state.anchorY * nextZoom - state.startLocalY
+    nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
+    nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
 
-      nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-      nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-      viewport.scrollLeft = nextLeft
-      viewport.scrollTop = nextTop
-      state.lastMid = mid
-      return
-    }
-
-    if (state.intent === 'pan') {
-      const midDx = mid.x - state.lastMid.x
-      const midDy = mid.y - state.lastMid.y
-      const nextLeft = Math.max(0, Math.min(viewport.scrollLeft - midDx, maxScrollLeft))
-      const nextTop = Math.max(0, Math.min(viewport.scrollTop - midDy, maxScrollTop))
-      viewport.scrollLeft = nextLeft
-      viewport.scrollTop = nextTop
-      state.lastMid = mid
-      return
-    }
-
+    viewport.scrollLeft = nextLeft
+    viewport.scrollTop = nextTop
     state.lastMid = mid
   }, [getGridMidpoint])
 
@@ -1444,9 +1403,6 @@ export default function DiagramOverlayModule(props: {
     if (state.active && state.pointers.size < 2) {
       state.active = false
       state.lastMid = null
-      state.startMid = null
-      state.intent = 'undecided'
-      state.intentStartedAt = 0
     }
     if (state.pointers.size === 0) {
       state.suppressedPointers.clear()
@@ -1498,20 +1454,12 @@ export default function DiagramOverlayModule(props: {
       const localY = mid.y - rect.top
       state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
       state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
-      state.startMid = mid
-      state.startLocalX = localX
-      state.startLocalY = localY
-      state.intent = 'undecided'
-      state.intentStartedAt = Date.now()
     }
 
     const endGestureIfNeeded = () => {
       if (state.active && state.pointers.size < 2) {
         state.active = false
         state.lastMid = null
-        state.startMid = null
-        state.intent = 'undecided'
-        state.intentStartedAt = 0
       }
       if (state.pointers.size === 0) {
         state.suppressedPointers.clear()
@@ -1535,7 +1483,35 @@ export default function DiagramOverlayModule(props: {
       updatePointer(evt)
 
       if (state.active && state.pointers.size >= 2) {
-        updateGridGesture(state, viewport)
+        const mid = getMid()
+        if (mid && state.lastMid) {
+          const values = Array.from(state.pointers.values())
+          const dx = values[0].x - values[1].x
+          const dy = values[0].y - values[1].y
+          const dist = Math.max(1, Math.hypot(dx, dy))
+          const nextZoom = Math.max(GRID_MIN_ZOOM, Math.min(GRID_MAX_ZOOM, (state.startZoom * dist) / state.startDistance))
+
+          const rect = viewport.getBoundingClientRect()
+          const localX = mid.x - rect.left
+          const localY = mid.y - rect.top
+
+          if (Math.abs(nextZoom - gridZoomRef.current) > 0.001) {
+            setGridZoom(nextZoom)
+          }
+
+          const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+          const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+
+          let nextLeft = state.anchorX * nextZoom - localX
+          let nextTop = state.anchorY * nextZoom - localY
+
+          nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
+          nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
+
+          viewport.scrollLeft = nextLeft
+          viewport.scrollTop = nextTop
+        }
+        state.lastMid = getMid()
         suppressEvent(evt)
         return
       }
@@ -1571,11 +1547,8 @@ export default function DiagramOverlayModule(props: {
       state.pointers.clear()
       state.suppressedPointers.clear()
       state.lastMid = null
-      state.startMid = null
-      state.intent = 'undecided'
-      state.intentStartedAt = 0
     }
-  }, [isGridDiagram, updateGridGesture])
+  }, [isGridDiagram])
 
   const mapClientToImageSpace = useCallback((clientX: number, clientY: number) => {
     const host = containerRef.current

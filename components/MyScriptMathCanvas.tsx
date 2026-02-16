@@ -8623,7 +8623,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       autoPanAnimRef.current = null
     }
 
-    const durationMs = 220
+    const durationMs = 440
     const startTs = window.performance?.now?.() ?? Date.now()
     const ease = (t: number) => 1 - Math.pow(1 - t, 3)
 

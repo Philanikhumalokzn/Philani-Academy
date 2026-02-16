@@ -1190,7 +1190,7 @@ export default function DiagramOverlayModule(props: {
 
     const startLeft = viewport.scrollLeft
     const total = targetLeft - startLeft
-    const durationMs = 180
+    const durationMs = 360
     const startTs = performance.now()
     const ease = (t: number) => 1 - Math.pow(1 - t, 3)
 

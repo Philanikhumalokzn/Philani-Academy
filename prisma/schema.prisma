@@ -5,7 +5,6 @@ generator client {
 datasource db {
   // Switched to Postgres for production (serverless-friendly hosted DB)
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum Grade {

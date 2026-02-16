@@ -952,7 +952,6 @@ export default function DiagramOverlayModule(props: {
   const gridEdgePanRafRef = useRef<number | null>(null)
   const gridEdgePanPendingDxRef = useRef(0)
   const gridEdgeAutoPanAnimRef = useRef<number | null>(null)
-  const gridEdgeAutoPanStartDelayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const gridStrokeTrackRef = useRef({
     active: false,
     pointerId: null as number | null,
@@ -1210,22 +1209,10 @@ export default function DiagramOverlayModule(props: {
 
   const scheduleGridStrokeAutoPan = useCallback((dx: number) => {
     if (!Number.isFinite(dx) || Math.abs(dx) < 1) return
-    if (gridEdgeAutoPanStartDelayTimeoutRef.current) {
-      clearTimeout(gridEdgeAutoPanStartDelayTimeoutRef.current)
-      gridEdgeAutoPanStartDelayTimeoutRef.current = null
-    }
-    const AUTO_SCROLL_START_DELAY_MS = 1000
-    gridEdgeAutoPanStartDelayTimeoutRef.current = setTimeout(() => {
-      gridEdgeAutoPanStartDelayTimeoutRef.current = null
-      smoothScrollGridViewportBy(dx)
-    }, AUTO_SCROLL_START_DELAY_MS)
+    smoothScrollGridViewportBy(dx)
   }, [smoothScrollGridViewportBy])
 
   const stopGridStrokeTracking = useCallback(() => {
-    if (gridEdgeAutoPanStartDelayTimeoutRef.current) {
-      clearTimeout(gridEdgeAutoPanStartDelayTimeoutRef.current)
-      gridEdgeAutoPanStartDelayTimeoutRef.current = null
-    }
     const track = gridStrokeTrackRef.current
     if (!track.active) return
     track.active = false
@@ -1346,10 +1333,6 @@ export default function DiagramOverlayModule(props: {
       if (typeof window !== 'undefined' && gridEdgeAutoPanAnimRef.current) {
         window.cancelAnimationFrame(gridEdgeAutoPanAnimRef.current)
         gridEdgeAutoPanAnimRef.current = null
-      }
-      if (gridEdgeAutoPanStartDelayTimeoutRef.current) {
-        clearTimeout(gridEdgeAutoPanStartDelayTimeoutRef.current)
-        gridEdgeAutoPanStartDelayTimeoutRef.current = null
       }
     }
   }, [])

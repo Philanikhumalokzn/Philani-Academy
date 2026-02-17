@@ -73,7 +73,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     pendingZoom: number | null
   }>({ active: false, startDist: 0, startZoom: 110, lastDist: 0, lastCenterX: 0, lastCenterY: 0, pendingZoom: null })
   const liveZoomRef = useRef(110)
-  const lastTouchZoomApplyTsRef = useRef(0)
+  const pinchPreviewScaleRef = useRef(1)
+  const pinchPreviewRafRef = useRef<number | null>(null)
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -281,6 +282,27 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     swipeStateRef.current = { pointerId: null, startX: 0, startY: 0, lastX: 0, lastY: 0, handled: false }
   }, [])
 
+  const applyPinchPreviewScale = useCallback((scale: number) => {
+    pinchPreviewScaleRef.current = scale
+    if (typeof window === 'undefined') return
+    if (pinchPreviewRafRef.current) return
+    pinchPreviewRafRef.current = window.requestAnimationFrame(() => {
+      pinchPreviewRafRef.current = null
+      const content = contentRef.current
+      if (!content) return
+      const nextScale = pinchPreviewScaleRef.current
+      if (Math.abs(nextScale - 1) < 0.001) {
+        content.style.transform = ''
+        content.style.transformOrigin = ''
+        content.style.willChange = ''
+        return
+      }
+      content.style.transform = `scale(${nextScale})`
+      content.style.transformOrigin = 'center top'
+      content.style.willChange = 'transform'
+    })
+  }, [])
+
   useEffect(() => {
     if (!open) return
     const el = scrollContainerRef.current
@@ -319,6 +341,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
         pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
         pinchStateRef.current.pendingZoom = null
+        applyPinchPreviewScale(1)
         touchState.active = false
         return
       }
@@ -344,15 +367,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
         if (distDelta > 6) {
           const scale = dist / pinchStateRef.current.startDist
-          const nextZoom = clamp(Math.round(pinchStateRef.current.startZoom * scale), 50, 220)
+          const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
           pinchStateRef.current.pendingZoom = nextZoom
-          const now = Date.now()
-          if (now - lastTouchZoomApplyTsRef.current >= 80 && Math.abs(nextZoom - liveZoomRef.current) >= 2) {
-            setZoom(nextZoom)
-            liveZoomRef.current = nextZoom
-            lastTouchZoomApplyTsRef.current = now
-            pinchStateRef.current.pendingZoom = null
-          }
+          const previewScale = clamp(nextZoom / Math.max(1, pinchStateRef.current.startZoom), 0.5, 3)
+          applyPinchPreviewScale(previewScale)
         }
 
         if (Math.abs(centerDeltaX) > 0.25) {
@@ -389,9 +407,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       if (pinchStateRef.current.active) {
         const pendingZoom = pinchStateRef.current.pendingZoom
+        applyPinchPreviewScale(1)
         if (typeof pendingZoom === 'number' && pendingZoom !== liveZoomRef.current) {
-          setZoom(pendingZoom)
-          liveZoomRef.current = pendingZoom
+          const committedZoom = clamp(Math.round(pendingZoom), 50, 220)
+          setZoom(committedZoom)
+          liveZoomRef.current = committedZoom
         }
         pinchStateRef.current.active = false
         pinchStateRef.current.startDist = 0
@@ -433,8 +453,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
+      applyPinchPreviewScale(1)
+      if (typeof window !== 'undefined' && pinchPreviewRafRef.current) {
+        window.cancelAnimationFrame(pinchPreviewRafRef.current)
+        pinchPreviewRafRef.current = null
+      }
     }
-  }, [effectiveZoom, kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [applyPinchPreviewScale, effectiveZoom, kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return

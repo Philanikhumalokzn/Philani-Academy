@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTapToPeek } from '../lib/useTapToPeek'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
@@ -75,6 +75,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const liveZoomRef = useRef(110)
   const pinchPreviewScaleRef = useRef(1)
   const pinchPreviewRafRef = useRef<number | null>(null)
+  const pinchCommitAnchorRef = useRef<{
+    active: boolean
+    fromZoom: number
+    toZoom: number
+    relX: number
+    relY: number
+    contentX: number
+    contentY: number
+  }>({ active: false, fromZoom: 110, toZoom: 110, relX: 0, relY: 0, contentX: 0, contentY: 0 })
+  const recentPinchTsRef = useRef(0)
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -407,12 +417,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       if (pinchStateRef.current.active) {
         const pendingZoom = pinchStateRef.current.pendingZoom
+        const centerX = pinchStateRef.current.lastCenterX
+        const centerY = pinchStateRef.current.lastCenterY
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+        const contentX = el.scrollLeft + relX
+        const contentY = el.scrollTop + relY
         applyPinchPreviewScale(1)
         if (typeof pendingZoom === 'number' && pendingZoom !== liveZoomRef.current) {
           const committedZoom = clamp(Math.round(pendingZoom), 50, 220)
+          pinchCommitAnchorRef.current = {
+            active: true,
+            fromZoom: liveZoomRef.current,
+            toZoom: committedZoom,
+            relX,
+            relY,
+            contentX,
+            contentY,
+          }
           setZoom(committedZoom)
           liveZoomRef.current = committedZoom
         }
+        recentPinchTsRef.current = Date.now()
         pinchStateRef.current.active = false
         pinchStateRef.current.startDist = 0
         pinchStateRef.current.lastDist = 0
@@ -420,6 +447,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         return
       }
       if (!touchState.active) return
+      if (Date.now() - recentPinchTsRef.current < 300) {
+        touchState.active = false
+        return
+      }
       touchState.active = false
       const dx = touchState.lastX - touchState.startX
       const dy = touchState.lastY - touchState.startY
@@ -460,6 +491,36 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
     }
   }, [applyPinchPreviewScale, effectiveZoom, kickChromeAutoHide, open, scrollToPage, totalPages])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const anchor = pinchCommitAnchorRef.current
+    if (!anchor.active) return
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) {
+      pinchCommitAnchorRef.current.active = false
+      return
+    }
+    const fromZoom = Math.max(1, anchor.fromZoom)
+    const toZoom = Math.max(1, anchor.toZoom)
+    const scaleRatio = toZoom / fromZoom
+
+    const applyAnchoredScroll = () => {
+      const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
+      const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+      scrollEl.scrollLeft = clamp(anchor.contentX * scaleRatio - anchor.relX, 0, maxLeft)
+      scrollEl.scrollTop = clamp(anchor.contentY * scaleRatio - anchor.relY, 0, maxTop)
+      pinchCommitAnchorRef.current.active = false
+    }
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(applyAnchoredScroll)
+      })
+    } else {
+      applyAnchoredScroll()
+    }
+  }, [open, effectiveZoom, contentSize.width])
 
   useEffect(() => {
     if (!open) return
@@ -1060,7 +1121,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           <div
             ref={scrollContainerRef}
             className="absolute inset-0 z-0 overflow-auto"
-            style={{ touchAction: 'pan-y pinch-zoom', WebkitOverflowScrolling: 'touch' }}
+            style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
             onWheel={(e) => {
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)

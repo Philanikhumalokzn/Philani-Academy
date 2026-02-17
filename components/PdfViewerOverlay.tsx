@@ -36,6 +36,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
   const renderedSignatureRef = useRef<Map<number, string>>(new Map())
+  const renderedProgressPxRef = useRef<Map<number, number>>(new Map())
   const pageAspectRatiosRef = useRef<Map<number, number>>(new Map())
   const defaultPageAspectRef = useRef(1.4142)
   const scrollRafRef = useRef<number | null>(null)
@@ -568,6 +569,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     setInitialRenderReady(false)
     initialRenderedPagesRef.current = 0
     renderedSignatureRef.current.clear()
+    renderedProgressPxRef.current.clear()
     pageAspectRatiosRef.current.clear()
     defaultPageAspectRef.current = 1.4142
     if (pdfDoc?.destroy) {
@@ -581,9 +583,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const context = canvas.getContext('2d')
     if (!context) return
 
-    const renderSignature = `${effectiveZoom}:${contentSize.width || 0}`
+    const renderSignature = `${effectiveZoom}:${contentSize.width || 0}:${renderOutputScale}`
     const lastSignature = renderedSignatureRef.current.get(pageNum)
-    if (lastSignature === renderSignature && canvas.width > 0 && canvas.height > 0) {
+    const renderedPx = renderedProgressPxRef.current.get(pageNum) ?? 0
+    if (lastSignature === renderSignature && canvas.width > 0 && canvas.height > 0 && renderedPx >= canvas.height) {
       return
     }
 
@@ -603,21 +606,79 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         ? clamp(availableWidth / naturalViewport.width, 0.5, 2)
         : 1
       const finalScale = baseScale * fitScale
-      const viewport = pageObj.getViewport({ scale: finalScale })
+      const viewport = pageObj.getViewport({ scale: finalScale * renderOutputScale })
       const outputScale = renderOutputScale
-      canvas.width = Math.floor(viewport.width * outputScale)
-      canvas.height = Math.floor(viewport.height * outputScale)
-      canvas.style.width = `${Math.floor(viewport.width)}px`
-      canvas.style.height = `${Math.floor(viewport.height)}px`
-      canvas.style.minHeight = `${Math.floor(viewport.height)}px`
-      context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
+      const targetCanvasWidth = Math.max(1, Math.floor(viewport.width))
+      const targetCanvasHeight = Math.max(1, Math.floor(viewport.height))
+      const cssWidth = Math.max(1, Math.floor(targetCanvasWidth / outputScale))
+      const cssHeight = Math.max(1, Math.floor(targetCanvasHeight / outputScale))
+
+      if (canvas.width !== targetCanvasWidth || canvas.height !== targetCanvasHeight || lastSignature !== renderSignature) {
+        canvas.width = targetCanvasWidth
+        canvas.height = targetCanvasHeight
+        canvas.style.width = `${cssWidth}px`
+        canvas.style.height = `${cssHeight}px`
+        canvas.style.minHeight = `${cssHeight}px`
+        renderedProgressPxRef.current.set(pageNum, 0)
+      } else {
+        canvas.style.width = `${cssWidth}px`
+        canvas.style.height = `${cssHeight}px`
+        canvas.style.minHeight = `${cssHeight}px`
+      }
 
       const existing = renderTasksRef.current.get(pageNum)
       if (existing?.cancel) existing.cancel()
-      const task = pageObj.render({ canvasContext: context, viewport })
-      renderTasksRef.current.set(pageNum, task)
-      await task.promise
-      renderedSignatureRef.current.set(pageNum, renderSignature)
+
+      if (isCapacitorAndroidWebView) {
+        const stripeStartPx = Math.max(0, renderedProgressPxRef.current.get(pageNum) ?? 0)
+        const stripeHeightPx = Math.max(240, Math.floor(canvas.height * 0.16))
+        const stripeRenderHeightPx = Math.max(1, Math.min(stripeHeightPx, canvas.height - stripeStartPx))
+
+        if (stripeRenderHeightPx > 0) {
+          const stripeCanvas = document.createElement('canvas')
+          stripeCanvas.width = canvas.width
+          stripeCanvas.height = stripeRenderHeightPx
+          const stripeContext = stripeCanvas.getContext('2d')
+          if (!stripeContext) return
+          stripeContext.setTransform(1, 0, 0, 1, 0, 0)
+
+          const task = pageObj.render({
+            canvasContext: stripeContext,
+            viewport,
+            transform: [1, 0, 0, 1, 0, -stripeStartPx],
+          })
+          renderTasksRef.current.set(pageNum, task)
+          await task.promise
+
+          context.setTransform(1, 0, 0, 1, 0, 0)
+          context.drawImage(
+            stripeCanvas,
+            0,
+            0,
+            stripeCanvas.width,
+            stripeCanvas.height,
+            0,
+            stripeStartPx,
+            stripeCanvas.width,
+            stripeCanvas.height
+          )
+
+          const nextRenderedPx = Math.min(canvas.height, stripeStartPx + stripeRenderHeightPx)
+          renderedProgressPxRef.current.set(pageNum, nextRenderedPx)
+          if (nextRenderedPx >= canvas.height) {
+            renderedSignatureRef.current.set(pageNum, renderSignature)
+          } else {
+            renderPumpPendingRef.current = true
+          }
+        }
+      } else {
+        context.setTransform(1, 0, 0, 1, 0, 0)
+        const task = pageObj.render({ canvasContext: context, viewport })
+        renderTasksRef.current.set(pageNum, task)
+        await task.promise
+        renderedSignatureRef.current.set(pageNum, renderSignature)
+        renderedProgressPxRef.current.set(pageNum, canvas.height)
+      }
 
       if (!initialRenderReady) {
         initialRenderedPagesRef.current += 1
@@ -633,9 +694,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, effectiveZoom, contentSize.width, initialRenderReady, safePage, renderOutputScale])
+  }, [pdfDoc, open, effectiveZoom, contentSize.width, initialRenderReady, safePage, renderOutputScale, isCapacitorAndroidWebView])
 
-  const getCurrentRenderSignature = useCallback(() => `${effectiveZoom}:${contentSize.width || 0}`, [effectiveZoom, contentSize.width])
+  const getCurrentRenderSignature = useCallback(() => `${effectiveZoom}:${contentSize.width || 0}:${renderOutputScale}`, [effectiveZoom, contentSize.width, renderOutputScale])
 
   const evictFarPageBitmaps = useCallback(() => {
     if (!open) return
@@ -653,6 +714,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       renderTasksRef.current.delete(pageNum)
       renderedSignatureRef.current.delete(pageNum)
+      renderedProgressPxRef.current.delete(pageNum)
 
       canvas.width = 0
       canvas.height = 0
@@ -714,12 +776,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       const canvas = pageCanvasRefs.current.get(pageNum)
       if (!canvas) continue
       const lastSignature = renderedSignatureRef.current.get(pageNum)
+      const renderedPx = renderedProgressPxRef.current.get(pageNum) ?? 0
       if (lastSignature !== signature || canvas.width === 0 || canvas.height === 0) {
+        return pageNum
+      }
+      if (isCapacitorAndroidWebView && renderedPx < canvas.height) {
         return pageNum
       }
     }
     return null
-  }, [getCurrentRenderSignature, getRenderCandidates])
+  }, [getCurrentRenderSignature, getRenderCandidates, isCapacitorAndroidWebView])
 
   const runRenderPump = useCallback(async () => {
     if (renderPumpRunningRef.current) return

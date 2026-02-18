@@ -384,10 +384,20 @@ export default function ChallengeAttemptPage() {
   const [imageViewerScale, setImageViewerScale] = useState(1)
   const [imageViewerTx, setImageViewerTx] = useState(0)
   const [imageViewerTy, setImageViewerTy] = useState(0)
+  const [imageViewerSheetOffsetY, setImageViewerSheetOffsetY] = useState(0)
+  const [imageViewerSheetSettling, setImageViewerSheetSettling] = useState(false)
   const imageViewerScaleRef = useRef(1)
   const imageViewerTxRef = useRef(0)
   const imageViewerTyRef = useRef(0)
   const imageViewerRootRef = useRef<HTMLDivElement | null>(null)
+  const imageViewerSheetRef = useRef<HTMLDivElement | null>(null)
+  const imageViewerSheetDragRef = useRef<null | {
+    pointerId: number
+    startY: number
+    lastY: number
+    lastAt: number
+    velocityY: number
+  }>(null)
   const imageViewerPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
   const imageViewerGestureRef = useRef<null | {
     kind: 'pan' | 'pinch'
@@ -448,6 +458,88 @@ export default function ChallengeAttemptPage() {
   const closeImageViewer = useCallback(() => {
     setImageViewerOpen(false)
   }, [])
+
+  const stopImageViewerSheetDrag = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.removeEventListener('pointermove', onImageViewerSheetDragMove)
+    window.removeEventListener('pointerup', onImageViewerSheetDragEnd)
+    window.removeEventListener('pointercancel', onImageViewerSheetDragEnd)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const settleImageViewerSheetTo = useCallback((nextOffset: number, after?: () => void) => {
+    setImageViewerSheetSettling(true)
+    setImageViewerSheetOffsetY(nextOffset)
+    window.setTimeout(() => {
+      setImageViewerSheetSettling(false)
+      if (after) after()
+    }, 170)
+  }, [])
+
+  const onImageViewerSheetDragMove = useCallback((event: PointerEvent) => {
+    const drag = imageViewerSheetDragRef.current
+    if (!drag) return
+    if (event.pointerId !== drag.pointerId) return
+    const now = performance.now()
+    const dyFromStart = Math.max(0, event.clientY - drag.startY)
+    const dyStep = event.clientY - drag.lastY
+    const dt = Math.max(1, now - drag.lastAt)
+    drag.velocityY = dyStep / dt
+    drag.lastY = event.clientY
+    drag.lastAt = now
+    setImageViewerSheetOffsetY(dyFromStart)
+  }, [])
+
+  const onImageViewerSheetDragEnd = useCallback((event: PointerEvent) => {
+    const drag = imageViewerSheetDragRef.current
+    if (!drag) return
+    if (event.pointerId !== drag.pointerId) return
+    imageViewerSheetDragRef.current = null
+    stopImageViewerSheetDrag()
+
+    const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
+    const panelHeight = imageViewerSheetRef.current?.getBoundingClientRect().height || Math.min(viewportH, 560)
+    const closeDistance = panelHeight * 0.2
+    const fastSwipe = drag.velocityY > 1.05
+    const shouldClose = imageViewerSheetOffsetY >= closeDistance || fastSwipe
+
+    if (shouldClose) {
+      settleImageViewerSheetTo(viewportH, closeImageViewer)
+      return
+    }
+    settleImageViewerSheetTo(0)
+  }, [closeImageViewer, imageViewerSheetOffsetY, settleImageViewerSheetTo, stopImageViewerSheetDrag])
+
+  const onImageViewerThumbPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    imageViewerPointersRef.current.clear()
+    imageViewerGestureRef.current = null
+    imageViewerSheetDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      lastY: event.clientY,
+      lastAt: performance.now(),
+      velocityY: 0,
+    }
+    setImageViewerSheetSettling(false)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointermove', onImageViewerSheetDragMove, { passive: true })
+      window.addEventListener('pointerup', onImageViewerSheetDragEnd)
+      window.addEventListener('pointercancel', onImageViewerSheetDragEnd)
+    }
+  }, [onImageViewerSheetDragEnd, onImageViewerSheetDragMove])
+
+  useEffect(() => {
+    if (imageViewerOpen) return
+    imageViewerSheetDragRef.current = null
+    setImageViewerSheetOffsetY(0)
+    setImageViewerSheetSettling(false)
+    stopImageViewerSheetDrag()
+  }, [imageViewerOpen, stopImageViewerSheetDrag])
+
+  useEffect(() => () => stopImageViewerSheetDrag(), [stopImageViewerSheetDrag])
 
   useEffect(() => {
     if (!imageViewerOpen) return
@@ -1188,13 +1280,26 @@ export default function ChallengeAttemptPage() {
                   type="button"
                   aria-label="Close image viewer"
                   className="absolute top-3 right-3 z-[10060] h-10 w-10 rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 bg-black/30"
+                  style={{
+                    top: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 12px)',
+                    right: 'calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 12px)',
+                  }}
                   onClick={closeImageViewer}
                 >
                   ×
                 </button>
 
                 <div
+                  ref={imageViewerSheetRef}
                   className="relative z-[10055] mt-auto h-[min(92vh,100dvh)] w-full max-w-[1100px] rounded-t-[24px] border border-white/10 bg-black/70 backdrop-blur-xl flex items-center justify-center"
+                  style={{
+                    marginLeft: 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))',
+                    marginRight: 'max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px))',
+                    marginBottom: 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))',
+                    transform: `translateY(${imageViewerSheetOffsetY}px)`,
+                    transition: imageViewerSheetSettling ? 'transform 170ms ease-out' : 'none',
+                    willChange: 'transform',
+                  }}
                   onPointerDown={(e) => {
                     const root = imageViewerRootRef.current
                     const rect = root?.getBoundingClientRect()
@@ -1353,7 +1458,13 @@ export default function ChallengeAttemptPage() {
                     }
                   }}
                 >
-                  <div className="pointer-events-none absolute left-1/2 top-2 z-[10056] h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/60" aria-hidden="true" />
+                  <div
+                    className="absolute left-1/2 top-1.5 z-[10057] -translate-x-1/2 pt-2 pb-1 px-3 touch-none"
+                    onPointerDown={onImageViewerThumbPointerDown}
+                    aria-label="Drag down to close"
+                  >
+                    <div className="h-1.5 w-12 rounded-full bg-white/60" aria-hidden="true" />
+                  </div>
                   <div
                     style={{
                       transform: `translate3d(${imageViewerTx}px, ${imageViewerTy}px, 0) scale(${imageViewerScale})`,

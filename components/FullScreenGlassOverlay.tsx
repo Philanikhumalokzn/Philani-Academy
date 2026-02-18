@@ -60,6 +60,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
 
   const [dragOffsetY, setDragOffsetY] = useState(0)
   const [isSettling, setIsSettling] = useState(false)
+  const panelRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<null | {
     pointerId: number
     startY: number
@@ -171,7 +172,12 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     : 'overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]'
 
   const frameSafeAreaStyle = rootPosition === 'fixed'
-    ? { paddingBottom: 'var(--app-safe-bottom)' }
+    ? {
+        paddingTop: 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))',
+        paddingRight: 'max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px))',
+        paddingBottom: 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))',
+      }
     : undefined
 
   const stopDrag = useCallback(() => {
@@ -213,8 +219,9 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     stopDrag()
 
     const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
-    const closeDistance = Math.min(180, Math.max(84, viewportH * 0.18))
-    const fastSwipe = drag.velocityY > 0.8
+    const panelHeight = panelRef.current?.getBoundingClientRect().height || Math.min(viewportH, 560)
+    const closeDistance = panelHeight * 0.2
+    const fastSwipe = drag.velocityY > 1.05
     const shouldClose = dragOffsetY >= closeDistance || fastSwipe
 
     if (shouldClose) {
@@ -263,6 +270,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
         style={frameSafeAreaStyle}
       >
         <div
+          ref={panelRef}
           className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${panelTopSafeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
           style={canSwipeDownClose

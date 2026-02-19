@@ -9,6 +9,8 @@ const GRID_DIAGRAM_URL = '/diagram-grid.svg'
 const GRID_OVERFLOW_SCALE = 2.4
 const GRID_MIN_ZOOM = 1
 const GRID_MAX_ZOOM = 4
+const IMAGE_MIN_ZOOM = 1
+const IMAGE_MAX_ZOOM = 4
 const GRID_BACKGROUND_STYLE = {
   backgroundColor: '#ffffff',
   backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
@@ -1084,11 +1086,27 @@ export default function DiagramOverlayModule(props: {
     anchorY: 0,
   })
 
+  const imagePanRef = useRef({
+    active: false,
+    pointers: new Map<number, { x: number; y: number }>(),
+    suppressedPointers: new Set<number>(),
+    startDistance: 0,
+    startZoom: 1,
+    anchorX: 0,
+    anchorY: 0,
+  })
+
   const [gridZoom, setGridZoom] = useState(1)
   const gridZoomRef = useRef(1)
   useEffect(() => {
     gridZoomRef.current = gridZoom
   }, [gridZoom])
+
+  const [imageZoom, setImageZoom] = useState(1)
+  const imageZoomRef = useRef(1)
+  useEffect(() => {
+    imageZoomRef.current = imageZoom
+  }, [imageZoom])
 
   const lastGridOpenIdRef = useRef<string | null>(null)
   useEffect(() => {
@@ -1127,6 +1145,84 @@ export default function DiagramOverlayModule(props: {
     const sizePct = Math.max(100, scaledPct)
     return { width: `${sizePct}%`, height: `${sizePct}%`, ...gridBackgroundStyle }
   }, [gridBackgroundStyle, gridZoom, isGridDiagram])
+
+  const imageContainerStyle = useMemo(() => {
+    if (isGridDiagram) return { width: '100%', height: '100%' }
+    const scaledPct = Math.max(100, imageZoom * 100)
+    return { width: `${scaledPct}%`, height: `${scaledPct}%` }
+  }, [imageZoom, isGridDiagram])
+
+  const canvasContainerStyle = useMemo(() => {
+    return isGridDiagram ? gridContainerStyle : imageContainerStyle
+  }, [gridContainerStyle, imageContainerStyle, isGridDiagram])
+
+  const getImageMidpoint = useCallback((state: typeof imagePanRef.current) => {
+    if (state.pointers.size < 2) return null
+    const values = Array.from(state.pointers.values())
+    const a = values[0]
+    const b = values[1]
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  }, [])
+
+  const beginImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
+    if (state.active) return
+    if (state.pointers.size < 2) return
+    const mid = getImageMidpoint(state)
+    if (!mid) return
+    state.active = true
+    state.suppressedPointers = new Set(state.pointers.keys())
+    const values = Array.from(state.pointers.values())
+    const dx = values[0].x - values[1].x
+    const dy = values[0].y - values[1].y
+    state.startDistance = Math.max(1, Math.hypot(dx, dy))
+    state.startZoom = imageZoomRef.current
+    const rect = viewport.getBoundingClientRect()
+    const localX = mid.x - rect.left
+    const localY = mid.y - rect.top
+    state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
+    state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
+  }, [getImageMidpoint])
+
+  const updateImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
+    if (!state.active || state.pointers.size < 2) return
+    const mid = getImageMidpoint(state)
+    if (!mid) return
+    const values = Array.from(state.pointers.values())
+    const dx = values[0].x - values[1].x
+    const dy = values[0].y - values[1].y
+    const dist = Math.max(1, Math.hypot(dx, dy))
+    const nextZoom = Math.max(IMAGE_MIN_ZOOM, Math.min(IMAGE_MAX_ZOOM, (state.startZoom * dist) / state.startDistance))
+
+    const rect = viewport.getBoundingClientRect()
+    const localX = mid.x - rect.left
+    const localY = mid.y - rect.top
+
+    if (Math.abs(nextZoom - imageZoomRef.current) > 0.001) {
+      setImageZoom(nextZoom)
+    }
+
+    const contentScale = Math.max(1, nextZoom)
+    const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
+    const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
+
+    let nextLeft = state.anchorX * nextZoom - localX
+    let nextTop = state.anchorY * nextZoom - localY
+
+    nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
+    nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
+
+    viewport.scrollLeft = nextLeft
+    viewport.scrollTop = nextTop
+  }, [getImageMidpoint])
+
+  const endImageGestureIfNeeded = useCallback((state: typeof imagePanRef.current) => {
+    if (state.active && state.pointers.size < 2) {
+      state.active = false
+    }
+    if (state.pointers.size === 0) {
+      state.suppressedPointers.clear()
+    }
+  }, [])
 
   const applyAnnotationsRef = useRef((diagramId: string, annotations: DiagramAnnotations) => {
     void diagramId
@@ -2412,8 +2508,24 @@ export default function DiagramOverlayModule(props: {
         }
       }
     }
+    if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = imagePanRef.current
+      if (viewport) {
+        panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        if (panState.pointers.size >= 2) {
+          beginImageGesture(panState, viewport)
+          panState.suppressedPointers.add(e.pointerId)
+          if (e.cancelable) e.preventDefault()
+        }
+      }
+    }
     if (isGridDiagram) {
       const panState = gridPanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (!isGridDiagram) {
+      const panState = imagePanRef.current
       if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
     }
     if (e.pointerType === 'touch') {
@@ -2580,8 +2692,30 @@ export default function DiagramOverlayModule(props: {
         return
       }
     }
+    if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = imagePanRef.current
+      if (viewport) {
+        if (panState.pointers.has(e.pointerId)) {
+          panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        }
+        if (panState.active && panState.pointers.size >= 2) {
+          updateImageGesture(panState, viewport)
+          if (e.cancelable) e.preventDefault()
+          return
+        }
+      }
+      if (panState.pointers.size >= 2 || panState.suppressedPointers.has(e.pointerId)) {
+        if (e.cancelable) e.preventDefault()
+        return
+      }
+    }
     if (isGridDiagram) {
       const panState = gridPanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (!isGridDiagram) {
+      const panState = imagePanRef.current
       if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
     }
 
@@ -2768,8 +2902,20 @@ export default function DiagramOverlayModule(props: {
       endGridGestureIfNeeded(panState)
       if (panState.active || wasSuppressed) return
     }
+    if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const panState = imagePanRef.current
+      const wasSuppressed = panState.suppressedPointers.has(e.pointerId)
+      panState.pointers.delete(e.pointerId)
+      panState.suppressedPointers.delete(e.pointerId)
+      endImageGestureIfNeeded(panState)
+      if (panState.active || wasSuppressed) return
+    }
     if (isGridDiagram) {
       const panState = gridPanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (!isGridDiagram) {
+      const panState = imagePanRef.current
       if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
     }
 
@@ -3275,7 +3421,7 @@ export default function DiagramOverlayModule(props: {
 
           <div
             ref={gridViewportRef}
-            className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-auto' : 'overflow-hidden'}`}
+            className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-auto' : 'overflow-auto'}`}
             onMouseDown={() => setContextMenu(null)}
             onTouchStart={() => {
               if (isGridDiagram && isAdmin) peekGridCloseButton()
@@ -3289,7 +3435,7 @@ export default function DiagramOverlayModule(props: {
           <div
             ref={containerRef}
             className="relative"
-            style={gridContainerStyle}
+            style={canvasContainerStyle}
           >
           {canPresent && (
             <div

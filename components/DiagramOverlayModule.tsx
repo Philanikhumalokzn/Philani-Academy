@@ -1084,6 +1084,8 @@ export default function DiagramOverlayModule(props: {
     startZoom: 1,
     anchorX: 0,
     anchorY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
     startLocalX: 0,
     startLocalY: 0,
     lastLocalX: 0,
@@ -1149,7 +1151,7 @@ export default function DiagramOverlayModule(props: {
   }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram])
 
   const gridBackgroundStyle = useMemo(() => {
-    const size = Math.max(6, Math.round(24 * gridZoom))
+    const size = Math.max(6, 24 * gridZoom)
     return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px`, backgroundPosition: 'center center' }
   }, [gridZoom])
 
@@ -1497,17 +1499,23 @@ export default function DiagramOverlayModule(props: {
   }, [])
 
   const commitGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
-    const localX = Number.isFinite(state.lastLocalX) ? state.lastLocalX : state.startLocalX
-    const localY = Number.isFinite(state.lastLocalY) ? state.lastLocalY : state.startLocalY
     const committedZoom = Math.max(GRID_MIN_ZOOM, Math.min(GRID_MAX_ZOOM, state.previewZoom || state.startZoom))
+    const scale = committedZoom / Math.max(0.01, state.startZoom)
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
+    const previewDx = state.lastLocalX - state.startLocalX
+    const previewDy = state.lastLocalY - state.startLocalY
+
+    const targetLeftUnclamped = state.startScrollLeft + originX * (scale - 1) - previewDx
+    const targetTopUnclamped = state.startScrollTop + originY * (scale - 1) - previewDy
 
     const placeViewport = () => {
       const contentScale = Math.max(1, GRID_OVERFLOW_SCALE * committedZoom)
       const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
       const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
 
-      let nextLeft = state.anchorX * committedZoom - localX
-      let nextTop = state.anchorY * committedZoom - localY
+      let nextLeft = targetLeftUnclamped
+      let nextTop = targetTopUnclamped
 
       nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
       nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
@@ -1553,6 +1561,8 @@ export default function DiagramOverlayModule(props: {
     const localY = mid.y - rect.top
     state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
     state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
+    state.startScrollLeft = viewport.scrollLeft
+    state.startScrollTop = viewport.scrollTop
     state.startLocalX = localX
     state.startLocalY = localY
     state.lastLocalX = localX

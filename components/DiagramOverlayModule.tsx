@@ -1385,8 +1385,9 @@ export default function DiagramOverlayModule(props: {
       setGridZoom(nextZoom)
     }
 
-    const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-    const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+    const contentScale = Math.max(1, GRID_OVERFLOW_SCALE * nextZoom)
+    const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
+    const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
 
     let nextLeft = state.anchorX * nextZoom - localX
     let nextTop = state.anchorY * nextZoom - localY
@@ -1499,8 +1500,9 @@ export default function DiagramOverlayModule(props: {
             setGridZoom(nextZoom)
           }
 
-          const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-          const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+          const contentScale = Math.max(1, GRID_OVERFLOW_SCALE * nextZoom)
+          const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
+          const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
 
           let nextLeft = state.anchorX * nextZoom - localX
           let nextTop = state.anchorY * nextZoom - localY

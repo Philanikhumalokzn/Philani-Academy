@@ -18,9 +18,13 @@ const GRID_BACKGROUND_STYLE = {
 } as const
 
 type DiagramStrokePoint = { x: number; y: number }
+type DiagramWorldPoint = { x: number; y: number }
+type DiagramScreenPoint = { x: number; y: number }
+type DiagramFrame = { width: number; height: number }
+type DiagramCamera = { x: number; y: number; zoom: number }
 type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
 type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number; z?: number; locked?: boolean }
-type DiagramAnnotations = { space?: 'image'; strokes: DiagramStroke[]; arrows?: DiagramArrow[] }
+type DiagramAnnotations = { space?: 'image' | 'world'; worldFrame?: { width: number; height: number }; strokes: DiagramStroke[]; arrows?: DiagramArrow[] }
 
 type DiagramTool = 'select' | 'pen' | 'arrow' | 'eraser'
 type DiagramSelection = { kind: 'stroke' | 'arrow'; id: string } | null
@@ -274,11 +278,28 @@ export default function DiagramOverlayModule(props: {
   ])
 
   const normalizeAnnotations = (value: any): DiagramAnnotations => {
-    const space = value?.space === 'image' ? 'image' : undefined
+    const space = value?.space === 'image' || value?.space === 'world' ? value.space : undefined
+    const worldFrame =
+      value?.worldFrame && Number.isFinite(value.worldFrame.width) && Number.isFinite(value.worldFrame.height)
+        ? { width: Math.max(1e-6, Number(value.worldFrame.width)), height: Math.max(1e-6, Number(value.worldFrame.height)) }
+        : undefined
+    const worldW = worldFrame?.width ?? 1
+    const worldH = worldFrame?.height ?? 1
+    const toImagePoint = (p: any) => {
+      if (space === 'world') {
+        const wx = Number.isFinite(p?.wx) ? Number(p.wx) : Number.isFinite(p?.x) ? Number(p.x) : 0
+        const wy = Number.isFinite(p?.wy) ? Number(p.wy) : Number.isFinite(p?.y) ? Number(p.y) : 0
+        return { x: wx / worldW, y: wy / worldH }
+      }
+      return {
+        x: Number.isFinite(p?.x) ? Number(p.x) : 0,
+        y: Number.isFinite(p?.y) ? Number(p.y) : 0,
+      }
+    }
     const strokes = Array.isArray(value?.strokes) ? value.strokes : []
     const arrows = Array.isArray(value?.arrows) ? value.arrows : []
     return {
-      space,
+      space: IMAGE_SPACE,
       strokes: strokes
         .map((s: any) => ({
           id: typeof s?.id === 'string' ? s.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -288,7 +309,7 @@ export default function DiagramOverlayModule(props: {
           locked: Boolean(s?.locked),
           points: Array.isArray(s?.points)
             ? s.points
-                .map((p: any) => ({ x: typeof p?.x === 'number' ? p.x : 0, y: typeof p?.y === 'number' ? p.y : 0 }))
+                .map((p: any) => toImagePoint(p))
                 .filter((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y))
             : [],
         }))
@@ -301,12 +322,54 @@ export default function DiagramOverlayModule(props: {
           headSize: typeof a?.headSize === 'number' ? a.headSize : 12,
           z: typeof a?.z === 'number' && Number.isFinite(a.z) ? a.z : undefined,
           locked: Boolean(a?.locked),
-          start: { x: typeof a?.start?.x === 'number' ? a.start.x : 0, y: typeof a?.start?.y === 'number' ? a.start.y : 0 },
-          end: { x: typeof a?.end?.x === 'number' ? a.end.x : 0, y: typeof a?.end?.y === 'number' ? a.end.y : 0 },
+          start: toImagePoint(a?.start),
+          end: toImagePoint(a?.end),
         }))
         .filter((a: any) => Number.isFinite(a.start.x) && Number.isFinite(a.start.y) && Number.isFinite(a.end.x) && Number.isFinite(a.end.y)),
     }
   }
+
+  const toTransportAnnotations = useCallback((diagramId: string, annotations: DiagramAnnotations | null): DiagramAnnotations | null => {
+    if (!annotations) return null
+    const diag = diagramsRef.current.find(d => d.id === diagramId)
+    if (!diag || diag.imageUrl === GRID_DIAGRAM_URL) return annotations
+
+    const fallbackW = Number.isFinite((annotations as any)?.worldFrame?.width) ? Math.max(1, Number((annotations as any).worldFrame.width)) : 1000
+    const fallbackH = Number.isFinite((annotations as any)?.worldFrame?.height) ? Math.max(1, Number((annotations as any).worldFrame.height)) : 1000
+    const cachedFrame = diagramWorldFrameRef.current.get(diagramId)
+
+    let worldW = cachedFrame?.width ?? fallbackW
+    let worldH = cachedFrame?.height ?? fallbackH
+
+    if (activeDiagram?.id === diagramId) {
+      const img = imageRef.current
+      if (img?.naturalWidth && img?.naturalHeight) {
+        worldW = Math.max(1, img.naturalWidth)
+        worldH = Math.max(1, img.naturalHeight)
+      }
+    }
+
+    const toWorldPoint = (p: DiagramStrokePoint) => ({
+      x: p.x,
+      y: p.y,
+      wx: p.x * worldW,
+      wy: p.y * worldH,
+    })
+
+    return {
+      space: 'world',
+      worldFrame: { width: worldW, height: worldH },
+      strokes: (annotations.strokes || []).map(s => ({
+        ...s,
+        points: (s.points || []).map(toWorldPoint as any),
+      })),
+      arrows: (annotations.arrows || []).map(a => ({
+        ...a,
+        start: toWorldPoint(a.start) as any,
+        end: toWorldPoint(a.end) as any,
+      })),
+    }
+  }, [activeDiagram?.id])
 
   const loadFromServer = useCallback(async () => {
     try {
@@ -508,10 +571,10 @@ export default function DiagramOverlayModule(props: {
       const diag = diagramsRef.current.find(d => d.id === next.activeDiagramId)
       if (diag) {
         await publish({ kind: 'add', diagram: diag })
-        await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] } })
+        await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
       }
     }
-  }, [isAdmin, persistState, publish])
+  }, [isAdmin, persistState, publish, toTransportAnnotations])
 
   const clearDiagramAnnotations = useCallback(async (diagramId: string) => {
     const emptyAnnotations: DiagramAnnotations = { space: IMAGE_SPACE, strokes: [], arrows: [] }
@@ -673,17 +736,17 @@ export default function DiagramOverlayModule(props: {
           {diagrams.length === 0 ? (
             <div className="text-[11px] text-slate-500 px-2 py-2">No diagrams yet.</div>
           ) : (
-            diagrams.map(d => (
+            const transport = toTransportAnnotations(diagramId, emptyAnnotations)
               <button
                 key={d.id}
                 type="button"
                 className={`shrink-0 w-28 rounded-md border px-2 py-2 text-left ${diagramState.activeDiagramId === d.id ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'}`}
-                onClick={() => {
+              body: JSON.stringify({ annotations: transport }),
                   setMobileTrayOpen(false)
                   void setOverlayState({ activeDiagramId: d.id, isOpen: true })
                 }}
               >
-                <div className="w-full h-14 rounded bg-slate-100 overflow-hidden">
+        }, [isAdmin, localOnly, toTransportAnnotations])
                   {d.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={d.imageUrl} alt={d.title || 'Diagram'} className="w-full h-full object-cover" />
@@ -774,16 +837,17 @@ export default function DiagramOverlayModule(props: {
     if (!isAdmin) return
     if (localOnly) return
     try {
+      const transport = toTransportAnnotations(diagramId, annotations)
       await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ annotations }),
+        body: JSON.stringify({ annotations: transport }),
       })
     } catch {
       // ignore
     }
-  }, [isAdmin, localOnly])
+  }, [isAdmin, localOnly, toTransportAnnotations])
 
   // Ably connection (independent from canvas)
   useEffect(() => {
@@ -900,7 +964,7 @@ export default function DiagramOverlayModule(props: {
               const diag = diagramsRef.current.find(d => d.id === activeId)
               if (diag) {
                 await publish({ kind: 'add', diagram: diag })
-                await publish({ kind: 'annotations-set', diagramId: activeId, annotations: diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] } })
+                await publish({ kind: 'annotations-set', diagramId: activeId, annotations: toTransportAnnotations(activeId, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
               }
             }
           })
@@ -929,13 +993,14 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, localOnly, publish, userDisplayName, userId])
+  }, [channelName, isAdmin, loadFromServer, localOnly, publish, toTransportAnnotations, userDisplayName, userId])
 
   // Rendering
   const containerRef = useRef<HTMLDivElement | null>(null)
   const gridViewportRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const diagramWorldFrameRef = useRef<Map<string, { width: number; height: number }>>(new Map())
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
   const currentArrowRef = useRef<DiagramArrow | null>(null)
@@ -1110,6 +1175,22 @@ export default function DiagramOverlayModule(props: {
     startZoom: 1,
     anchorX: 0,
     anchorY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+    startLocalX: 0,
+    startLocalY: 0,
+    lastLocalX: 0,
+    lastLocalY: 0,
+    previewZoom: 1,
+  })
+
+  const imagePreviewRafRef = useRef<number | null>(null)
+  const imagePreviewRef = useRef({
+    scale: 1,
+    dx: 0,
+    dy: 0,
+    originX: 0,
+    originY: 0,
   })
 
   const [gridZoom, setGridZoom] = useState(1)
@@ -1123,6 +1204,29 @@ export default function DiagramOverlayModule(props: {
   useEffect(() => {
     imageZoomRef.current = imageZoom
   }, [imageZoom])
+
+  const gridCameraRef = useRef<DiagramCamera>({ x: 0.5, y: 0.5, zoom: 1 })
+  const imageCameraRef = useRef<DiagramCamera>({ x: 0.5, y: 0.5, zoom: 1 })
+
+  const getActiveCamera = useCallback((): DiagramCamera => {
+    return isGridDiagram ? gridCameraRef.current : imageCameraRef.current
+  }, [isGridDiagram])
+
+  const worldToScreenPoint = useCallback((world: DiagramWorldPoint, camera: DiagramCamera, frame: DiagramFrame): DiagramScreenPoint => {
+    const zoom = Math.max(1e-6, camera.zoom)
+    return {
+      x: (world.x - camera.x) * frame.width * zoom + frame.width / 2,
+      y: (world.y - camera.y) * frame.height * zoom + frame.height / 2,
+    }
+  }, [])
+
+  const screenToWorldPoint = useCallback((screen: DiagramScreenPoint, camera: DiagramCamera, frame: DiagramFrame): DiagramWorldPoint => {
+    const zoom = Math.max(1e-6, camera.zoom)
+    return {
+      x: (screen.x - frame.width / 2) / (frame.width * zoom) + camera.x,
+      y: (screen.y - frame.height / 2) / (frame.height * zoom) + camera.y,
+    }
+  }, [])
 
   const lastGridOpenIdRef = useRef<string | null>(null)
   useEffect(() => {
@@ -1197,7 +1301,98 @@ export default function DiagramOverlayModule(props: {
     const localY = mid.y - rect.top
     state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
     state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
+    state.startScrollLeft = viewport.scrollLeft
+    state.startScrollTop = viewport.scrollTop
+    state.startLocalX = localX
+    state.startLocalY = localY
+    state.lastLocalX = localX
+    state.lastLocalY = localY
+    state.previewZoom = state.startZoom
   }, [getImageMidpoint])
+
+  const scheduleImagePreview = useCallback((scale: number, dx: number, dy: number, originX: number, originY: number) => {
+    const preview = imagePreviewRef.current
+    preview.scale = scale
+    preview.dx = dx
+    preview.dy = dy
+    preview.originX = originX
+    preview.originY = originY
+
+    const applyPreview = () => {
+      const host = containerRef.current
+      if (!host) return
+      const live = imagePreviewRef.current
+      host.style.willChange = 'transform'
+      host.style.transformOrigin = `${live.originX}px ${live.originY}px`
+      host.style.transform = `translate(${live.dx}px, ${live.dy}px) scale(${live.scale})`
+    }
+
+    if (typeof window === 'undefined') {
+      applyPreview()
+      return
+    }
+
+    if (imagePreviewRafRef.current != null) return
+    imagePreviewRafRef.current = window.requestAnimationFrame(() => {
+      imagePreviewRafRef.current = null
+      applyPreview()
+    })
+  }, [])
+
+  const clearImagePreview = useCallback(() => {
+    if (typeof window !== 'undefined' && imagePreviewRafRef.current != null) {
+      window.cancelAnimationFrame(imagePreviewRafRef.current)
+      imagePreviewRafRef.current = null
+    }
+    const host = containerRef.current
+    if (!host) return
+    host.style.transform = ''
+    host.style.transformOrigin = ''
+    host.style.willChange = ''
+  }, [])
+
+  const commitImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
+    const committedZoom = Math.max(IMAGE_MIN_ZOOM, Math.min(IMAGE_MAX_ZOOM, state.previewZoom || state.startZoom))
+    const scale = committedZoom / Math.max(0.01, state.startZoom)
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
+    const previewDx = state.lastLocalX - state.startLocalX
+    const previewDy = state.lastLocalY - state.startLocalY
+
+    const targetLeftUnclamped = state.startScrollLeft + originX * (scale - 1) - previewDx
+    const targetTopUnclamped = state.startScrollTop + originY * (scale - 1) - previewDy
+
+    const placeViewport = () => {
+      const contentScale = Math.max(1, committedZoom)
+      const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
+      const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
+
+      let nextLeft = targetLeftUnclamped
+      let nextTop = targetTopUnclamped
+
+      nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
+      nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
+
+      viewport.scrollLeft = nextLeft
+      viewport.scrollTop = nextTop
+    }
+
+    clearImagePreview()
+
+    if (Math.abs(committedZoom - imageZoomRef.current) <= 0.001) {
+      placeViewport()
+      return
+    }
+
+    setImageZoom(committedZoom)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(placeViewport)
+      })
+    } else {
+      placeViewport()
+    }
+  }, [clearImagePreview])
 
   const updateImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
     if (!state.active || state.pointers.size < 2) return
@@ -1213,32 +1408,37 @@ export default function DiagramOverlayModule(props: {
     const localX = mid.x - rect.left
     const localY = mid.y - rect.top
 
-    if (Math.abs(nextZoom - imageZoomRef.current) > 0.001) {
-      setImageZoom(nextZoom)
-    }
+    const previewScale = nextZoom / Math.max(0.01, state.startZoom)
+    const previewDx = localX - state.startLocalX
+    const previewDy = localY - state.startLocalY
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
 
-    const contentScale = Math.max(1, nextZoom)
-    const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
-    const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
+    state.lastLocalX = localX
+    state.lastLocalY = localY
+    state.previewZoom = nextZoom
 
-    let nextLeft = state.anchorX * nextZoom - localX
-    let nextTop = state.anchorY * nextZoom - localY
+    scheduleImagePreview(previewScale, previewDx, previewDy, originX, originY)
+  }, [getImageMidpoint, scheduleImagePreview])
 
-    nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-    nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-    viewport.scrollLeft = nextLeft
-    viewport.scrollTop = nextTop
-  }, [getImageMidpoint])
-
-  const endImageGestureIfNeeded = useCallback((state: typeof imagePanRef.current) => {
+  const endImageGestureIfNeeded = useCallback((state: typeof imagePanRef.current, viewport?: HTMLDivElement | null) => {
     if (state.active && state.pointers.size < 2) {
+      if (viewport) {
+        commitImageGesture(state, viewport)
+      } else {
+        clearImagePreview()
+      }
       state.active = false
     }
     if (state.pointers.size === 0) {
       state.suppressedPointers.clear()
     }
-  }, [])
+  }, [clearImagePreview, commitImageGesture])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    clearImagePreview()
+  }, [clearImagePreview, isGridDiagram])
 
   const applyAnnotationsRef = useRef((diagramId: string, annotations: DiagramAnnotations) => {
     void diagramId
@@ -1709,18 +1909,21 @@ export default function DiagramOverlayModule(props: {
       return null
     }
 
-    const x = (px - imgRect.x) / Math.max(1e-6, imgRect.w)
-    const y = (py - imgRect.y) / Math.max(1e-6, imgRect.h)
-    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
-  }, [getContainRect])
+    const frame = { width: Math.max(1e-6, imgRect.w), height: Math.max(1e-6, imgRect.h) }
+    const local = { x: px - imgRect.x, y: py - imgRect.y }
+    const world = screenToWorldPoint(local, getActiveCamera(), frame)
+    return { x: Math.min(1, Math.max(0, world.x)), y: Math.min(1, Math.max(0, world.y)) }
+  }, [getActiveCamera, getContainRect, screenToWorldPoint])
 
   const mapImageToCanvasPx = useCallback((p: DiagramStrokePoint, canvasW: number, canvasH: number) => {
     const imgRect = getContainRect(canvasW, canvasH)
+    const frame = { width: Math.max(1e-6, imgRect.w), height: Math.max(1e-6, imgRect.h) }
+    const screen = worldToScreenPoint({ x: p.x, y: p.y }, getActiveCamera(), frame)
     return {
-      x: imgRect.x + p.x * imgRect.w,
-      y: imgRect.y + p.y * imgRect.h,
+      x: imgRect.x + screen.x,
+      y: imgRect.y + screen.y,
     }
-  }, [getContainRect])
+  }, [getActiveCamera, getContainRect, worldToScreenPoint])
 
   const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 
@@ -2146,6 +2349,15 @@ export default function DiagramOverlayModule(props: {
 
     const diag = activeDiagram
     if (!diag) return
+    if (!isGridDiagram) {
+      const img = imageRef.current
+      if (img?.naturalWidth && img?.naturalHeight) {
+        diagramWorldFrameRef.current.set(diag.id, {
+          width: Math.max(1, img.naturalWidth),
+          height: Math.max(1, img.naturalHeight),
+        })
+      }
+    }
 
     const annotations = annotationsForRender(diag.id)
     const strokes = annotations.strokes || []
@@ -2459,7 +2671,7 @@ export default function DiagramOverlayModule(props: {
     previewRef.current = null
     setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations } : d)))
     void persistAnnotations(diagramId, annotations)
-    void publish({ kind: 'annotations-set', diagramId, annotations })
+    void publish({ kind: 'annotations-set', diagramId, annotations: toTransportAnnotations(diagramId, annotations) })
     try {
       const strokes = Array.isArray(annotations?.strokes) ? annotations.strokes.length : 0
       const arrows = Array.isArray((annotations as any)?.arrows) ? (annotations as any).arrows.length : 0
@@ -2469,7 +2681,7 @@ export default function DiagramOverlayModule(props: {
       // ignore
     }
     redraw()
-  }, [persistAnnotations, publish, pushDiagramTimeline, redraw])
+  }, [persistAnnotations, publish, pushDiagramTimeline, redraw, toTransportAnnotations])
 
   applyAnnotationsRef.current = applyAnnotations
 
@@ -2950,11 +3162,12 @@ export default function DiagramOverlayModule(props: {
       if (panState.active || wasSuppressed) return
     }
     if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
       const panState = imagePanRef.current
       const wasSuppressed = panState.suppressedPointers.has(e.pointerId)
       panState.pointers.delete(e.pointerId)
       panState.suppressedPointers.delete(e.pointerId)
-      endImageGestureIfNeeded(panState)
+      endImageGestureIfNeeded(panState, viewport)
       if (panState.active || wasSuppressed) return
     }
     if (isGridDiagram) {
@@ -3008,7 +3221,7 @@ export default function DiagramOverlayModule(props: {
       setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations: next } : d)))
       redraw()
       void persistAnnotations(diagramId, next)
-      void publish({ kind: 'annotations-set', diagramId, annotations: next })
+      void publish({ kind: 'annotations-set', diagramId, annotations: toTransportAnnotations(diagramId, next) })
       try {
         const strokes = Array.isArray(next?.strokes) ? next.strokes.length : 0
         const arrows = Array.isArray(next?.arrows) ? next.arrows.length : 0
@@ -3039,7 +3252,7 @@ export default function DiagramOverlayModule(props: {
       setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations: next } : d)))
       redraw()
       void persistAnnotations(diagramId, next)
-      void publish({ kind: 'annotations-set', diagramId, annotations: next })
+      void publish({ kind: 'annotations-set', diagramId, annotations: toTransportAnnotations(diagramId, next) })
       try {
         const strokes = Array.isArray(next?.strokes) ? next.strokes.length : 0
         const arrows = Array.isArray(next?.arrows) ? next.arrows.length : 0
@@ -3134,7 +3347,7 @@ export default function DiagramOverlayModule(props: {
       migratedDiagramIdsRef.current.add(diag.id)
       return
     }
-    if (normalized.space === 'image') {
+    if (normalized.space === 'image' || normalized.space === 'world') {
       migratedDiagramIdsRef.current.add(diag.id)
       return
     }
@@ -3168,8 +3381,8 @@ export default function DiagramOverlayModule(props: {
     migratedDiagramIdsRef.current.add(diag.id)
     setDiagrams(prev => prev.map(d => (d.id === diag.id ? { ...d, annotations: migrated } : d)))
     void persistAnnotations(diag.id, migrated)
-    void publish({ kind: 'annotations-set', diagramId: diag.id, annotations: migrated })
-  }, [activeDiagram, diagramState.isOpen, getContainRect, isAdmin, normalizeAnnotations, persistAnnotations, publish])
+    void publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, migrated) })
+  }, [activeDiagram, diagramState.isOpen, getContainRect, isAdmin, normalizeAnnotations, persistAnnotations, publish, toTransportAnnotations])
 
   const handlePasteAtPoint = useCallback((diagramId: string, point: DiagramStrokePoint) => {
     const clip = clipboardRef.current
@@ -3899,7 +4112,18 @@ export default function DiagramOverlayModule(props: {
             src={activeDiagram.imageUrl}
             alt={activeDiagram.title || 'Diagram'}
             className={`absolute inset-0 w-full h-full object-contain select-none pointer-events-none${activeDiagram.imageUrl === GRID_DIAGRAM_URL ? ' opacity-0' : ''}`}
-            onLoad={() => redraw()}
+            onLoad={() => {
+              if (activeDiagram.imageUrl !== GRID_DIAGRAM_URL) {
+                const img = imageRef.current
+                if (img?.naturalWidth && img?.naturalHeight) {
+                  diagramWorldFrameRef.current.set(activeDiagram.id, {
+                    width: Math.max(1, img.naturalWidth),
+                    height: Math.max(1, img.naturalHeight),
+                  })
+                }
+              }
+              redraw()
+            }}
           />
           <canvas
             ref={canvasRef}

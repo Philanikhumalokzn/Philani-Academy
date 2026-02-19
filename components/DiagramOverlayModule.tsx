@@ -736,17 +736,17 @@ export default function DiagramOverlayModule(props: {
           {diagrams.length === 0 ? (
             <div className="text-[11px] text-slate-500 px-2 py-2">No diagrams yet.</div>
           ) : (
-            const transport = toTransportAnnotations(diagramId, emptyAnnotations)
+            diagrams.map(d => (
               <button
                 key={d.id}
                 type="button"
                 className={`shrink-0 w-28 rounded-md border px-2 py-2 text-left ${diagramState.activeDiagramId === d.id ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'}`}
-              body: JSON.stringify({ annotations: transport }),
+                onClick={() => {
                   setMobileTrayOpen(false)
                   void setOverlayState({ activeDiagramId: d.id, isOpen: true })
                 }}
               >
-        }, [isAdmin, localOnly, toTransportAnnotations])
+                <div className="w-full h-14 rounded bg-slate-100 overflow-hidden">
                   {d.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={d.imageUrl} alt={d.title || 'Diagram'} className="w-full h-full object-cover" />

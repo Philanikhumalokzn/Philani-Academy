@@ -1363,18 +1363,8 @@ export default function DiagramOverlayModule(props: {
     const targetTopUnclamped = state.startScrollTop + originY * (scale - 1) - previewDy
 
     const placeViewport = () => {
-      const contentScale = Math.max(1, committedZoom)
-      const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
-      const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
-
-      let nextLeft = targetLeftUnclamped
-      let nextTop = targetTopUnclamped
-
-      nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-      nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-      viewport.scrollLeft = nextLeft
-      viewport.scrollTop = nextTop
+      viewport.scrollLeft = targetLeftUnclamped
+      viewport.scrollTop = targetTopUnclamped
     }
 
     clearImagePreview()
@@ -1710,18 +1700,8 @@ export default function DiagramOverlayModule(props: {
     const targetTopUnclamped = state.startScrollTop + originY * (scale - 1) - previewDy
 
     const placeViewport = () => {
-      const contentScale = Math.max(1, GRID_OVERFLOW_SCALE * committedZoom)
-      const maxScrollLeft = Math.max(0, viewport.clientWidth * (contentScale - 1))
-      const maxScrollTop = Math.max(0, viewport.clientHeight * (contentScale - 1))
-
-      let nextLeft = targetLeftUnclamped
-      let nextTop = targetTopUnclamped
-
-      nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-      nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-      viewport.scrollLeft = nextLeft
-      viewport.scrollTop = nextTop
+      viewport.scrollLeft = targetLeftUnclamped
+      viewport.scrollTop = targetTopUnclamped
     }
 
     clearGridPreview()

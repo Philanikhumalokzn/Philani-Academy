@@ -1294,10 +1294,8 @@ export default function DiagramOverlayModule(props: {
 
   const gridContainerStyle = useMemo(() => {
     if (!isGridDiagram) return { width: '100%', height: '100%' }
-    const scaledPct = GRID_OVERFLOW_SCALE * 100 * gridZoom
-    const sizePct = Math.max(100, scaledPct)
-    return { width: `${sizePct}%`, height: `${sizePct}%`, ...gridBackgroundStyle }
-  }, [gridBackgroundStyle, gridZoom, isGridDiagram])
+    return { width: '100%', height: '100%' }
+  }, [isGridDiagram])
 
   const imageContainerStyle = useMemo(() => {
     if (isGridDiagram) return { width: '100%', height: '100%' }
@@ -3708,7 +3706,7 @@ export default function DiagramOverlayModule(props: {
 
           <div
             ref={gridViewportRef}
-            className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-auto' : 'overflow-auto'}`}
+            className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-hidden' : 'overflow-auto'}`}
             onMouseDown={() => setContextMenu(null)}
             onTouchStart={() => {
               if (isGridDiagram && isAdmin) peekGridCloseButton()

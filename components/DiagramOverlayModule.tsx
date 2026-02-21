@@ -1003,6 +1003,7 @@ export default function DiagramOverlayModule(props: {
   const gridViewportRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const excalidrawApiRef = useRef<any>(null)
   const diagramWorldFrameRef = useRef<Map<string, { width: number; height: number }>>(new Map())
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
@@ -1109,6 +1110,35 @@ export default function DiagramOverlayModule(props: {
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const activeHistoryDiagramIdRef = useRef<string | null>(null)
+
+  const getExcalidrawToolType = useCallback((value: DiagramTool): 'selection' | 'freedraw' | 'arrow' | 'eraser' => {
+    if (value === 'pen') return 'freedraw'
+    if (value === 'arrow') return 'arrow'
+    if (value === 'eraser') return 'eraser'
+    return 'selection'
+  }, [])
+
+  const triggerExcalidrawHistoryShortcut = useCallback((mode: 'undo' | 'redo') => {
+    if (typeof window === 'undefined') return
+    const key = mode === 'undo' ? 'z' : 'y'
+    const target = containerRef.current || window
+    const evt = new KeyboardEvent('keydown', {
+      key,
+      code: mode === 'undo' ? 'KeyZ' : 'KeyY',
+      ctrlKey: true,
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    target.dispatchEvent(evt)
+  }, [])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    const api = excalidrawApiRef.current
+    if (!api?.setActiveTool) return
+    api.setActiveTool({ type: getExcalidrawToolType(tool) })
+  }, [getExcalidrawToolType, isGridDiagram, tool])
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(undoRef.current.length > 0)
@@ -3254,6 +3284,10 @@ export default function DiagramOverlayModule(props: {
   const handleUndo = useCallback(() => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
+    if (isGridDiagram) {
+      triggerExcalidrawHistoryShortcut('undo')
+      return
+    }
     const diagramId = activeDiagram.id
     const prev = undoRef.current.pop() || null
     if (!prev) {
@@ -3265,11 +3299,15 @@ export default function DiagramOverlayModule(props: {
     redoRef.current.push(current)
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: prev.strokes || [], arrows: prev.arrows || [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isGridDiagram, syncHistoryFlags, triggerExcalidrawHistoryShortcut])
 
   const handleRedo = useCallback(() => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
+    if (isGridDiagram) {
+      triggerExcalidrawHistoryShortcut('redo')
+      return
+    }
     const diagramId = activeDiagram.id
     const next = redoRef.current.pop() || null
     if (!next) {
@@ -3281,11 +3319,17 @@ export default function DiagramOverlayModule(props: {
     undoRef.current.push(current)
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: next.strokes || [], arrows: next.arrows || [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isGridDiagram, syncHistoryFlags, triggerExcalidrawHistoryShortcut])
 
   const handleClearInk = useCallback(() => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
+    if (isGridDiagram) {
+      const api = excalidrawApiRef.current
+      if (!api?.updateScene) return
+      api.updateScene({ elements: [] })
+      return
+    }
     const diagramId = activeDiagram.id
     const diag = diagramsRef.current.find(d => d.id === diagramId)
     const before = cloneAnnotations(diag?.annotations ?? null)
@@ -3293,7 +3337,7 @@ export default function DiagramOverlayModule(props: {
     redoRef.current = []
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: [], arrows: [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isGridDiagram, syncHistoryFlags])
 
   useEffect(() => {
     if (!cropMode) {
@@ -3709,7 +3753,7 @@ export default function DiagramOverlayModule(props: {
                   type="button"
                   className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   onClick={handleUndo}
-                  disabled={!canUndo}
+                  disabled={isGridDiagram ? false : !canUndo}
                   aria-label="Undo"
                   title="Undo"
                 >
@@ -3722,7 +3766,7 @@ export default function DiagramOverlayModule(props: {
                   type="button"
                   className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   onClick={handleRedo}
-                  disabled={!canRedo}
+                  disabled={isGridDiagram ? false : !canRedo}
                   aria-label="Redo"
                   title="Redo"
                 >
@@ -4092,7 +4136,7 @@ export default function DiagramOverlayModule(props: {
           )}
           {isGridDiagram ? (
             <div className="absolute inset-0">
-              <Excalidraw />
+              <Excalidraw excalidrawAPI={(api) => { excalidrawApiRef.current = api }} />
             </div>
           ) : (
             <>

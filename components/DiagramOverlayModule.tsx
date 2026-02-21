@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
+
+const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw), { ssr: false })
 
 const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
@@ -4087,58 +4090,66 @@ export default function DiagramOverlayModule(props: {
               </div>
             </div>
           )}
-          <img
-            ref={imageRef}
-            src={activeDiagram.imageUrl}
-            alt={activeDiagram.title || 'Diagram'}
-            className={`absolute inset-0 w-full h-full object-contain select-none pointer-events-none${activeDiagram.imageUrl === GRID_DIAGRAM_URL ? ' opacity-0' : ''}`}
-            onLoad={() => {
-              if (activeDiagram.imageUrl !== GRID_DIAGRAM_URL) {
-                const img = imageRef.current
-                if (img?.naturalWidth && img?.naturalHeight) {
-                  diagramWorldFrameRef.current.set(activeDiagram.id, {
-                    width: Math.max(1, img.naturalWidth),
-                    height: Math.max(1, img.naturalHeight),
-                  })
+          {isGridDiagram ? (
+            <div className="absolute inset-0">
+              <Excalidraw />
+            </div>
+          ) : (
+            <>
+              <img
+                ref={imageRef}
+                src={activeDiagram.imageUrl}
+                alt={activeDiagram.title || 'Diagram'}
+                className={`absolute inset-0 w-full h-full object-contain select-none pointer-events-none${activeDiagram.imageUrl === GRID_DIAGRAM_URL ? ' opacity-0' : ''}`}
+                onLoad={() => {
+                  if (activeDiagram.imageUrl !== GRID_DIAGRAM_URL) {
+                    const img = imageRef.current
+                    if (img?.naturalWidth && img?.naturalHeight) {
+                      diagramWorldFrameRef.current.set(activeDiagram.id, {
+                        width: Math.max(1, img.naturalWidth),
+                        height: Math.max(1, img.naturalHeight),
+                      })
+                    }
+                  }
+                  redraw()
+                }}
+              />
+              <canvas
+                ref={canvasRef}
+                className={canPresent
+                  ? cropMode
+                    ? 'absolute inset-0 cursor-crosshair'
+                    : tool === 'select'
+                      ? 'absolute inset-0 cursor-default'
+                      : tool === 'eraser'
+                        ? 'absolute inset-0 cursor-cell'
+                        : 'absolute inset-0 cursor-crosshair'
+                  : 'absolute inset-0 pointer-events-none'
                 }
-              }
-              redraw()
-            }}
-          />
-          <canvas
-            ref={canvasRef}
-            className={canPresent
-              ? cropMode
-                ? 'absolute inset-0 cursor-crosshair'
-                : tool === 'select'
-                  ? 'absolute inset-0 cursor-default'
-                  : tool === 'eraser'
-                    ? 'absolute inset-0 cursor-cell'
-                    : 'absolute inset-0 cursor-crosshair'
-              : 'absolute inset-0 pointer-events-none'
-            }
-            style={{ touchAction: 'none' }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onContextMenu={(e) => {
-              if (!canPresentRef.current) return
-              if (cropMode) return
-              if (!activeDiagram?.id) return
-              e.preventDefault()
-              e.stopPropagation()
-              const host = containerRef.current
-              if (!host) return
-              const rect = host.getBoundingClientRect()
-              const x = e.clientX - rect.left
-              const y = e.clientY - rect.top
-              const pt = mapClientToImageSpace(e.clientX, e.clientY)
-              const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null
-              setSelection(hit)
-              setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
-            }}
-          />
+                style={{ touchAction: 'none' }}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onContextMenu={(e) => {
+                  if (!canPresentRef.current) return
+                  if (cropMode) return
+                  if (!activeDiagram?.id) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const host = containerRef.current
+                  if (!host) return
+                  const rect = host.getBoundingClientRect()
+                  const x = e.clientX - rect.left
+                  const y = e.clientY - rect.top
+                  const pt = mapClientToImageSpace(e.clientX, e.clientY)
+                  const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null
+                  setSelection(hit)
+                  setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
+                }}
+              />
+            </>
+          )}
         </div>
         </div>
         </FullScreenGlassOverlay>

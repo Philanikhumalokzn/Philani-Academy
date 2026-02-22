@@ -443,9 +443,15 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const containerRect = el.getBoundingClientRect()
         const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
         const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+        const previewCommittedZoom = clamp(
+          pinchStateRef.current.startZoom * pinchPreviewScaleRef.current,
+          50,
+          220
+        )
+        const targetZoom = typeof pendingZoom === 'number' ? pendingZoom : previewCommittedZoom
         applyPinchPreviewScale(1)
-        if (typeof pendingZoom === 'number' && Math.abs(pendingZoom - liveZoomRef.current) > 0.01) {
-          const committedZoom = clamp(pendingZoom, 50, 220)
+        if (Math.abs(targetZoom - liveZoomRef.current) > 0.01) {
+          const committedZoom = clamp(targetZoom, 50, 220)
           pinchCommitAnchorRef.current = {
             active: true,
             toZoom: committedZoom,

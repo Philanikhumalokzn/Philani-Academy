@@ -362,16 +362,22 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const startDist = getPinchDistance(e.touches)
+        const centerX = getTouchCenterX(e.touches)
+        const centerY = getTouchCenterY(e.touches)
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+        const startScale = Math.max(0.01, effectiveZoom / 100)
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = startDist
         pinchStateRef.current.startZoom = effectiveZoom
+        pinchStateRef.current.startScale = startScale
+        pinchStateRef.current.startContentUx = (el.scrollLeft + relX) / startScale
+        pinchStateRef.current.startContentUy = (el.scrollTop + relY) / startScale
         pinchStateRef.current.lastDist = startDist
-        pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
-        pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
+        pinchStateRef.current.lastCenterX = centerX
+        pinchStateRef.current.lastCenterY = centerY
         pinchStateRef.current.pendingZoom = null
-        const containerRect = el.getBoundingClientRect()
-        const relX = clamp(pinchStateRef.current.lastCenterX - containerRect.left, 0, containerRect.width)
-        const relY = clamp(pinchStateRef.current.lastCenterY - containerRect.top, 0, containerRect.height)
         applyPinchPreviewScale(1, el.scrollLeft + relX, el.scrollTop + relY)
         touchState.active = false
         return
@@ -426,12 +432,21 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const startDist = getPinchDistance(e.touches)
+        const centerX = getTouchCenterX(e.touches)
+        const centerY = getTouchCenterY(e.touches)
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+        const startScale = Math.max(0.01, effectiveZoom / 100)
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = startDist
         pinchStateRef.current.startZoom = effectiveZoom
+        pinchStateRef.current.startScale = startScale
+        pinchStateRef.current.startContentUx = (el.scrollLeft + relX) / startScale
+        pinchStateRef.current.startContentUy = (el.scrollTop + relY) / startScale
         pinchStateRef.current.lastDist = startDist
-        pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
-        pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
+        pinchStateRef.current.lastCenterX = centerX
+        pinchStateRef.current.lastCenterY = centerY
         pinchStateRef.current.pendingZoom = null
         touchState.active = false
         return

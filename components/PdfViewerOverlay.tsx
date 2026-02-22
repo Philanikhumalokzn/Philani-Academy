@@ -90,6 +90,7 @@ export default function        PdfViewerOverlay({ open, url, title, subtitle, in
   const pinchPreviewScaleRef = useRef(1)
   const pinchPreviewOriginRef = useRef({ x: 0, y: 0 })
   const pinchPreviewRafRef = useRef<number | null>(null)
+  const pinchScrollSyncRafRef = useRef<number | null>(null)
   const pinchCommitAnchorRef = useRef<{
     active: boolean
     fromZoom: number
@@ -400,19 +401,30 @@ export default function        PdfViewerOverlay({ open, url, title, subtitle, in
         const centerX = getTouchCenterX(e.touches)
         const centerY = getTouchCenterY(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
-        const centerDeltaX = centerX - pinchStateRef.current.lastCenterX
-        const centerDeltaY = centerY - pinchStateRef.current.lastCenterY
         const scale = dist / pinchStateRef.current.startDist
         const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
         pinchStateRef.current.pendingZoom = nextZoom
-        const previewScale = clamp(nextZoom / Math.max(1, pinchStateRef.current.startZoom), 0.5, 3)
-        applyPinchPreviewScale(previewScale, pinchStateRef.current.anchorUx * pinchStateRef.current.startScale, pinchStateRef.current.anchorUy * pinchStateRef.current.startScale)
+        setZoom(nextZoom)
+        liveZoomRef.current = nextZoom
 
-        if (Math.abs(centerDeltaX) > 0.25) {
-          el.scrollLeft -= centerDeltaX
-        }
-        if (Math.abs(centerDeltaY) > 0.25) {
-          el.scrollTop -= centerDeltaY
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+
+        if (typeof window !== 'undefined') {
+          if (pinchScrollSyncRafRef.current) {
+            window.cancelAnimationFrame(pinchScrollSyncRafRef.current)
+          }
+          pinchScrollSyncRafRef.current = window.requestAnimationFrame(() => {
+            pinchScrollSyncRafRef.current = null
+            const nextScale = Math.max(0.01, nextZoom / 100)
+            const targetLeft = pinchStateRef.current.anchorUx * nextScale - relX
+            const targetTop = pinchStateRef.current.anchorUy * nextScale - relY
+            const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+            const maxTop = Math.max(0, el.scrollHeight - el.clientHeight)
+            el.scrollLeft = clamp(targetLeft, 0, maxLeft)
+            el.scrollTop = clamp(targetTop, 0, maxTop)
+          })
         }
 
         pinchStateRef.current.lastDist = dist
@@ -451,30 +463,7 @@ export default function        PdfViewerOverlay({ open, url, title, subtitle, in
         return
       }
       if (pinchStateRef.current.active) {
-        const pendingZoom = pinchStateRef.current.pendingZoom
-        const centerX = pinchStateRef.current.lastCenterX
-        const centerY = pinchStateRef.current.lastCenterY
-        const containerRect = el.getBoundingClientRect()
-        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
-        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
-        const contentX = el.scrollLeft + relX
-        const contentY = el.scrollTop + relY
-        if (typeof pendingZoom === 'number' && Math.abs(pendingZoom - liveZoomRef.current) > 0.01) {
-          const committedZoom = clamp(pendingZoom, 50, 220)
-          pinchCommitAnchorRef.current = {
-            active: true,
-            fromZoom: liveZoomRef.current,
-            toZoom: committedZoom,
-            relX,
-            relY,
-            contentX,
-            contentY,
-          }
-          setZoom(committedZoom)
-          liveZoomRef.current = committedZoom
-        } else {
-          applyPinchPreviewScale(1)
-        }
+        applyPinchPreviewScale(1)
         recentPinchTsRef.current = Date.now()
         pinchStateRef.current.active = false
         pinchStateRef.current.startDist = 0
@@ -521,6 +510,10 @@ export default function        PdfViewerOverlay({ open, url, title, subtitle, in
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
       applyPinchPreviewScale(1)
+      if (typeof window !== 'undefined' && pinchScrollSyncRafRef.current) {
+        window.cancelAnimationFrame(pinchScrollSyncRafRef.current)
+        pinchScrollSyncRafRef.current = null
+      }
       if (typeof window !== 'undefined' && pinchPreviewRafRef.current) {
         window.cancelAnimationFrame(pinchPreviewRafRef.current)
         pinchPreviewRafRef.current = null
@@ -728,18 +721,34 @@ export default function        PdfViewerOverlay({ open, url, title, subtitle, in
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
       const outputScale = renderOutputScale
-      canvas.width = Math.floor(viewport.width * outputScale)
-      canvas.height = Math.floor(viewport.height * outputScale)
-      canvas.style.width = `${Math.floor(viewport.width)}px`
-      canvas.style.height = `${Math.floor(viewport.height)}px`
-      canvas.style.minHeight = `${Math.floor(viewport.height)}px`
-      context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
+      const renderWidth = Math.max(1, Math.floor(viewport.width * outputScale))
+      const renderHeight = Math.max(1, Math.floor(viewport.height * outputScale))
+      const styleWidth = Math.max(1, Math.floor(viewport.width))
+      const styleHeight = Math.max(1, Math.floor(viewport.height))
+
+      const offscreenCanvas = document.createElement('canvas')
+      offscreenCanvas.width = renderWidth
+      offscreenCanvas.height = renderHeight
+      const offscreenContext = offscreenCanvas.getContext('2d')
+      if (!offscreenContext) return
+      offscreenContext.setTransform(outputScale, 0, 0, outputScale, 0, 0)
 
       const existing = renderTasksRef.current.get(pageNum)
       if (existing?.cancel) existing.cancel()
-      const task = pageObj.render({ canvasContext: context, viewport })
+      const task = pageObj.render({ canvasContext: offscreenContext, viewport })
       renderTasksRef.current.set(pageNum, task)
       await task.promise
+
+      canvas.width = renderWidth
+      canvas.height = renderHeight
+      canvas.style.width = `${styleWidth}px`
+      canvas.style.height = `${styleHeight}px`
+      canvas.style.minHeight = `${styleHeight}px`
+      const visibleContext = canvas.getContext('2d')
+      if (!visibleContext) return
+      visibleContext.setTransform(1, 0, 0, 1, 0, 0)
+      visibleContext.clearRect(0, 0, renderWidth, renderHeight)
+      visibleContext.drawImage(offscreenCanvas, 0, 0)
       renderedSignatureRef.current.set(pageNum, renderSignature)
 
       if (!initialRenderReady) {

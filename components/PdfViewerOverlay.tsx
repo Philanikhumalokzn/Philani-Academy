@@ -67,14 +67,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     active: boolean
     startDist: number
     startZoom: number
+    startScale: number
+    anchorUx: number
+    anchorUy: number
     lastDist: number
     lastCenterX: number
     lastCenterY: number
     pendingZoom: number | null
-  }>({ active: false, startDist: 0, startZoom: 110, lastDist: 0, lastCenterX: 0, lastCenterY: 0, pendingZoom: null })
+  }>({
+    active: false,
+    startDist: 0,
+    startZoom: 110,
+    startScale: 1.1,
+    anchorUx: 0,
+    anchorUy: 0,
+    lastDist: 0,
+    lastCenterX: 0,
+    lastCenterY: 0,
+    pendingZoom: null,
+  })
   const liveZoomRef = useRef(110)
   const pinchPreviewScaleRef = useRef(1)
   const pinchPreviewRafRef = useRef<number | null>(null)
+  const pinchScrollSyncRafRef = useRef<number | null>(null)
   const pinchCommitAnchorRef = useRef<{
     active: boolean
     fromZoom: number
@@ -344,12 +359,22 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const startDist = getPinchDistance(e.touches)
+        const centerX = getTouchCenterX(e.touches)
+        const centerY = getTouchCenterY(e.touches)
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+        const startZoom = clamp(liveZoomRef.current, 50, 220)
+        const startScale = Math.max(0.01, startZoom / 100)
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = startDist
-        pinchStateRef.current.startZoom = effectiveZoom
+        pinchStateRef.current.startZoom = startZoom
+        pinchStateRef.current.startScale = startScale
+        pinchStateRef.current.anchorUx = (el.scrollLeft + relX) / startScale
+        pinchStateRef.current.anchorUy = (el.scrollTop + relY) / startScale
         pinchStateRef.current.lastDist = startDist
-        pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
-        pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
+        pinchStateRef.current.lastCenterX = centerX
+        pinchStateRef.current.lastCenterY = centerY
         pinchStateRef.current.pendingZoom = null
         applyPinchPreviewScale(1)
         touchState.active = false
@@ -371,23 +396,30 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const centerX = getTouchCenterX(e.touches)
         const centerY = getTouchCenterY(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
-        const distDelta = Math.abs(dist - pinchStateRef.current.lastDist)
-        const centerDeltaX = centerX - pinchStateRef.current.lastCenterX
-        const centerDeltaY = centerY - pinchStateRef.current.lastCenterY
+        const scale = dist / pinchStateRef.current.startDist
+        const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
+        pinchStateRef.current.pendingZoom = nextZoom
+        setZoom(nextZoom)
+        liveZoomRef.current = nextZoom
 
-        if (distDelta > 6) {
-          const scale = dist / pinchStateRef.current.startDist
-          const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
-          pinchStateRef.current.pendingZoom = nextZoom
-          const previewScale = clamp(nextZoom / Math.max(1, pinchStateRef.current.startZoom), 0.5, 3)
-          applyPinchPreviewScale(previewScale)
-        }
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
 
-        if (Math.abs(centerDeltaX) > 0.25) {
-          el.scrollLeft -= centerDeltaX
-        }
-        if (Math.abs(centerDeltaY) > 0.25) {
-          el.scrollTop -= centerDeltaY
+        if (typeof window !== 'undefined') {
+          if (pinchScrollSyncRafRef.current) {
+            window.cancelAnimationFrame(pinchScrollSyncRafRef.current)
+          }
+          pinchScrollSyncRafRef.current = window.requestAnimationFrame(() => {
+            pinchScrollSyncRafRef.current = null
+            const nextScale = Math.max(0.01, nextZoom / 100)
+            const targetLeft = pinchStateRef.current.anchorUx * nextScale - relX
+            const targetTop = pinchStateRef.current.anchorUy * nextScale - relY
+            const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+            const maxTop = Math.max(0, el.scrollHeight - el.clientHeight)
+            el.scrollLeft = clamp(targetLeft, 0, maxLeft)
+            el.scrollTop = clamp(targetTop, 0, maxTop)
+          })
         }
 
         pinchStateRef.current.lastDist = dist
@@ -405,40 +437,28 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const startDist = getPinchDistance(e.touches)
+        const centerX = getTouchCenterX(e.touches)
+        const centerY = getTouchCenterY(e.touches)
+        const containerRect = el.getBoundingClientRect()
+        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
+        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
+        const startZoom = clamp(liveZoomRef.current, 50, 220)
+        const startScale = Math.max(0.01, startZoom / 100)
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = startDist
-        pinchStateRef.current.startZoom = effectiveZoom
+        pinchStateRef.current.startZoom = startZoom
+        pinchStateRef.current.startScale = startScale
+        pinchStateRef.current.anchorUx = (el.scrollLeft + relX) / startScale
+        pinchStateRef.current.anchorUy = (el.scrollTop + relY) / startScale
         pinchStateRef.current.lastDist = startDist
-        pinchStateRef.current.lastCenterX = getTouchCenterX(e.touches)
-        pinchStateRef.current.lastCenterY = getTouchCenterY(e.touches)
+        pinchStateRef.current.lastCenterX = centerX
+        pinchStateRef.current.lastCenterY = centerY
         pinchStateRef.current.pendingZoom = null
         touchState.active = false
         return
       }
       if (pinchStateRef.current.active) {
-        const pendingZoom = pinchStateRef.current.pendingZoom
-        const centerX = pinchStateRef.current.lastCenterX
-        const centerY = pinchStateRef.current.lastCenterY
-        const containerRect = el.getBoundingClientRect()
-        const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
-        const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
-        const contentX = el.scrollLeft + relX
-        const contentY = el.scrollTop + relY
         applyPinchPreviewScale(1)
-        if (typeof pendingZoom === 'number' && pendingZoom !== liveZoomRef.current) {
-          const committedZoom = clamp(Math.round(pendingZoom), 50, 220)
-          pinchCommitAnchorRef.current = {
-            active: true,
-            fromZoom: liveZoomRef.current,
-            toZoom: committedZoom,
-            relX,
-            relY,
-            contentX,
-            contentY,
-          }
-          setZoom(committedZoom)
-          liveZoomRef.current = committedZoom
-        }
         recentPinchTsRef.current = Date.now()
         pinchStateRef.current.active = false
         pinchStateRef.current.startDist = 0
@@ -485,12 +505,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
       applyPinchPreviewScale(1)
+      if (typeof window !== 'undefined' && pinchScrollSyncRafRef.current) {
+        window.cancelAnimationFrame(pinchScrollSyncRafRef.current)
+        pinchScrollSyncRafRef.current = null
+      }
       if (typeof window !== 'undefined' && pinchPreviewRafRef.current) {
         window.cancelAnimationFrame(pinchPreviewRafRef.current)
         pinchPreviewRafRef.current = null
       }
     }
-  }, [applyPinchPreviewScale, effectiveZoom, kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [applyPinchPreviewScale, kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useLayoutEffect(() => {
     if (!open) return

@@ -24,7 +24,7 @@ type PdfViewerOverlayProps = {
   ) => void | Promise<void>
 }
 
-export default function PdfViewerOverlay({ open, url, title, subtitle, initialState, onClose, onPostImage }: PdfViewerOverlayProps) {
+export default function        PdfViewerOverlay({ open, url, title, subtitle, initialState, onClose, onPostImage }: PdfViewerOverlayProps) {
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(110)
   const [loading, setLoading] = useState(false)

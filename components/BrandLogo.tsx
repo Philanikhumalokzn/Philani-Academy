@@ -1,4 +1,4 @@
-type BrandLogoProps = {
+  type BrandLogoProps = {
   height?: number
   className?: string
   label?: boolean

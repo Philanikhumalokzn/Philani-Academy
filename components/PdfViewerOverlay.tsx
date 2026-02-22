@@ -67,24 +67,37 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     active: boolean
     startDist: number
     startZoom: number
+    startScale: number
+    startContentUx: number
+    startContentUy: number
     lastDist: number
     lastCenterX: number
     lastCenterY: number
     pendingZoom: number | null
-  }>({ active: false, startDist: 0, startZoom: 110, lastDist: 0, lastCenterX: 0, lastCenterY: 0, pendingZoom: null })
+  }>({
+    active: false,
+    startDist: 0,
+    startZoom: 110,
+    startScale: 1.1,
+    startContentUx: 0,
+    startContentUy: 0,
+    lastDist: 0,
+    lastCenterX: 0,
+    lastCenterY: 0,
+    pendingZoom: null,
+  })
   const liveZoomRef = useRef(110)
   const pinchPreviewScaleRef = useRef(1)
   const pinchPreviewOriginRef = useRef({ x: 0, y: 0 })
   const pinchPreviewRafRef = useRef<number | null>(null)
   const pinchCommitAnchorRef = useRef<{
     active: boolean
-    fromZoom: number
     toZoom: number
     relX: number
     relY: number
-    contentX: number
-    contentY: number
-  }>({ active: false, fromZoom: 110, toZoom: 110, relX: 0, relY: 0, contentX: 0, contentY: 0 })
+    contentUx: number
+    contentUy: number
+  }>({ active: false, toZoom: 110, relX: 0, relY: 0, contentUx: 0, contentUy: 0 })
   const recentPinchTsRef = useRef(0)
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
@@ -430,19 +443,16 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const containerRect = el.getBoundingClientRect()
         const relX = clamp(centerX - containerRect.left, 0, containerRect.width)
         const relY = clamp(centerY - containerRect.top, 0, containerRect.height)
-        const contentX = el.scrollLeft + relX
-        const contentY = el.scrollTop + relY
         applyPinchPreviewScale(1)
         if (typeof pendingZoom === 'number' && Math.abs(pendingZoom - liveZoomRef.current) > 0.01) {
           const committedZoom = clamp(pendingZoom, 50, 220)
           pinchCommitAnchorRef.current = {
             active: true,
-            fromZoom: liveZoomRef.current,
             toZoom: committedZoom,
             relX,
             relY,
-            contentX,
-            contentY,
+            contentUx: pinchStateRef.current.startContentUx,
+            contentUy: pinchStateRef.current.startContentUy,
           }
           setZoom(committedZoom)
           liveZoomRef.current = committedZoom
@@ -509,15 +519,15 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       pinchCommitAnchorRef.current.active = false
       return
     }
-    const fromZoom = Math.max(1, anchor.fromZoom)
-    const toZoom = Math.max(1, anchor.toZoom)
-    const scaleRatio = toZoom / fromZoom
+    const toScale = Math.max(0.01, anchor.toZoom / 100)
 
     const applyAnchoredScroll = () => {
       const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
       const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-      scrollEl.scrollLeft = clamp(anchor.contentX * scaleRatio - anchor.relX, 0, maxLeft)
-      scrollEl.scrollTop = clamp(anchor.contentY * scaleRatio - anchor.relY, 0, maxTop)
+      const nextLeft = anchor.contentUx * toScale - anchor.relX
+      const nextTop = anchor.contentUy * toScale - anchor.relY
+      scrollEl.scrollLeft = clamp(nextLeft, 0, maxLeft)
+      scrollEl.scrollTop = clamp(nextTop, 0, maxTop)
       pinchCommitAnchorRef.current.active = false
     }
 

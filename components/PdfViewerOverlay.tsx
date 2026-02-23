@@ -336,6 +336,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       if (!touchState.active) return
       touchState.active = false
+
+      const scrollEl = scrollContainerRef.current
+      const canPanHorizontally = Boolean(scrollEl && scrollEl.scrollWidth > scrollEl.clientWidth + 1)
+      const isZoomedIn = zoomRef.current > renderZoomRef.current + 0.5
+      if (canPanHorizontally || isZoomedIn) {
+        return
+      }
+
       const dx = touchState.lastX - touchState.startX
       const dy = touchState.lastY - touchState.startY
       const absX = Math.abs(dx)
@@ -773,7 +781,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           <div
             ref={scrollContainerRef}
             className="absolute inset-0 z-0 overflow-auto"
-            style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}
+            style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
             onWheel={(e) => {
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)

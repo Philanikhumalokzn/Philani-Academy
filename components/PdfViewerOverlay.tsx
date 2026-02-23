@@ -58,7 +58,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     active: boolean
     startDist: number
     startZoom: number
-  }>({ active: false, startDist: 0, startZoom: 110 })
+    anchorX: number
+    anchorY: number
+    startScrollLeft: number
+    startScrollTop: number
+  }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0 })
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -252,9 +256,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        const scrollEl = scrollContainerRef.current
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = getPinchDistance(e.touches)
         pinchStateRef.current.startZoom = effectiveZoom
+        pinchStateRef.current.startScrollLeft = scrollEl?.scrollLeft ?? 0
+        pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
+        pinchStateRef.current.anchorX = (scrollEl?.clientWidth ?? 0) / 2
+        pinchStateRef.current.anchorY = (scrollEl?.clientHeight ?? 0) / 2
         touchState.active = false
         return
       }
@@ -269,11 +278,21 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const onTouchMove = (e: TouchEvent) => {
       if (pinchStateRef.current.active && e.touches.length === 2) {
+        const PINCH_START_THRESHOLD = 0.025
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
         const scale = dist / pinchStateRef.current.startDist
-        const nextZoom = clamp(Math.round(pinchStateRef.current.startZoom * scale), 50, 220)
+        if (Math.abs(scale - 1) < PINCH_START_THRESHOLD) return
+        const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
+
+        const scrollEl = scrollContainerRef.current
+        if (scrollEl && pinchStateRef.current.startZoom > 0) {
+          const ratio = nextZoom / pinchStateRef.current.startZoom
+          scrollEl.scrollLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
+          scrollEl.scrollTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
+        }
+
         setZoom(nextZoom)
         kickChromeAutoHide()
         return

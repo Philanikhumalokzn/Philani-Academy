@@ -344,10 +344,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       touchState.active = false
 
       const scrollEl = scrollContainerRef.current
-      const maxLeft = scrollEl ? Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth) : 0
       const isBaseZoom = zoomRef.current <= renderZoomRef.current + 0.5
-      const isCenteredHorizontally = !scrollEl || maxLeft <= 1 || Math.abs(scrollEl.scrollLeft - maxLeft / 2) <= 6
-      const canUsePageSwipe = isBaseZoom && isCenteredHorizontally
+      const canUsePageSwipe = isBaseZoom
       if (!canUsePageSwipe) {
         return
       }
@@ -795,11 +793,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               const absY = Math.abs(e.deltaY)
               if (absX < 30 || absX < absY * 1.2) return
 
-              const scrollEl = scrollContainerRef.current
-              const maxLeft = scrollEl ? Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth) : 0
               const isBaseZoom = zoomRef.current <= renderZoomRef.current + 0.5
-              const isCenteredHorizontally = !scrollEl || maxLeft <= 1 || Math.abs(scrollEl.scrollLeft - maxLeft / 2) <= 6
-              if (!(isBaseZoom && isCenteredHorizontally)) return
+              if (!isBaseZoom) return
 
               const now = Date.now()
               if (now - lastWheelTsRef.current < 250) return
@@ -827,7 +822,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           >
             <div
               ref={contentRef}
-              className={`${isZoomedForPan ? 'w-max min-w-full items-start px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
+              className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
               style={{
                 zoom: liveScale,
                 transform: `translate3d(${pinchOverflow.x}px, ${pinchOverflow.y}px, 0)`,

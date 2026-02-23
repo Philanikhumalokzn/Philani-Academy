@@ -62,11 +62,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     active: boolean
     startDist: number
     startZoom: number
+    lastZoom: number
     anchorX: number
     anchorY: number
     startScrollLeft: number
     startScrollTop: number
-  }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0 })
+  }>({ active: false, startDist: 0, startZoom: 110, lastZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0 })
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -285,6 +286,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = getPinchDistance(e.touches)
         pinchStateRef.current.startZoom = zoomRef.current
+        pinchStateRef.current.lastZoom = zoomRef.current
         pinchStateRef.current.startScrollLeft = scrollEl?.scrollLeft ?? 0
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = midpointX
@@ -307,6 +309,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (pinchStateRef.current.active && e.touches.length === 2) {
         const PINCH_START_THRESHOLD = 0.025
         const ZOOM_UPDATE_THRESHOLD = 0.08
+        const MAX_SCROLL_STEP_PX = 120
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
@@ -318,14 +321,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
         const scrollEl = scrollContainerRef.current
         if (scrollEl && pinchStateRef.current.startZoom > 0) {
-          const ratio = nextZoom / pinchStateRef.current.startZoom
+          const prevZoom = Math.max(1, pinchStateRef.current.lastZoom)
+          const ratio = nextZoom / prevZoom
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const nextLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
-          const nextTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
+          const desiredLeft = (scrollEl.scrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
+          const desiredTop = (scrollEl.scrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
 
-          const clampedLeft = clamp(nextLeft, 0, maxLeft)
-          const clampedTop = clamp(nextTop, 0, maxTop)
+          const steppedLeft = scrollEl.scrollLeft + clamp(desiredLeft - scrollEl.scrollLeft, -MAX_SCROLL_STEP_PX, MAX_SCROLL_STEP_PX)
+          const steppedTop = scrollEl.scrollTop + clamp(desiredTop - scrollEl.scrollTop, -MAX_SCROLL_STEP_PX, MAX_SCROLL_STEP_PX)
+
+          const clampedLeft = clamp(steppedLeft, 0, maxLeft)
+          const clampedTop = clamp(steppedTop, 0, maxTop)
 
           if (maxLeft > 1) {
             scrollEl.scrollLeft = clampedLeft
@@ -334,13 +341,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             scrollEl.scrollTop = clampedTop
           }
 
-          const overflowX = nextLeft - clampedLeft
-          const overflowY = nextTop - clampedTop
+          const overflowX = steppedLeft - clampedLeft
+          const overflowY = steppedTop - clampedTop
           pinchOverflowRef.current = { x: -overflowX, y: -overflowY }
           applyLivePinchStyle(nextZoom, -overflowX, -overflowY)
         }
 
         zoomRef.current = nextZoom
+        pinchStateRef.current.lastZoom = nextZoom
         kickChromeAutoHide()
         return
       }

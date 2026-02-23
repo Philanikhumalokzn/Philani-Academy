@@ -667,9 +667,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     >
       <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={onClose} />
 
-      <div className="absolute inset-0 flex justify-center" onClick={onClose}>
+      <div className="absolute inset-0" onClick={onClose}>
         <div
-          className="relative h-full w-full max-w-[430px] sm:max-w-none overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
+          className="relative h-full w-full overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
           onClick={(e) => e.stopPropagation()}
         >
           <div

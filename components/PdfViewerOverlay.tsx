@@ -46,6 +46,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+  const [pinchOverflow, setPinchOverflow] = useState({ x: 0, y: 0 })
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
     pointerId: number | null
@@ -269,6 +270,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = (scrollEl?.clientWidth ?? 0) / 2
         pinchStateRef.current.anchorY = (scrollEl?.clientHeight ?? 0) / 2
+        setPinchOverflow({ x: 0, y: 0 })
         touchState.active = false
         return
       }
@@ -301,12 +303,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           const nextLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
           const nextTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
 
+          const clampedLeft = clamp(nextLeft, 0, maxLeft)
+          const clampedTop = clamp(nextTop, 0, maxTop)
+
           if (maxLeft > 1) {
-            scrollEl.scrollLeft = clamp(nextLeft, 0, maxLeft)
+            scrollEl.scrollLeft = clampedLeft
           }
           if (maxTop > 1) {
-            scrollEl.scrollTop = clamp(nextTop, 0, maxTop)
+            scrollEl.scrollTop = clampedTop
           }
+
+          const overflowX = nextLeft - clampedLeft
+          const overflowY = nextTop - clampedTop
+          setPinchOverflow({ x: -overflowX, y: -overflowY })
         }
 
         setZoom(nextZoom)
@@ -322,6 +331,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchEnd = () => {
       if (pinchStateRef.current.active) {
         pinchStateRef.current.active = false
+        setPinchOverflow({ x: 0, y: 0 })
         return
       }
       if (!touchState.active) return
@@ -358,6 +368,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
+      setPinchOverflow({ x: 0, y: 0 })
     }
   }, [kickChromeAutoHide, open, scrollToPage, totalPages])
 
@@ -794,7 +805,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             <div
               ref={contentRef}
               className="w-full flex flex-col items-center gap-6 p-4 sm:p-6"
-              style={{ zoom: liveScale }}
+              style={{
+                zoom: liveScale,
+                transform: `translate3d(${pinchOverflow.x}px, ${pinchOverflow.y}px, 0)`,
+                willChange: pinchStateRef.current.active ? 'transform' : undefined,
+              }}
             >
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>

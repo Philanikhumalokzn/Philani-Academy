@@ -47,6 +47,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
   const [pinchOverflow, setPinchOverflow] = useState({ x: 0, y: 0 })
+  const pinchOverflowRef = useRef({ x: 0, y: 0 })
+  const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
     pointerId: number | null
@@ -83,6 +85,15 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   useEffect(() => {
     zoomRef.current = effectiveZoom
   }, [effectiveZoom])
+
+  const applyLivePinchStyle = useCallback((zoomValue: number, overflowX: number, overflowY: number) => {
+    const contentEl = contentRef.current
+    if (!contentEl) return
+    const scale = clamp(zoomValue / Math.max(1, renderZoomRef.current), 0.5, 3)
+    contentEl.style.zoom = String(scale)
+    contentEl.style.transform = `translate3d(${overflowX}px, ${overflowY}px, 0)`
+    contentEl.style.willChange = pinchActiveRef.current ? 'transform' : ''
+  }, [])
 
   const totalPages = Math.max(1, numPages || 1)
   const safePage = clamp(effectivePage, 1, totalPages)
@@ -270,6 +281,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const b = e.touches[1]
         const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : (scrollEl?.clientWidth ?? 0) / 2
         const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : (scrollEl?.clientHeight ?? 0) / 2
+        pinchActiveRef.current = true
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = getPinchDistance(e.touches)
         pinchStateRef.current.startZoom = zoomRef.current
@@ -277,7 +289,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = midpointX
         pinchStateRef.current.anchorY = midpointY
-        setPinchOverflow({ x: 0, y: 0 })
+        pinchOverflowRef.current = { x: 0, y: 0 }
+        applyLivePinchStyle(zoomRef.current, 0, 0)
         touchState.active = false
         return
       }
@@ -323,10 +336,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
           const overflowX = nextLeft - clampedLeft
           const overflowY = nextTop - clampedTop
-          setPinchOverflow({ x: -overflowX, y: -overflowY })
+          pinchOverflowRef.current = { x: -overflowX, y: -overflowY }
+          applyLivePinchStyle(nextZoom, -overflowX, -overflowY)
         }
 
-        setZoom(nextZoom)
+        zoomRef.current = nextZoom
         kickChromeAutoHide()
         return
       }
@@ -338,8 +352,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const onTouchEnd = () => {
       if (pinchStateRef.current.active) {
+        pinchActiveRef.current = false
         pinchStateRef.current.active = false
+        pinchOverflowRef.current = { x: 0, y: 0 }
+        applyLivePinchStyle(zoomRef.current, 0, 0)
         setPinchOverflow({ x: 0, y: 0 })
+        setZoom(zoomRef.current)
         return
       }
       if (!touchState.active) return
@@ -384,9 +402,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
+      pinchActiveRef.current = false
+      pinchOverflowRef.current = { x: 0, y: 0 }
+      applyLivePinchStyle(zoomRef.current, 0, 0)
       setPinchOverflow({ x: 0, y: 0 })
     }
-  }, [kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [applyLivePinchStyle, kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -583,6 +604,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (!scrollEl) return
 
     const onScroll = () => {
+      if (pinchActiveRef.current) return
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null

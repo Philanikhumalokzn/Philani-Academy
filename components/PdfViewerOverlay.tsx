@@ -264,13 +264,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const scrollEl = scrollContainerRef.current
+        const rect = scrollEl?.getBoundingClientRect()
+        const a = e.touches[0]
+        const b = e.touches[1]
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : (scrollEl?.clientWidth ?? 0) / 2
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : (scrollEl?.clientHeight ?? 0) / 2
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = getPinchDistance(e.touches)
         pinchStateRef.current.startZoom = zoomRef.current
         pinchStateRef.current.startScrollLeft = scrollEl?.scrollLeft ?? 0
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
-        pinchStateRef.current.anchorX = (scrollEl?.clientWidth ?? 0) / 2
-        pinchStateRef.current.anchorY = (scrollEl?.clientHeight ?? 0) / 2
+        pinchStateRef.current.anchorX = midpointX
+        pinchStateRef.current.anchorY = midpointY
         setPinchOverflow({ x: 0, y: 0 })
         touchState.active = false
         return

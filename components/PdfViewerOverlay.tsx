@@ -74,7 +74,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     return typeof (window as any).Worker !== 'undefined' && !isMobile
   }, [isMobile])
 
-  const effectiveZoom = clamp(zoom, 50, 220)
+  const minZoom = Math.max(50, renderZoomRef.current)
+  const effectiveZoom = clamp(zoom, minZoom, 220)
   const liveScale = clamp(effectiveZoom / Math.max(1, renderZoomRef.current), 0.5, 3)
   const isZoomedForPan = effectiveZoom > renderZoomRef.current + 0.5
   const effectivePage = Math.max(1, page)
@@ -298,7 +299,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         if (!dist || !pinchStateRef.current.startDist) return
         const scale = dist / pinchStateRef.current.startDist
         if (Math.abs(scale - 1) < PINCH_START_THRESHOLD) return
-        const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
+        const gestureMinZoom = Math.max(50, renderZoomRef.current)
+        const nextZoom = clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
         if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD) return
 
         const scrollEl = scrollContainerRef.current

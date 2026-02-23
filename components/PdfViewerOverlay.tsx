@@ -76,6 +76,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   const effectiveZoom = clamp(zoom, 50, 220)
   const liveScale = clamp(effectiveZoom / Math.max(1, renderZoomRef.current), 0.5, 3)
+  const isZoomedForPan = effectiveZoom > renderZoomRef.current + 0.5
   const effectivePage = Math.max(1, page)
 
   useEffect(() => {
@@ -338,9 +339,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       touchState.active = false
 
       const scrollEl = scrollContainerRef.current
-      const canPanHorizontally = Boolean(scrollEl && scrollEl.scrollWidth > scrollEl.clientWidth + 1)
-      const isZoomedIn = zoomRef.current > renderZoomRef.current + 0.5
-      if (canPanHorizontally || isZoomedIn) {
+      const maxLeft = scrollEl ? Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth) : 0
+      const isBaseZoom = zoomRef.current <= renderZoomRef.current + 0.5
+      const isCenteredHorizontally = !scrollEl || maxLeft <= 1 || Math.abs(scrollEl.scrollLeft - maxLeft / 2) <= 6
+      const canUsePageSwipe = isBaseZoom && isCenteredHorizontally
+      if (!canUsePageSwipe) {
         return
       }
 
@@ -786,6 +789,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)
               if (absX < 30 || absX < absY * 1.2) return
+
+              const scrollEl = scrollContainerRef.current
+              const maxLeft = scrollEl ? Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth) : 0
+              const isBaseZoom = zoomRef.current <= renderZoomRef.current + 0.5
+              const isCenteredHorizontally = !scrollEl || maxLeft <= 1 || Math.abs(scrollEl.scrollLeft - maxLeft / 2) <= 6
+              if (!(isBaseZoom && isCenteredHorizontally)) return
+
               const now = Date.now()
               if (now - lastWheelTsRef.current < 250) return
               lastWheelTsRef.current = now
@@ -812,7 +822,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           >
             <div
               ref={contentRef}
-              className="w-full flex flex-col items-center gap-6 p-4 sm:p-6"
+              className={`${isZoomedForPan ? 'w-max min-w-full items-start px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
               style={{
                 zoom: liveScale,
                 transform: `translate3d(${pinchOverflow.x}px, ${pinchOverflow.y}px, 0)`,

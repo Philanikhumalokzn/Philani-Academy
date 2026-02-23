@@ -46,6 +46,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+  const [pinchOverflow, setPinchOverflow] = useState({ x: 0, y: 0 })
   const pinchOverflowRef = useRef({ x: 0, y: 0 })
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
@@ -355,12 +356,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.active = false
         pinchOverflowRef.current = { x: 0, y: 0 }
         applyLivePinchStyle(zoomRef.current, 0, 0)
+        setPinchOverflow({ x: 0, y: 0 })
         setZoom(zoomRef.current)
         return
       }
       if (!touchState.active) return
       touchState.active = false
 
+      const scrollEl = scrollContainerRef.current
       const isBaseZoom = zoomRef.current <= renderZoomRef.current + 0.5
       const canUsePageSwipe = isBaseZoom
       if (!canUsePageSwipe) {
@@ -402,6 +405,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       pinchActiveRef.current = false
       pinchOverflowRef.current = { x: 0, y: 0 }
       applyLivePinchStyle(zoomRef.current, 0, 0)
+      setPinchOverflow({ x: 0, y: 0 })
     }
   }, [applyLivePinchStyle, kickChromeAutoHide, open, scrollToPage, totalPages])
 
@@ -647,10 +651,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   if (!open) return null
 
-  const displayZoom = pinchActiveRef.current ? zoomRef.current : effectiveZoom
-  const displayScale = clamp(displayZoom / Math.max(1, renderZoomRef.current), 0.5, 3)
-  const displayOverflow = pinchActiveRef.current ? pinchOverflowRef.current : { x: 0, y: 0 }
-
   const chromeClassName = chromeVisible
     ? 'opacity-100 pointer-events-auto'
     : 'opacity-0 pointer-events-none'
@@ -848,8 +848,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               ref={contentRef}
               className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
               style={{
-                zoom: displayScale,
-                transform: `translate3d(${displayOverflow.x}px, ${displayOverflow.y}px, 0)`,
+                zoom: liveScale,
+                transform: `translate3d(${pinchOverflow.x}px, ${pinchOverflow.y}px, 0)`,
                 willChange: pinchStateRef.current.active ? 'transform' : undefined,
               }}
             >

@@ -36,6 +36,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
   const renderZoomRef = useRef(110)
+  const zoomRef = useRef(110)
   const scrollRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
@@ -75,6 +76,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const effectiveZoom = clamp(zoom, 50, 220)
   const liveScale = clamp(effectiveZoom / Math.max(1, renderZoomRef.current), 0.5, 3)
   const effectivePage = Math.max(1, page)
+
+  useEffect(() => {
+    zoomRef.current = effectiveZoom
+  }, [effectiveZoom])
 
   const totalPages = Math.max(1, numPages || 1)
   const safePage = clamp(effectivePage, 1, totalPages)
@@ -259,7 +264,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const scrollEl = scrollContainerRef.current
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = getPinchDistance(e.touches)
-        pinchStateRef.current.startZoom = effectiveZoom
+        pinchStateRef.current.startZoom = zoomRef.current
         pinchStateRef.current.startScrollLeft = scrollEl?.scrollLeft ?? 0
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = (scrollEl?.clientWidth ?? 0) / 2
@@ -279,18 +284,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchMove = (e: TouchEvent) => {
       if (pinchStateRef.current.active && e.touches.length === 2) {
         const PINCH_START_THRESHOLD = 0.025
+        const ZOOM_UPDATE_THRESHOLD = 0.08
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
         const scale = dist / pinchStateRef.current.startDist
         if (Math.abs(scale - 1) < PINCH_START_THRESHOLD) return
         const nextZoom = clamp(pinchStateRef.current.startZoom * scale, 50, 220)
+        if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD) return
 
         const scrollEl = scrollContainerRef.current
         if (scrollEl && pinchStateRef.current.startZoom > 0) {
           const ratio = nextZoom / pinchStateRef.current.startZoom
-          scrollEl.scrollLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
-          scrollEl.scrollTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
+          const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
+          const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+          const nextLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
+          const nextTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
+
+          if (maxLeft > 1) {
+            scrollEl.scrollLeft = clamp(nextLeft, 0, maxLeft)
+          }
+          if (maxTop > 1) {
+            scrollEl.scrollTop = clamp(nextTop, 0, maxTop)
+          }
         }
 
         setZoom(nextZoom)
@@ -343,7 +359,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [effectiveZoom, kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return

@@ -276,19 +276,14 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const scrollEl = scrollContainerRef.current
-        const rect = scrollEl?.getBoundingClientRect()
-        const a = e.touches[0]
-        const b = e.touches[1]
-        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : (scrollEl?.clientWidth ?? 0) / 2
-        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : (scrollEl?.clientHeight ?? 0) / 2
         pinchActiveRef.current = true
         pinchStateRef.current.active = true
         pinchStateRef.current.startDist = getPinchDistance(e.touches)
         pinchStateRef.current.startZoom = zoomRef.current
         pinchStateRef.current.startScrollLeft = scrollEl?.scrollLeft ?? 0
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
-        pinchStateRef.current.anchorX = midpointX
-        pinchStateRef.current.anchorY = midpointY
+        pinchStateRef.current.anchorX = (scrollEl?.clientWidth ?? 0) / 2
+        pinchStateRef.current.anchorY = (scrollEl?.clientHeight ?? 0) / 2
         pinchOverflowRef.current = { x: 0, y: 0 }
         applyLivePinchStyle(zoomRef.current, 0, 0)
         touchState.active = false
@@ -667,9 +662,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     >
       <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={onClose} />
 
-      <div className="absolute inset-0" onClick={onClose}>
+      <div className="absolute inset-0 flex justify-center" onClick={onClose}>
         <div
-          className="relative h-full w-full overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
+          className="relative h-full w-full max-w-[430px] overflow-hidden border border-white/10 bg-white/10 backdrop-blur-xl"
           onClick={(e) => e.stopPropagation()}
         >
           <div
@@ -846,10 +841,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           >
             <div
               ref={contentRef}
-              className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
+              className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} mx-auto flex flex-col gap-6 py-4 sm:py-6`}
               style={{
                 zoom: liveScale,
                 transform: `translate3d(${pinchOverflow.x}px, ${pinchOverflow.y}px, 0)`,
+                transformOrigin: 'center center',
                 willChange: pinchStateRef.current.active ? 'transform' : undefined,
               }}
             >

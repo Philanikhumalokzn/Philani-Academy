@@ -336,6 +336,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         }
 
         zoomRef.current = nextZoom
+        setZoom(nextZoom)
         kickChromeAutoHide()
         return
       }
@@ -350,7 +351,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
         applyLivePinchStyle(zoomRef.current)
-        setZoom(zoomRef.current)
         return
       }
       if (!touchState.active) return

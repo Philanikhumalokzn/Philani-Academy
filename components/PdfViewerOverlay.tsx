@@ -319,10 +319,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const scrollEl = scrollContainerRef.current
         if (scrollEl && pinchStateRef.current.startZoom > 0) {
           const ratio = nextZoom / pinchStateRef.current.startZoom
+          const ratioDelta = ratio - 1
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const nextLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
-          const nextTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
+          const nextLeft = pinchStateRef.current.startScrollLeft + (pinchStateRef.current.anchorX * ratioDelta)
+          const nextTop = pinchStateRef.current.startScrollTop + (pinchStateRef.current.anchorY * ratioDelta)
 
           const clampedLeft = clamp(nextLeft, 0, maxLeft)
           const clampedTop = clamp(nextTop, 0, maxTop)

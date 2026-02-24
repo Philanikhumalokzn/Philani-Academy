@@ -49,7 +49,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const [pinchOverflow, setPinchOverflow] = useState({ x: 0, y: 0 })
   const pinchOverflowRef = useRef({ x: 0, y: 0 })
   const pinchActiveRef = useRef(false)
-  const pinchMidpointRef = useRef<{ x: number; y: number; initialized: boolean }>({ x: 0, y: 0, initialized: false })
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
     pointerId: number | null
@@ -290,7 +289,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = midpointX
         pinchStateRef.current.anchorY = midpointY
-        pinchMidpointRef.current = { x: midpointX, y: midpointY, initialized: true }
         pinchOverflowRef.current = { x: 0, y: 0 }
         applyLivePinchStyle(zoomRef.current, 0, 0)
         touchState.active = false
@@ -320,35 +318,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
         const scrollEl = scrollContainerRef.current
         if (scrollEl && pinchStateRef.current.startZoom > 0) {
-          const rect = scrollEl.getBoundingClientRect()
-          const a = e.touches[0]
-          const b = e.touches[1]
-          const rawMidpointX = ((a.clientX + b.clientX) / 2) - rect.left
-          const rawMidpointY = ((a.clientY + b.clientY) / 2) - rect.top
-          const MIDPOINT_SMOOTH_ALPHA = 0.25
-          const MIDPOINT_DEADZONE_PX = 1.5
-
-          if (!pinchMidpointRef.current.initialized) {
-            pinchMidpointRef.current = { x: rawMidpointX, y: rawMidpointY, initialized: true }
-          }
-
-          const dx = rawMidpointX - pinchMidpointRef.current.x
-          const dy = rawMidpointY - pinchMidpointRef.current.y
-          if (Math.abs(dx) > MIDPOINT_DEADZONE_PX || Math.abs(dy) > MIDPOINT_DEADZONE_PX) {
-            pinchMidpointRef.current.x += dx * MIDPOINT_SMOOTH_ALPHA
-            pinchMidpointRef.current.y += dy * MIDPOINT_SMOOTH_ALPHA
-          }
-
-          const anchorX = pinchMidpointRef.current.x
-          const anchorY = pinchMidpointRef.current.y
-          pinchStateRef.current.anchorX = anchorX
-          pinchStateRef.current.anchorY = anchorY
-
-          const ratio = nextZoom / Math.max(0.0001, zoomRef.current)
+          const ratio = nextZoom / pinchStateRef.current.startZoom
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const nextLeft = (scrollEl.scrollLeft + anchorX) * ratio - anchorX
-          const nextTop = (scrollEl.scrollTop + anchorY) * ratio - anchorY
+          const nextLeft = (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratio - pinchStateRef.current.anchorX
+          const nextTop = (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratio - pinchStateRef.current.anchorY
 
           const clampedLeft = clamp(nextLeft, 0, maxLeft)
           const clampedTop = clamp(nextTop, 0, maxTop)
@@ -380,7 +354,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (pinchStateRef.current.active) {
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
-        pinchMidpointRef.current.initialized = false
         pinchOverflowRef.current = { x: 0, y: 0 }
         applyLivePinchStyle(zoomRef.current, 0, 0)
         setPinchOverflow({ x: 0, y: 0 })
@@ -430,7 +403,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
       pinchActiveRef.current = false
-      pinchMidpointRef.current.initialized = false
       pinchOverflowRef.current = { x: 0, y: 0 }
       applyLivePinchStyle(zoomRef.current, 0, 0)
       setPinchOverflow({ x: 0, y: 0 })

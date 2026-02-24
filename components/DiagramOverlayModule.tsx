@@ -3722,7 +3722,7 @@ export default function DiagramOverlayModule(props: {
             className="relative"
             style={canvasContainerStyle}
           >
-          {canPresent && (
+          {canPresent && !isGridDiagram && (
             <div
               className={`${isGridDiagram ? 'fixed bottom-0' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
               style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 2px)' }}
@@ -4134,7 +4134,11 @@ export default function DiagramOverlayModule(props: {
           )}
           {isGridDiagram ? (
             <div className="absolute inset-0">
-              <Excalidraw excalidrawAPI={(api) => { excalidrawApiRef.current = api }} />
+              <Excalidraw
+                excalidrawAPI={(api) => { excalidrawApiRef.current = api }}
+                zenModeEnabled={false}
+                viewModeEnabled={false}
+              />
             </div>
           ) : (
             <>

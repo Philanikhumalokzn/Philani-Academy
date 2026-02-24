@@ -39,7 +39,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const zoomRef = useRef(110)
   const scrollRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
-  const wheelBurstRef = useRef({ lastAt: 0, direction: 0, moves: 0 })
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
     autoHideMs: 2500,
     defaultVisible: true,
@@ -813,26 +812,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               if (!isBaseZoom) return
 
               const now = Date.now()
-              const direction = e.deltaX > 0 ? 1 : -1
-              const burstGapMs = 260
-              const maxPagesPerBurst = 10
-              const burst = wheelBurstRef.current
-              const isNewBurst = (now - burst.lastAt > burstGapMs) || burst.direction !== direction
-              if (isNewBurst) {
-                burst.moves = 0
-                burst.direction = direction
-              }
-              if (burst.moves >= maxPagesPerBurst) return
-
-              const progress = burst.moves / maxPagesPerBurst
-              const cooldownMs = 90 + Math.round(progress * progress * 260)
-              if (now - lastWheelTsRef.current < cooldownMs) return
-
+              if (now - lastWheelTsRef.current < 250) return
               lastWheelTsRef.current = now
-              burst.lastAt = now
-              burst.moves += 1
               kickChromeAutoHide()
-              if (direction > 0) {
+              if (e.deltaX > 0) {
                 setPage((p) => {
                   const next = Math.min(totalPages, p + 1)
                   scrollToPage(next)

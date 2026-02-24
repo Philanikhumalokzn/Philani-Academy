@@ -146,6 +146,25 @@ export default function DiagramOverlayModule(props: {
   const [mobileTrayOpen, setMobileTrayOpen] = useState(false)
   const [mobileTrayBottomOffsetPx, setMobileTrayBottomOffsetPx] = useState(0)
   const [mobileTrayReservePx, setMobileTrayReservePx] = useState(28)
+  const [gridToolbarOffsets, setGridToolbarOffsets] = useState({
+    top: { x: 0, y: 0 },
+    bottom: { x: 0, y: 0 },
+  })
+  const gridToolbarDragRef = useRef<{
+    target: 'top' | 'bottom' | null
+    pointerId: number | null
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+  }>({
+    target: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+  })
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -3602,6 +3621,53 @@ export default function DiagramOverlayModule(props: {
     return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
   })()
 
+  const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const node = e.currentTarget
+    node.setPointerCapture?.(e.pointerId)
+    const origin = gridToolbarOffsets[target]
+    gridToolbarDragRef.current = {
+      target,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: origin.x,
+      originY: origin.y,
+    }
+  }, [gridToolbarOffsets])
+
+  const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = gridToolbarDragRef.current
+    if (!drag.target || drag.pointerId !== e.pointerId) return
+    e.preventDefault()
+    e.stopPropagation()
+    const dx = e.clientX - drag.startX
+    const dy = e.clientY - drag.startY
+    const nextX = Math.round(drag.originX + dx)
+    const nextY = Math.round(drag.originY + dy)
+    setGridToolbarOffsets((prev) => ({
+      ...prev,
+      [drag.target as 'top' | 'bottom']: { x: nextX, y: nextY },
+    }))
+  }, [])
+
+  const endGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = gridToolbarDragRef.current
+    if (!drag.target || drag.pointerId !== e.pointerId) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+    gridToolbarDragRef.current = {
+      target: null,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      originX: 0,
+      originY: 0,
+    }
+  }, [])
+
   return (
     <>
       {mobileDiagramTray}
@@ -3700,6 +3766,42 @@ export default function DiagramOverlayModule(props: {
                 <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
                   <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
+              </button>
+            </div>
+          ) : null}
+
+          {isGridDiagram ? (
+            <div
+              className="absolute right-3 z-50 flex flex-col gap-2"
+              style={{
+                bottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 110px)',
+              }}
+            >
+              <button
+                type="button"
+                className="h-9 w-9 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-sm"
+                style={{ touchAction: 'none' }}
+                onPointerDown={(e) => startGridToolbarDrag('top', e)}
+                onPointerMove={moveGridToolbarDrag}
+                onPointerUp={endGridToolbarDrag}
+                onPointerCancel={endGridToolbarDrag}
+                title="Drag top toolbar"
+                aria-label="Drag top toolbar"
+              >
+                ⠿
+              </button>
+              <button
+                type="button"
+                className="h-9 w-9 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-sm"
+                style={{ touchAction: 'none' }}
+                onPointerDown={(e) => startGridToolbarDrag('bottom', e)}
+                onPointerMove={moveGridToolbarDrag}
+                onPointerUp={endGridToolbarDrag}
+                onPointerCancel={endGridToolbarDrag}
+                title="Drag bottom toolbar"
+                aria-label="Drag bottom toolbar"
+              >
+                ⠿
               </button>
             </div>
           ) : null}
@@ -4133,7 +4235,15 @@ export default function DiagramOverlayModule(props: {
             </div>
           )}
           {isGridDiagram ? (
-            <div className="absolute inset-0 philani-excalidraw-bottom-toolbar">
+            <div
+              className="absolute inset-0 philani-excalidraw-bottom-toolbar"
+              style={{
+                ['--philani-exc-top-x' as any]: `${gridToolbarOffsets.top.x}px`,
+                ['--philani-exc-top-y' as any]: `${gridToolbarOffsets.top.y}px`,
+                ['--philani-exc-bottom-x' as any]: `${gridToolbarOffsets.bottom.x}px`,
+                ['--philani-exc-bottom-y' as any]: `${gridToolbarOffsets.bottom.y}px`,
+              }}
+            >
               <Excalidraw
                 excalidrawAPI={(api) => { excalidrawApiRef.current = api }}
                 zenModeEnabled={false}

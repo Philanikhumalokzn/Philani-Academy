@@ -56,6 +56,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const [estimatedPageHeight, setEstimatedPageHeight] = useState(1100)
   const [initialWarmComplete, setInitialWarmComplete] = useState(false)
   const [warmPhase2Progress, setWarmPhase2Progress] = useState({ visible: false, done: 0, total: 0 })
+  const cacheUrlRef = useRef<string | null>(null)
+  const warmAllCompleteRef = useRef(false)
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
@@ -529,15 +531,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     let cancelled = false
     let activeDoc: any | null = null
     let loadingTask: any | null = null
+    const canReuseWarmCache = cacheUrlRef.current === url && pageBitmapCacheRef.current.size > 0
 
     setLoading(true)
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
-    clearPageBitmapCache()
-    setPageHeights({})
-    setEstimatedPageHeight(1100)
-    setInitialWarmComplete(false)
+    if (!canReuseWarmCache) {
+      clearPageBitmapCache()
+      setPageHeights({})
+      setEstimatedPageHeight(1100)
+      setInitialWarmComplete(false)
+      warmAllCompleteRef.current = false
+    }
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     const initialZoom = clamp(initialState?.zoom ?? 110, 50, 220)
     renderZoomRef.current = initialZoom
@@ -576,6 +582,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           if (doc?.destroy) await doc.destroy()
           return
         }
+        cacheUrlRef.current = url
         setPdfDoc(doc)
         setNumPages(doc?.numPages || 0)
       } catch (err: any) {
@@ -597,20 +604,18 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       } catch {
         // ignore
       }
-      clearPageBitmapCache()
     }
   }, [open, url, initialState?.page, initialState?.zoom, clearPageBitmapCache])
 
   useEffect(() => {
     if (open) return
     cancelRenderTasks()
-    clearPageBitmapCache()
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
     setPdfDoc(null)
-  }, [open, pdfDoc, cancelRenderTasks, clearPageBitmapCache])
+  }, [open, pdfDoc, cancelRenderTasks])
 
   const renderPageToCanvas = useCallback(async (pageNum: number, canvas: HTMLCanvasElement) => {
     if (!pdfDoc || !open) return
@@ -758,6 +763,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       if (!cancelled) {
         setInitialWarmComplete(true)
+        if (totalPages <= INITIAL_WARM_PAGE_COUNT) {
+          warmAllCompleteRef.current = true
+        }
       }
     })()
 
@@ -801,8 +809,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   useEffect(() => {
     if (!open || !pdfDoc || !initialWarmComplete) return
+    if (warmAllCompleteRef.current) return
     const startPage = Math.min(totalPages + 1, INITIAL_WARM_PAGE_COUNT + 1)
     if (startPage > totalPages) {
+      warmAllCompleteRef.current = true
       setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
       return
     }
@@ -820,6 +830,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const scheduleNext = () => {
       if (cancelled) return
       if (nextPageNum > totalPages) {
+        warmAllCompleteRef.current = true
         setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || completedCount }))
         return
       }

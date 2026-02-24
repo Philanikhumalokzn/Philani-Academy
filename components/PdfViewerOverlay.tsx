@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTapToPeek } from '../lib/useTapToPeek'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+const VIRTUAL_WINDOW_RADIUS = 8
+const IDLE_WARM_RADIUS = 16
+const PAGE_BITMAP_CACHE_LIMIT = 36
 
 type PdfViewerOverlayProps = {
   open: boolean
@@ -33,8 +36,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const [pdfDoc, setPdfDoc] = useState<any | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const renderTasksRef = useRef<Map<number, any>>(new Map())
+  const pageBitmapCacheRef = useRef<Map<number, { bitmap: ImageBitmap; width: number; height: number; cssWidth: number; cssHeight: number; signature: string }>>(new Map())
+  const renderSignatureRef = useRef('')
   const renderZoomRef = useRef(110)
   const zoomRef = useRef(110)
   const scrollRafRef = useRef<number | null>(null)
@@ -46,6 +52,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+  const [pageHeights, setPageHeights] = useState<Record<number, number>>({})
+  const [estimatedPageHeight, setEstimatedPageHeight] = useState(1100)
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
@@ -95,12 +103,85 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   const totalPages = Math.max(1, numPages || 1)
   const safePage = clamp(effectivePage, 1, totalPages)
+  const mountedPages = useMemo(() => {
+    const start = Math.max(1, safePage - VIRTUAL_WINDOW_RADIUS)
+    const end = Math.min(totalPages, safePage + VIRTUAL_WINDOW_RADIUS)
+    return Array.from({ length: end - start + 1 }, (_, idx) => start + idx)
+  }, [safePage, totalPages])
+  const mountedPageSet = useMemo(() => new Set(mountedPages), [mountedPages])
+  const idleWarmPages = useMemo(() => {
+    const start = Math.max(1, safePage - IDLE_WARM_RADIUS)
+    const end = Math.min(totalPages, safePage + IDLE_WARM_RADIUS)
+    const pages: number[] = []
+    for (let pageNum = start; pageNum <= end; pageNum += 1) {
+      if (!mountedPageSet.has(pageNum)) pages.push(pageNum)
+    }
+    return pages
+  }, [mountedPageSet, safePage, totalPages])
+
+  const setPageContainerRef = useCallback((pageNum: number) => (el: HTMLDivElement | null) => {
+    if (el) {
+      pageContainerRefs.current.set(pageNum, el)
+    } else {
+      pageContainerRefs.current.delete(pageNum)
+    }
+  }, [])
 
   const setPageCanvasRef = useCallback((pageNum: number) => (el: HTMLCanvasElement | null) => {
     if (el) {
       pageCanvasRefs.current.set(pageNum, el)
     } else {
       pageCanvasRefs.current.delete(pageNum)
+    }
+  }, [])
+
+  const clearPageBitmapCache = useCallback(() => {
+    pageBitmapCacheRef.current.forEach((entry) => {
+      try {
+        entry.bitmap.close?.()
+      } catch {
+        // ignore
+      }
+    })
+    pageBitmapCacheRef.current.clear()
+    renderSignatureRef.current = ''
+  }, [])
+
+  const touchBitmapCacheEntry = useCallback((pageNum: number) => {
+    const cache = pageBitmapCacheRef.current
+    const current = cache.get(pageNum)
+    if (!current) return
+    cache.delete(pageNum)
+    cache.set(pageNum, current)
+  }, [])
+
+  const upsertBitmapCacheEntry = useCallback((
+    pageNum: number,
+    nextEntry: { bitmap: ImageBitmap; width: number; height: number; cssWidth: number; cssHeight: number; signature: string }
+  ) => {
+    const cache = pageBitmapCacheRef.current
+    const existing = cache.get(pageNum)
+    if (existing) {
+      try {
+        existing.bitmap.close?.()
+      } catch {
+        // ignore
+      }
+      cache.delete(pageNum)
+    }
+    cache.set(pageNum, nextEntry)
+    while (cache.size > PAGE_BITMAP_CACHE_LIMIT) {
+      const oldestKey = cache.keys().next().value
+      if (typeof oldestKey !== 'number') break
+      const oldest = cache.get(oldestKey)
+      if (oldest) {
+        try {
+          oldest.bitmap.close?.()
+        } catch {
+          // ignore
+        }
+      }
+      cache.delete(oldestKey)
     }
   }, [])
 
@@ -112,9 +193,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }, [])
 
   const scrollToPage = useCallback((pageNum: number) => {
-    const canvas = pageCanvasRefs.current.get(pageNum)
-    if (!canvas) return
-    canvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const container = pageContainerRefs.current.get(pageNum)
+    if (!container) return
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
   const updatePageFromScroll = useCallback(() => {
@@ -125,8 +206,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     let bestPage = safePage
     let bestDist = Number.POSITIVE_INFINITY
 
-    pageCanvasRefs.current.forEach((canvas, pageNum) => {
-      const rect = canvas.getBoundingClientRect()
+    pageContainerRefs.current.forEach((container, pageNum) => {
+      const rect = container.getBoundingClientRect()
       const center = rect.top + rect.height / 2
       const dist = Math.abs(center - viewportCenter)
       if (dist < bestDist) {
@@ -459,6 +540,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
+    clearPageBitmapCache()
+    setPageHeights({})
+    setEstimatedPageHeight(1100)
     const initialZoom = clamp(initialState?.zoom ?? 110, 50, 220)
     renderZoomRef.current = initialZoom
     setPage(initialState?.page ?? 1)
@@ -517,17 +601,19 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       } catch {
         // ignore
       }
+      clearPageBitmapCache()
     }
-  }, [open, url, initialState?.page, initialState?.zoom])
+  }, [open, url, initialState?.page, initialState?.zoom, clearPageBitmapCache])
 
   useEffect(() => {
     if (open) return
     cancelRenderTasks()
+    clearPageBitmapCache()
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
     setPdfDoc(null)
-  }, [open, pdfDoc, cancelRenderTasks])
+  }, [open, pdfDoc, cancelRenderTasks, clearPageBitmapCache])
 
   const renderPageToCanvas = useCallback(async (pageNum: number, canvas: HTMLCanvasElement) => {
     if (!pdfDoc || !open) return
@@ -535,6 +621,30 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (!context) return
 
     try {
+      const outputScale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      const signature = `${Math.round(contentSize.width || 0)}:${Math.round(renderZoomRef.current)}:${Math.round(outputScale * 100)}`
+      if (renderSignatureRef.current && renderSignatureRef.current !== signature) {
+        clearPageBitmapCache()
+      }
+      if (!renderSignatureRef.current) {
+        renderSignatureRef.current = signature
+      }
+
+      const cached = pageBitmapCacheRef.current.get(pageNum)
+      if (cached && cached.signature === signature) {
+        canvas.width = cached.width
+        canvas.height = cached.height
+        canvas.style.width = `${cached.cssWidth}px`
+        canvas.style.height = `${cached.cssHeight}px`
+        context.setTransform(1, 0, 0, 1, 0, 0)
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        context.drawImage(cached.bitmap, 0, 0)
+        touchBitmapCacheEntry(pageNum)
+        setPageHeights((prev) => (prev[pageNum] === cached.cssHeight ? prev : { ...prev, [pageNum]: cached.cssHeight }))
+        setEstimatedPageHeight((prev) => Math.max(320, Math.round((prev * 0.85) + (cached.cssHeight * 0.15))))
+        return
+      }
+
       const pageObj = await pdfDoc.getPage(pageNum)
       const baseScale = renderZoomRef.current / 100
       const baseViewport = pageObj.getViewport({ scale: baseScale })
@@ -544,11 +654,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         : 1
       const finalScale = baseScale * fitScale
       const viewport = pageObj.getViewport({ scale: finalScale })
-      const outputScale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      const cssWidth = Math.floor(viewport.width)
+      const cssHeight = Math.floor(viewport.height)
       canvas.width = Math.floor(viewport.width * outputScale)
       canvas.height = Math.floor(viewport.height * outputScale)
-      canvas.style.width = `${Math.floor(viewport.width)}px`
-      canvas.style.height = `${Math.floor(viewport.height)}px`
+      canvas.style.width = `${cssWidth}px`
+      canvas.style.height = `${cssHeight}px`
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
 
       const existing = renderTasksRef.current.get(pageNum)
@@ -559,6 +670,25 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (renderTasksRef.current.get(pageNum) === task) {
         renderTasksRef.current.delete(pageNum)
       }
+
+      setPageHeights((prev) => (prev[pageNum] === cssHeight ? prev : { ...prev, [pageNum]: cssHeight }))
+      setEstimatedPageHeight((prev) => Math.max(320, Math.round((prev * 0.85) + (cssHeight * 0.15))))
+
+      if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
+        try {
+          const bitmap = await window.createImageBitmap(canvas)
+          upsertBitmapCacheEntry(pageNum, {
+            bitmap,
+            width: canvas.width,
+            height: canvas.height,
+            cssWidth,
+            cssHeight,
+            signature,
+          })
+        } catch {
+          // ignore bitmap cache failures
+        }
+      }
     } catch (err: any) {
       const message = String(err?.message || '')
       const name = String(err?.name || '')
@@ -567,17 +697,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       }
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, contentSize.width])
-
-  const renderAllPages = useCallback(async () => {
-    if (!pdfDoc || !open) return
-    const pages = Array.from({ length: totalPages }, (_, idx) => idx + 1)
-    for (const pageNum of pages) {
-      const canvas = pageCanvasRefs.current.get(pageNum)
-      if (!canvas) continue
-      await renderPageToCanvas(pageNum, canvas)
-    }
-  }, [pdfDoc, open, renderPageToCanvas, totalPages])
+  }, [pdfDoc, open, contentSize.width, clearPageBitmapCache, touchBitmapCacheEntry, upsertBitmapCacheEntry])
 
   useEffect(() => {
     if (!open) return
@@ -627,27 +747,82 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }, [open, updatePageFromScroll])
 
   useEffect(() => {
+    if (!open || !pdfDoc) return
     let cancelled = false
     ;(async () => {
-      if (cancelled) return
-      await renderAllPages()
-      if (cancelled || !open) return
-      if (!initialState) return
-      if (restoredScrollRef.current) return
-      const scrollEl = scrollContainerRef.current
-      if (!scrollEl) return
-      if (typeof initialState.scrollTop === 'number') {
-        scrollEl.scrollTop = initialState.scrollTop
-      } else if (typeof initialState.page === 'number') {
-        scrollToPage(initialState.page)
+      for (const pageNum of mountedPages) {
+        if (cancelled) break
+        const canvas = pageCanvasRefs.current.get(pageNum)
+        if (!canvas) continue
+        await renderPageToCanvas(pageNum, canvas)
       }
-      restoredScrollRef.current = true
     })()
     return () => {
       cancelled = true
       cancelRenderTasks()
     }
-  }, [renderAllPages, cancelRenderTasks, initialState, open, scrollToPage])
+  }, [mountedPages, renderPageToCanvas, cancelRenderTasks, open, pdfDoc])
+
+  useEffect(() => {
+    if (!open || !pdfDoc) return
+    if (restoredScrollRef.current) return
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) return
+    const restore = window.requestAnimationFrame(() => {
+      if (typeof initialState?.scrollTop === 'number') {
+        scrollEl.scrollTop = initialState.scrollTop
+      } else if (typeof initialState?.page === 'number') {
+        scrollToPage(initialState.page)
+      }
+      restoredScrollRef.current = true
+    })
+    return () => window.cancelAnimationFrame(restore)
+  }, [initialState, open, pdfDoc, scrollToPage])
+
+  useEffect(() => {
+    if (!open || !pdfDoc) return
+    if (!idleWarmPages.length) return
+    let cancelled = false
+    let warmIndex = 0
+    let idleHandle: number | null = null
+    let timeoutHandle: number | null = null
+
+    const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
+
+    const scheduleNext = () => {
+      if (cancelled || warmIndex >= idleWarmPages.length) return
+      if (hasRequestIdleCallback) {
+        idleHandle = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
+      } else {
+        timeoutHandle = window.setTimeout(() => runWarm(), 70)
+      }
+    }
+
+    const runWarm = async () => {
+      if (cancelled) return
+      while (warmIndex < idleWarmPages.length) {
+        const nextPage = idleWarmPages[warmIndex]
+        warmIndex += 1
+        if (pageBitmapCacheRef.current.has(nextPage)) continue
+        if (pageCanvasRefs.current.has(nextPage)) continue
+        const scratchCanvas = document.createElement('canvas')
+        await renderPageToCanvas(nextPage, scratchCanvas)
+        break
+      }
+      scheduleNext()
+    }
+
+    scheduleNext()
+    return () => {
+      cancelled = true
+      if (idleHandle !== null && hasRequestIdleCallback) {
+        ;(window as any).cancelIdleCallback?.(idleHandle)
+      }
+      if (timeoutHandle !== null) {
+        window.clearTimeout(timeoutHandle)
+      }
+    }
+  }, [idleWarmPages, open, pdfDoc, renderPageToCanvas])
 
   if (!open) return null
 
@@ -859,13 +1034,24 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               ) : (
                 Array.from({ length: totalPages }, (_, idx) => {
                   const pageNum = idx + 1
+                  const isMounted = mountedPageSet.has(pageNum)
+                  const minHeight = Math.max(320, Math.round(pageHeights[pageNum] ?? estimatedPageHeight))
                   return (
-                    <canvas
-                      key={`pdf-page-${pageNum}`}
-                      ref={setPageCanvasRef(pageNum)}
-                      className="block bg-white shadow-sm"
+                    <div
+                      key={`pdf-page-wrap-${pageNum}`}
+                      ref={setPageContainerRef(pageNum)}
                       data-page={pageNum}
-                    />
+                      className="w-full flex items-start justify-center"
+                      style={{ minHeight: `${minHeight}px` }}
+                    >
+                      {isMounted ? (
+                        <canvas
+                          ref={setPageCanvasRef(pageNum)}
+                          className="block bg-white shadow-sm"
+                          data-page-canvas={pageNum}
+                        />
+                      ) : null}
+                    </div>
                   )
                 })
               )}

@@ -46,8 +46,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   })
   const [postBusy, setPostBusy] = useState(false)
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
-  const [pinchOverflow, setPinchOverflow] = useState({ x: 0, y: 0 })
-  const pinchOverflowRef = useRef({ x: 0, y: 0 })
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
@@ -86,12 +84,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     zoomRef.current = effectiveZoom
   }, [effectiveZoom])
 
-  const applyLivePinchStyle = useCallback((zoomValue: number, overflowX: number, overflowY: number) => {
+  const applyLivePinchStyle = useCallback((zoomValue: number) => {
     const contentEl = contentRef.current
     if (!contentEl) return
     const scale = clamp(zoomValue / Math.max(1, renderZoomRef.current), 0.5, 3)
     contentEl.style.zoom = String(scale)
-    contentEl.style.transform = `translate3d(${overflowX}px, ${overflowY}px, 0)`
+    contentEl.style.transform = ''
     contentEl.style.willChange = pinchActiveRef.current ? 'transform' : ''
   }, [])
 
@@ -289,8 +287,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = midpointX
         pinchStateRef.current.anchorY = midpointY
-        pinchOverflowRef.current = { x: 0, y: 0 }
-        applyLivePinchStyle(zoomRef.current, 0, 0)
+        applyLivePinchStyle(zoomRef.current)
         touchState.active = false
         return
       }
@@ -335,10 +332,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             scrollEl.scrollTop = clampedTop
           }
 
-          const overflowX = nextLeft - clampedLeft
-          const overflowY = nextTop - clampedTop
-          pinchOverflowRef.current = { x: -overflowX, y: -overflowY }
-          applyLivePinchStyle(nextZoom, -overflowX, -overflowY)
+          applyLivePinchStyle(nextZoom)
         }
 
         zoomRef.current = nextZoom
@@ -355,9 +349,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (pinchStateRef.current.active) {
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
-        pinchOverflowRef.current = { x: 0, y: 0 }
-        applyLivePinchStyle(zoomRef.current, 0, 0)
-        setPinchOverflow({ x: 0, y: 0 })
+        applyLivePinchStyle(zoomRef.current)
         setZoom(zoomRef.current)
         return
       }
@@ -404,9 +396,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
       pinchActiveRef.current = false
-      pinchOverflowRef.current = { x: 0, y: 0 }
-      applyLivePinchStyle(zoomRef.current, 0, 0)
-      setPinchOverflow({ x: 0, y: 0 })
+      applyLivePinchStyle(zoomRef.current)
     }
   }, [applyLivePinchStyle, kickChromeAutoHide, open, scrollToPage, totalPages])
 
@@ -850,7 +840,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
               style={{
                 zoom: liveScale,
-                transform: `translate3d(${pinchOverflow.x}px, ${pinchOverflow.y}px, 0)`,
                 willChange: pinchStateRef.current.active ? 'transform' : undefined,
               }}
             >

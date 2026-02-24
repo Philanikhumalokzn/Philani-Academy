@@ -1078,13 +1078,13 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
             {warmPhase2Progress.visible && !isViewerLoading && !error ? (
               <div
-                className="absolute left-3 right-3 z-20 pointer-events-none"
+                className="fixed left-3 right-3 z-20 pointer-events-none"
                 style={{ bottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 2px)' }}
                 aria-hidden="true"
               >
-                <div className="h-1.5 rounded-full bg-green-100/90 overflow-hidden">
+                <div className="h-1.5 rounded-full bg-blue-300/25 overflow-hidden">
                   <div
-                    className="h-full bg-green-400 transition-[width] duration-200 ease-out"
+                    className="h-full bg-blue-500/65 transition-[width] duration-200 ease-out"
                     style={{ width: `${warmPhase2Percent}%` }}
                   />
                 </div>

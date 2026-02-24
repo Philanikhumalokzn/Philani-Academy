@@ -4133,7 +4133,7 @@ export default function DiagramOverlayModule(props: {
             </div>
           )}
           {isGridDiagram ? (
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 philani-excalidraw-bottom-toolbar">
               <Excalidraw
                 excalidrawAPI={(api) => { excalidrawApiRef.current = api }}
                 zenModeEnabled={false}

@@ -1034,6 +1034,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
               style={{
                 zoom: liveScale,
+                paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
                 willChange: pinchStateRef.current.active ? 'transform' : undefined,
               }}
             >

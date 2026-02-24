@@ -303,24 +303,33 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     const onTouchMove = (e: TouchEvent) => {
       if (pinchStateRef.current.active && e.touches.length === 2) {
         const PINCH_START_THRESHOLD = 0.025
+        const PAN_START_THRESHOLD_PX = 1.5
         const ZOOM_UPDATE_THRESHOLD = 0.08
+        const PAN_UPDATE_THRESHOLD_PX = 0.8
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
+        const scrollEl = scrollContainerRef.current
+        const rect = scrollEl?.getBoundingClientRect()
+        const a = e.touches[0]
+        const b = e.touches[1]
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : pinchStateRef.current.anchorX
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : pinchStateRef.current.anchorY
         const scale = dist / pinchStateRef.current.startDist
-        if (Math.abs(scale - 1) < PINCH_START_THRESHOLD) return
+        const midpointDx = midpointX - pinchStateRef.current.anchorX
+        const midpointDy = midpointY - pinchStateRef.current.anchorY
+        const panDistance = Math.hypot(midpointDx, midpointDy)
+        if (Math.abs(scale - 1) < PINCH_START_THRESHOLD && panDistance < PAN_START_THRESHOLD_PX) return
         const gestureMinZoom = Math.max(50, renderZoomRef.current)
         const nextZoom = clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
-        if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD) return
+        if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD && panDistance < PAN_UPDATE_THRESHOLD_PX) return
 
-        const scrollEl = scrollContainerRef.current
         if (scrollEl && pinchStateRef.current.startZoom > 0) {
           const ratio = nextZoom / pinchStateRef.current.startZoom
-          const ratioDelta = ratio - 1
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const nextLeft = pinchStateRef.current.startScrollLeft + ((pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX) * ratioDelta)
-          const nextTop = pinchStateRef.current.startScrollTop + ((pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY) * ratioDelta)
+          const nextLeft = (ratio * (pinchStateRef.current.startScrollLeft + pinchStateRef.current.anchorX)) - midpointX
+          const nextTop = (ratio * (pinchStateRef.current.startScrollTop + pinchStateRef.current.anchorY)) - midpointY
 
           const clampedLeft = clamp(nextLeft, 0, maxLeft)
           const clampedTop = clamp(nextTop, 0, maxTop)

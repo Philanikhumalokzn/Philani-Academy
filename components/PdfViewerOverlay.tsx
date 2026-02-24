@@ -55,6 +55,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({})
   const [estimatedPageHeight, setEstimatedPageHeight] = useState(1100)
   const [initialWarmComplete, setInitialWarmComplete] = useState(false)
+  const [warmPhase2Progress, setWarmPhase2Progress] = useState({ visible: false, done: 0, total: 0 })
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
@@ -537,6 +538,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     setPageHeights({})
     setEstimatedPageHeight(1100)
     setInitialWarmComplete(false)
+    setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     const initialZoom = clamp(initialState?.zoom ?? 110, 50, 220)
     renderZoomRef.current = initialZoom
     setPage(initialState?.page ?? 1)
@@ -603,6 +605,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (open) return
     cancelRenderTasks()
     clearPageBitmapCache()
+    setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
@@ -799,16 +802,27 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   useEffect(() => {
     if (!open || !pdfDoc || !initialWarmComplete) return
     const startPage = Math.min(totalPages + 1, INITIAL_WARM_PAGE_COUNT + 1)
-    if (startPage > totalPages) return
+    if (startPage > totalPages) {
+      setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
+      return
+    }
+    const totalWarmTargets = totalPages - startPage + 1
+    setWarmPhase2Progress({ visible: true, done: 0, total: totalWarmTargets })
+
     let cancelled = false
     let nextPageNum = startPage
+    let completedCount = 0
     let idleHandle: number | null = null
     let timeoutHandle: number | null = null
 
     const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
 
     const scheduleNext = () => {
-      if (cancelled || nextPageNum > totalPages) return
+      if (cancelled) return
+      if (nextPageNum > totalPages) {
+        setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || completedCount }))
+        return
+      }
       if (hasRequestIdleCallback) {
         idleHandle = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
       } else {
@@ -821,6 +835,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       while (nextPageNum <= totalPages) {
         const nextPage = nextPageNum
         nextPageNum += 1
+        completedCount += 1
+        setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))
         if (pageBitmapCacheRef.current.has(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
@@ -833,6 +849,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     scheduleNext()
     return () => {
       cancelled = true
+      setWarmPhase2Progress((prev) => ({ ...prev, visible: false }))
       if (idleHandle !== null && hasRequestIdleCallback) {
         ;(window as any).cancelIdleCallback?.(idleHandle)
       }
@@ -847,6 +864,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const chromeClassName = chromeVisible
     ? 'opacity-100 pointer-events-auto'
     : 'opacity-0 pointer-events-none'
+  const warmPhase2Percent = warmPhase2Progress.total > 0
+    ? Math.min(100, Math.max(0, (warmPhase2Progress.done / warmPhase2Progress.total) * 100))
+    : 0
 
   return (
     <div
@@ -1047,6 +1067,30 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             onPointerCancel={handleSwipeEnd}
             onPointerLeave={handleSwipeEnd}
           >
+            {isViewerLoading && !error ? (
+              <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+                <div
+                  className="h-10 w-10 rounded-full border-4 border-slate-300 border-t-slate-700 animate-spin"
+                  aria-label="Loading"
+                />
+              </div>
+            ) : null}
+
+            {warmPhase2Progress.visible && !isViewerLoading && !error ? (
+              <div
+                className="absolute left-3 right-3 z-20 pointer-events-none"
+                style={{ bottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 2px)' }}
+                aria-hidden="true"
+              >
+                <div className="h-1.5 rounded-full bg-green-100/90 overflow-hidden">
+                  <div
+                    className="h-full bg-green-400 transition-[width] duration-200 ease-out"
+                    style={{ width: `${warmPhase2Percent}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
             <div
               ref={contentRef}
               className={`${isZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
@@ -1059,7 +1103,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>
               ) : isViewerLoading ? (
-                <div className="text-sm muted">Loading PDF…</div>
+                <div className="sr-only">Preparing PDF</div>
               ) : (
                 Array.from({ length: totalPages }, (_, idx) => {
                   const pageNum = idx + 1

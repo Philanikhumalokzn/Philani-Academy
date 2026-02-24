@@ -850,6 +850,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           <div
             className={`absolute left-3 right-3 top-3 sm:left-4 sm:right-4 sm:top-4 z-20 flex items-center justify-center transition-opacity duration-200 ${chromeClassName} pointer-events-none`}
             aria-hidden={!chromeVisible}
+            style={{
+              top: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 12px)',
+              left: 'calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 12px)',
+              right: 'calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 12px)',
+            }}
           >
             <div className="max-w-[82vw] text-center">
               <div className="text-sm sm:text-base font-semibold text-slate-900 truncate drop-shadow-sm">{title}</div>
@@ -860,6 +865,11 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           <div
             className={`absolute left-2 right-2 bottom-2 sm:left-4 sm:right-4 sm:bottom-4 z-20 flex items-center justify-center gap-2 text-[10px] sm:text-xs text-slate-900 transition-opacity duration-200 ${chromeClassName}`}
             aria-hidden={!chromeVisible}
+            style={{
+              bottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 8px)',
+              left: 'calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px)',
+              right: 'calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px)',
+            }}
           >
             <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap">
               <div className="flex items-center gap-1 sm:gap-2 rounded-full border border-slate-200/70 bg-white/90 px-1.5 py-1 sm:px-2 shadow-sm">

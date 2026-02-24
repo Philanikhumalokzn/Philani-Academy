@@ -3,7 +3,7 @@ import { useTapToPeek } from '../lib/useTapToPeek'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 const VIRTUAL_WINDOW_RADIUS = 8
-const IDLE_WARM_RADIUS = 16
+const INITIAL_WARM_PAGE_COUNT = 20
 const PAGE_BITMAP_CACHE_LIMIT = 36
 
 type PdfViewerOverlayProps = {
@@ -54,6 +54,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({})
   const [estimatedPageHeight, setEstimatedPageHeight] = useState(1100)
+  const [initialWarmComplete, setInitialWarmComplete] = useState(false)
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
   const swipeStateRef = useRef<{
@@ -109,15 +110,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     return Array.from({ length: end - start + 1 }, (_, idx) => start + idx)
   }, [safePage, totalPages])
   const mountedPageSet = useMemo(() => new Set(mountedPages), [mountedPages])
-  const idleWarmPages = useMemo(() => {
-    const start = Math.max(1, safePage - IDLE_WARM_RADIUS)
-    const end = Math.min(totalPages, safePage + IDLE_WARM_RADIUS)
-    const pages: number[] = []
-    for (let pageNum = start; pageNum <= end; pageNum += 1) {
-      if (!mountedPageSet.has(pageNum)) pages.push(pageNum)
-    }
-    return pages
-  }, [mountedPageSet, safePage, totalPages])
+  const isViewerLoading = loading || (Boolean(pdfDoc) && !initialWarmComplete)
 
   const setPageContainerRef = useCallback((pageNum: number) => (el: HTMLDivElement | null) => {
     if (el) {
@@ -264,7 +257,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   }, [safePage])
 
   const handlePostCapture = useCallback(async () => {
-    if (!onPostImage || loading || error || postBusy) return
+    if (!onPostImage || isViewerLoading || error || postBusy) return
     setPostBusy(true)
     try {
       kickChromeAutoHide()
@@ -284,7 +277,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     } finally {
       setPostBusy(false)
     }
-  }, [captureVisibleCanvas, error, kickChromeAutoHide, loading, onPostImage, postBusy, safePage, effectiveZoom])
+  }, [captureVisibleCanvas, error, kickChromeAutoHide, isViewerLoading, onPostImage, postBusy, safePage, effectiveZoom])
 
   const handleSwipeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType && e.pointerType !== 'mouse') return
@@ -543,6 +536,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     clearPageBitmapCache()
     setPageHeights({})
     setEstimatedPageHeight(1100)
+    setInitialWarmComplete(false)
     const initialZoom = clamp(initialState?.zoom ?? 110, 50, 220)
     renderZoomRef.current = initialZoom
     setPage(initialState?.page ?? 1)
@@ -748,6 +742,29 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
   useEffect(() => {
     if (!open || !pdfDoc) return
+    if (initialWarmComplete) return
+    let cancelled = false
+
+    ;(async () => {
+      const warmUntil = Math.min(totalPages, INITIAL_WARM_PAGE_COUNT)
+      for (let pageNum = 1; pageNum <= warmUntil; pageNum += 1) {
+        if (cancelled) return
+        if (pageBitmapCacheRef.current.has(pageNum)) continue
+        const scratchCanvas = document.createElement('canvas')
+        await renderPageToCanvas(pageNum, scratchCanvas)
+      }
+      if (!cancelled) {
+        setInitialWarmComplete(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initialWarmComplete, open, pdfDoc, renderPageToCanvas, totalPages])
+
+  useEffect(() => {
+    if (!open || !pdfDoc || !initialWarmComplete) return
     let cancelled = false
     ;(async () => {
       for (const pageNum of mountedPages) {
@@ -761,10 +778,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       cancelled = true
       cancelRenderTasks()
     }
-  }, [mountedPages, renderPageToCanvas, cancelRenderTasks, open, pdfDoc])
+  }, [mountedPages, renderPageToCanvas, cancelRenderTasks, open, pdfDoc, initialWarmComplete])
 
   useEffect(() => {
-    if (!open || !pdfDoc) return
+    if (!open || !pdfDoc || !initialWarmComplete) return
     if (restoredScrollRef.current) return
     const scrollEl = scrollContainerRef.current
     if (!scrollEl) return
@@ -777,20 +794,21 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       restoredScrollRef.current = true
     })
     return () => window.cancelAnimationFrame(restore)
-  }, [initialState, open, pdfDoc, scrollToPage])
+  }, [initialState, open, pdfDoc, scrollToPage, initialWarmComplete])
 
   useEffect(() => {
-    if (!open || !pdfDoc) return
-    if (!idleWarmPages.length) return
+    if (!open || !pdfDoc || !initialWarmComplete) return
+    const startPage = Math.min(totalPages + 1, INITIAL_WARM_PAGE_COUNT + 1)
+    if (startPage > totalPages) return
     let cancelled = false
-    let warmIndex = 0
+    let nextPageNum = startPage
     let idleHandle: number | null = null
     let timeoutHandle: number | null = null
 
     const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
 
     const scheduleNext = () => {
-      if (cancelled || warmIndex >= idleWarmPages.length) return
+      if (cancelled || nextPageNum > totalPages) return
       if (hasRequestIdleCallback) {
         idleHandle = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
       } else {
@@ -800,9 +818,9 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const runWarm = async () => {
       if (cancelled) return
-      while (warmIndex < idleWarmPages.length) {
-        const nextPage = idleWarmPages[warmIndex]
-        warmIndex += 1
+      while (nextPageNum <= totalPages) {
+        const nextPage = nextPageNum
+        nextPageNum += 1
         if (pageBitmapCacheRef.current.has(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
@@ -822,7 +840,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         window.clearTimeout(timeoutHandle)
       }
     }
-  }, [idleWarmPages, open, pdfDoc, renderPageToCanvas])
+  }, [open, pdfDoc, renderPageToCanvas, totalPages, initialWarmComplete])
 
   if (!open) return null
 
@@ -884,7 +902,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
                       return next
                     })
                   }}
-                  disabled={loading}
+                  disabled={isViewerLoading}
                 >
                   <span className="hidden sm:inline">Prev</span>
                   <span className="sm:hidden" aria-hidden="true">◀</span>
@@ -901,7 +919,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
                     setPage(next)
                     scrollToPage(next)
                   }}
-                  disabled={loading}
+                  disabled={isViewerLoading}
                 />
                 <span className="text-[10px] text-slate-500">/ {totalPages}</span>
                 <button
@@ -915,7 +933,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
                       return next
                     })
                   }}
-                  disabled={loading}
+                  disabled={isViewerLoading}
                 >
                   <span className="hidden sm:inline">Next</span>
                   <span className="sm:hidden" aria-hidden="true">▶</span>
@@ -980,7 +998,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
                 type="button"
                 className="flex items-center gap-2 rounded-full border border-slate-200/60 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-white disabled:opacity-50"
                 onClick={handlePostCapture}
-                disabled={loading || postBusy || Boolean(error)}
+                disabled={isViewerLoading || postBusy || Boolean(error)}
                 aria-label={postBusy ? 'Capturing PDF view' : 'Post PDF view'}
                 title={postBusy ? 'Capturing…' : 'Post'}
               >
@@ -1040,7 +1058,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             >
               {error ? (
                 <div className="text-sm text-red-200 px-4">{error}</div>
-              ) : loading ? (
+              ) : isViewerLoading ? (
                 <div className="text-sm muted">Loading PDF…</div>
               ) : (
                 Array.from({ length: totalPages }, (_, idx) => {

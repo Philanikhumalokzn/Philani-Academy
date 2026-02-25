@@ -8,6 +8,7 @@ const PAGE_BITMAP_CACHE_LIMIT = 36
 const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
+const WARM_RENDER_QUALITY_SCALE = 0.55
 
 type PdfViewerOverlayProps = {
   open: boolean
@@ -626,13 +627,18 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     setPdfDoc(null)
   }, [open, pdfDoc, cancelRenderTasks])
 
-  const renderPageToCanvas = useCallback(async (pageNum: number, canvas: HTMLCanvasElement) => {
+  const renderPageToCanvas = useCallback(async (
+    pageNum: number,
+    canvas: HTMLCanvasElement,
+    options?: { qualityScale?: number }
+  ) => {
     if (!pdfDoc || !open) return
     const context = canvas.getContext('2d')
     if (!context) return
 
     try {
-      const outputScale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      const requestedQuality = clamp(options?.qualityScale ?? 1, 0.35, 1)
+      const outputScale = (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) * requestedQuality
       const signature = `${Math.round(contentSize.width || 0)}:${Math.round(renderZoomRef.current)}:${Math.round(outputScale * 100)}`
       if (renderSignatureRef.current && renderSignatureRef.current !== signature) {
         clearPageBitmapCache()
@@ -768,7 +774,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         if (cancelled) return
         if (pageBitmapCacheRef.current.has(pageNum)) continue
         const scratchCanvas = document.createElement('canvas')
-        await renderPageToCanvas(pageNum, scratchCanvas)
+        await renderPageToCanvas(pageNum, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE })
       }
       if (!cancelled) {
         setInitialWarmComplete(true)
@@ -862,7 +868,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         if (pageBitmapCacheRef.current.has(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
-        await renderPageToCanvas(nextPage, scratchCanvas)
+        await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE })
       }
       completedCount += processedThisTick
       setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))

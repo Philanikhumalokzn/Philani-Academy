@@ -737,12 +737,13 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const persistedWarmComplete = hasPersistedWarmComplete(cacheIdentity)
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
+    const shouldSkipWarmPhases = persistedWarmComplete && canReuseWarmCache
 
     setLoading(true)
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
-    if (!canReuseWarmCache && !persistedWarmComplete) {
+    if (!canReuseWarmCache) {
       clearPageBitmapCache()
       setPageHeights({})
       setEstimatedPageHeight(1100)
@@ -751,7 +752,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       phase2NextPageRef.current = INITIAL_WARM_PAGE_COUNT + 1
       phase2CompletedCountRef.current = 0
     }
-    if (persistedWarmComplete) {
+    if (shouldSkipWarmPhases) {
       setInitialWarmComplete(true)
       warmAllCompleteRef.current = true
       setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
@@ -795,7 +796,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
           return
         }
         cacheUrlRef.current = cacheIdentity
-        if (persistedWarmComplete) {
+        if (shouldSkipWarmPhases) {
           const pageCount = Math.max(0, Number(doc?.numPages || 0))
           const startPage = Math.min(pageCount + 1, INITIAL_WARM_PAGE_COUNT + 1)
           phase2NextPageRef.current = pageCount + 1

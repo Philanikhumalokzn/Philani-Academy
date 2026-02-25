@@ -13,21 +13,20 @@ const WARM_RENDER_QUALITY_SCALE = 1
 const RENDER_DISK_CACHE_NAME = 'pa-pdf-render-v1'
 const RENDER_DISK_CACHE_BASE_URL = 'https://cache.philani.local/pdf-render'
 const INTENT_OVERLAP_WINDOW_MS = 320
-const INTENT_MIN_DELTA_PX = 2
-const INTENT_DECAY_TAU_MS = 420
+const INTENT_DECAY_TAU_MS = 260
 const INTENT_IDLE_RESET_MS = 260
-const INTENT_BASE_IMPULSE = 0.2
-const INTENT_OVERLAP_IMPULSE = 0.7
-const INTENT_DISTANCE_NORMALIZER_PX = 140
-const INTENT_DISTANCE_GAIN = 0.75
-const INTENT_DIRECTION_BONUS = 0.2
-const INTENT_DIRECTION_PENALTY = 0.28
+const INTENT_BASE_IMPULSE = 0.03
+const INTENT_OVERLAP_IMPULSE = 0.18
+const INTENT_DISTANCE_NORMALIZER_PX = 180
+const INTENT_DISTANCE_GAIN = 0.28
+const INTENT_DIRECTION_BONUS = 0.05
+const INTENT_DIRECTION_PENALTY = 0.24
 const INTENT_MAX_ENERGY = 12
-const INTENT_DEAD_ZONE = 0.9
-const INTENT_SKIP_GAIN = 5.5
-const INTENT_BASE_PROJECTION = 2.2
-const INTENT_PROJECTION_GAIN = 0.7
-const INTENT_MAX_PROJECTION = 11
+const INTENT_SKIP_RESPONSE = 2.85
+const INTENT_ENERGY_CURVE = 4.8
+const INTENT_BASE_PROJECTION = 1.25
+const INTENT_PROJECTION_GAIN = 0.33
+const INTENT_MAX_PROJECTION = 7.5
 const MAX_MOMENTUM_PAGES_PER_GESTURE = 10
 const PRIORITY_RENDER_RADIUS = 10
 
@@ -1089,8 +1088,8 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const applyMomentumVisualState = (top: number, dy: number) => {
       const momentum = scrollMomentumRef.current
       const maxSkipRadius = Math.max(40, Math.min(180, Math.round(totalPages * 0.18)))
-      const effectiveEnergy = Math.max(0, momentum.energy - INTENT_DEAD_ZONE)
-      const hasIntent = effectiveEnergy > 0
+      const effectiveEnergy = Math.max(0, momentum.energy)
+      const hasIntent = effectiveEnergy > 0.0001
       momentum.active = hasIntent
 
       if (!hasIntent) {
@@ -1109,8 +1108,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       const predictedPage = clamp(predictedPageRaw, minPage, maxPage)
       const pageTravel = Math.abs(predictedPage - anchorPage)
       const momentumFraction = clamp(pageTravel / Math.max(1, MAX_MOMENTUM_PAGES_PER_GESTURE), 0, 1)
-      const energyFactor = clamp(Math.pow(effectiveEnergy, 1.1) / 4, 0, 1)
-      const proportionalFactor = clamp((momentumFraction * 0.72) + (energyFactor * 0.28), 0, 1)
+      const shapedMomentumFraction = Math.pow(momentumFraction, 1.9)
+      const energyFactor = Math.pow(effectiveEnergy / (effectiveEnergy + INTENT_ENERGY_CURVE), INTENT_SKIP_RESPONSE)
+      const proportionalFactor = clamp((shapedMomentumFraction * 0.55) + (energyFactor * 0.45), 0, 1)
       const nextSkipRadius = clamp(Math.round(maxSkipRadius * proportionalFactor), 0, maxSkipRadius)
 
       setSkipRadius((prev) => (prev === nextSkipRadius ? prev : nextSkipRadius))
@@ -1162,19 +1162,21 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const dy = top - (momentum.lastTop || top)
         const absDy = Math.abs(dy)
 
-        if (absDy >= INTENT_MIN_DELTA_PX) {
-          const direction = Math.sign(dy)
-          const overlap = now - momentum.lastEventTs <= INTENT_OVERLAP_WINDOW_MS
-          if (!overlap || !momentum.gestureStartPage) {
-            momentum.gestureStartPage = estimatePageFromScrollTop(top)
-          }
-          const directionAligned = momentum.lastDirection === 0 || momentum.lastDirection === direction
-          const distanceSignal = clamp(absDy / INTENT_DISTANCE_NORMALIZER_PX, 0, 2)
-          const impulse = (overlap ? INTENT_OVERLAP_IMPULSE : INTENT_BASE_IMPULSE)
-            + (distanceSignal * INTENT_DISTANCE_GAIN)
-            + (directionAligned ? INTENT_DIRECTION_BONUS : -INTENT_DIRECTION_PENALTY)
+        const direction = Math.sign(dy)
+        const overlap = now - momentum.lastEventTs <= INTENT_OVERLAP_WINDOW_MS
+        if (!overlap || !momentum.gestureStartPage) {
+          momentum.gestureStartPage = estimatePageFromScrollTop(top)
+        }
+        const directionAligned = direction === 0 || momentum.lastDirection === 0 || momentum.lastDirection === direction
+        const motionSignal = absDy / (absDy + 28)
+        const distanceSignal = absDy / (absDy + INTENT_DISTANCE_NORMALIZER_PX)
+        const impulseCore = (overlap ? INTENT_OVERLAP_IMPULSE : INTENT_BASE_IMPULSE)
+          + (distanceSignal * INTENT_DISTANCE_GAIN)
+          + (directionAligned ? INTENT_DIRECTION_BONUS : -INTENT_DIRECTION_PENALTY)
+        const impulse = Math.max(0, impulseCore) * motionSignal
 
-          momentum.energy = clamp(momentum.energy + Math.max(0, impulse), 0, INTENT_MAX_ENERGY)
+        momentum.energy = clamp(momentum.energy + impulse, 0, INTENT_MAX_ENERGY)
+        if (absDy > 0) {
           momentum.lastEventTs = now
           momentum.lastDirection = direction
           momentum.lastDy = dy

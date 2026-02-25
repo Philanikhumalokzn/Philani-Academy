@@ -10,6 +10,10 @@ const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
+const REOPEN_RAM_REHYDRATE_RADIUS = 10
+const REOPEN_RAM_REHYDRATE_BATCH_SIZE = 2
+const REOPEN_RAM_REHYDRATE_IDLE_TIMEOUT_MS = 160
+const REOPEN_RAM_REHYDRATE_RETRY_DELAY_MS = 48
 const RENDER_DISK_CACHE_NAME = 'pa-pdf-render-v1'
 const RENDER_DISK_CACHE_BASE_URL = 'https://cache.philani.local/pdf-render'
 
@@ -97,6 +101,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const warmCompletedIdentitySetRef = useRef<Set<string>>(new Set())
   const cacheIdentityRef = useRef('')
   const cacheUrlRef = useRef<string | null>(null)
+  const shouldRehydrateOnWarmSkipRef = useRef(false)
   const warmAllCompleteRef = useRef(false)
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
@@ -739,6 +744,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     let loadingTask: any | null = null
     const cacheIdentity = String(cacheKey || url)
     cacheIdentityRef.current = cacheIdentity
+    shouldRehydrateOnWarmSkipRef.current = false
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
     const hasInSessionWarmCompletion = warmCompletedIdentitySetRef.current.has(cacheIdentity)
@@ -758,6 +764,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       phase2CompletedCountRef.current = 0
     }
     if (shouldSkipWarmPhases) {
+      shouldRehydrateOnWarmSkipRef.current = true
       setInitialWarmComplete(true)
       warmAllCompleteRef.current = true
       setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
@@ -803,6 +810,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         if (!shouldSkipWarmPhases) {
           shouldSkipWarmPhases = await hasDiskWarmCompleteMarker(cacheIdentity)
           if (shouldSkipWarmPhases && !cancelled) {
+            shouldRehydrateOnWarmSkipRef.current = true
             warmCompletedIdentitySetRef.current.add(cacheIdentity)
             setInitialWarmComplete(true)
             warmAllCompleteRef.current = true
@@ -1129,6 +1137,86 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     })
     return () => window.cancelAnimationFrame(restore)
   }, [initialState, open, pdfDoc, scrollToPage, initialWarmComplete])
+
+  useEffect(() => {
+    if (!open || !pdfDoc || !initialWarmComplete) return
+    if (!shouldRehydrateOnWarmSkipRef.current) return
+    shouldRehydrateOnWarmSkipRef.current = false
+
+    let cancelled = false
+    let idleHandle: number | null = null
+    let timeoutHandle: number | null = null
+
+    const centerPage = clamp(initialState?.page ?? safePage, 1, totalPages)
+    const startPage = Math.max(1, centerPage - REOPEN_RAM_REHYDRATE_RADIUS)
+    const endPage = Math.min(totalPages, centerPage + REOPEN_RAM_REHYDRATE_RADIUS)
+    const queue: number[] = [centerPage]
+    for (let offset = 1; offset <= REOPEN_RAM_REHYDRATE_RADIUS; offset += 1) {
+      const right = centerPage + offset
+      const left = centerPage - offset
+      if (right <= endPage) queue.push(right)
+      if (left >= startPage) queue.push(left)
+    }
+
+    const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
+
+    const clearHandles = () => {
+      if (idleHandle !== null && typeof (window as any).cancelIdleCallback === 'function') {
+        ;(window as any).cancelIdleCallback(idleHandle)
+      }
+      if (timeoutHandle !== null) {
+        window.clearTimeout(timeoutHandle)
+      }
+      idleHandle = null
+      timeoutHandle = null
+    }
+
+    const scheduleNext = () => {
+      if (cancelled) return
+      if (!queue.length) return
+
+      if (isInteractingRef.current || pinchActiveRef.current) {
+        timeoutHandle = window.setTimeout(scheduleNext, REOPEN_RAM_REHYDRATE_RETRY_DELAY_MS)
+        return
+      }
+
+      if (hasRequestIdleCallback) {
+        idleHandle = (window as any).requestIdleCallback(runBatch, { timeout: REOPEN_RAM_REHYDRATE_IDLE_TIMEOUT_MS })
+      } else {
+        timeoutHandle = window.setTimeout(runBatch, PHASE2_WARM_FALLBACK_DELAY_MS)
+      }
+    }
+
+    const runBatch = async () => {
+      clearHandles()
+      if (cancelled) return
+      if (isInteractingRef.current || pinchActiveRef.current) {
+        scheduleNext()
+        return
+      }
+
+      let processed = 0
+      while (queue.length && processed < REOPEN_RAM_REHYDRATE_BATCH_SIZE) {
+        const nextPage = queue.shift()
+        if (typeof nextPage !== 'number') break
+        processed += 1
+        if (hasAnyBitmapCacheEntry(nextPage)) continue
+        if (pageCanvasRefs.current.has(nextPage)) continue
+        const scratchCanvas = document.createElement('canvas')
+        await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE, cacheTier: 'warm' })
+        if (cancelled) return
+        if (isInteractingRef.current || pinchActiveRef.current) break
+      }
+
+      scheduleNext()
+    }
+
+    scheduleNext()
+    return () => {
+      cancelled = true
+      clearHandles()
+    }
+  }, [open, pdfDoc, initialWarmComplete, initialState?.page, safePage, totalPages, hasAnyBitmapCacheEntry, renderPageToCanvas])
 
   useEffect(() => {
     if (!open || !pdfDoc || !initialWarmComplete) return

@@ -67,7 +67,8 @@
     calc(56px + var(--philani-exc-top-y, 0px))
   );
   z-index: var(--zIndex-layerUI);
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar {
@@ -75,6 +76,7 @@
     var(--philani-exc-bottom-x, 0px),
     var(--philani-exc-bottom-y, 0px)
   );
+  touch-action: none;
 }
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-menu_top {

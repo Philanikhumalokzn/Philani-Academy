@@ -3621,7 +3621,7 @@ export default function DiagramOverlayModule(props: {
     return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
   })()
 
-  const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLButtonElement>) => {
+  const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLElement>) => {
     e.preventDefault()
     e.stopPropagation()
     const node = e.currentTarget
@@ -3637,7 +3637,7 @@ export default function DiagramOverlayModule(props: {
     }
   }, [gridToolbarOffsets])
 
-  const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+  const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const drag = gridToolbarDragRef.current
     if (!drag.target || drag.pointerId !== e.pointerId) return
     e.preventDefault()
@@ -3652,7 +3652,7 @@ export default function DiagramOverlayModule(props: {
     }))
   }, [])
 
-  const endGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+  const endGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const drag = gridToolbarDragRef.current
     if (!drag.target || drag.pointerId !== e.pointerId) return
     e.preventDefault()
@@ -3667,6 +3667,32 @@ export default function DiagramOverlayModule(props: {
       originY: 0,
     }
   }, [])
+
+  const detectGridToolbarDragTarget = useCallback((eventTarget: EventTarget | null): 'top' | 'bottom' | null => {
+    const node = eventTarget as HTMLElement | null
+    if (!node) return null
+
+    const interactiveControl = node.closest('button, a, input, textarea, select, [role="button"], [contenteditable="true"]')
+    if (interactiveControl) return null
+
+    if (node.closest('.App-top-bar')) return 'top'
+    if (node.closest('.App-bottom-bar')) return 'bottom'
+    return null
+  }, [])
+
+  const onGridToolbarPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const target = detectGridToolbarDragTarget(e.target)
+    if (!target) return
+    startGridToolbarDrag(target, e)
+  }, [detectGridToolbarDragTarget, startGridToolbarDrag])
+
+  const onGridToolbarPointerMoveCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    moveGridToolbarDrag(e)
+  }, [moveGridToolbarDrag])
+
+  const onGridToolbarPointerUpCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    endGridToolbarDrag(e)
+  }, [endGridToolbarDrag])
 
   return (
     <>
@@ -3766,42 +3792,6 @@ export default function DiagramOverlayModule(props: {
                 <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
                   <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-              </button>
-            </div>
-          ) : null}
-
-          {isGridDiagram ? (
-            <div
-              className="absolute right-3 z-50 flex flex-col gap-2"
-              style={{
-                bottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 110px)',
-              }}
-            >
-              <button
-                type="button"
-                className="h-9 w-9 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-sm"
-                style={{ touchAction: 'none' }}
-                onPointerDown={(e) => startGridToolbarDrag('top', e)}
-                onPointerMove={moveGridToolbarDrag}
-                onPointerUp={endGridToolbarDrag}
-                onPointerCancel={endGridToolbarDrag}
-                title="Drag top toolbar"
-                aria-label="Drag top toolbar"
-              >
-                ⠿
-              </button>
-              <button
-                type="button"
-                className="h-9 w-9 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-sm"
-                style={{ touchAction: 'none' }}
-                onPointerDown={(e) => startGridToolbarDrag('bottom', e)}
-                onPointerMove={moveGridToolbarDrag}
-                onPointerUp={endGridToolbarDrag}
-                onPointerCancel={endGridToolbarDrag}
-                title="Drag bottom toolbar"
-                aria-label="Drag bottom toolbar"
-              >
-                ⠿
               </button>
             </div>
           ) : null}
@@ -4237,6 +4227,10 @@ export default function DiagramOverlayModule(props: {
           {isGridDiagram ? (
             <div
               className="absolute inset-0 philani-excalidraw-bottom-toolbar"
+              onPointerDownCapture={onGridToolbarPointerDownCapture}
+              onPointerMoveCapture={onGridToolbarPointerMoveCapture}
+              onPointerUpCapture={onGridToolbarPointerUpCapture}
+              onPointerCancelCapture={onGridToolbarPointerUpCapture}
               style={{
                 ['--philani-exc-top-x' as any]: `${gridToolbarOffsets.top.x}px`,
                 ['--philani-exc-top-y' as any]: `${gridToolbarOffsets.top.y}px`,

@@ -10,6 +10,8 @@ const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
+const MAX_SCROLL_PAGES_PER_GESTURE = 10
+const SCROLL_GESTURE_SETTLE_MS = 140
 const REOPEN_RAM_REHYDRATE_RADIUS = 10
 const REOPEN_RAM_REHYDRATE_BATCH_SIZE = 2
 const REOPEN_RAM_REHYDRATE_IDLE_TIMEOUT_MS = 160
@@ -102,6 +104,11 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const cacheIdentityRef = useRef('')
   const cacheUrlRef = useRef<string | null>(null)
   const shouldRehydrateOnWarmSkipRef = useRef(false)
+  const scrollGestureCapRef = useRef<{
+    active: boolean
+    startScrollTop: number
+    settleTimeout: number | null
+  }>({ active: false, startScrollTop: 0, settleTimeout: null })
   const warmAllCompleteRef = useRef(false)
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
@@ -418,6 +425,18 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
   }, [safePage])
 
+  const beginScrollGestureCap = useCallback(() => {
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) return
+    const state = scrollGestureCapRef.current
+    if (state.settleTimeout !== null) {
+      window.clearTimeout(state.settleTimeout)
+      state.settleTimeout = null
+    }
+    state.active = true
+    state.startScrollTop = scrollEl.scrollTop
+  }, [])
+
   const captureVisibleCanvas = useCallback(async () => {
     const canvas = pageCanvasRefs.current.get(safePage)
     const scrollEl = scrollContainerRef.current
@@ -551,6 +570,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
     const onTouchStart = (e: TouchEvent) => {
       markUserInteracting()
+      beginScrollGestureCap()
       if (e.touches.length === 2) {
         const scrollEl = scrollContainerRef.current
         const rect = scrollEl?.getBoundingClientRect()
@@ -695,7 +715,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       pinchActiveRef.current = false
       applyLivePinchStyle(zoomRef.current)
     }
-  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, open, scrollToPage, startInteractionMotionMonitor, totalPages])
+  }, [applyLivePinchStyle, beginScrollGestureCap, kickChromeAutoHide, markUserInteracting, open, scrollToPage, startInteractionMotionMonitor, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -1053,6 +1073,24 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       if (pinchActiveRef.current) return
       markUserInteracting()
       startInteractionMotionMonitor()
+      const gestureState = scrollGestureCapRef.current
+      if (gestureState.active) {
+        const pageHeightPx = Math.max(320, Math.round(estimatedPageHeight || 1100))
+        const maxDeltaPx = pageHeightPx * MAX_SCROLL_PAGES_PER_GESTURE
+        const minTop = Math.max(0, gestureState.startScrollTop - maxDeltaPx)
+        const maxTop = gestureState.startScrollTop + maxDeltaPx
+        const cappedTop = clamp(scrollEl.scrollTop, minTop, maxTop)
+        if (Math.abs(cappedTop - scrollEl.scrollTop) > 0.5) {
+          scrollEl.scrollTop = cappedTop
+        }
+        if (gestureState.settleTimeout !== null) {
+          window.clearTimeout(gestureState.settleTimeout)
+        }
+        gestureState.settleTimeout = window.setTimeout(() => {
+          gestureState.active = false
+          gestureState.settleTimeout = null
+        }, SCROLL_GESTURE_SETTLE_MS)
+      }
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
@@ -1067,12 +1105,18 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     return () => {
       scrollEl.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
+      const gestureState = scrollGestureCapRef.current
+      if (gestureState.settleTimeout !== null) {
+        window.clearTimeout(gestureState.settleTimeout)
+        gestureState.settleTimeout = null
+      }
+      gestureState.active = false
       if (scrollRafRef.current) {
         window.cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
       }
     }
-  }, [open, updatePageFromScroll, markUserInteracting, startInteractionMotionMonitor])
+  }, [estimatedPageHeight, open, updatePageFromScroll, markUserInteracting, startInteractionMotionMonitor])
 
   useEffect(() => {
     if (!open || !pdfDoc) return
@@ -1528,6 +1572,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
             onPointerDown={(e) => {
               markUserInteracting()
               startInteractionMotionMonitor()
+              beginScrollGestureCap()
               handleSwipeStart(e)
             }}
             onPointerMove={handleSwipeMove}

@@ -11,8 +11,15 @@ const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
 const WARM_COMPLETE_STORAGE_PREFIX = 'pa:pdf-warm-complete:'
+const RENDER_DISK_CACHE_NAME = 'pa-pdf-render-v1'
+const RENDER_DISK_CACHE_BASE_URL = 'https://cache.philani.local/pdf-render'
 
 const getWarmCompleteStorageKey = (cacheIdentity: string) => `${WARM_COMPLETE_STORAGE_PREFIX}${cacheIdentity}`
+const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', signature: string, pageNum: number) => {
+  const safeIdentity = encodeURIComponent(cacheIdentity)
+  const safeSignature = encodeURIComponent(signature)
+  return `${RENDER_DISK_CACHE_BASE_URL}/${safeIdentity}/${cacheTier}/${safeSignature}/page-${pageNum}.webp`
+}
 
 type BitmapCacheEntry = {
   bitmap: ImageBitmap
@@ -87,6 +94,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const [estimatedPageHeight, setEstimatedPageHeight] = useState(1100)
   const [initialWarmComplete, setInitialWarmComplete] = useState(false)
   const [warmPhase2Progress, setWarmPhase2Progress] = useState({ visible: false, done: 0, total: 0 })
+  const cacheIdentityRef = useRef('')
   const cacheUrlRef = useRef<string | null>(null)
   const warmAllCompleteRef = useRef(false)
   const pinchActiveRef = useRef(false)
@@ -263,6 +271,38 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       // ignore storage failures
     }
   }, [])
+
+  const canUseDiskRenderCache = useCallback(() => {
+    if (typeof window === 'undefined') return false
+    return typeof window.caches !== 'undefined'
+  }, [])
+
+  const readDiskRenderBlob = useCallback(async (diskKey: string) => {
+    if (!canUseDiskRenderCache()) return null
+    try {
+      const cache = await window.caches.open(RENDER_DISK_CACHE_NAME)
+      const res = await cache.match(diskKey)
+      if (!res || !res.ok) return null
+      return await res.blob()
+    } catch {
+      return null
+    }
+  }, [canUseDiskRenderCache])
+
+  const writeDiskRenderBlob = useCallback(async (diskKey: string, blob: Blob) => {
+    if (!canUseDiskRenderCache()) return
+    try {
+      const cache = await window.caches.open(RENDER_DISK_CACHE_NAME)
+      await cache.put(diskKey, new Response(blob, {
+        headers: {
+          'content-type': blob.type || 'image/webp',
+          'cache-control': 'public, max-age=31536000, immutable',
+        },
+      }))
+    } catch {
+      // ignore cache write failures
+    }
+  }, [canUseDiskRenderCache])
 
   const cancelPhase2Schedule = useCallback(() => {
     const hasCancelIdle = typeof window !== 'undefined' && typeof (window as any).cancelIdleCallback === 'function'
@@ -734,10 +774,11 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     let activeDoc: any | null = null
     let loadingTask: any | null = null
     const cacheIdentity = String(cacheKey || url)
+    cacheIdentityRef.current = cacheIdentity
     const persistedWarmComplete = hasPersistedWarmComplete(cacheIdentity)
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
-    const shouldSkipWarmPhases = persistedWarmComplete && canReuseWarmCache
+    const shouldSkipWarmPhases = persistedWarmComplete && (canReuseWarmCache || canUseDiskRenderCache())
 
     setLoading(true)
     setError(null)
@@ -824,7 +865,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         // ignore
       }
     }
-  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, hasPersistedWarmComplete])
+  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, hasPersistedWarmComplete, canUseDiskRenderCache])
 
   useEffect(() => {
     if (open) return
@@ -893,6 +934,47 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         }
       }
 
+      const cacheIdentity = cacheIdentityRef.current
+      if (cacheIdentity && typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
+        const tryHydrateFromDisk = async (diskTier: 'display' | 'warm') => {
+          const diskKey = buildDiskRenderCacheKey(cacheIdentity, diskTier, signature, pageNum)
+          const blob = await readDiskRenderBlob(diskKey)
+          if (!blob) return false
+          try {
+            const bitmap = await window.createImageBitmap(blob)
+            const cssWidth = Math.max(1, Math.floor(bitmap.width / Math.max(outputScale, 0.0001)))
+            const cssHeight = Math.max(1, Math.floor(bitmap.height / Math.max(outputScale, 0.0001)))
+            canvas.width = bitmap.width
+            canvas.height = bitmap.height
+            canvas.style.width = `${cssWidth}px`
+            canvas.style.height = `${cssHeight}px`
+            context.setTransform(1, 0, 0, 1, 0, 0)
+            context.clearRect(0, 0, canvas.width, canvas.height)
+            context.drawImage(bitmap, 0, 0)
+            upsertBitmapCacheEntry(cacheRef, pageNum, {
+              bitmap,
+              width: canvas.width,
+              height: canvas.height,
+              cssWidth,
+              cssHeight,
+              signature,
+            }, cacheLimit)
+            setPageHeights((prev) => (prev[pageNum] === cssHeight ? prev : { ...prev, [pageNum]: cssHeight }))
+            setEstimatedPageHeight((prev) => Math.max(320, Math.round((prev * 0.85) + (cssHeight * 0.15))))
+            return true
+          } catch {
+            return false
+          }
+        }
+
+        const hydratedFromPrimaryTier = await tryHydrateFromDisk(cacheTier)
+        if (hydratedFromPrimaryTier) return
+        if (cacheTier === 'display') {
+          const hydratedFromWarmTier = await tryHydrateFromDisk('warm')
+          if (hydratedFromWarmTier) return
+        }
+      }
+
       const pageObj = await pdfDoc.getPage(pageNum)
       const baseScale = renderZoomRef.current / 100
       const baseViewport = pageObj.getViewport({ scale: baseScale })
@@ -934,6 +1016,20 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
             cssHeight,
             signature,
           }, cacheLimit)
+
+          if (cacheTier === 'warm' && cacheIdentityRef.current) {
+            try {
+              const diskKey = buildDiskRenderCacheKey(cacheIdentityRef.current, cacheTier, signature, pageNum)
+              const blob = await new Promise<Blob | null>((resolve) => {
+                canvas.toBlob(resolve, 'image/webp', 0.72)
+              })
+              if (blob) {
+                await writeDiskRenderBlob(diskKey, blob)
+              }
+            } catch {
+              // ignore disk persistence failures
+            }
+          }
         } catch {
           // ignore bitmap cache failures
         }
@@ -946,7 +1042,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       }
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, contentSize.width, clearBitmapCache, touchBitmapCacheEntry, upsertBitmapCacheEntry])
+  }, [pdfDoc, open, contentSize.width, clearBitmapCache, touchBitmapCacheEntry, upsertBitmapCacheEntry, readDiskRenderBlob, writeDiskRenderBlob])
 
   useEffect(() => {
     if (!open) return

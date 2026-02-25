@@ -78,8 +78,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const warmRenderSignatureRef = useRef('')
   const renderZoomRef = useRef(110)
   const zoomRef = useRef(110)
-  const pinchRafRef = useRef<number | null>(null)
-  const pendingPinchFrameRef = useRef<{ zoom: number; left: number; top: number } | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const interactionMotionRafRef = useRef<number | null>(null)
   const interactionStableFramesRef = useRef(0)
@@ -164,25 +162,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     contentEl.style.transform = ''
     contentEl.style.willChange = pinchActiveRef.current ? 'transform' : ''
   }, [])
-
-  const flushPendingPinchFrame = useCallback(() => {
-    if (pinchRafRef.current !== null) return
-    pinchRafRef.current = window.requestAnimationFrame(() => {
-      pinchRafRef.current = null
-      const pending = pendingPinchFrameRef.current
-      if (!pending) return
-      const scrollEl = scrollContainerRef.current
-      applyLivePinchStyle(pending.zoom)
-      if (scrollEl) {
-        const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
-        const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-        scrollEl.scrollLeft = clamp(pending.left, 0, maxLeft)
-        scrollEl.scrollTop = clamp(pending.top, 0, maxTop)
-      }
-      zoomRef.current = pending.zoom
-      setZoom(pending.zoom)
-    })
-  }, [applyLivePinchStyle])
 
   const totalPages = Math.max(1, numPages || 1)
   const safePage = clamp(effectivePage, 1, totalPages)
@@ -627,7 +606,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const onTouchMove = (e: TouchEvent) => {
       markUserInteracting()
       if (pinchStateRef.current.active && e.touches.length === 2) {
+        const PINCH_START_THRESHOLD = 0.025
+        const PAN_START_THRESHOLD_PX = 1.5
         const ZOOM_UPDATE_THRESHOLD = 0.08
+        const PAN_UPDATE_THRESHOLD_PX = 0.8
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
@@ -635,26 +617,43 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const rect = scrollEl?.getBoundingClientRect()
         const a = e.touches[0]
         const b = e.touches[1]
-        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : (scrollEl?.clientWidth ?? 0) / 2
-        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : (scrollEl?.clientHeight ?? 0) / 2
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : pinchStateRef.current.anchorX
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : pinchStateRef.current.anchorY
         const scale = dist / pinchStateRef.current.startDist
+        const midpointDx = midpointX - pinchStateRef.current.anchorX
+        const midpointDy = midpointY - pinchStateRef.current.anchorY
+        const panDistance = Math.hypot(midpointDx, midpointDy)
+        if (Math.abs(scale - 1) < PINCH_START_THRESHOLD && panDistance < PAN_START_THRESHOLD_PX) return
         const gestureMinZoom = Math.max(50, renderZoomRef.current)
         const nextZoom = clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
-        if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD) return
+        if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD && panDistance < PAN_UPDATE_THRESHOLD_PX) return
 
         if (scrollEl && zoomRef.current > 0) {
-          applyLivePinchStyle(nextZoom)
-
+          const prevZoom = Math.max(1, zoomRef.current)
+          const ratioDelta = nextZoom / prevZoom
           const currentLeft = scrollEl.scrollLeft
           const currentTop = scrollEl.scrollTop
 
-          pendingPinchFrameRef.current = {
-            zoom: nextZoom,
-            left: currentLeft,
-            top: currentTop,
+          applyLivePinchStyle(nextZoom)
+
+          const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
+          const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+          const nextLeft = (ratioDelta * (currentLeft + midpointX)) - midpointX
+          const nextTop = (ratioDelta * (currentTop + midpointY)) - midpointY
+
+          const clampedLeft = clamp(nextLeft, 0, maxLeft)
+          const clampedTop = clamp(nextTop, 0, maxTop)
+
+          if (maxLeft > 1) {
+            scrollEl.scrollLeft = clampedLeft
           }
-          flushPendingPinchFrame()
+          if (maxTop > 1) {
+            scrollEl.scrollTop = clampedTop
+          }
         }
+
+        zoomRef.current = nextZoom
+        setZoom(nextZoom)
         kickChromeAutoHide()
         return
       }
@@ -666,24 +665,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
     const onTouchEnd = () => {
       startInteractionMotionMonitor()
-      if (pinchRafRef.current !== null) {
-        window.cancelAnimationFrame(pinchRafRef.current)
-        pinchRafRef.current = null
-      }
-      const pending = pendingPinchFrameRef.current
-      if (pending) {
-        const scrollEl = scrollContainerRef.current
-        applyLivePinchStyle(pending.zoom)
-        if (scrollEl) {
-          const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
-          const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          scrollEl.scrollLeft = clamp(pending.left, 0, maxLeft)
-          scrollEl.scrollTop = clamp(pending.top, 0, maxTop)
-        }
-        zoomRef.current = pending.zoom
-        setZoom(pending.zoom)
-        pendingPinchFrameRef.current = null
-      }
       if (pinchStateRef.current.active) {
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
@@ -732,15 +713,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
-      if (pinchRafRef.current !== null) {
-        window.cancelAnimationFrame(pinchRafRef.current)
-        pinchRafRef.current = null
-      }
-      pendingPinchFrameRef.current = null
       pinchActiveRef.current = false
       applyLivePinchStyle(zoomRef.current)
     }
-  }, [applyLivePinchStyle, flushPendingPinchFrame, kickChromeAutoHide, markUserInteracting, open, scrollToPage, startInteractionMotionMonitor, totalPages])
+  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, open, scrollToPage, startInteractionMotionMonitor, totalPages])
 
   useEffect(() => {
     if (!open) return

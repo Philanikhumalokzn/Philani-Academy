@@ -28,6 +28,7 @@ const INTENT_SKIP_GAIN = 5.5
 const INTENT_BASE_PROJECTION = 2.2
 const INTENT_PROJECTION_GAIN = 0.7
 const INTENT_MAX_PROJECTION = 11
+const MAX_MOMENTUM_PAGES_PER_GESTURE = 10
 const PRIORITY_RENDER_RADIUS = 10
 
 const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', pageNum: number) => {
@@ -125,6 +126,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     lastEventTs: 0,
     lastDirection: 0,
     lastDy: 0,
+    gestureStartPage: 0,
   })
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
@@ -787,7 +789,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
-    scrollMomentumRef.current = { active: false, energy: 0, lastTop: 0, lastTs: 0, lastEventTs: 0, lastDirection: 0, lastDy: 0 }
+    scrollMomentumRef.current = { active: false, energy: 0, lastTop: 0, lastTs: 0, lastEventTs: 0, lastDirection: 0, lastDy: 0, gestureStartPage: 0 }
     setPriorityFocusPage(null)
     setSkipRadius(0)
     if (!canReuseWarmCache) {
@@ -1088,11 +1090,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       const momentum = scrollMomentumRef.current
       const maxSkipRadius = Math.max(40, Math.min(180, Math.round(totalPages * 0.18)))
       const effectiveEnergy = Math.max(0, momentum.energy - INTENT_DEAD_ZONE)
-      const nextSkipRadius = clamp(Math.round(Math.pow(effectiveEnergy, 1.2) * INTENT_SKIP_GAIN), 0, maxSkipRadius)
+      const hasIntent = effectiveEnergy > 0
+      momentum.active = hasIntent
 
-      momentum.active = nextSkipRadius > 0
-
-      if (nextSkipRadius <= 0) {
+      if (!hasIntent) {
         setSkipRadius((prev) => (prev === 0 ? prev : 0))
         setPriorityFocusPage((prev) => (prev === null ? prev : null))
         return
@@ -1101,7 +1102,16 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
       const projection = clamp(INTENT_BASE_PROJECTION + (momentum.energy * INTENT_PROJECTION_GAIN), 1.2, INTENT_MAX_PROJECTION)
       const predictedStopTop = clamp(top + (dy * projection), 0, maxTop)
-      const predictedPage = estimatePageFromScrollTop(predictedStopTop)
+      const predictedPageRaw = estimatePageFromScrollTop(predictedStopTop)
+      const anchorPage = clamp(momentum.gestureStartPage || estimatePageFromScrollTop(top), 1, totalPages)
+      const minPage = Math.max(1, anchorPage - MAX_MOMENTUM_PAGES_PER_GESTURE)
+      const maxPage = Math.min(totalPages, anchorPage + MAX_MOMENTUM_PAGES_PER_GESTURE)
+      const predictedPage = clamp(predictedPageRaw, minPage, maxPage)
+      const pageTravel = Math.abs(predictedPage - anchorPage)
+      const momentumFraction = clamp(pageTravel / Math.max(1, MAX_MOMENTUM_PAGES_PER_GESTURE), 0, 1)
+      const energyFactor = clamp(Math.pow(effectiveEnergy, 1.1) / 4, 0, 1)
+      const proportionalFactor = clamp((momentumFraction * 0.72) + (energyFactor * 0.28), 0, 1)
+      const nextSkipRadius = clamp(Math.round(maxSkipRadius * proportionalFactor), 0, maxSkipRadius)
 
       setSkipRadius((prev) => (prev === nextSkipRadius ? prev : nextSkipRadius))
       setPriorityFocusPage((prev) => (prev === predictedPage ? prev : predictedPage))
@@ -1155,6 +1165,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         if (absDy >= INTENT_MIN_DELTA_PX) {
           const direction = Math.sign(dy)
           const overlap = now - momentum.lastEventTs <= INTENT_OVERLAP_WINDOW_MS
+          if (!overlap || !momentum.gestureStartPage) {
+            momentum.gestureStartPage = estimatePageFromScrollTop(top)
+          }
           const directionAligned = momentum.lastDirection === 0 || momentum.lastDirection === direction
           const distanceSignal = clamp(absDy / INTENT_DISTANCE_NORMALIZER_PX, 0, 2)
           const impulse = (overlap ? INTENT_OVERLAP_IMPULSE : INTENT_BASE_IMPULSE)
@@ -1574,6 +1587,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
                 momentum.lastDy = 0
                 momentum.lastDirection = 0
                 momentum.lastEventTs = 0
+                momentum.gestureStartPage = 0
                 const target = e.target as HTMLElement | null
                 const pageHost = target?.closest?.('[data-page]') as HTMLElement | null
                 const pinnedPage = clamp(Number(pageHost?.dataset?.page || safePage), 1, totalPages)

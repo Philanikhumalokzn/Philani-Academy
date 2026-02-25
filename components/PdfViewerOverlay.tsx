@@ -540,17 +540,16 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
           : clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
 
         if (scrollEl && zoomRef.current > 0) {
-          const prevZoom = Math.max(1, zoomRef.current)
-          const ratioDelta = nextZoom / prevZoom
-          const currentLeft = scrollEl.scrollLeft
-          const currentTop = scrollEl.scrollTop
-
           applyLivePinchStyle(nextZoom)
 
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const nextLeft = (ratioDelta * (currentLeft + midpointX)) - midpointX
-          const nextTop = (ratioDelta * (currentTop + midpointY)) - midpointY
+          const nextLeft = isTwoFingerPan
+            ? pinchStateRef.current.startScrollLeft - midpointDx
+            : ((nextZoom / Math.max(1, zoomRef.current)) * (scrollEl.scrollLeft + midpointX)) - midpointX
+          const nextTop = isTwoFingerPan
+            ? pinchStateRef.current.startScrollTop - midpointDy
+            : ((nextZoom / Math.max(1, zoomRef.current)) * (scrollEl.scrollTop + midpointY)) - midpointY
 
           const clampedLeft = clamp(nextLeft, 0, maxLeft)
           const clampedTop = clamp(nextTop, 0, maxTop)

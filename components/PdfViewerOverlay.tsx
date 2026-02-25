@@ -13,10 +13,14 @@ const WARM_RENDER_QUALITY_SCALE = 1
 const RENDER_DISK_CACHE_NAME = 'pa-pdf-render-v1'
 const RENDER_DISK_CACHE_BASE_URL = 'https://cache.philani.local/pdf-render'
 
-const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', signature: string, pageNum: number) => {
+const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', pageNum: number) => {
   const safeIdentity = encodeURIComponent(cacheIdentity)
-  const safeSignature = encodeURIComponent(signature)
-  return `${RENDER_DISK_CACHE_BASE_URL}/${safeIdentity}/${cacheTier}/${safeSignature}/page-${pageNum}.webp`
+  return `${RENDER_DISK_CACHE_BASE_URL}/${safeIdentity}/${cacheTier}/page-${pageNum}.webp`
+}
+
+const buildDiskWarmCompleteMarkerKey = (cacheIdentity: string) => {
+  const safeIdentity = encodeURIComponent(cacheIdentity)
+  return `${RENDER_DISK_CACHE_BASE_URL}/${safeIdentity}/warm-complete.marker`
 }
 
 type BitmapCacheEntry = {
@@ -281,6 +285,35 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       }))
     } catch {
       // ignore cache write failures
+    }
+  }, [canUseDiskRenderCache])
+
+  const hasDiskWarmCompleteMarker = useCallback(async (cacheIdentity: string) => {
+    if (!cacheIdentity || !canUseDiskRenderCache()) return false
+    try {
+      const cache = await window.caches.open(RENDER_DISK_CACHE_NAME)
+      const res = await cache.match(buildDiskWarmCompleteMarkerKey(cacheIdentity))
+      return Boolean(res && res.ok)
+    } catch {
+      return false
+    }
+  }, [canUseDiskRenderCache])
+
+  const persistDiskWarmCompleteMarker = useCallback(async (cacheIdentity: string) => {
+    if (!cacheIdentity || !canUseDiskRenderCache()) return
+    try {
+      const cache = await window.caches.open(RENDER_DISK_CACHE_NAME)
+      await cache.put(
+        buildDiskWarmCompleteMarkerKey(cacheIdentity),
+        new Response('1', {
+          headers: {
+            'content-type': 'text/plain',
+            'cache-control': 'public, max-age=31536000, immutable',
+          },
+        })
+      )
+    } catch {
+      // ignore marker write failures
     }
   }, [canUseDiskRenderCache])
 
@@ -757,7 +790,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     cacheIdentityRef.current = cacheIdentity
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
-    const shouldSkipWarmPhases = canReuseWarmCache || canUseDiskRenderCache()
+    let shouldSkipWarmPhases = canReuseWarmCache
 
     setLoading(true)
     setError(null)
@@ -815,6 +848,14 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
           if (doc?.destroy) await doc.destroy()
           return
         }
+        if (!shouldSkipWarmPhases) {
+          shouldSkipWarmPhases = await hasDiskWarmCompleteMarker(cacheIdentity)
+          if (shouldSkipWarmPhases && !cancelled) {
+            setInitialWarmComplete(true)
+            warmAllCompleteRef.current = true
+            setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
+          }
+        }
         cacheUrlRef.current = cacheIdentity
         if (shouldSkipWarmPhases) {
           const pageCount = Math.max(0, Number(doc?.numPages || 0))
@@ -844,7 +885,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         // ignore
       }
     }
-  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, canUseDiskRenderCache])
+  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, hasDiskWarmCompleteMarker])
 
   useEffect(() => {
     if (open) return
@@ -916,7 +957,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       const cacheIdentity = cacheIdentityRef.current
       if (cacheIdentity && typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
         const tryHydrateFromDisk = async (diskTier: 'display' | 'warm') => {
-          const diskKey = buildDiskRenderCacheKey(cacheIdentity, diskTier, signature, pageNum)
+          const diskKey = buildDiskRenderCacheKey(cacheIdentity, diskTier, pageNum)
           const blob = await readDiskRenderBlob(diskKey)
           if (!blob) return false
           try {
@@ -998,7 +1039,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
           if (cacheTier === 'warm' && cacheIdentityRef.current) {
             try {
-              const diskKey = buildDiskRenderCacheKey(cacheIdentityRef.current, cacheTier, signature, pageNum)
+              const diskKey = buildDiskRenderCacheKey(cacheIdentityRef.current, cacheTier, pageNum)
               const blob = await new Promise<Blob | null>((resolve) => {
                 canvas.toBlob(resolve, 'image/webp', 0.72)
               })
@@ -1089,6 +1130,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         setInitialWarmComplete(true)
         if (totalPages <= INITIAL_WARM_PAGE_COUNT) {
           warmAllCompleteRef.current = true
+          const cacheIdentity = cacheIdentityRef.current
+          if (cacheIdentity) {
+            void persistDiskWarmCompleteMarker(cacheIdentity)
+          }
         }
       }
     })()
@@ -1166,6 +1211,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       cancelPhase2Schedule()
       if (phase2NextPageRef.current > phase2EndPage) {
         warmAllCompleteRef.current = true
+        const cacheIdentity = cacheIdentityRef.current
+        if (cacheIdentity) {
+          void persistDiskWarmCompleteMarker(cacheIdentity)
+        }
         setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || phase2CompletedCountRef.current }))
         return
       }
@@ -1216,6 +1265,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     hasAnyBitmapCacheEntry,
     cancelPhase2Schedule,
     phase2ResumeSignal,
+    persistDiskWarmCompleteMarker,
   ])
 
   if (!open) return null

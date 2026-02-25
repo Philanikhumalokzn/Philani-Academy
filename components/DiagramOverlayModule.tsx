@@ -1128,6 +1128,7 @@ export default function DiagramOverlayModule(props: {
   const redoRef = useRef<DiagramAnnotations[]>([])
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
+  const [gridApiReadyVersion, setGridApiReadyVersion] = useState(0)
   const activeHistoryDiagramIdRef = useRef<string | null>(null)
 
   const getExcalidrawToolType = useCallback((value: DiagramTool): 'selection' | 'freedraw' | 'arrow' | 'eraser' => {
@@ -1154,15 +1155,26 @@ export default function DiagramOverlayModule(props: {
 
   useEffect(() => {
     if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
     if (tool !== 'pen') {
       setTool('pen')
       return
     }
+
     const api = excalidrawApiRef.current
-    if (!api?.setActiveTool) return
-    api.setActiveTool({ type: getExcalidrawToolType(tool) })
-    api.updateScene?.({ appState: { currentItemStrokeWidth: 1 } })
-  }, [getExcalidrawToolType, isGridDiagram, tool])
+    if (!api?.setActiveTool || !api?.updateScene) return
+
+    api.setActiveTool({ type: getExcalidrawToolType('pen') })
+    api.updateScene({ appState: { activeTool: { type: 'freedraw' }, currentItemStrokeWidth: 1 } })
+
+    const settle = window.setTimeout(() => {
+      const latestApi = excalidrawApiRef.current
+      latestApi?.setActiveTool?.({ type: 'freedraw' })
+      latestApi?.updateScene?.({ appState: { activeTool: { type: 'freedraw' }, currentItemStrokeWidth: 1 } })
+    }, 0)
+
+    return () => window.clearTimeout(settle)
+  }, [activeDiagram?.id, diagramState.isOpen, getExcalidrawToolType, gridApiReadyVersion, isGridDiagram, tool])
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(undoRef.current.length > 0)
@@ -4240,7 +4252,10 @@ export default function DiagramOverlayModule(props: {
               }}
             >
               <Excalidraw
-                excalidrawAPI={(api) => { excalidrawApiRef.current = api }}
+                excalidrawAPI={(api) => {
+                  excalidrawApiRef.current = api
+                  setGridApiReadyVersion((prev) => prev + 1)
+                }}
                 zenModeEnabled={false}
                 viewModeEnabled={false}
                 initialData={{

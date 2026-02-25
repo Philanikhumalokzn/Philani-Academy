@@ -12,12 +12,23 @@ const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
 const RENDER_DISK_CACHE_NAME = 'pa-pdf-render-v1'
 const RENDER_DISK_CACHE_BASE_URL = 'https://cache.philani.local/pdf-render'
-const FAST_SCROLL_VELOCITY_PX_PER_SEC = 2800
-const FAST_SCROLL_OVERLAP_MS = 320
-const FAST_SCROLL_RESET_VELOCITY_PX_PER_SEC = 220
+const INTENT_OVERLAP_WINDOW_MS = 320
+const INTENT_MIN_DELTA_PX = 2
+const INTENT_DECAY_TAU_MS = 420
+const INTENT_IDLE_RESET_MS = 260
+const INTENT_BASE_IMPULSE = 0.2
+const INTENT_OVERLAP_IMPULSE = 0.7
+const INTENT_DISTANCE_NORMALIZER_PX = 140
+const INTENT_DISTANCE_GAIN = 0.75
+const INTENT_DIRECTION_BONUS = 0.2
+const INTENT_DIRECTION_PENALTY = 0.28
+const INTENT_MAX_ENERGY = 12
+const INTENT_DEAD_ZONE = 0.9
+const INTENT_SKIP_GAIN = 5.5
+const INTENT_BASE_PROJECTION = 2.2
+const INTENT_PROJECTION_GAIN = 0.7
+const INTENT_MAX_PROJECTION = 11
 const PRIORITY_RENDER_RADIUS = 10
-const SKIP_RADIUS_STEP = 10
-const MAX_SKIP_RADIUS = 30
 
 const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', pageNum: number) => {
   const safeIdentity = encodeURIComponent(cacheIdentity)
@@ -108,10 +119,12 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const warmAllCompleteRef = useRef(false)
   const scrollMomentumRef = useRef({
     active: false,
+    energy: 0,
     lastTop: 0,
     lastTs: 0,
-    lastFastTs: 0,
-    burstCount: 0,
+    lastEventTs: 0,
+    lastDirection: 0,
+    lastDy: 0,
   })
   const pinchActiveRef = useRef(false)
   const restoredScrollRef = useRef(false)
@@ -774,7 +787,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
-    scrollMomentumRef.current = { active: false, lastTop: 0, lastTs: 0, lastFastTs: 0, burstCount: 0 }
+    scrollMomentumRef.current = { active: false, energy: 0, lastTop: 0, lastTs: 0, lastEventTs: 0, lastDirection: 0, lastDy: 0 }
     setPriorityFocusPage(null)
     setSkipRadius(0)
     if (!canReuseWarmCache) {
@@ -1069,6 +1082,58 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     if (!open) return
     const scrollEl = scrollContainerRef.current
     if (!scrollEl) return
+    let decayRaf: number | null = null
+
+    const applyMomentumVisualState = (top: number, dy: number) => {
+      const momentum = scrollMomentumRef.current
+      const maxSkipRadius = Math.max(40, Math.min(180, Math.round(totalPages * 0.18)))
+      const effectiveEnergy = Math.max(0, momentum.energy - INTENT_DEAD_ZONE)
+      const nextSkipRadius = clamp(Math.round(Math.pow(effectiveEnergy, 1.2) * INTENT_SKIP_GAIN), 0, maxSkipRadius)
+
+      momentum.active = nextSkipRadius > 0
+
+      if (nextSkipRadius <= 0) {
+        setSkipRadius((prev) => (prev === 0 ? prev : 0))
+        setPriorityFocusPage((prev) => (prev === null ? prev : null))
+        return
+      }
+
+      const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+      const projection = clamp(INTENT_BASE_PROJECTION + (momentum.energy * INTENT_PROJECTION_GAIN), 1.2, INTENT_MAX_PROJECTION)
+      const predictedStopTop = clamp(top + (dy * projection), 0, maxTop)
+      const predictedPage = estimatePageFromScrollTop(predictedStopTop)
+
+      setSkipRadius((prev) => (prev === nextSkipRadius ? prev : nextSkipRadius))
+      setPriorityFocusPage((prev) => (prev === predictedPage ? prev : predictedPage))
+    }
+
+    const runDecay = () => {
+      decayRaf = null
+      const momentum = scrollMomentumRef.current
+      const now = Date.now()
+      const dt = Math.max(1, now - (momentum.lastTs || now))
+      momentum.lastTs = now
+      momentum.energy = Math.max(0, momentum.energy * Math.exp(-dt / INTENT_DECAY_TAU_MS))
+      momentum.lastDy = momentum.lastDy * Math.exp(-dt / INTENT_DECAY_TAU_MS)
+
+      applyMomentumVisualState(scrollEl.scrollTop, momentum.lastDy)
+
+      if (momentum.energy <= 0.06 && now - momentum.lastEventTs > INTENT_IDLE_RESET_MS) {
+        momentum.energy = 0
+        momentum.lastDy = 0
+        momentum.active = false
+        setSkipRadius((prev) => (prev === 0 ? prev : 0))
+        setPriorityFocusPage((prev) => (prev === null ? prev : null))
+        return
+      }
+
+      decayRaf = window.requestAnimationFrame(runDecay)
+    }
+
+    const ensureDecayLoop = () => {
+      if (decayRaf !== null) return
+      decayRaf = window.requestAnimationFrame(runDecay)
+    }
 
     const onScroll = () => {
       if (pinchActiveRef.current) return
@@ -1083,27 +1148,27 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const top = scrollEl.scrollTop
         const momentum = scrollMomentumRef.current
         const dt = Math.max(1, now - (momentum.lastTs || now))
+        momentum.energy = Math.max(0, momentum.energy * Math.exp(-dt / INTENT_DECAY_TAU_MS))
         const dy = top - (momentum.lastTop || top)
-        const velocityPxPerSec = Math.abs((dy / dt) * 1000)
+        const absDy = Math.abs(dy)
 
-        if (velocityPxPerSec >= FAST_SCROLL_VELOCITY_PX_PER_SEC) {
-          const overlap = now - momentum.lastFastTs <= FAST_SCROLL_OVERLAP_MS
-          momentum.burstCount = overlap ? Math.min(3, momentum.burstCount + 1) : 1
-          momentum.lastFastTs = now
-          momentum.active = true
+        if (absDy >= INTENT_MIN_DELTA_PX) {
+          const direction = Math.sign(dy)
+          const overlap = now - momentum.lastEventTs <= INTENT_OVERLAP_WINDOW_MS
+          const directionAligned = momentum.lastDirection === 0 || momentum.lastDirection === direction
+          const distanceSignal = clamp(absDy / INTENT_DISTANCE_NORMALIZER_PX, 0, 2)
+          const impulse = (overlap ? INTENT_OVERLAP_IMPULSE : INTENT_BASE_IMPULSE)
+            + (distanceSignal * INTENT_DISTANCE_GAIN)
+            + (directionAligned ? INTENT_DIRECTION_BONUS : -INTENT_DIRECTION_PENALTY)
 
-          const skip = Math.min(MAX_SKIP_RADIUS, momentum.burstCount * SKIP_RADIUS_STEP)
-          const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const predictedStopTop = clamp(top + (dy * 6), 0, maxTop)
-          const predictedPage = estimatePageFromScrollTop(predictedStopTop)
-          setSkipRadius((prev) => (prev === skip ? prev : skip))
-          setPriorityFocusPage((prev) => (prev === predictedPage ? prev : predictedPage))
-        } else if (momentum.active && velocityPxPerSec <= FAST_SCROLL_RESET_VELOCITY_PX_PER_SEC) {
-          momentum.active = false
-          momentum.burstCount = 0
-          setSkipRadius((prev) => (prev === 0 ? prev : 0))
-          setPriorityFocusPage((prev) => (prev === null ? prev : null))
+          momentum.energy = clamp(momentum.energy + Math.max(0, impulse), 0, INTENT_MAX_ENERGY)
+          momentum.lastEventTs = now
+          momentum.lastDirection = direction
+          momentum.lastDy = dy
         }
+
+        applyMomentumVisualState(top, dy)
+        if (momentum.energy > 0.06) ensureDecayLoop()
 
         momentum.lastTop = top
         momentum.lastTs = now
@@ -1121,8 +1186,12 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         window.cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
       }
+      if (decayRaf !== null) {
+        window.cancelAnimationFrame(decayRaf)
+        decayRaf = null
+      }
     }
-  }, [open, updatePageFromScroll, markUserInteracting, startInteractionMotionMonitor, estimatePageFromScrollTop])
+  }, [open, totalPages, updatePageFromScroll, markUserInteracting, startInteractionMotionMonitor, estimatePageFromScrollTop])
 
   useEffect(() => {
     if (!open || !pdfDoc) return
@@ -1501,7 +1570,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
               const momentum = scrollMomentumRef.current
               if (momentum.active) {
                 momentum.active = false
-                momentum.burstCount = 0
+                momentum.energy = 0
+                momentum.lastDy = 0
+                momentum.lastDirection = 0
+                momentum.lastEventTs = 0
                 const target = e.target as HTMLElement | null
                 const pageHost = target?.closest?.('[data-page]') as HTMLElement | null
                 const pinnedPage = clamp(Number(pageHost?.dataset?.page || safePage), 1, totalPages)

@@ -61,7 +61,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const renderZoomRef = useRef(110)
   const zoomRef = useRef(110)
   const scrollRafRef = useRef<number | null>(null)
-  const interactionSettleRafRef = useRef<number | null>(null)
+  const interactionMotionRafRef = useRef<number | null>(null)
+  const interactionStableFramesRef = useRef(0)
+  const interactionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
   const isInteractingRef = useRef(false)
   const phase2IdleHandleRef = useRef<number | null>(null)
   const phase2TimeoutHandleRef = useRef<number | null>(null)
@@ -237,31 +239,65 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     })
   }, [])
 
+  const stopInteractionMotionMonitor = useCallback(() => {
+    if (interactionMotionRafRef.current !== null) {
+      window.cancelAnimationFrame(interactionMotionRafRef.current)
+      interactionMotionRafRef.current = null
+    }
+    interactionStableFramesRef.current = 0
+    interactionLastSnapshotRef.current = null
+  }, [])
+
   const markUserInteractionEnded = useCallback(() => {
     if (!isInteractingRef.current) return
     isInteractingRef.current = false
     setPhase2ResumeSignal((prev) => prev + 1)
   }, [])
 
-  const scheduleInteractionEndNextFrame = useCallback(() => {
-    if (interactionSettleRafRef.current !== null) {
-      window.cancelAnimationFrame(interactionSettleRafRef.current)
+  const startInteractionMotionMonitor = useCallback(() => {
+    if (interactionMotionRafRef.current !== null) return
+    const tick = () => {
+      const scrollEl = scrollContainerRef.current
+      const nextSnapshot = {
+        left: scrollEl?.scrollLeft ?? 0,
+        top: scrollEl?.scrollTop ?? 0,
+        zoom: zoomRef.current,
+      }
+      const prevSnapshot = interactionLastSnapshotRef.current
+      const moved = !prevSnapshot
+        || Math.abs(nextSnapshot.left - prevSnapshot.left) > 0.5
+        || Math.abs(nextSnapshot.top - prevSnapshot.top) > 0.5
+        || Math.abs(nextSnapshot.zoom - prevSnapshot.zoom) > 0.02
+      interactionLastSnapshotRef.current = nextSnapshot
+
+      const pointerActive = swipeStateRef.current.pointerId !== null
+      const activeMotion = moved || pinchActiveRef.current || pointerActive
+
+      if (activeMotion) {
+        interactionStableFramesRef.current = 0
+        isInteractingRef.current = true
+        interactionMotionRafRef.current = window.requestAnimationFrame(tick)
+        return
+      }
+
+      interactionStableFramesRef.current += 1
+      if (interactionStableFramesRef.current >= 2) {
+        stopInteractionMotionMonitor()
+        markUserInteractionEnded()
+        return
+      }
+      interactionMotionRafRef.current = window.requestAnimationFrame(tick)
     }
-    interactionSettleRafRef.current = window.requestAnimationFrame(() => {
-      interactionSettleRafRef.current = null
-      markUserInteractionEnded()
-    })
-  }, [markUserInteractionEnded])
+    interactionMotionRafRef.current = window.requestAnimationFrame(tick)
+  }, [markUserInteractionEnded, stopInteractionMotionMonitor])
 
   const markUserInteracting = useCallback(() => {
     isInteractingRef.current = true
     cancelPhase2Schedule()
     cancelWarmRenderTasks()
-    if (interactionSettleRafRef.current !== null) {
-      window.cancelAnimationFrame(interactionSettleRafRef.current)
-      interactionSettleRafRef.current = null
-    }
-  }, [cancelPhase2Schedule, cancelWarmRenderTasks])
+    interactionStableFramesRef.current = 0
+    startInteractionMotionMonitor()
+  }, [cancelPhase2Schedule, cancelWarmRenderTasks, startInteractionMotionMonitor])
 
   const cancelRenderTasks = useCallback(() => {
     renderTasksRef.current.forEach((task) => {
@@ -521,7 +557,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
 
     const onTouchEnd = () => {
-      markUserInteractionEnded()
+      startInteractionMotionMonitor()
       if (pinchStateRef.current.active) {
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
@@ -573,7 +609,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       pinchActiveRef.current = false
       applyLivePinchStyle(zoomRef.current)
     }
-  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, markUserInteractionEnded, open, scrollToPage, totalPages])
+  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, open, scrollToPage, startInteractionMotionMonitor, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -706,16 +742,13 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     cancelWarmRenderTasks()
     cancelRenderTasks()
     isInteractingRef.current = false
-    if (interactionSettleRafRef.current !== null) {
-      window.cancelAnimationFrame(interactionSettleRafRef.current)
-      interactionSettleRafRef.current = null
-    }
+    stopInteractionMotionMonitor()
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
     }
     setPdfDoc(null)
-  }, [open, pdfDoc, cancelPhase2Schedule, cancelWarmRenderTasks, cancelRenderTasks])
+  }, [open, pdfDoc, cancelPhase2Schedule, cancelWarmRenderTasks, cancelRenderTasks, stopInteractionMotionMonitor])
 
   const renderPageToCanvas = useCallback(async (
     pageNum: number,
@@ -852,7 +885,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const onScroll = () => {
       if (pinchActiveRef.current) return
       markUserInteracting()
-      scheduleInteractionEndNextFrame()
+      startInteractionMotionMonitor()
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
@@ -872,7 +905,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         scrollRafRef.current = null
       }
     }
-  }, [open, updatePageFromScroll, markUserInteracting, scheduleInteractionEndNextFrame])
+  }, [open, updatePageFromScroll, markUserInteracting, startInteractionMotionMonitor])
 
   useEffect(() => {
     if (!open || !pdfDoc) return
@@ -1045,7 +1078,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       }}
       onWheel={() => {
         markUserInteracting()
-        scheduleInteractionEndNextFrame()
+        startInteractionMotionMonitor()
         kickChromeAutoHide()
       }}
     >
@@ -1208,7 +1241,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
             style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
             onWheel={(e) => {
               markUserInteracting()
-              scheduleInteractionEndNextFrame()
+              startInteractionMotionMonitor()
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)
               if (absX < 30 || absX < absY * 1.2) return
@@ -1236,20 +1269,21 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
             }}
             onPointerDown={(e) => {
               markUserInteracting()
+              startInteractionMotionMonitor()
               handleSwipeStart(e)
             }}
             onPointerMove={handleSwipeMove}
             onPointerUp={(e) => {
               handleSwipeEnd(e)
-              markUserInteractionEnded()
+              startInteractionMotionMonitor()
             }}
             onPointerCancel={(e) => {
               handleSwipeEnd(e)
-              markUserInteractionEnded()
+              startInteractionMotionMonitor()
             }}
             onPointerLeave={(e) => {
               handleSwipeEnd(e)
-              markUserInteractionEnded()
+              startInteractionMotionMonitor()
             }}
           >
             {isViewerLoading && !error ? (

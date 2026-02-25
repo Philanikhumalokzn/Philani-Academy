@@ -18,6 +18,8 @@ const FAST_SCROLL_RESET_VELOCITY_PX_PER_SEC = 220
 const PRIORITY_RENDER_RADIUS = 10
 const SKIP_RADIUS_STEP = 10
 const MAX_SKIP_RADIUS = 30
+const PINCH_VERTICAL_ACTIVATION_PX = 3
+const PINCH_MAX_VERTICAL_DELTA_PER_FRAME_PX = 28
 
 const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', pageNum: number) => {
   const safeIdentity = encodeURIComponent(cacheIdentity)
@@ -641,6 +643,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const scaleDelta = prevDist > 0 ? dist / prevDist : 1
         const prevMidpointX = pinchStateRef.current.lastMidpointX || midpointX
         const prevMidpointY = pinchStateRef.current.lastMidpointY || midpointY
+        const midpointStepY = midpointY - prevMidpointY
         const gestureMinZoom = Math.max(50, renderZoomRef.current)
         const prevZoom = Math.max(1, zoomRef.current)
         const nextZoom = clamp(prevZoom * scaleDelta, gestureMinZoom, 220)
@@ -658,7 +661,12 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
           const zoomRatio = nextZoom / prevZoom
           const rawNextLeft = (zoomRatio * (currentLeft + prevMidpointX)) - midpointX
           const nextLeft = allowHorizontalPan ? rawNextLeft : scrollEl.scrollLeft
-          const nextTop = (zoomRatio * (currentTop + prevMidpointY)) - midpointY
+          const rawNextTop = (zoomRatio * (currentTop + prevMidpointY)) - midpointY
+          const allowVerticalPan = isZooming || Math.abs(midpointStepY) >= PINCH_VERTICAL_ACTIVATION_PX
+          const nextTopUnclamped = allowVerticalPan
+            ? clamp(rawNextTop, currentTop - PINCH_MAX_VERTICAL_DELTA_PER_FRAME_PX, currentTop + PINCH_MAX_VERTICAL_DELTA_PER_FRAME_PX)
+            : currentTop
+          const nextTop = nextTopUnclamped
 
           const clampedLeft = clamp(nextLeft, 0, maxLeft)
           const clampedTop = clamp(nextTop, 0, maxTop)

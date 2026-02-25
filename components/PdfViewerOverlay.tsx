@@ -96,6 +96,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const [estimatedPageHeight, setEstimatedPageHeight] = useState(1100)
   const [initialWarmComplete, setInitialWarmComplete] = useState(false)
   const [warmPhase2Progress, setWarmPhase2Progress] = useState({ visible: false, done: 0, total: 0 })
+  const warmCompletedIdentitySetRef = useRef<Set<string>>(new Set())
   const cacheIdentityRef = useRef('')
   const cacheUrlRef = useRef<string | null>(null)
   const warmAllCompleteRef = useRef(false)
@@ -790,7 +791,8 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     cacheIdentityRef.current = cacheIdentity
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
-    let shouldSkipWarmPhases = canReuseWarmCache
+    const hasInSessionWarmCompletion = warmCompletedIdentitySetRef.current.has(cacheIdentity)
+    let shouldSkipWarmPhases = canReuseWarmCache && hasInSessionWarmCompletion
 
     setLoading(true)
     setError(null)
@@ -851,6 +853,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         if (!shouldSkipWarmPhases) {
           shouldSkipWarmPhases = await hasDiskWarmCompleteMarker(cacheIdentity)
           if (shouldSkipWarmPhases && !cancelled) {
+            warmCompletedIdentitySetRef.current.add(cacheIdentity)
             setInitialWarmComplete(true)
             warmAllCompleteRef.current = true
             setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
@@ -1132,6 +1135,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
           warmAllCompleteRef.current = true
           const cacheIdentity = cacheIdentityRef.current
           if (cacheIdentity) {
+            warmCompletedIdentitySetRef.current.add(cacheIdentity)
             void persistDiskWarmCompleteMarker(cacheIdentity)
           }
         }
@@ -1213,6 +1217,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         warmAllCompleteRef.current = true
         const cacheIdentity = cacheIdentityRef.current
         if (cacheIdentity) {
+          warmCompletedIdentitySetRef.current.add(cacheIdentity)
           void persistDiskWarmCompleteMarker(cacheIdentity)
         }
         setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || phase2CompletedCountRef.current }))

@@ -5,10 +5,21 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 const VIRTUAL_WINDOW_RADIUS = 8
 const INITIAL_WARM_PAGE_COUNT = 20
 const PAGE_BITMAP_CACHE_LIMIT = 36
+const WARM_BITMAP_CACHE_LIMIT = 48
 const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
-const WARM_RENDER_QUALITY_SCALE = 0.1
+const WARM_RENDER_QUALITY_SCALE = 1
+const INTERACTION_IDLE_MS = 220
+
+type BitmapCacheEntry = {
+  bitmap: ImageBitmap
+  width: number
+  height: number
+  cssWidth: number
+  cssHeight: number
+  signature: string
+}
 
 type PdfViewerOverlayProps = {
   open: boolean
@@ -43,12 +54,16 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const contentRef = useRef<HTMLDivElement | null>(null)
   const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const pageCanvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
-  const renderTasksRef = useRef<Map<number, any>>(new Map())
-  const pageBitmapCacheRef = useRef<Map<number, { bitmap: ImageBitmap; width: number; height: number; cssWidth: number; cssHeight: number; signature: string }>>(new Map())
-  const renderSignatureRef = useRef('')
+  const renderTasksRef = useRef<Map<string, any>>(new Map())
+  const displayBitmapCacheRef = useRef<Map<number, BitmapCacheEntry>>(new Map())
+  const warmBitmapCacheRef = useRef<Map<number, BitmapCacheEntry>>(new Map())
+  const displayRenderSignatureRef = useRef('')
+  const warmRenderSignatureRef = useRef('')
   const renderZoomRef = useRef(110)
   const zoomRef = useRef(110)
   const scrollRafRef = useRef<number | null>(null)
+  const interactionResumeTimerRef = useRef<number | null>(null)
+  const isInteractingRef = useRef(false)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
     autoHideMs: 2500,
@@ -136,20 +151,26 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
   }, [])
 
-  const clearPageBitmapCache = useCallback(() => {
-    pageBitmapCacheRef.current.forEach((entry) => {
+  const clearBitmapCache = useCallback((cacheRef: React.MutableRefObject<Map<number, BitmapCacheEntry>>) => {
+    cacheRef.current.forEach((entry) => {
       try {
         entry.bitmap.close?.()
       } catch {
         // ignore
       }
     })
-    pageBitmapCacheRef.current.clear()
-    renderSignatureRef.current = ''
+    cacheRef.current.clear()
   }, [])
 
-  const touchBitmapCacheEntry = useCallback((pageNum: number) => {
-    const cache = pageBitmapCacheRef.current
+  const clearPageBitmapCache = useCallback(() => {
+    clearBitmapCache(displayBitmapCacheRef)
+    clearBitmapCache(warmBitmapCacheRef)
+    displayRenderSignatureRef.current = ''
+    warmRenderSignatureRef.current = ''
+  }, [clearBitmapCache])
+
+  const touchBitmapCacheEntry = useCallback((cacheRef: React.MutableRefObject<Map<number, BitmapCacheEntry>>, pageNum: number) => {
+    const cache = cacheRef.current
     const current = cache.get(pageNum)
     if (!current) return
     cache.delete(pageNum)
@@ -157,10 +178,12 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   }, [])
 
   const upsertBitmapCacheEntry = useCallback((
+    cacheRef: React.MutableRefObject<Map<number, BitmapCacheEntry>>,
     pageNum: number,
-    nextEntry: { bitmap: ImageBitmap; width: number; height: number; cssWidth: number; cssHeight: number; signature: string }
+    nextEntry: BitmapCacheEntry,
+    cacheLimit: number
   ) => {
-    const cache = pageBitmapCacheRef.current
+    const cache = cacheRef.current
     const existing = cache.get(pageNum)
     if (existing) {
       try {
@@ -171,7 +194,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       cache.delete(pageNum)
     }
     cache.set(pageNum, nextEntry)
-    while (cache.size > PAGE_BITMAP_CACHE_LIMIT) {
+    while (cache.size > cacheLimit) {
       const oldestKey = cache.keys().next().value
       if (typeof oldestKey !== 'number') break
       const oldest = cache.get(oldestKey)
@@ -184,6 +207,21 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       }
       cache.delete(oldestKey)
     }
+  }, [])
+
+  const hasAnyBitmapCacheEntry = useCallback((pageNum: number) => {
+    return displayBitmapCacheRef.current.has(pageNum) || warmBitmapCacheRef.current.has(pageNum)
+  }, [])
+
+  const markUserInteracting = useCallback(() => {
+    isInteractingRef.current = true
+    if (interactionResumeTimerRef.current !== null) {
+      window.clearTimeout(interactionResumeTimerRef.current)
+    }
+    interactionResumeTimerRef.current = window.setTimeout(() => {
+      isInteractingRef.current = false
+      interactionResumeTimerRef.current = null
+    }, INTERACTION_IDLE_MS)
   }, [])
 
   const cancelRenderTasks = useCallback(() => {
@@ -541,7 +579,8 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     let activeDoc: any | null = null
     let loadingTask: any | null = null
     const cacheIdentity = String(cacheKey || url)
-    const canReuseWarmCache = cacheUrlRef.current === cacheIdentity && pageBitmapCacheRef.current.size > 0
+    const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
+      && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
 
     setLoading(true)
     setError(null)
@@ -620,6 +659,11 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   useEffect(() => {
     if (open) return
     cancelRenderTasks()
+    isInteractingRef.current = false
+    if (interactionResumeTimerRef.current !== null) {
+      window.clearTimeout(interactionResumeTimerRef.current)
+      interactionResumeTimerRef.current = null
+    }
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     if (pdfDoc?.destroy) {
       pdfDoc.destroy()
@@ -630,24 +674,28 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const renderPageToCanvas = useCallback(async (
     pageNum: number,
     canvas: HTMLCanvasElement,
-    options?: { qualityScale?: number }
+    options?: { qualityScale?: number; cacheTier?: 'display' | 'warm' }
   ) => {
     if (!pdfDoc || !open) return
     const context = canvas.getContext('2d')
     if (!context) return
 
     try {
-      const requestedQuality = clamp(options?.qualityScale ?? 1, 0.35, 1)
+      const cacheTier = options?.cacheTier || 'display'
+      const cacheRef = cacheTier === 'warm' ? warmBitmapCacheRef : displayBitmapCacheRef
+      const cacheLimit = cacheTier === 'warm' ? WARM_BITMAP_CACHE_LIMIT : PAGE_BITMAP_CACHE_LIMIT
+      const signatureRef = cacheTier === 'warm' ? warmRenderSignatureRef : displayRenderSignatureRef
+      const requestedQuality = clamp(options?.qualityScale ?? 1, 0.1, 1)
       const outputScale = (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) * requestedQuality
       const signature = `${Math.round(contentSize.width || 0)}:${Math.round(renderZoomRef.current)}:${Math.round(outputScale * 100)}`
-      if (renderSignatureRef.current && renderSignatureRef.current !== signature) {
-        clearPageBitmapCache()
+      if (signatureRef.current && signatureRef.current !== signature) {
+        clearBitmapCache(cacheRef)
       }
-      if (!renderSignatureRef.current) {
-        renderSignatureRef.current = signature
+      if (!signatureRef.current) {
+        signatureRef.current = signature
       }
 
-      const cached = pageBitmapCacheRef.current.get(pageNum)
+      const cached = cacheRef.current.get(pageNum)
       if (cached && cached.signature === signature) {
         canvas.width = cached.width
         canvas.height = cached.height
@@ -656,10 +704,24 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         context.setTransform(1, 0, 0, 1, 0, 0)
         context.clearRect(0, 0, canvas.width, canvas.height)
         context.drawImage(cached.bitmap, 0, 0)
-        touchBitmapCacheEntry(pageNum)
+        touchBitmapCacheEntry(cacheRef, pageNum)
         setPageHeights((prev) => (prev[pageNum] === cached.cssHeight ? prev : { ...prev, [pageNum]: cached.cssHeight }))
         setEstimatedPageHeight((prev) => Math.max(320, Math.round((prev * 0.85) + (cached.cssHeight * 0.15))))
         return
+      }
+
+      if (cacheTier === 'display') {
+        const warmCached = warmBitmapCacheRef.current.get(pageNum)
+        if (warmCached && warmCached.signature === warmRenderSignatureRef.current) {
+          canvas.width = warmCached.width
+          canvas.height = warmCached.height
+          canvas.style.width = `${warmCached.cssWidth}px`
+          canvas.style.height = `${warmCached.cssHeight}px`
+          context.setTransform(1, 0, 0, 1, 0, 0)
+          context.clearRect(0, 0, canvas.width, canvas.height)
+          context.drawImage(warmCached.bitmap, 0, 0)
+          touchBitmapCacheEntry(warmBitmapCacheRef, pageNum)
+        }
       }
 
       const pageObj = await pdfDoc.getPage(pageNum)
@@ -679,13 +741,14 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       canvas.style.height = `${cssHeight}px`
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
 
-      const existing = renderTasksRef.current.get(pageNum)
+      const taskKey = `${cacheTier}:${pageNum}`
+      const existing = renderTasksRef.current.get(taskKey)
       if (existing?.cancel) existing.cancel()
       const task = pageObj.render({ canvasContext: context, viewport })
-      renderTasksRef.current.set(pageNum, task)
+      renderTasksRef.current.set(taskKey, task)
       await task.promise
-      if (renderTasksRef.current.get(pageNum) === task) {
-        renderTasksRef.current.delete(pageNum)
+      if (renderTasksRef.current.get(taskKey) === task) {
+        renderTasksRef.current.delete(taskKey)
       }
 
       setPageHeights((prev) => (prev[pageNum] === cssHeight ? prev : { ...prev, [pageNum]: cssHeight }))
@@ -694,14 +757,14 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
         try {
           const bitmap = await window.createImageBitmap(canvas)
-          upsertBitmapCacheEntry(pageNum, {
+          upsertBitmapCacheEntry(cacheRef, pageNum, {
             bitmap,
             width: canvas.width,
             height: canvas.height,
             cssWidth,
             cssHeight,
             signature,
-          })
+          }, cacheLimit)
         } catch {
           // ignore bitmap cache failures
         }
@@ -714,7 +777,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       }
       setError(err?.message || 'Failed to render PDF page')
     }
-  }, [pdfDoc, open, contentSize.width, clearPageBitmapCache, touchBitmapCacheEntry, upsertBitmapCacheEntry])
+  }, [pdfDoc, open, contentSize.width, clearBitmapCache, touchBitmapCacheEntry, upsertBitmapCacheEntry])
 
   useEffect(() => {
     if (!open) return
@@ -742,6 +805,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
     const onScroll = () => {
       if (pinchActiveRef.current) return
+      markUserInteracting()
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
@@ -761,7 +825,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         scrollRafRef.current = null
       }
     }
-  }, [open, updatePageFromScroll])
+  }, [open, updatePageFromScroll, markUserInteracting])
 
   useEffect(() => {
     if (!open || !pdfDoc) return
@@ -772,9 +836,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       const warmUntil = Math.min(totalPages, INITIAL_WARM_PAGE_COUNT)
       for (let pageNum = 1; pageNum <= warmUntil; pageNum += 1) {
         if (cancelled) return
-        if (pageBitmapCacheRef.current.has(pageNum)) continue
+        if (hasAnyBitmapCacheEntry(pageNum)) continue
         const scratchCanvas = document.createElement('canvas')
-        await renderPageToCanvas(pageNum, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE })
+        await renderPageToCanvas(pageNum, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE, cacheTier: 'warm' })
       }
       if (!cancelled) {
         setInitialWarmComplete(true)
@@ -787,7 +851,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     return () => {
       cancelled = true
     }
-  }, [initialWarmComplete, open, pdfDoc, renderPageToCanvas, totalPages])
+  }, [initialWarmComplete, open, pdfDoc, renderPageToCanvas, totalPages, hasAnyBitmapCacheEntry])
 
   useEffect(() => {
     if (!open || !pdfDoc || !initialWarmComplete) return
@@ -860,15 +924,19 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
     const runWarm = async () => {
       if (cancelled) return
+      if (isInteractingRef.current || pinchActiveRef.current) {
+        scheduleNext()
+        return
+      }
       let processedThisTick = 0
       while (nextPageNum <= phase2EndPage && processedThisTick < PHASE2_WARM_BATCH_SIZE) {
         const nextPage = nextPageNum
         nextPageNum += 1
         processedThisTick += 1
-        if (pageBitmapCacheRef.current.has(nextPage)) continue
+        if (hasAnyBitmapCacheEntry(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
-        await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE })
+        await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE, cacheTier: 'warm' })
       }
       completedCount += processedThisTick
       setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))
@@ -886,7 +954,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         window.clearTimeout(timeoutHandle)
       }
     }
-  }, [open, pdfDoc, renderPageToCanvas, totalPages, initialWarmComplete])
+  }, [open, pdfDoc, renderPageToCanvas, totalPages, initialWarmComplete, hasAnyBitmapCacheEntry])
 
   if (!open) return null
 

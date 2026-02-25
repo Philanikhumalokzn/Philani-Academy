@@ -10,6 +10,9 @@ const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
+const WARM_COMPLETE_STORAGE_PREFIX = 'pa:pdf-warm-complete:'
+
+const getWarmCompleteStorageKey = (cacheIdentity: string) => `${WARM_COMPLETE_STORAGE_PREFIX}${cacheIdentity}`
 
 type BitmapCacheEntry = {
   bitmap: ImageBitmap
@@ -241,6 +244,24 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
   const hasAnyBitmapCacheEntry = useCallback((pageNum: number) => {
     return displayBitmapCacheRef.current.has(pageNum) || warmBitmapCacheRef.current.has(pageNum)
+  }, [])
+
+  const hasPersistedWarmComplete = useCallback((cacheIdentity: string) => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(getWarmCompleteStorageKey(cacheIdentity)) === '1'
+    } catch {
+      return false
+    }
+  }, [])
+
+  const persistWarmComplete = useCallback((cacheIdentity: string) => {
+    if (!cacheIdentity || typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(getWarmCompleteStorageKey(cacheIdentity), '1')
+    } catch {
+      // ignore storage failures
+    }
   }, [])
 
   const cancelPhase2Schedule = useCallback(() => {
@@ -713,6 +734,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     let activeDoc: any | null = null
     let loadingTask: any | null = null
     const cacheIdentity = String(cacheKey || url)
+    const persistedWarmComplete = hasPersistedWarmComplete(cacheIdentity)
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
 
@@ -720,7 +742,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     setError(null)
     setPdfDoc(null)
     setNumPages(0)
-    if (!canReuseWarmCache) {
+    if (!canReuseWarmCache && !persistedWarmComplete) {
       clearPageBitmapCache()
       setPageHeights({})
       setEstimatedPageHeight(1100)
@@ -728,6 +750,11 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       warmAllCompleteRef.current = false
       phase2NextPageRef.current = INITIAL_WARM_PAGE_COUNT + 1
       phase2CompletedCountRef.current = 0
+    }
+    if (persistedWarmComplete) {
+      setInitialWarmComplete(true)
+      warmAllCompleteRef.current = true
+      setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     }
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     const initialZoom = clamp(initialState?.zoom ?? 110, 50, 220)
@@ -768,6 +795,12 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
           return
         }
         cacheUrlRef.current = cacheIdentity
+        if (persistedWarmComplete) {
+          const pageCount = Math.max(0, Number(doc?.numPages || 0))
+          const startPage = Math.min(pageCount + 1, INITIAL_WARM_PAGE_COUNT + 1)
+          phase2NextPageRef.current = pageCount + 1
+          phase2CompletedCountRef.current = Math.max(0, pageCount - startPage + 1)
+        }
         setPdfDoc(doc)
         setNumPages(doc?.numPages || 0)
       } catch (err: any) {
@@ -790,7 +823,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         // ignore
       }
     }
-  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache])
+  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, hasPersistedWarmComplete])
 
   useEffect(() => {
     if (open) return
@@ -980,6 +1013,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         setInitialWarmComplete(true)
         if (totalPages <= INITIAL_WARM_PAGE_COUNT) {
           warmAllCompleteRef.current = true
+          const cacheIdentity = cacheUrlRef.current
+          if (cacheIdentity) {
+            persistWarmComplete(cacheIdentity)
+          }
         }
       }
     })()
@@ -1057,6 +1094,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       cancelPhase2Schedule()
       if (phase2NextPageRef.current > phase2EndPage) {
         warmAllCompleteRef.current = true
+        const cacheIdentity = cacheUrlRef.current
+        if (cacheIdentity) {
+          persistWarmComplete(cacheIdentity)
+        }
         setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || phase2CompletedCountRef.current }))
         return
       }
@@ -1107,6 +1148,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     hasAnyBitmapCacheEntry,
     cancelPhase2Schedule,
     phase2ResumeSignal,
+    persistWarmComplete,
   ])
 
   if (!open) return null

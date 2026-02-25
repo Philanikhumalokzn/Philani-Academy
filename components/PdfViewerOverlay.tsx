@@ -10,7 +10,6 @@ const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
-const INTERACTION_IDLE_MS = 220
 
 type BitmapCacheEntry = {
   bitmap: ImageBitmap
@@ -62,7 +61,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const renderZoomRef = useRef(110)
   const zoomRef = useRef(110)
   const scrollRafRef = useRef<number | null>(null)
-  const interactionResumeTimerRef = useRef<number | null>(null)
+  const interactionSettleRafRef = useRef<number | null>(null)
   const isInteractingRef = useRef(false)
   const phase2IdleHandleRef = useRef<number | null>(null)
   const phase2TimeoutHandleRef = useRef<number | null>(null)
@@ -238,18 +237,30 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     })
   }, [])
 
+  const markUserInteractionEnded = useCallback(() => {
+    if (!isInteractingRef.current) return
+    isInteractingRef.current = false
+    setPhase2ResumeSignal((prev) => prev + 1)
+  }, [])
+
+  const scheduleInteractionEndNextFrame = useCallback(() => {
+    if (interactionSettleRafRef.current !== null) {
+      window.cancelAnimationFrame(interactionSettleRafRef.current)
+    }
+    interactionSettleRafRef.current = window.requestAnimationFrame(() => {
+      interactionSettleRafRef.current = null
+      markUserInteractionEnded()
+    })
+  }, [markUserInteractionEnded])
+
   const markUserInteracting = useCallback(() => {
     isInteractingRef.current = true
     cancelPhase2Schedule()
     cancelWarmRenderTasks()
-    if (interactionResumeTimerRef.current !== null) {
-      window.clearTimeout(interactionResumeTimerRef.current)
+    if (interactionSettleRafRef.current !== null) {
+      window.cancelAnimationFrame(interactionSettleRafRef.current)
+      interactionSettleRafRef.current = null
     }
-    interactionResumeTimerRef.current = window.setTimeout(() => {
-      isInteractingRef.current = false
-      interactionResumeTimerRef.current = null
-      setPhase2ResumeSignal((prev) => prev + 1)
-    }, INTERACTION_IDLE_MS)
   }, [cancelPhase2Schedule, cancelWarmRenderTasks])
 
   const cancelRenderTasks = useCallback(() => {
@@ -510,6 +521,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
 
     const onTouchEnd = () => {
+      markUserInteractionEnded()
       if (pinchStateRef.current.active) {
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
@@ -561,7 +573,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       pinchActiveRef.current = false
       applyLivePinchStyle(zoomRef.current)
     }
-  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, open, scrollToPage, totalPages])
+  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, markUserInteractionEnded, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -694,9 +706,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     cancelWarmRenderTasks()
     cancelRenderTasks()
     isInteractingRef.current = false
-    if (interactionResumeTimerRef.current !== null) {
-      window.clearTimeout(interactionResumeTimerRef.current)
-      interactionResumeTimerRef.current = null
+    if (interactionSettleRafRef.current !== null) {
+      window.cancelAnimationFrame(interactionSettleRafRef.current)
+      interactionSettleRafRef.current = null
     }
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     if (pdfDoc?.destroy) {
@@ -840,6 +852,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const onScroll = () => {
       if (pinchActiveRef.current) return
       markUserInteracting()
+      scheduleInteractionEndNextFrame()
       if (scrollRafRef.current) return
       scrollRafRef.current = window.requestAnimationFrame(() => {
         scrollRafRef.current = null
@@ -859,7 +872,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         scrollRafRef.current = null
       }
     }
-  }, [open, updatePageFromScroll, markUserInteracting])
+  }, [open, updatePageFromScroll, markUserInteracting, scheduleInteractionEndNextFrame])
 
   useEffect(() => {
     if (!open || !pdfDoc) return
@@ -1021,10 +1034,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       className="fixed inset-0 z-50"
       role="dialog"
       aria-modal="true"
-      onPointerMove={() => {
-        markUserInteracting()
-        kickChromeAutoHide()
-      }}
+      onPointerMove={kickChromeAutoHide}
       onPointerDown={() => {
         markUserInteracting()
         kickChromeAutoHide()
@@ -1035,6 +1045,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       }}
       onWheel={() => {
         markUserInteracting()
+        scheduleInteractionEndNextFrame()
         kickChromeAutoHide()
       }}
     >
@@ -1196,6 +1207,8 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
             className="absolute inset-0 z-0 overflow-auto"
             style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
             onWheel={(e) => {
+              markUserInteracting()
+              scheduleInteractionEndNextFrame()
               const absX = Math.abs(e.deltaX)
               const absY = Math.abs(e.deltaY)
               if (absX < 30 || absX < absY * 1.2) return
@@ -1221,11 +1234,23 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
                 })
               }
             }}
-            onPointerDown={handleSwipeStart}
+            onPointerDown={(e) => {
+              markUserInteracting()
+              handleSwipeStart(e)
+            }}
             onPointerMove={handleSwipeMove}
-            onPointerUp={handleSwipeEnd}
-            onPointerCancel={handleSwipeEnd}
-            onPointerLeave={handleSwipeEnd}
+            onPointerUp={(e) => {
+              handleSwipeEnd(e)
+              markUserInteractionEnded()
+            }}
+            onPointerCancel={(e) => {
+              handleSwipeEnd(e)
+              markUserInteractionEnded()
+            }}
+            onPointerLeave={(e) => {
+              handleSwipeEnd(e)
+              markUserInteractionEnded()
+            }}
           >
             {isViewerLoading && !error ? (
               <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">

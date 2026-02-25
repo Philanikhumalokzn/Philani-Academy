@@ -64,6 +64,11 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
   const scrollRafRef = useRef<number | null>(null)
   const interactionResumeTimerRef = useRef<number | null>(null)
   const isInteractingRef = useRef(false)
+  const phase2IdleHandleRef = useRef<number | null>(null)
+  const phase2TimeoutHandleRef = useRef<number | null>(null)
+  const phase2NextPageRef = useRef<number>(INITIAL_WARM_PAGE_COUNT + 1)
+  const phase2CompletedCountRef = useRef(0)
+  const [phase2ResumeSignal, setPhase2ResumeSignal] = useState(0)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
     autoHideMs: 2500,
@@ -213,16 +218,39 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     return displayBitmapCacheRef.current.has(pageNum) || warmBitmapCacheRef.current.has(pageNum)
   }, [])
 
+  const cancelPhase2Schedule = useCallback(() => {
+    const hasCancelIdle = typeof window !== 'undefined' && typeof (window as any).cancelIdleCallback === 'function'
+    if (phase2IdleHandleRef.current !== null && hasCancelIdle) {
+      ;(window as any).cancelIdleCallback(phase2IdleHandleRef.current)
+    }
+    if (phase2TimeoutHandleRef.current !== null) {
+      window.clearTimeout(phase2TimeoutHandleRef.current)
+    }
+    phase2IdleHandleRef.current = null
+    phase2TimeoutHandleRef.current = null
+  }, [])
+
+  const cancelWarmRenderTasks = useCallback(() => {
+    renderTasksRef.current.forEach((task, key) => {
+      if (!String(key).startsWith('warm:')) return
+      if (task?.cancel) task.cancel()
+      renderTasksRef.current.delete(key)
+    })
+  }, [])
+
   const markUserInteracting = useCallback(() => {
     isInteractingRef.current = true
+    cancelPhase2Schedule()
+    cancelWarmRenderTasks()
     if (interactionResumeTimerRef.current !== null) {
       window.clearTimeout(interactionResumeTimerRef.current)
     }
     interactionResumeTimerRef.current = window.setTimeout(() => {
       isInteractingRef.current = false
       interactionResumeTimerRef.current = null
+      setPhase2ResumeSignal((prev) => prev + 1)
     }, INTERACTION_IDLE_MS)
-  }, [])
+  }, [cancelPhase2Schedule, cancelWarmRenderTasks])
 
   const cancelRenderTasks = useCallback(() => {
     renderTasksRef.current.forEach((task) => {
@@ -392,6 +420,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
 
     const onTouchStart = (e: TouchEvent) => {
+      markUserInteracting()
       if (e.touches.length === 2) {
         const scrollEl = scrollContainerRef.current
         const rect = scrollEl?.getBoundingClientRect()
@@ -421,6 +450,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
 
     const onTouchMove = (e: TouchEvent) => {
+      markUserInteracting()
       if (pinchStateRef.current.active && e.touches.length === 2) {
         const PINCH_START_THRESHOLD = 0.025
         const PAN_START_THRESHOLD_PX = 1.5
@@ -531,7 +561,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       pinchActiveRef.current = false
       applyLivePinchStyle(zoomRef.current)
     }
-  }, [applyLivePinchStyle, kickChromeAutoHide, open, scrollToPage, totalPages])
+  }, [applyLivePinchStyle, kickChromeAutoHide, markUserInteracting, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return
@@ -592,6 +622,8 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       setEstimatedPageHeight(1100)
       setInitialWarmComplete(false)
       warmAllCompleteRef.current = false
+      phase2NextPageRef.current = INITIAL_WARM_PAGE_COUNT + 1
+      phase2CompletedCountRef.current = 0
     }
     setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
     const initialZoom = clamp(initialState?.zoom ?? 110, 50, 220)
@@ -658,6 +690,8 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
   useEffect(() => {
     if (open) return
+    cancelPhase2Schedule()
+    cancelWarmRenderTasks()
     cancelRenderTasks()
     isInteractingRef.current = false
     if (interactionResumeTimerRef.current !== null) {
@@ -669,7 +703,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       pdfDoc.destroy()
     }
     setPdfDoc(null)
-  }, [open, pdfDoc, cancelRenderTasks])
+  }, [open, pdfDoc, cancelPhase2Schedule, cancelWarmRenderTasks, cancelRenderTasks])
 
   const renderPageToCanvas = useCallback(async (
     pageNum: number,
@@ -898,63 +932,80 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
     const totalWarmTargets = phase2EndPage - startPage + 1
     const showPhase2Progress = totalWarmTargets >= PHASE2_PROGRESS_THRESHOLD
-    setWarmPhase2Progress({ visible: showPhase2Progress, done: 0, total: totalWarmTargets })
+    if (phase2NextPageRef.current < startPage || phase2NextPageRef.current > phase2EndPage + 1) {
+      phase2NextPageRef.current = startPage
+    }
+    phase2CompletedCountRef.current = Math.max(0, Math.min(totalWarmTargets, phase2NextPageRef.current - startPage))
+    setWarmPhase2Progress({
+      visible: showPhase2Progress,
+      done: Math.min(totalWarmTargets, phase2CompletedCountRef.current),
+      total: totalWarmTargets,
+    })
+
+    if (isInteractingRef.current || pinchActiveRef.current) {
+      return
+    }
 
     let cancelled = false
-    let nextPageNum = startPage
-    let completedCount = 0
-    let idleHandle: number | null = null
-    let timeoutHandle: number | null = null
 
     const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
 
     const scheduleNext = () => {
       if (cancelled) return
-      if (nextPageNum > phase2EndPage) {
+      cancelPhase2Schedule()
+      if (phase2NextPageRef.current > phase2EndPage) {
         warmAllCompleteRef.current = true
-        setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || completedCount }))
+        setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || phase2CompletedCountRef.current }))
         return
       }
       if (hasRequestIdleCallback) {
-        idleHandle = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
+        phase2IdleHandleRef.current = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
       } else {
-        timeoutHandle = window.setTimeout(() => runWarm(), PHASE2_WARM_FALLBACK_DELAY_MS)
+        phase2TimeoutHandleRef.current = window.setTimeout(() => runWarm(), PHASE2_WARM_FALLBACK_DELAY_MS)
       }
     }
 
     const runWarm = async () => {
       if (cancelled) return
       if (isInteractingRef.current || pinchActiveRef.current) {
-        scheduleNext()
         return
       }
       let processedThisTick = 0
-      while (nextPageNum <= phase2EndPage && processedThisTick < PHASE2_WARM_BATCH_SIZE) {
-        const nextPage = nextPageNum
-        nextPageNum += 1
+      while (phase2NextPageRef.current <= phase2EndPage && processedThisTick < PHASE2_WARM_BATCH_SIZE) {
+        const nextPage = phase2NextPageRef.current
+        phase2NextPageRef.current += 1
         processedThisTick += 1
         if (hasAnyBitmapCacheEntry(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
         await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE, cacheTier: 'warm' })
+        if (cancelled || isInteractingRef.current || pinchActiveRef.current) {
+          break
+        }
       }
-      completedCount += processedThisTick
-      setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))
+      phase2CompletedCountRef.current += processedThisTick
+      setWarmPhase2Progress((prev) => ({
+        ...prev,
+        done: Math.min(prev.total || phase2CompletedCountRef.current, phase2CompletedCountRef.current),
+      }))
       scheduleNext()
     }
 
     scheduleNext()
     return () => {
       cancelled = true
-      setWarmPhase2Progress((prev) => ({ ...prev, visible: false }))
-      if (idleHandle !== null && hasRequestIdleCallback) {
-        ;(window as any).cancelIdleCallback?.(idleHandle)
-      }
-      if (timeoutHandle !== null) {
-        window.clearTimeout(timeoutHandle)
-      }
+      cancelPhase2Schedule()
     }
-  }, [open, pdfDoc, renderPageToCanvas, totalPages, initialWarmComplete, hasAnyBitmapCacheEntry])
+  }, [
+    open,
+    pdfDoc,
+    renderPageToCanvas,
+    totalPages,
+    initialWarmComplete,
+    hasAnyBitmapCacheEntry,
+    cancelPhase2Schedule,
+    phase2ResumeSignal,
+  ])
 
   if (!open) return null
 
@@ -970,10 +1021,22 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       className="fixed inset-0 z-50"
       role="dialog"
       aria-modal="true"
-      onPointerMove={kickChromeAutoHide}
-      onPointerDown={kickChromeAutoHide}
-      onTouchStart={kickChromeAutoHide}
-      onWheel={kickChromeAutoHide}
+      onPointerMove={() => {
+        markUserInteracting()
+        kickChromeAutoHide()
+      }}
+      onPointerDown={() => {
+        markUserInteracting()
+        kickChromeAutoHide()
+      }}
+      onTouchStart={() => {
+        markUserInteracting()
+        kickChromeAutoHide()
+      }}
+      onWheel={() => {
+        markUserInteracting()
+        kickChromeAutoHide()
+      }}
     >
       <div className="absolute inset-0 philani-overlay-backdrop philani-overlay-backdrop-enter" onClick={onClose} />
 

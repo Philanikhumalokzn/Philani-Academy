@@ -18,8 +18,6 @@ const FAST_SCROLL_RESET_VELOCITY_PX_PER_SEC = 220
 const PRIORITY_RENDER_RADIUS = 10
 const SKIP_RADIUS_STEP = 10
 const MAX_SKIP_RADIUS = 30
-const PINCH_VERTICAL_ACTIVATION_PX = 3
-const PINCH_MAX_VERTICAL_DELTA_PER_FRAME_PX = 28
 
 const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', pageNum: number) => {
   const safeIdentity = encodeURIComponent(cacheIdentity)
@@ -629,65 +627,33 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const onTouchMove = (e: TouchEvent) => {
       markUserInteracting()
       if (pinchStateRef.current.active && e.touches.length === 2) {
-        const SCALE_DELTA_EPSILON = 0.002
+        const ZOOM_UPDATE_THRESHOLD = 0.08
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
-        if (!dist) return
+        if (!dist || !pinchStateRef.current.startDist) return
         const scrollEl = scrollContainerRef.current
         const rect = scrollEl?.getBoundingClientRect()
         const a = e.touches[0]
         const b = e.touches[1]
-        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : pinchStateRef.current.anchorX
-        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : pinchStateRef.current.anchorY
-        const prevDist = pinchStateRef.current.lastDist > 0 ? pinchStateRef.current.lastDist : dist
-        const scaleDelta = prevDist > 0 ? dist / prevDist : 1
-        const prevMidpointX = pinchStateRef.current.lastMidpointX || midpointX
-        const prevMidpointY = pinchStateRef.current.lastMidpointY || midpointY
-        const midpointStepY = midpointY - prevMidpointY
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : (scrollEl?.clientWidth ?? 0) / 2
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : (scrollEl?.clientHeight ?? 0) / 2
+        const scale = dist / pinchStateRef.current.startDist
         const gestureMinZoom = Math.max(50, renderZoomRef.current)
-        const prevZoom = Math.max(1, zoomRef.current)
-        const nextZoom = clamp(prevZoom * scaleDelta, gestureMinZoom, 220)
-        const isZooming = Math.abs(scaleDelta - 1) > SCALE_DELTA_EPSILON
-        const isBaseZoom = nextZoom <= renderZoomRef.current + 0.5
-        const allowHorizontalPan = isZooming || !isBaseZoom
+        const nextZoom = clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
+        if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD) return
 
         if (scrollEl && zoomRef.current > 0) {
           applyLivePinchStyle(nextZoom)
 
-          const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
-          const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
           const currentLeft = scrollEl.scrollLeft
           const currentTop = scrollEl.scrollTop
-          const zoomRatio = nextZoom / prevZoom
-          const rawNextLeft = (zoomRatio * (currentLeft + prevMidpointX)) - midpointX
-          const nextLeft = allowHorizontalPan ? rawNextLeft : scrollEl.scrollLeft
-          const rawNextTop = (zoomRatio * (currentTop + prevMidpointY)) - midpointY
-          const allowVerticalPan = isZooming || Math.abs(midpointStepY) >= PINCH_VERTICAL_ACTIVATION_PX
-          const nextTopUnclamped = allowVerticalPan
-            ? clamp(rawNextTop, currentTop - PINCH_MAX_VERTICAL_DELTA_PER_FRAME_PX, currentTop + PINCH_MAX_VERTICAL_DELTA_PER_FRAME_PX)
-            : currentTop
-          const nextTop = nextTopUnclamped
-
-          const clampedLeft = clamp(nextLeft, 0, maxLeft)
-          const clampedTop = clamp(nextTop, 0, maxTop)
-
-          if (maxLeft > 1) {
-            scrollEl.scrollLeft = clampedLeft
-          }
-          if (maxTop > 1) {
-            scrollEl.scrollTop = clampedTop
-          }
 
           pendingPinchFrameRef.current = {
             zoom: nextZoom,
-            left: clampedLeft,
-            top: clampedTop,
+            left: currentLeft,
+            top: currentTop,
           }
           flushPendingPinchFrame()
-
-          pinchStateRef.current.lastDist = dist
-          pinchStateRef.current.lastMidpointX = midpointX
-          pinchStateRef.current.lastMidpointY = midpointY
         }
         kickChromeAutoHide()
         return

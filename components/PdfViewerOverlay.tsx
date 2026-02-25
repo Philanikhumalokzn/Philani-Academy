@@ -10,11 +10,9 @@ const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
 const WARM_RENDER_QUALITY_SCALE = 1
-const WARM_COMPLETE_STORAGE_PREFIX = 'pa:pdf-warm-complete:'
 const RENDER_DISK_CACHE_NAME = 'pa-pdf-render-v1'
 const RENDER_DISK_CACHE_BASE_URL = 'https://cache.philani.local/pdf-render'
 
-const getWarmCompleteStorageKey = (cacheIdentity: string) => `${WARM_COMPLETE_STORAGE_PREFIX}${cacheIdentity}`
 const buildDiskRenderCacheKey = (cacheIdentity: string, cacheTier: 'display' | 'warm', signature: string, pageNum: number) => {
   const safeIdentity = encodeURIComponent(cacheIdentity)
   const safeSignature = encodeURIComponent(signature)
@@ -252,24 +250,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
   const hasAnyBitmapCacheEntry = useCallback((pageNum: number) => {
     return displayBitmapCacheRef.current.has(pageNum) || warmBitmapCacheRef.current.has(pageNum)
-  }, [])
-
-  const hasPersistedWarmComplete = useCallback((cacheIdentity: string) => {
-    if (typeof window === 'undefined') return false
-    try {
-      return window.localStorage.getItem(getWarmCompleteStorageKey(cacheIdentity)) === '1'
-    } catch {
-      return false
-    }
-  }, [])
-
-  const persistWarmComplete = useCallback((cacheIdentity: string) => {
-    if (!cacheIdentity || typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(getWarmCompleteStorageKey(cacheIdentity), '1')
-    } catch {
-      // ignore storage failures
-    }
   }, [])
 
   const canUseDiskRenderCache = useCallback(() => {
@@ -775,10 +755,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     let loadingTask: any | null = null
     const cacheIdentity = String(cacheKey || url)
     cacheIdentityRef.current = cacheIdentity
-    const persistedWarmComplete = hasPersistedWarmComplete(cacheIdentity)
     const canReuseWarmCache = cacheUrlRef.current === cacheIdentity
       && (displayBitmapCacheRef.current.size > 0 || warmBitmapCacheRef.current.size > 0)
-    const shouldSkipWarmPhases = persistedWarmComplete && (canReuseWarmCache || canUseDiskRenderCache())
+    const shouldSkipWarmPhases = canReuseWarmCache || canUseDiskRenderCache()
 
     setLoading(true)
     setError(null)
@@ -865,7 +844,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         // ignore
       }
     }
-  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, hasPersistedWarmComplete, canUseDiskRenderCache])
+  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache, canUseDiskRenderCache])
 
   useEffect(() => {
     if (open) return
@@ -1110,10 +1089,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         setInitialWarmComplete(true)
         if (totalPages <= INITIAL_WARM_PAGE_COUNT) {
           warmAllCompleteRef.current = true
-          const cacheIdentity = cacheUrlRef.current
-          if (cacheIdentity) {
-            persistWarmComplete(cacheIdentity)
-          }
         }
       }
     })()
@@ -1191,10 +1166,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       cancelPhase2Schedule()
       if (phase2NextPageRef.current > phase2EndPage) {
         warmAllCompleteRef.current = true
-        const cacheIdentity = cacheUrlRef.current
-        if (cacheIdentity) {
-          persistWarmComplete(cacheIdentity)
-        }
         setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || phase2CompletedCountRef.current }))
         return
       }
@@ -1245,7 +1216,6 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     hasAnyBitmapCacheEntry,
     cancelPhase2Schedule,
     phase2ResumeSignal,
-    persistWarmComplete,
   ])
 
   if (!open) return null

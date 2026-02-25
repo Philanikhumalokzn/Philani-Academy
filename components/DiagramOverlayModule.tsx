@@ -1154,9 +1154,14 @@ export default function DiagramOverlayModule(props: {
 
   useEffect(() => {
     if (!isGridDiagram) return
+    if (tool !== 'pen') {
+      setTool('pen')
+      return
+    }
     const api = excalidrawApiRef.current
     if (!api?.setActiveTool) return
     api.setActiveTool({ type: getExcalidrawToolType(tool) })
+    api.updateScene?.({ appState: { currentItemStrokeWidth: 1 } })
   }, [getExcalidrawToolType, isGridDiagram, tool])
 
   const syncHistoryFlags = useCallback(() => {
@@ -3642,13 +3647,11 @@ export default function DiagramOverlayModule(props: {
     if (!drag.target || drag.pointerId !== e.pointerId) return
     e.preventDefault()
     e.stopPropagation()
-    const dx = e.clientX - drag.startX
     const dy = e.clientY - drag.startY
-    const nextX = Math.round(drag.originX + dx)
     const nextY = Math.round(drag.originY + dy)
     setGridToolbarOffsets((prev) => ({
       ...prev,
-      [drag.target as 'top' | 'bottom']: { x: nextX, y: nextY },
+      [drag.target as 'top' | 'bottom']: { x: 0, y: nextY },
     }))
   }, [])
 
@@ -4232,9 +4235,7 @@ export default function DiagramOverlayModule(props: {
               onPointerUpCapture={onGridToolbarPointerUpCapture}
               onPointerCancelCapture={onGridToolbarPointerUpCapture}
               style={{
-                ['--philani-exc-top-x' as any]: `${gridToolbarOffsets.top.x}px`,
                 ['--philani-exc-top-y' as any]: `${gridToolbarOffsets.top.y}px`,
-                ['--philani-exc-bottom-x' as any]: `${gridToolbarOffsets.bottom.x}px`,
                 ['--philani-exc-bottom-y' as any]: `${gridToolbarOffsets.bottom.y}px`,
               }}
             >
@@ -4242,6 +4243,12 @@ export default function DiagramOverlayModule(props: {
                 excalidrawAPI={(api) => { excalidrawApiRef.current = api }}
                 zenModeEnabled={false}
                 viewModeEnabled={false}
+                initialData={{
+                  appState: {
+                    activeTool: { type: 'freedraw' },
+                    currentItemStrokeWidth: 1,
+                  },
+                }}
                 renderTopRightUI={() => (
                   <button
                     type="button"

@@ -43,8 +43,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
   const renderSignatureRef = useRef('')
   const renderZoomRef = useRef(110)
   const zoomRef = useRef(110)
-  const pinchVisualOffsetRef = useRef({ x: 0, y: 0 })
-  const pinchSettleRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const lastWheelTsRef = useRef(0)
   const { visible: chromeVisible, peek: kickChromeAutoHide, clearTimer: clearChromeTimer } = useTapToPeek({
@@ -98,19 +96,12 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     zoomRef.current = effectiveZoom
   }, [effectiveZoom])
 
-  const stopPinchSettleAnimation = useCallback(() => {
-    if (pinchSettleRafRef.current) {
-      window.cancelAnimationFrame(pinchSettleRafRef.current)
-      pinchSettleRafRef.current = null
-    }
-  }, [])
-
-  const applyLivePinchStyle = useCallback((zoomValue: number, offsetX = 0, offsetY = 0) => {
+  const applyLivePinchStyle = useCallback((zoomValue: number) => {
     const contentEl = contentRef.current
     if (!contentEl) return
     const scale = clamp(zoomValue / Math.max(1, renderZoomRef.current), 0.5, 3)
     contentEl.style.zoom = String(scale)
-    contentEl.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`
+    contentEl.style.transform = ''
     contentEl.style.willChange = pinchActiveRef.current ? 'transform' : ''
   }, [])
 
@@ -359,7 +350,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
-        stopPinchSettleAnimation()
         const scrollEl = scrollContainerRef.current
         const rect = scrollEl?.getBoundingClientRect()
         const a = e.touches[0]
@@ -374,8 +364,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = midpointX
         pinchStateRef.current.anchorY = midpointY
-        pinchVisualOffsetRef.current = { x: 0, y: 0 }
-        applyLivePinchStyle(zoomRef.current, 0, 0)
+        applyLivePinchStyle(zoomRef.current)
         touchState.active = false
         return
       }
@@ -394,7 +383,6 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         const PAN_START_THRESHOLD_PX = 1.5
         const ZOOM_UPDATE_THRESHOLD = 0.08
         const PAN_UPDATE_THRESHOLD_PX = 0.8
-        const EDGE_RUBBER_FACTOR = 0.42
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
@@ -430,12 +418,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
             scrollEl.scrollTop = clampedTop
           }
 
-          const overflowX = nextLeft - clampedLeft
-          const overflowY = nextTop - clampedTop
-          const visualOffsetX = -overflowX * EDGE_RUBBER_FACTOR
-          const visualOffsetY = -overflowY * EDGE_RUBBER_FACTOR
-          pinchVisualOffsetRef.current = { x: visualOffsetX, y: visualOffsetY }
-          applyLivePinchStyle(nextZoom, visualOffsetX, visualOffsetY)
+          applyLivePinchStyle(nextZoom)
         }
 
         zoomRef.current = nextZoom
@@ -453,36 +436,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (pinchStateRef.current.active) {
         pinchActiveRef.current = false
         pinchStateRef.current.active = false
-        const startOffset = pinchVisualOffsetRef.current
-        const settleDistance = Math.hypot(startOffset.x, startOffset.y)
-        if (settleDistance < 0.5) {
-          pinchVisualOffsetRef.current = { x: 0, y: 0 }
-          applyLivePinchStyle(zoomRef.current, 0, 0)
-          return
-        }
-
-        stopPinchSettleAnimation()
-        const startTs = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        const duration = 140
-
-        const tick = () => {
-          const nowTs = typeof performance !== 'undefined' ? performance.now() : Date.now()
-          const t = Math.min(1, (nowTs - startTs) / duration)
-          const eased = 1 - Math.pow(1 - t, 3)
-          const nextX = startOffset.x * (1 - eased)
-          const nextY = startOffset.y * (1 - eased)
-          pinchVisualOffsetRef.current = { x: nextX, y: nextY }
-          applyLivePinchStyle(zoomRef.current, nextX, nextY)
-          if (t < 1) {
-            pinchSettleRafRef.current = window.requestAnimationFrame(tick)
-          } else {
-            pinchSettleRafRef.current = null
-            pinchVisualOffsetRef.current = { x: 0, y: 0 }
-            applyLivePinchStyle(zoomRef.current, 0, 0)
-          }
-        }
-
-        pinchSettleRafRef.current = window.requestAnimationFrame(tick)
+        applyLivePinchStyle(zoomRef.current)
         return
       }
       if (!touchState.active) return
@@ -527,12 +481,10 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
-      stopPinchSettleAnimation()
       pinchActiveRef.current = false
-      pinchVisualOffsetRef.current = { x: 0, y: 0 }
-      applyLivePinchStyle(zoomRef.current, 0, 0)
+      applyLivePinchStyle(zoomRef.current)
     }
-  }, [applyLivePinchStyle, kickChromeAutoHide, open, scrollToPage, stopPinchSettleAnimation, totalPages])
+  }, [applyLivePinchStyle, kickChromeAutoHide, open, scrollToPage, totalPages])
 
   useEffect(() => {
     if (!open) return

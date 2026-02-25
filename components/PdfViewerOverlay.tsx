@@ -1201,6 +1201,20 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
       if (right <= endPage) queue.push(right)
       if (left >= startPage) queue.push(left)
     }
+    const totalTargets = queue.length
+    const showProgress = totalTargets >= PHASE2_PROGRESS_THRESHOLD
+    let completedTargets = 0
+
+    if (totalTargets <= 0) {
+      setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
+      return
+    }
+
+    setWarmPhase2Progress({
+      visible: showProgress,
+      done: 0,
+      total: totalTargets,
+    })
 
     const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
 
@@ -1244,12 +1258,28 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const nextPage = queue.shift()
         if (typeof nextPage !== 'number') break
         processed += 1
+        completedTargets += 1
         if (hasAnyBitmapCacheEntry(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
         await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE, cacheTier: 'warm' })
         if (cancelled) return
         if (isInteractingRef.current || pinchActiveRef.current) break
+      }
+
+      setWarmPhase2Progress((prev) => ({
+        visible: showProgress,
+        done: Math.min(totalTargets, completedTargets),
+        total: totalTargets,
+      }))
+
+      if (!queue.length) {
+        setWarmPhase2Progress((prev) => ({
+          ...prev,
+          visible: false,
+          done: totalTargets,
+          total: totalTargets,
+        }))
       }
 
       scheduleNext()
@@ -1259,6 +1289,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     return () => {
       cancelled = true
       clearHandles()
+      if (!open) {
+        setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
+      }
     }
   }, [open, pdfDoc, initialWarmComplete, initialState?.page, safePage, totalPages, hasAnyBitmapCacheEntry, renderPageToCanvas])
 

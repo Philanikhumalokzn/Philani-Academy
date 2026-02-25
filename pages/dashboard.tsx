@@ -1084,6 +1084,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
   const [pdfViewerUrl, setPdfViewerUrl] = useState('')
+  const [pdfViewerCacheKey, setPdfViewerCacheKey] = useState('')
   const [pdfViewerTitle, setPdfViewerTitle] = useState('')
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
   const [pdfViewerInitialState, setPdfViewerInitialState] = useState<PdfViewerSnapshot | null>(null)
@@ -1117,6 +1118,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPdfViewerTitle(fileName || 'Document')
       setPdfViewerSubtitle('')
       setPdfViewerUrl(objectUrl)
+      setPdfViewerCacheKey(String(payload?.cacheKey || payload?.sourceUrl || payload?.filePath || `${fileName}:${bytes.length}`))
       setPdfViewerInitialState(null)
       setPdfViewerOpen(true)
     } catch {
@@ -2837,8 +2839,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPdfViewerTitle(item.title || 'Document')
     // Avoid showing filepaths/URLs in the UI.
     setPdfViewerSubtitle('')
+    const stableCacheKey = String(item.id || item.url || item.title || 'pdf')
     const openWithUrl = (url: string) => {
       setPdfViewerUrl(url)
+      setPdfViewerCacheKey(stableCacheKey)
       setPdfViewerInitialState(null)
       setPdfViewerOpen(true)
     }
@@ -2876,6 +2880,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPdfViewerTitle(pdfViewerTitle)
       setPdfViewerSubtitle(pdfViewerSubtitle)
       setPdfViewerUrl(pdfViewerUrl)
+      setPdfViewerCacheKey(pdfViewerCacheKey)
       setPdfViewerInitialState({
         page: snapshot?.page ?? 1,
         zoom: snapshot?.zoom ?? 110,
@@ -2894,7 +2899,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setCreateOverlayOpen(true)
     setChallengeImageEditFile(file)
     setChallengeImageEditOpen(true)
-  }, [pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl, queueRestore])
+  }, [pdfViewerCacheKey, pdfViewerSubtitle, pdfViewerTitle, pdfViewerUrl, queueRestore])
 
   useEffect(() => {
     return () => {
@@ -10121,6 +10126,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <PdfViewerOverlay
           open={pdfViewerOpen}
           url={pdfViewerUrl}
+          cacheKey={pdfViewerCacheKey || undefined}
           title={pdfViewerTitle}
           subtitle={pdfViewerSubtitle || undefined}
           initialState={pdfViewerInitialState || undefined}

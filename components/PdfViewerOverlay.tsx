@@ -5,10 +5,14 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 const VIRTUAL_WINDOW_RADIUS = 8
 const INITIAL_WARM_PAGE_COUNT = 20
 const PAGE_BITMAP_CACHE_LIMIT = 36
+const PHASE2_WARM_BATCH_SIZE = 3
+const PHASE2_WARM_FALLBACK_DELAY_MS = 40
+const PHASE2_PROGRESS_THRESHOLD = 10
 
 type PdfViewerOverlayProps = {
   open: boolean
   url: string
+  cacheKey?: string
   title: string
   subtitle?: string
   initialState?: {
@@ -27,7 +31,7 @@ type PdfViewerOverlayProps = {
   ) => void | Promise<void>
 }
 
-export default function PdfViewerOverlay({ open, url, title, subtitle, initialState, onClose, onPostImage }: PdfViewerOverlayProps) {
+export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle, initialState, onClose, onPostImage }: PdfViewerOverlayProps) {
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(110)
   const [loading, setLoading] = useState(false)
@@ -531,7 +535,8 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     let cancelled = false
     let activeDoc: any | null = null
     let loadingTask: any | null = null
-    const canReuseWarmCache = cacheUrlRef.current === url && pageBitmapCacheRef.current.size > 0
+    const cacheIdentity = String(cacheKey || url)
+    const canReuseWarmCache = cacheUrlRef.current === cacheIdentity && pageBitmapCacheRef.current.size > 0
 
     setLoading(true)
     setError(null)
@@ -582,7 +587,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
           if (doc?.destroy) await doc.destroy()
           return
         }
-        cacheUrlRef.current = url
+        cacheUrlRef.current = cacheIdentity
         setPdfDoc(doc)
         setNumPages(doc?.numPages || 0)
       } catch (err: any) {
@@ -605,7 +610,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
         // ignore
       }
     }
-  }, [open, url, initialState?.page, initialState?.zoom, clearPageBitmapCache])
+  }, [open, url, cacheKey, initialState?.page, initialState?.zoom, clearPageBitmapCache])
 
   useEffect(() => {
     if (open) return
@@ -811,13 +816,15 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
     if (!open || !pdfDoc || !initialWarmComplete) return
     if (warmAllCompleteRef.current) return
     const startPage = Math.min(totalPages + 1, INITIAL_WARM_PAGE_COUNT + 1)
-    if (startPage > totalPages) {
+    const phase2EndPage = Math.min(totalPages, PAGE_BITMAP_CACHE_LIMIT)
+    if (startPage > phase2EndPage) {
       warmAllCompleteRef.current = true
       setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
       return
     }
-    const totalWarmTargets = totalPages - startPage + 1
-    setWarmPhase2Progress({ visible: true, done: 0, total: totalWarmTargets })
+    const totalWarmTargets = phase2EndPage - startPage + 1
+    const showPhase2Progress = totalWarmTargets >= PHASE2_PROGRESS_THRESHOLD
+    setWarmPhase2Progress({ visible: showPhase2Progress, done: 0, total: totalWarmTargets })
 
     let cancelled = false
     let nextPageNum = startPage
@@ -829,7 +836,7 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
 
     const scheduleNext = () => {
       if (cancelled) return
-      if (nextPageNum > totalPages) {
+      if (nextPageNum > phase2EndPage) {
         warmAllCompleteRef.current = true
         setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || completedCount }))
         return
@@ -837,23 +844,24 @@ export default function PdfViewerOverlay({ open, url, title, subtitle, initialSt
       if (hasRequestIdleCallback) {
         idleHandle = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
       } else {
-        timeoutHandle = window.setTimeout(() => runWarm(), 70)
+        timeoutHandle = window.setTimeout(() => runWarm(), PHASE2_WARM_FALLBACK_DELAY_MS)
       }
     }
 
     const runWarm = async () => {
       if (cancelled) return
-      while (nextPageNum <= totalPages) {
+      let processedThisTick = 0
+      while (nextPageNum <= phase2EndPage && processedThisTick < PHASE2_WARM_BATCH_SIZE) {
         const nextPage = nextPageNum
         nextPageNum += 1
-        completedCount += 1
-        setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))
+        processedThisTick += 1
         if (pageBitmapCacheRef.current.has(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
         await renderPageToCanvas(nextPage, scratchCanvas)
-        break
       }
+      completedCount += processedThisTick
+      setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))
       scheduleNext()
     }
 

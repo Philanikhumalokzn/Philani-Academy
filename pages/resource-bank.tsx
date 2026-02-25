@@ -67,6 +67,7 @@ export default function ResourceBankPage() {
 
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
   const [pdfViewerUrl, setPdfViewerUrl] = useState('')
+  const [pdfViewerCacheKey, setPdfViewerCacheKey] = useState('')
   const [pdfViewerTitle, setPdfViewerTitle] = useState('')
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
 
@@ -435,6 +436,7 @@ export default function ResourceBankPage() {
     // Avoid showing filepaths/URLs in the UI.
     setPdfViewerSubtitle('')
     setPdfViewerUrl(item.url)
+    setPdfViewerCacheKey(String(item.id || item.url || item.title || 'pdf'))
     setPdfViewerOpen(true)
   }
   const handleDelete = async (id: string) => {
@@ -550,6 +552,7 @@ export default function ResourceBankPage() {
               <PdfViewerOverlay
                 open={pdfViewerOpen}
                 url={pdfViewerUrl}
+                cacheKey={pdfViewerCacheKey || undefined}
                 title={pdfViewerTitle}
                 subtitle={pdfViewerSubtitle || undefined}
                 onClose={() => setPdfViewerOpen(false)}

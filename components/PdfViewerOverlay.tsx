@@ -280,6 +280,44 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     }
   }, [canUseDiskRenderCache])
 
+  const hydrateWarmPageFromDiskToMemory = useCallback(async (pageNum: number) => {
+    if (typeof window === 'undefined' || typeof window.createImageBitmap !== 'function') return false
+    const cacheIdentity = cacheIdentityRef.current
+    if (!cacheIdentity) return false
+
+    const outputScale = (window.devicePixelRatio || 1) * WARM_RENDER_QUALITY_SCALE
+    const signature = `${Math.round(contentSize.width || 0)}:${Math.round(renderZoomRef.current)}:${Math.round(outputScale * 100)}`
+    if (warmRenderSignatureRef.current && warmRenderSignatureRef.current !== signature) {
+      clearBitmapCache(warmBitmapCacheRef)
+    }
+    if (!warmRenderSignatureRef.current) {
+      warmRenderSignatureRef.current = signature
+    }
+
+    const diskKey = buildDiskRenderCacheKey(cacheIdentity, 'warm', pageNum)
+    const blob = await readDiskRenderBlob(diskKey)
+    if (!blob) return false
+
+    try {
+      const bitmap = await window.createImageBitmap(blob)
+      const cssWidth = Math.max(1, Math.floor(bitmap.width / Math.max(outputScale, 0.0001)))
+      const cssHeight = Math.max(1, Math.floor(bitmap.height / Math.max(outputScale, 0.0001)))
+      upsertBitmapCacheEntry(warmBitmapCacheRef, pageNum, {
+        bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        cssWidth,
+        cssHeight,
+        signature,
+      }, WARM_BITMAP_CACHE_LIMIT)
+      setPageHeights((prev) => (prev[pageNum] === cssHeight ? prev : { ...prev, [pageNum]: cssHeight }))
+      setEstimatedPageHeight((prev) => Math.max(320, Math.round((prev * 0.85) + (cssHeight * 0.15))))
+      return true
+    } catch {
+      return false
+    }
+  }, [clearBitmapCache, contentSize.width, readDiskRenderBlob, upsertBitmapCacheEntry])
+
   const hasDiskWarmCompleteMarker = useCallback(async (cacheIdentity: string) => {
     if (!cacheIdentity || !canUseDiskRenderCache()) return false
     try {
@@ -1261,8 +1299,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         completedTargets += 1
         if (hasAnyBitmapCacheEntry(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
-        const scratchCanvas = document.createElement('canvas')
-        await renderPageToCanvas(nextPage, scratchCanvas, { qualityScale: WARM_RENDER_QUALITY_SCALE, cacheTier: 'warm' })
+        await hydrateWarmPageFromDiskToMemory(nextPage)
         if (cancelled) return
         if (isInteractingRef.current || pinchActiveRef.current) break
       }
@@ -1293,7 +1330,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
       }
     }
-  }, [open, pdfDoc, initialWarmComplete, initialState?.page, safePage, totalPages, hasAnyBitmapCacheEntry, renderPageToCanvas])
+  }, [open, pdfDoc, initialWarmComplete, initialState?.page, safePage, totalPages, hasAnyBitmapCacheEntry, hydrateWarmPageFromDiskToMemory])
 
   useEffect(() => {
     if (!open || !pdfDoc || !initialWarmComplete) return

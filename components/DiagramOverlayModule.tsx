@@ -4242,6 +4242,22 @@ export default function DiagramOverlayModule(props: {
                 excalidrawAPI={(api) => { excalidrawApiRef.current = api }}
                 zenModeEnabled={false}
                 viewModeEnabled={false}
+                renderTopRightUI={() => (
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white/95 text-slate-700 shadow-sm hover:bg-white disabled:opacity-50"
+                    onClick={handleClearInk}
+                    disabled={!canPresent}
+                    aria-label="Clear canvas"
+                    title="Clear canvas"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M7 6l1 14h8l1-14" />
+                    </svg>
+                  </button>
+                )}
               />
             </div>
           ) : (

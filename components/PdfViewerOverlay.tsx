@@ -538,15 +538,18 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const nextZoom = isTwoFingerPan
           ? clamp(pinchStateRef.current.startZoom, gestureMinZoom, 220)
           : clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
+        const isBaseZoom = nextZoom <= renderZoomRef.current + 0.5
+        const allowHorizontalPan = !isTwoFingerPan || !isBaseZoom
 
         if (scrollEl && zoomRef.current > 0) {
           applyLivePinchStyle(nextZoom)
 
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const nextLeft = isTwoFingerPan
+          const rawNextLeft = isTwoFingerPan
             ? pinchStateRef.current.startScrollLeft - midpointDx
             : ((nextZoom / Math.max(1, zoomRef.current)) * (scrollEl.scrollLeft + midpointX)) - midpointX
+          const nextLeft = allowHorizontalPan ? rawNextLeft : scrollEl.scrollLeft
           const nextTop = isTwoFingerPan
             ? pinchStateRef.current.startScrollTop - midpointDy
             : ((nextZoom / Math.max(1, zoomRef.current)) * (scrollEl.scrollTop + midpointY)) - midpointY

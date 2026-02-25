@@ -104,7 +104,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     anchorY: number
     startScrollLeft: number
     startScrollTop: number
-  }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0 })
+    lastDist: number
+    lastMidpointX: number
+    lastMidpointY: number
+  }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -504,6 +507,9 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         pinchStateRef.current.startScrollTop = scrollEl?.scrollTop ?? 0
         pinchStateRef.current.anchorX = midpointX
         pinchStateRef.current.anchorY = midpointY
+        pinchStateRef.current.lastDist = pinchStateRef.current.startDist
+        pinchStateRef.current.lastMidpointX = midpointX
+        pinchStateRef.current.lastMidpointY = midpointY
         applyLivePinchStyle(zoomRef.current)
         touchState.active = false
         return
@@ -520,39 +526,38 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
     const onTouchMove = (e: TouchEvent) => {
       markUserInteracting()
       if (pinchStateRef.current.active && e.touches.length === 2) {
-        const TWO_FINGER_PAN_SCALE_EPSILON = 0.04
+        const SCALE_DELTA_EPSILON = 0.002
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
-        if (!dist || !pinchStateRef.current.startDist) return
+        if (!dist) return
         const scrollEl = scrollContainerRef.current
         const rect = scrollEl?.getBoundingClientRect()
         const a = e.touches[0]
         const b = e.touches[1]
         const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : pinchStateRef.current.anchorX
         const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : pinchStateRef.current.anchorY
-        const scale = dist / pinchStateRef.current.startDist
-        const midpointDx = midpointX - pinchStateRef.current.anchorX
-        const midpointDy = midpointY - pinchStateRef.current.anchorY
-        const isTwoFingerPan = Math.abs(scale - 1) <= TWO_FINGER_PAN_SCALE_EPSILON
+        const prevDist = pinchStateRef.current.lastDist > 0 ? pinchStateRef.current.lastDist : dist
+        const scaleDelta = prevDist > 0 ? dist / prevDist : 1
+        const prevMidpointX = pinchStateRef.current.lastMidpointX || midpointX
+        const prevMidpointY = pinchStateRef.current.lastMidpointY || midpointY
         const gestureMinZoom = Math.max(50, renderZoomRef.current)
-        const nextZoom = isTwoFingerPan
-          ? clamp(pinchStateRef.current.startZoom, gestureMinZoom, 220)
-          : clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
+        const prevZoom = Math.max(1, zoomRef.current)
+        const nextZoom = clamp(prevZoom * scaleDelta, gestureMinZoom, 220)
+        const isZooming = Math.abs(scaleDelta - 1) > SCALE_DELTA_EPSILON
         const isBaseZoom = nextZoom <= renderZoomRef.current + 0.5
-        const allowHorizontalPan = !isTwoFingerPan || !isBaseZoom
+        const allowHorizontalPan = isZooming || !isBaseZoom
 
         if (scrollEl && zoomRef.current > 0) {
           applyLivePinchStyle(nextZoom)
 
           const maxLeft = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth)
           const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
-          const rawNextLeft = isTwoFingerPan
-            ? pinchStateRef.current.startScrollLeft - midpointDx
-            : ((nextZoom / Math.max(1, zoomRef.current)) * (scrollEl.scrollLeft + midpointX)) - midpointX
+          const currentLeft = scrollEl.scrollLeft
+          const currentTop = scrollEl.scrollTop
+          const zoomRatio = nextZoom / prevZoom
+          const rawNextLeft = (zoomRatio * (currentLeft + prevMidpointX)) - midpointX
           const nextLeft = allowHorizontalPan ? rawNextLeft : scrollEl.scrollLeft
-          const nextTop = isTwoFingerPan
-            ? pinchStateRef.current.startScrollTop - midpointDy
-            : ((nextZoom / Math.max(1, zoomRef.current)) * (scrollEl.scrollTop + midpointY)) - midpointY
+          const nextTop = (zoomRatio * (currentTop + prevMidpointY)) - midpointY
 
           const clampedLeft = clamp(nextLeft, 0, maxLeft)
           const clampedTop = clamp(nextTop, 0, maxTop)
@@ -570,6 +575,10 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
             top: clampedTop,
           }
           flushPendingPinchFrame()
+
+          pinchStateRef.current.lastDist = dist
+          pinchStateRef.current.lastMidpointX = midpointX
+          pinchStateRef.current.lastMidpointY = midpointY
         }
         kickChromeAutoHide()
         return

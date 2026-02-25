@@ -8,8 +8,6 @@ const PAGE_BITMAP_CACHE_LIMIT = 36
 const PHASE2_WARM_BATCH_SIZE = 3
 const PHASE2_WARM_FALLBACK_DELAY_MS = 40
 const PHASE2_PROGRESS_THRESHOLD = 10
-const PHASE2_AHEAD_WARM_PAGES = 24
-const PHASE2_BEHIND_WARM_PAGES = 6
 
 type PdfViewerOverlayProps = {
   open: boolean
@@ -820,52 +818,33 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
   useEffect(() => {
     if (!open || !pdfDoc || !initialWarmComplete) return
+    if (warmAllCompleteRef.current) return
+    const startPage = Math.min(totalPages + 1, INITIAL_WARM_PAGE_COUNT + 1)
+    const phase2EndPage = totalPages
+    if (startPage > phase2EndPage) {
+      warmAllCompleteRef.current = true
+      setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
+      return
+    }
+    const totalWarmTargets = phase2EndPage - startPage + 1
+    const showPhase2Progress = totalWarmTargets >= PHASE2_PROGRESS_THRESHOLD
+    setWarmPhase2Progress({ visible: showPhase2Progress, done: 0, total: totalWarmTargets })
+
     let cancelled = false
+    let nextPageNum = startPage
+    let completedCount = 0
     let idleHandle: number | null = null
     let timeoutHandle: number | null = null
 
     const hasRequestIdleCallback = typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function'
 
-    const buildWarmTargets = () => {
-      const anchorPage = clamp(safePage, 1, totalPages)
-      const start = Math.max(1, anchorPage - PHASE2_BEHIND_WARM_PAGES)
-      const end = Math.min(totalPages, anchorPage + PHASE2_AHEAD_WARM_PAGES)
-      const targets: number[] = []
-      for (let pageNum = anchorPage; pageNum <= end; pageNum += 1) {
-        targets.push(pageNum)
-      }
-      for (let pageNum = anchorPage - 1; pageNum >= start; pageNum -= 1) {
-        targets.push(pageNum)
-      }
-      return targets
-    }
-
-    const getWindowProgress = () => {
-      const targets = buildWarmTargets()
-      let remaining = 0
-      for (const pageNum of targets) {
-        if (pageBitmapCacheRef.current.has(pageNum)) continue
-        if (pageCanvasRefs.current.has(pageNum)) continue
-        remaining += 1
-      }
-      const total = targets.length
-      const done = Math.max(0, total - remaining)
-      return { total, done, remaining }
-    }
-
-    const initialProgress = getWindowProgress()
-    if (initialProgress.remaining <= 0) {
-      setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
-      return
-    }
-    setWarmPhase2Progress({
-      visible: initialProgress.remaining >= PHASE2_PROGRESS_THRESHOLD,
-      done: initialProgress.done,
-      total: initialProgress.total,
-    })
-
     const scheduleNext = () => {
       if (cancelled) return
+      if (nextPageNum > phase2EndPage) {
+        warmAllCompleteRef.current = true
+        setWarmPhase2Progress((prev) => ({ ...prev, visible: false, done: prev.total || completedCount }))
+        return
+      }
       if (hasRequestIdleCallback) {
         idleHandle = (window as any).requestIdleCallback(runWarm, { timeout: 180 })
       } else {
@@ -875,27 +854,18 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
 
     const runWarm = async () => {
       if (cancelled) return
-      const targets = buildWarmTargets()
-      let warmedCount = 0
-      for (const nextPage of targets) {
-        if (warmedCount >= PHASE2_WARM_BATCH_SIZE) break
+      let processedThisTick = 0
+      while (nextPageNum <= phase2EndPage && processedThisTick < PHASE2_WARM_BATCH_SIZE) {
+        const nextPage = nextPageNum
+        nextPageNum += 1
+        processedThisTick += 1
         if (pageBitmapCacheRef.current.has(nextPage)) continue
         if (pageCanvasRefs.current.has(nextPage)) continue
         const scratchCanvas = document.createElement('canvas')
         await renderPageToCanvas(nextPage, scratchCanvas)
-        warmedCount += 1
       }
-
-      const progress = getWindowProgress()
-      if (progress.remaining <= 0) {
-        setWarmPhase2Progress({ visible: false, done: 0, total: 0 })
-        return
-      }
-      setWarmPhase2Progress({
-        visible: progress.remaining >= PHASE2_PROGRESS_THRESHOLD,
-        done: progress.done,
-        total: progress.total,
-      })
+      completedCount += processedThisTick
+      setWarmPhase2Progress((prev) => ({ ...prev, done: Math.min(prev.total || completedCount, completedCount) }))
       scheduleNext()
     }
 
@@ -910,7 +880,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         window.clearTimeout(timeoutHandle)
       }
     }
-  }, [open, pdfDoc, renderPageToCanvas, totalPages, safePage, initialWarmComplete])
+  }, [open, pdfDoc, renderPageToCanvas, totalPages, initialWarmComplete])
 
   if (!open) return null
 

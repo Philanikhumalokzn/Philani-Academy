@@ -503,6 +503,7 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const PAN_START_THRESHOLD_PX = 1.5
         const ZOOM_UPDATE_THRESHOLD = 0.08
         const PAN_UPDATE_THRESHOLD_PX = 0.8
+        const TWO_FINGER_PAN_SCALE_EPSILON = 0.04
         e.preventDefault()
         const dist = getPinchDistance(e.touches)
         if (!dist || !pinchStateRef.current.startDist) return
@@ -516,9 +517,12 @@ export default function PdfViewerOverlay({ open, url, cacheKey, title, subtitle,
         const midpointDx = midpointX - pinchStateRef.current.anchorX
         const midpointDy = midpointY - pinchStateRef.current.anchorY
         const panDistance = Math.hypot(midpointDx, midpointDy)
+        const isTwoFingerPan = Math.abs(scale - 1) <= TWO_FINGER_PAN_SCALE_EPSILON
         if (Math.abs(scale - 1) < PINCH_START_THRESHOLD && panDistance < PAN_START_THRESHOLD_PX) return
         const gestureMinZoom = Math.max(50, renderZoomRef.current)
-        const nextZoom = clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
+        const nextZoom = isTwoFingerPan
+          ? clamp(pinchStateRef.current.startZoom, gestureMinZoom, 220)
+          : clamp(pinchStateRef.current.startZoom * scale, gestureMinZoom, 220)
         if (Math.abs(nextZoom - zoomRef.current) < ZOOM_UPDATE_THRESHOLD && panDistance < PAN_UPDATE_THRESHOLD_PX) return
 
         if (scrollEl && zoomRef.current > 0) {

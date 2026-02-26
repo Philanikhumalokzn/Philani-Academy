@@ -4260,7 +4260,6 @@ export default function DiagramOverlayModule(props: {
                 viewModeEnabled={false}
                 initialData={{
                   appState: {
-                    activeTool: { type: 'freedraw' },
                     currentItemStrokeWidth: 1,
                   },
                 }}

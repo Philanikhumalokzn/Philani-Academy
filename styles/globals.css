@@ -58,20 +58,6 @@
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar {
   position: absolute;
-  top: auto !important;
-  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
-  right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px) !important;
-  bottom: calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 2px) !important;
-  width: max-content;
-  margin-inline: auto;
-  transform: translateY(var(--philani-exc-bottom-y, 0px)) !important;
-  z-index: var(--zIndex-layerUI);
-  pointer-events: auto;
-  touch-action: none;
-}
-
-.philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar {
-  position: absolute !important;
   top: calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 8px) !important;
   left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
   right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px) !important;
@@ -79,6 +65,20 @@
   width: max-content;
   margin-inline: auto;
   transform: translateY(var(--philani-exc-top-y, 0px)) !important;
+  z-index: var(--zIndex-layerUI);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar {
+  position: absolute !important;
+  top: auto !important;
+  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
+  right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px) !important;
+  bottom: calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 2px) !important;
+  width: max-content;
+  margin-inline: auto;
+  transform: translateY(var(--philani-exc-bottom-y, 0px)) !important;
   pointer-events: auto;
   touch-action: none;
 }

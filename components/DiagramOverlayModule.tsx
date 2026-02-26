@@ -153,6 +153,7 @@ export default function DiagramOverlayModule(props: {
   const gridToolbarDragRef = useRef<{
     target: 'top' | 'bottom' | null
     pointerId: number | null
+    isDragging: boolean
     startX: number
     startY: number
     originX: number
@@ -160,6 +161,7 @@ export default function DiagramOverlayModule(props: {
   }>({
     target: null,
     pointerId: null,
+    isDragging: false,
     startX: 0,
     startY: 0,
     originX: 0,
@@ -3638,15 +3640,16 @@ export default function DiagramOverlayModule(props: {
     return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
   })()
 
+  const gridToolbarDragThresholdPx = 4
+
   const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
     const node = e.currentTarget
     node.setPointerCapture?.(e.pointerId)
     const origin = gridToolbarOffsets[target]
     gridToolbarDragRef.current = {
       target,
       pointerId: e.pointerId,
+      isDragging: false,
       startX: e.clientX,
       startY: e.clientY,
       originX: origin.x,
@@ -3657,25 +3660,30 @@ export default function DiagramOverlayModule(props: {
   const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const drag = gridToolbarDragRef.current
     if (!drag.target || drag.pointerId !== e.pointerId) return
+    const dy = e.clientY - drag.startY
+    if (!drag.isDragging && Math.abs(dy) < gridToolbarDragThresholdPx) return
+    if (!drag.isDragging) drag.isDragging = true
     e.preventDefault()
     e.stopPropagation()
-    const dy = e.clientY - drag.startY
     const nextY = Math.round(drag.originY + dy)
     setGridToolbarOffsets((prev) => ({
       ...prev,
       [drag.target as 'top' | 'bottom']: { x: 0, y: nextY },
     }))
-  }, [])
+  }, [gridToolbarDragThresholdPx])
 
   const endGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const drag = gridToolbarDragRef.current
     if (!drag.target || drag.pointerId !== e.pointerId) return
-    e.preventDefault()
-    e.stopPropagation()
+    if (drag.isDragging) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
     e.currentTarget.releasePointerCapture?.(e.pointerId)
     gridToolbarDragRef.current = {
       target: null,
       pointerId: null,
+      isDragging: false,
       startX: 0,
       startY: 0,
       originX: 0,
@@ -3686,9 +3694,6 @@ export default function DiagramOverlayModule(props: {
   const detectGridToolbarDragTarget = useCallback((eventTarget: EventTarget | null): 'top' | 'bottom' | null => {
     const node = eventTarget as HTMLElement | null
     if (!node) return null
-
-    const interactiveControl = node.closest('button, a, input, textarea, select, [role="button"], [contenteditable="true"]')
-    if (interactiveControl) return null
 
     if (node.closest('.App-top-bar')) return 'top'
     if (node.closest('.App-bottom-bar')) return 'bottom'

@@ -62,7 +62,28 @@ type ScriptDiagramEventDetail = {
   open?: boolean
 }
 
+type PresenceClient = {
+  clientId: string
+  name: string
+  userId?: string
+  isAdmin?: boolean
+}
+
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
+const normalizeDisplayName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
+const getUserKey = (maybeUserId?: string, maybeName?: string) => {
+  const uid = typeof maybeUserId === 'string' ? maybeUserId.trim() : ''
+  if (uid) return `uid:${uid}`
+  const nk = normalizeDisplayName(maybeName || '').toLowerCase()
+  return nk ? `name:${nk}` : ''
+}
+const getInitials = (name: string, fallback: string) => {
+  const normalized = normalizeDisplayName(name)
+  const parts = normalized.split(/\s+/).filter(Boolean)
+  const a = parts[0]?.[0] || fallback
+  const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
+  return (a + b).toUpperCase()
+}
 
 const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeScopeId?: string) => {
   const base = realtimeScopeId
@@ -112,7 +133,60 @@ export default function DiagramOverlayModule(props: {
   const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
   const [presenterOverride, setPresenterOverride] = useState(false)
-  const canPresent = localOnly ? true : (Boolean(isAdmin) || presenterOverride)
+  const [activePresenterUserKey, setActivePresenterUserKey] = useState<string | null>(null)
+  const activePresenterUserKeyRef = useRef<string>('')
+  const activePresenterClientIdsRef = useRef<Set<string>>(new Set())
+  const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
+  const controllerRightsUserAllowlistRef = useRef<Set<string>>(new Set())
+  const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
+  const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
+  const [overlayRosterVisible, setOverlayRosterVisible] = useState(false)
+  const clientId = useMemo(() => {
+    const base = sanitizeIdentifier(userId || 'anonymous')
+    const randomSuffix = Math.random().toString(36).slice(2, 8)
+    return `${base}-${randomSuffix}`
+  }, [userId])
+  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+  const channelRef = useRef<any>(null)
+  const clientIdRef = useRef(clientId)
+  useEffect(() => {
+    clientIdRef.current = clientId
+  }, [clientId])
+  const selfUserKey = useMemo(() => getUserKey(userId, userDisplayName), [userId, userDisplayName])
+
+  useEffect(() => {
+    activePresenterUserKeyRef.current = activePresenterUserKey ? String(activePresenterUserKey) : ''
+  }, [activePresenterUserKey])
+
+  const bumpControllerRightsVersion = useCallback(() => {
+    setControllerRightsVersion(v => v + 1)
+  }, [])
+
+  const isSelfActivePresenter = useCallback(() => {
+    const activeKey = activePresenterUserKeyRef.current
+    if (!activeKey) return false
+    if (selfUserKey && activeKey === selfUserKey) return true
+    const myId = clientIdRef.current
+    if (!myId) return false
+    return activePresenterClientIdsRef.current.has(myId)
+  }, [selfUserKey])
+
+  const hasControllerRights = useCallback(() => {
+    if (isAdmin) return true
+    if (selfUserKey && controllerRightsUserAllowlistRef.current.has(selfUserKey)) return true
+    const myId = clientIdRef.current
+    if (!myId) return false
+    return controllerRightsAllowlistRef.current.has(myId)
+  }, [isAdmin, selfUserKey])
+
+  const presenterControlCanPresent = useMemo(() => {
+    if (activePresenterUserKey) {
+      return isSelfActivePresenter()
+    }
+    return hasControllerRights()
+  }, [activePresenterUserKey, hasControllerRights, isSelfActivePresenter])
+
+  const canPresent = localOnly ? true : (Boolean(isAdmin) || presenterOverride || presenterControlCanPresent)
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -196,19 +270,226 @@ export default function DiagramOverlayModule(props: {
     [mobileTrayBottomOffsetPx, mobileTrayReservePx]
   )
 
-  const clientId = useMemo(() => {
-    const base = sanitizeIdentifier(userId || 'anonymous')
-    const randomSuffix = Math.random().toString(36).slice(2, 8)
-    return `${base}-${randomSuffix}`
-  }, [userId])
+  const setPresenterRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
+    if (!isAdmin) return
+    const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all')))
+    const userKey = typeof opts?.userKey === 'string' ? opts.userKey : ''
+    const displayName = typeof opts?.name === 'string' ? opts.name : ''
+    if (!targets.length && !userKey) return
 
-  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+    if (userKey) {
+      if (allowed) controllerRightsUserAllowlistRef.current.add(userKey)
+      else controllerRightsUserAllowlistRef.current.delete(userKey)
+    }
+    for (const target of targets) {
+      if (allowed) controllerRightsAllowlistRef.current.add(target)
+      else controllerRightsAllowlistRef.current.delete(target)
+    }
+    bumpControllerRightsVersion()
 
-  const channelRef = useRef<any>(null)
-  const clientIdRef = useRef(clientId)
-  useEffect(() => {
-    clientIdRef.current = clientId
-  }, [clientId])
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights',
+        targetUserKey: userKey || null,
+        name: displayName || null,
+        targetClientIds: targets,
+        targetClientId: targets[0],
+        allowed,
+        ts,
+      })
+
+      if (allowed) {
+        const presenterKey = userKey || null
+        setActivePresenterUserKey(presenterKey)
+        activePresenterClientIdsRef.current = new Set(targets)
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'presenter-set',
+          presenterUserKey: presenterKey,
+          targetClientIds: targets,
+          targetClientId: targets[0],
+          ts: ts + 1,
+        })
+      } else {
+        const activeKey = activePresenterUserKeyRef.current
+        const sameKey = Boolean(userKey && activeKey && userKey === activeKey)
+        const sameClient = targets.some(id => activePresenterClientIdsRef.current.has(id))
+        if (sameKey || sameClient) {
+          setActivePresenterUserKey(null)
+          activePresenterClientIdsRef.current = new Set()
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'presenter-set',
+            presenterUserKey: null,
+            targetClientIds: [],
+            ts: ts + 1,
+          })
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [bumpControllerRightsVersion, isAdmin, userDisplayName])
+
+  const reclaimAdminControl = useCallback(async () => {
+    if (!isAdmin) return
+    controllerRightsUserAllowlistRef.current.clear()
+    controllerRightsAllowlistRef.current.clear()
+    bumpControllerRightsVersion()
+
+    const teacherPresenterKey = (selfUserKey || '').trim() || null
+    const teacherClientId = clientIdRef.current
+    setActivePresenterUserKey(teacherPresenterKey)
+    activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: teacherPresenterKey,
+        targetClientIds: teacherClientId ? [teacherClientId] : [],
+        ts,
+      })
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: ts + 1,
+      })
+    } catch {
+      // ignore
+    }
+  }, [bumpControllerRightsVersion, isAdmin, selfUserKey, userDisplayName])
+
+  const handOverPresentation = useCallback((target: null | { clientId: string; userId?: string; userKey: string; displayName: string }) => {
+    if (!isAdmin) return
+    void (async () => {
+      if (!target) {
+        await reclaimAdminControl()
+        return
+      }
+
+      const clickedClientId = String(target.clientId || '').trim()
+      const clickedUserId = String(target.userId || '').trim()
+      const clickedUserKey = String(target.userKey || '').trim()
+      const displayName = String(target.displayName || '').trim()
+      if (!clickedClientId && !clickedUserKey) return
+
+      const prevPresenterUserKey = activePresenterUserKeyRef.current || ''
+      const prevPresenterClientIds = Array.from(activePresenterClientIdsRef.current)
+      const nameKey = normalizeDisplayName(displayName).toLowerCase()
+      const matchingClientIds = connectedClients
+        .filter(x => x.clientId && x.clientId !== 'all')
+        .filter(x => {
+          const xUserId = typeof x.userId === 'string' ? String(x.userId) : ''
+          if (clickedUserId && xUserId) return xUserId === clickedUserId
+          const xName = normalizeDisplayName(x.name || '') || String(x.clientId)
+          return normalizeDisplayName(xName).toLowerCase() === nameKey
+        })
+        .map(x => x.clientId)
+
+      const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
+      if (!nextClientIds.length) return
+
+      await setPresenterRightsForClients(nextClientIds, true, {
+        userKey: clickedUserKey,
+        name: displayName,
+      })
+
+      const samePresenter = (prevPresenterUserKey && clickedUserKey && prevPresenterUserKey === clickedUserKey)
+        || prevPresenterClientIds.some(id => nextClientIds.includes(id))
+      if (!samePresenter && (prevPresenterUserKey || prevPresenterClientIds.length)) {
+        await setPresenterRightsForClients(
+          prevPresenterClientIds,
+          false,
+          prevPresenterUserKey ? { userKey: prevPresenterUserKey } : undefined
+        )
+      }
+    })()
+  }, [connectedClients, isAdmin, reclaimAdminControl, setPresenterRightsForClients])
+
+  const handleRosterAttendeeAvatarClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isAdmin) return
+    const el = e.currentTarget
+    const clickedClientId = String(el?.dataset?.clientId || '').trim()
+    const clickedUserId = String(el?.dataset?.userId || '').trim()
+    const clickedUserKey = String(el?.dataset?.userKey || '').trim()
+    const displayName = String(el?.dataset?.displayName || '').trim()
+    handOverPresentation({
+      clientId: clickedClientId,
+      userId: clickedUserId || undefined,
+      userKey: clickedUserKey,
+      displayName,
+    })
+  }, [handOverPresentation, isAdmin])
+
+  const teacherBadge = useMemo(() => {
+    const resolvedName = normalizeDisplayName(userDisplayName || '') || 'Teacher'
+    return {
+      name: resolvedName,
+      initials: getInitials(resolvedName, 'T'),
+    }
+  }, [userDisplayName])
+
+  const editorBadges = useMemo(() => {
+    const candidates = connectedClients
+      .filter(c => c.clientId && c.clientId !== 'all')
+      .filter(c => !Boolean(c.isAdmin))
+      .map(c => {
+        const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
+        const key = getUserKey(c.userId, displayName) || `name:${normalizeDisplayName(displayName).toLowerCase()}`
+        return { clientId: c.clientId, userKey: key, name: displayName }
+      })
+    const seen = new Set<string>()
+    const list: Array<{ clientId: string; userKey: string; name: string; initials: string }> = []
+    for (const c of candidates) {
+      const allowedByUser = c.userKey && controllerRightsUserAllowlistRef.current.has(c.userKey)
+      const allowedByClient = controllerRightsAllowlistRef.current.has(c.clientId)
+      if (!allowedByUser && !allowedByClient) continue
+      if (seen.has(c.userKey)) continue
+      seen.add(c.userKey)
+      list.push({
+        clientId: c.clientId,
+        userKey: c.userKey,
+        name: c.name,
+        initials: getInitials(c.name, 'E'),
+      })
+    }
+    return list
+  }, [connectedClients, controllerRightsVersion])
+
+  const availableRosterAttendees = useMemo(() => {
+    const selfId = clientIdRef.current || ''
+    const selfIdRaw = String(userId || '').trim()
+    const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasRights: boolean }>()
+    for (const c of connectedClients) {
+      if (!c.clientId || c.clientId === 'all' || c.clientId === selfId) continue
+      if (c.isAdmin) continue
+      if (selfIdRaw && c.userId && String(c.userId) === selfIdRaw) continue
+      const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
+      const userKey = getUserKey(c.userId, displayName) || `name:${normalizeDisplayName(displayName).toLowerCase()}`
+      if (!userKey) continue
+      const hasRights = controllerRightsUserAllowlistRef.current.has(userKey) || controllerRightsAllowlistRef.current.has(c.clientId)
+      if (hasRights) continue
+      if (!byUser.has(userKey)) {
+        byUser.set(userKey, { clientId: c.clientId, userId: c.userId, name: displayName, userKey, hasRights })
+      }
+    }
+    return Array.from(byUser.values())
+  }, [connectedClients, controllerRightsVersion, userId])
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
   const diagramsRef = useRef<DiagramRecord[]>([])
@@ -261,6 +542,11 @@ export default function DiagramOverlayModule(props: {
     if (diagramState.isOpen && isGridDiagram && isAdmin) return
     clearGridCloseTimer()
   }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
+
+  useEffect(() => {
+    if (diagramState.isOpen && isGridDiagram && isAdmin) return
+    setOverlayRosterVisible(false)
+  }, [diagramState.isOpen, isAdmin, isGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1012,12 +1298,84 @@ export default function DiagramOverlayModule(props: {
           }
         }
 
+        const handleControl = (message: any) => {
+          const data = message?.data as any
+          if (!data || typeof data !== 'object') return
+          const controlAction = typeof data?.action === 'string' ? data.action : ''
+
+          if (controlAction === 'presenter-set') {
+            const incomingKey = typeof data.presenterUserKey === 'string' ? String(data.presenterUserKey) : ''
+            const nextKey = incomingKey ? incomingKey : null
+            setActivePresenterUserKey(nextKey)
+            const targets: string[] = Array.isArray(data.targetClientIds)
+              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            activePresenterClientIdsRef.current = new Set(dedupedTargets)
+            return
+          }
+
+          if (controlAction === 'controller-rights-reset') {
+            controllerRightsUserAllowlistRef.current.clear()
+            controllerRightsAllowlistRef.current.clear()
+            bumpControllerRightsVersion()
+            return
+          }
+
+          if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
+            const targets: string[] = Array.isArray(data.targetClientIds)
+              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            const allowed = Boolean(data.allowed)
+            const targetUserKey = typeof data.targetUserKey === 'string' ? String(data.targetUserKey) : ''
+
+            if (targetUserKey) {
+              if (allowed) controllerRightsUserAllowlistRef.current.add(targetUserKey)
+              else controllerRightsUserAllowlistRef.current.delete(targetUserKey)
+            }
+            for (const target of dedupedTargets) {
+              if (!target) continue
+              if (allowed) controllerRightsAllowlistRef.current.add(target)
+              else controllerRightsAllowlistRef.current.delete(target)
+            }
+            if (targetUserKey || dedupedTargets.length) bumpControllerRightsVersion()
+          }
+        }
+
         channel.subscribe('diagram', handle)
+        channel.subscribe('control', handleControl)
 
         // Presence: on new join, admin pushes current diagram state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName || 'Participant', userId, isAdmin: Boolean(isAdmin) })
+          const toPresenceClient = (m: any): PresenceClient => ({
+            clientId: String(m?.clientId || ''),
+            name: normalizeDisplayName(m?.data?.name),
+            isAdmin: Boolean(m?.data?.isAdmin),
+            userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
+          })
+          const dedupePresence = (list: any[]) => {
+            const byKey = new Map<string, PresenceClient>()
+            for (const raw of Array.isArray(list) ? list : []) {
+              const c = toPresenceClient(raw)
+              if (!c.clientId) continue
+              const key = c.userId ? `uid:${c.userId}` : `name:${normalizeDisplayName(c.name || c.clientId).toLowerCase()}`
+              if (!byKey.has(key)) byKey.set(key, c)
+            }
+            return Array.from(byKey.values())
+          }
+          const members = await channel.presence.get()
+          setConnectedClients(dedupePresence(members))
           channel.presence.subscribe(async (presenceMsg: any) => {
+            try {
+              const list = await channel.presence.get()
+              setConnectedClients(dedupePresence(list))
+            } catch {
+              // ignore
+            }
             if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return
             const state = diagramStateRef.current
@@ -1065,7 +1423,7 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, localOnly, publish, toTransportAnnotations, userDisplayName, userId])
+  }, [bumpControllerRightsVersion, channelName, isAdmin, loadFromServer, localOnly, publish, toTransportAnnotations, userDisplayName, userId])
 
   useEffect(() => {
     return () => {
@@ -3955,6 +4313,88 @@ export default function DiagramOverlayModule(props: {
                   <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
+            </div>
+          ) : null}
+
+          {isGridDiagram && isAdmin ? (
+            <div
+              className="absolute z-50"
+              style={{
+                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+                left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+              }}
+            >
+              <div className="flex items-start gap-2">
+                {editorBadges.length > 0 ? (
+                  <div className="flex flex-col items-start">
+                    {editorBadges.map((badge) => (
+                      <div
+                        key={badge.userKey || badge.clientId}
+                        className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                        style={{ marginBottom: 6 }}
+                        title={`${badge.name} (presenter)`}
+                        aria-label={`${badge.name} is a presenter`}
+                      >
+                        {badge.initials}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {overlayRosterVisible ? (
+                  <div className="flex flex-col items-start">
+                    {availableRosterAttendees.map((attendee) => (
+                      <button
+                        type="button"
+                        key={attendee.userKey}
+                        data-client-id={attendee.clientId}
+                        data-user-id={attendee.userId || ''}
+                        data-user-key={attendee.userKey}
+                        data-display-name={attendee.name}
+                        className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                        style={{ marginBottom: 6 }}
+                        title={attendee.name}
+                        aria-label={`Make ${attendee.name} the presenter`}
+                        onClick={handleRosterAttendeeAvatarClick}
+                        onPointerDown={(e) => {
+                          e.stopPropagation()
+                        }}
+                      >
+                        {getInitials(attendee.name, 'U')}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2 py-1 rounded-full bg-white/85 backdrop-blur border border-slate-200 shadow-sm"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (overlayRosterVisible) {
+                      if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
+                        handOverPresentation(null)
+                        return
+                      }
+                      setOverlayRosterVisible(false)
+                      return
+                    }
+                    setOverlayRosterVisible(true)
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                  }}
+                  aria-label="Toggle diagram avatars"
+                >
+                  <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
+                    {teacherBadge.initials}
+                  </div>
+                  <div className="text-[11px] text-slate-700 max-w-[160px] truncate">
+                    {teacherBadge.name}
+                  </div>
+                </button>
+              </div>
             </div>
           ) : null}
 

@@ -113,6 +113,20 @@
   bottom: 55px !important;
 }
 
+.philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar .dropdown-menu {
+  top: 100% !important;
+  bottom: auto !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0 !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .dropdown-menu {
+  top: auto !important;
+  bottom: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+}
+
 .philani-excalidraw-bottom-toolbar .excalidraw .App-toolbar-content .dropdown-menu--mobile .dropdown-menu-container {
   max-height: calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - 72px);
   overflow-y: auto;

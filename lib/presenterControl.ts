@@ -236,3 +236,24 @@ export const buildRosterAvatarLayout = (params: {
     bottom: all.slice(topCount),
   }
 }
+
+export const waitForResolvedValue = async <T>(
+  getValue: () => T | null | undefined,
+  options?: { timeoutMs?: number; intervalMs?: number }
+) => {
+  const timeoutMs = Number.isFinite(options?.timeoutMs) ? Math.max(0, Number(options?.timeoutMs)) : 1000
+  const intervalMs = Number.isFinite(options?.intervalMs) ? Math.max(10, Number(options?.intervalMs)) : 50
+
+  const initial = getValue()
+  if (initial != null) return initial
+
+  const startTs = Date.now()
+  while (Date.now() - startTs < timeoutMs) {
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+    const next = getValue()
+    if (next != null) return next
+  }
+
+  const finalValue = getValue()
+  return finalValue != null ? finalValue : null
+}

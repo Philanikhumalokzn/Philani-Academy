@@ -5,6 +5,7 @@ import {
   deriveAvailableRosterAttendees,
   resolveHandoffSelection,
   type PresenterPresenceClient,
+  waitForResolvedValue,
 } from '../lib/presenterControl'
 
 test('handoff resolves all connected clientIds for the clicked user', () => {
@@ -93,4 +94,15 @@ test('roster layout keeps a single presenter badge and shows attendees when rost
   expect(closedAll[0].kind).toBe('presenter')
   expect(openAll.filter(x => x.kind === 'presenter')).toHaveLength(1)
   expect(openAll.filter(x => x.kind === 'attendee')).toHaveLength(2)
+})
+
+test('handoff channel wait resolves transient reconnect window instead of failing immediately', async () => {
+  let channel: { id: string } | null = null
+
+  setTimeout(() => {
+    channel = { id: 'control-room' }
+  }, 40)
+
+  const resolved = await waitForResolvedValue(() => channel, { timeoutMs: 300, intervalMs: 10 })
+  expect(resolved).toEqual({ id: 'control-room' })
 })

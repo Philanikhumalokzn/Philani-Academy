@@ -15,6 +15,7 @@ import {
   getUserKey as getPresenterUserKey,
   normalizeDisplayName,
   resolveHandoffSelection,
+  waitForResolvedValue,
 } from '../lib/presenterControl'
 
 function renderTextWithInlineKatex(inputRaw: string) {
@@ -2497,17 +2498,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           pendingBroadcastRef.current = null
         }
 
-        const waitForControlChannel = async (timeoutMs: number) => {
-          const startTs = Date.now()
-          while (Date.now() - startTs < timeoutMs) {
-            const liveChannel = channelRef.current
-            if (liveChannel) return liveChannel
-            await new Promise(resolve => setTimeout(resolve, 50))
-          }
-          return channelRef.current
-        }
-
-        const channel = await waitForControlChannel(1000)
+        const channel = await waitForResolvedValue(() => channelRef.current, { timeoutMs: 1000, intervalMs: 50 })
         if (!channel) {
           setActivePresenterUserKey(previousPresenterKey)
           activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
@@ -5339,7 +5330,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
 
           // Admin compact/stacked mode: keep a live typeset preview updated without mutating the ink.
-          if (useAdminStepComposer) {
+          if (useAdminStepComposerRef.current) {
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
@@ -5506,7 +5497,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useAdminStepComposer])
+  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit])
 
   useEffect(() => {
     if (!useAdminStepComposer) return

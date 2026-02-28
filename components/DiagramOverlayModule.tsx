@@ -324,7 +324,11 @@ export default function DiagramOverlayModule(props: {
     return hasControllerRights()
   }, [activePresenterUserKey, hasControllerRights, isSelfActivePresenter])
 
-  const canPresent = localOnly ? true : (Boolean(isAdmin) || presenterOverride || presenterControlCanPresent)
+  const canPresent = localOnly
+    ? true
+    : (activePresenterUserKey
+      ? presenterControlCanPresent
+      : (Boolean(isAdmin) || presenterOverride || presenterControlCanPresent))
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -478,6 +482,12 @@ export default function DiagramOverlayModule(props: {
 
   const reclaimAdminControl = useCallback(async () => {
     if (!isAdmin) return
+
+    const currentUserKeys = Array.from(controllerRightsUserAllowlistRef.current)
+      .filter(k => k && k !== selfUserKey)
+    const currentClientIds = Array.from(controllerRightsAllowlistRef.current)
+      .filter(id => id && id !== 'all' && id !== clientIdRef.current)
+
     controllerRightsUserAllowlistRef.current.clear()
     controllerRightsAllowlistRef.current.clear()
     bumpControllerRightsVersion()
@@ -505,6 +515,37 @@ export default function DiagramOverlayModule(props: {
         action: 'controller-rights-reset',
         ts: ts + 1,
       })
+
+      if (currentClientIds.length) {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights',
+          targetUserKey: null,
+          name: null,
+          targetClientIds: currentClientIds,
+          targetClientId: currentClientIds[0],
+          allowed: false,
+          ts: ts + 2,
+        })
+      }
+
+      if (currentUserKeys.length) {
+        let i = 0
+        for (const userKey of currentUserKeys) {
+          i += 1
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'controller-rights',
+            targetUserKey: userKey,
+            name: null,
+            targetClientIds: [],
+            allowed: false,
+            ts: ts + 2 + i,
+          })
+        }
+      }
     } catch {
       // ignore
     }

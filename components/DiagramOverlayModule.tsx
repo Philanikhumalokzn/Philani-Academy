@@ -1065,7 +1065,7 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, localOnly, publish, setGridSceneToApi, toTransportAnnotations, userDisplayName, userId])
+  }, [channelName, isAdmin, loadFromServer, localOnly, publish, toTransportAnnotations, userDisplayName, userId])
 
   useEffect(() => {
     return () => {

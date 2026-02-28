@@ -640,12 +640,29 @@ export default function DiagramOverlayModule(props: {
         return
       }
 
+      const resolvedPresenterKey = (() => {
+        if (clickedUserKey) return clickedUserKey
+        for (const c of connectedClients) {
+          if (!c.clientId || !nextClientIds.includes(c.clientId)) continue
+          const display = normalizeDisplayName(c.name || '') || String(c.clientId)
+          const key = getUserKey(c.userId, display)
+          if (key) return key
+        }
+        return ''
+      })()
+      if (!resolvedPresenterKey) {
+        showHandoffFailure('Switch failed. Could not resolve user identity.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
       const previousPresenterKey = activePresenterUserKeyRef.current || null
       const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
       const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
       const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
 
-      const nextPresenterKey = clickedUserKey || null
+      const nextPresenterKey = resolvedPresenterKey
       controllerRightsUserAllowlistRef.current.clear()
       controllerRightsAllowlistRef.current.clear()
       if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)

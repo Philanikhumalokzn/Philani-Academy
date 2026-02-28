@@ -4738,11 +4738,12 @@ export default function DiagramOverlayModule(props: {
 
           {isGridDiagram && isAdmin ? (
             <div
-              className="absolute z-50"
+              className="absolute"
               style={{
                 top: '50%',
                 left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
                 transform: 'translateY(-50%)',
+                zIndex: 2147483647,
               }}
             >
               <div className="relative w-6">
@@ -4809,6 +4810,7 @@ export default function DiagramOverlayModule(props: {
                 {handoffSwitching ? (
                   <div
                     className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
+                    style={{ zIndex: 2147483647 }}
                     role="status"
                     aria-live="polite"
                   >
@@ -4819,6 +4821,7 @@ export default function DiagramOverlayModule(props: {
                 {!handoffSwitching && handoffMessage ? (
                   <div
                     className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
+                    style={{ zIndex: 2147483647 }}
                     role="alert"
                   >
                     {handoffMessage}

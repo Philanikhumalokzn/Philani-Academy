@@ -341,25 +341,16 @@ export default function DiagramOverlayModule(props: {
   }, [activePresenterUserKey, selfUserKey])
 
   const hasControllerRights = useCallback(() => {
-    if (isAdmin) return true
-    if (selfUserKey && controllerRightsUserAllowlistRef.current.has(selfUserKey)) return true
-    const myId = clientIdRef.current
-    if (!myId) return false
-    return controllerRightsAllowlistRef.current.has(myId)
+    return Boolean(isAdmin)
   }, [isAdmin, selfUserKey])
 
   const presenterControlCanPresent = useMemo(() => {
-    if (activePresenterUserKey) {
-      return isSelfActivePresenter()
-    }
-    return hasControllerRights()
+    return isSelfActivePresenter()
   }, [activePresenterUserKey, hasControllerRights, isSelfActivePresenter])
 
   const canPresent = localOnly
     ? true
-    : (activePresenterUserKey
-      ? presenterControlCanPresent
-      : (Boolean(isAdmin) || presenterOverride || presenterControlCanPresent))
+    : presenterControlCanPresent
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -447,37 +438,16 @@ export default function DiagramOverlayModule(props: {
     if (!isAdmin) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all')))
     const userKey = typeof opts?.userKey === 'string' ? opts.userKey : ''
-    const displayName = typeof opts?.name === 'string' ? opts.name : ''
     if (!targets.length && !userKey) return
-
-    if (userKey) {
-      if (allowed) controllerRightsUserAllowlistRef.current.add(userKey)
-      else controllerRightsUserAllowlistRef.current.delete(userKey)
-    }
-    for (const target of targets) {
-      if (allowed) controllerRightsAllowlistRef.current.add(target)
-      else controllerRightsAllowlistRef.current.delete(target)
-    }
     bumpControllerRightsVersion()
 
     const channel = channelRef.current
     if (!channel) return
     const ts = Date.now()
     try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights',
-        targetUserKey: userKey || null,
-        name: displayName || null,
-        targetClientIds: targets,
-        targetClientId: targets[0],
-        allowed,
-        ts,
-      })
-
       if (allowed) {
         const presenterKey = userKey || null
+        if (!presenterKey) return
         setActivePresenterUserKey(presenterKey)
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
@@ -488,7 +458,7 @@ export default function DiagramOverlayModule(props: {
           presenterUserKey: presenterKey,
           targetClientIds: targets,
           targetClientId: targets[0],
-          ts: ts + 1,
+          ts,
         })
       } else {
         const activeKey = activePresenterUserKeyRef.current
@@ -504,7 +474,7 @@ export default function DiagramOverlayModule(props: {
             action: 'presenter-set',
             presenterUserKey: null,
             targetClientIds: [],
-            ts: ts + 1,
+            ts,
           })
         }
       }
@@ -515,14 +485,6 @@ export default function DiagramOverlayModule(props: {
 
   const reclaimAdminControl = useCallback(async () => {
     if (!isAdmin) return false
-
-    const currentUserKeys = Array.from(controllerRightsUserAllowlistRef.current)
-      .filter(k => k && k !== selfUserKey)
-    const currentClientIds = Array.from(controllerRightsAllowlistRef.current)
-      .filter(id => id && id !== 'all' && id !== clientIdRef.current)
-
-    controllerRightsUserAllowlistRef.current.clear()
-    controllerRightsAllowlistRef.current.clear()
     bumpControllerRightsVersion()
 
     const teacherPresenterKey = (selfUserKey || '').trim() || null
@@ -539,47 +501,18 @@ export default function DiagramOverlayModule(props: {
         clientId: clientIdRef.current,
         author: userDisplayName,
         action: 'presenter-set',
-        presenterUserKey: teacherPresenterKey,
-        targetClientIds: teacherClientId ? [teacherClientId] : [],
+        presenterUserKey: null,
+        targetClientIds: [],
         ts,
       })
       await channel.publish('control', {
         clientId: clientIdRef.current,
         author: userDisplayName,
-        action: 'controller-rights-reset',
+        action: 'presenter-set',
+        presenterUserKey: teacherPresenterKey,
+        targetClientIds: teacherClientId ? [teacherClientId] : [],
         ts: ts + 1,
       })
-
-      if (currentClientIds.length) {
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          action: 'controller-rights',
-          targetUserKey: null,
-          name: null,
-          targetClientIds: currentClientIds,
-          targetClientId: currentClientIds[0],
-          allowed: false,
-          ts: ts + 2,
-        })
-      }
-
-      if (currentUserKeys.length) {
-        let i = 0
-        for (const userKey of currentUserKeys) {
-          i += 1
-          await channel.publish('control', {
-            clientId: clientIdRef.current,
-            author: userDisplayName,
-            action: 'controller-rights',
-            targetUserKey: userKey,
-            name: null,
-            targetClientIds: [],
-            allowed: false,
-            ts: ts + 2 + i,
-          })
-        }
-      }
       return true
     } catch {
       return false
@@ -646,18 +579,7 @@ export default function DiagramOverlayModule(props: {
 
       const previousPresenterKey = activePresenterUserKeyRef.current || null
       const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
-      const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
-      const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
-
       const nextPresenterKey = resolvedPresenterKey
-      const nextPresenterName = resolvedSelection.resolvedDisplayName || displayName
-      controllerRightsUserAllowlistRef.current.clear()
-      controllerRightsAllowlistRef.current.clear()
-      if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
-      for (const id of nextClientIds) {
-        if (!id || id === 'all') continue
-        controllerRightsAllowlistRef.current.add(id)
-      }
       setActivePresenterUserKey(nextPresenterKey)
       activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
       activePresenterClientIdsRef.current = new Set(nextClientIds)
@@ -667,8 +589,6 @@ export default function DiagramOverlayModule(props: {
       if (!channel) {
         setActivePresenterUserKey(previousPresenterKey)
         activePresenterClientIdsRef.current = previousPresenterClientIds
-        controllerRightsUserAllowlistRef.current = previousUserAllowlist
-        controllerRightsAllowlistRef.current = previousClientAllowlist
         bumpControllerRightsVersion()
         showHandoffFailure('Switch failed. Realtime channel unavailable.')
         setHandoffSwitching(false)
@@ -682,36 +602,24 @@ export default function DiagramOverlayModule(props: {
           clientId: clientIdRef.current,
           author: userDisplayName,
           action: 'presenter-set',
-          presenterUserKey: nextPresenterKey,
-          targetClientIds: nextClientIds,
-          targetClientId: nextClientIds[0],
+          presenterUserKey: null,
+          targetClientIds: [],
           ts,
         })
 
         await channel.publish('control', {
           clientId: clientIdRef.current,
           author: userDisplayName,
-          action: 'controller-rights-reset',
-          ts: ts + 1,
-        })
-
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          action: 'controller-rights',
-          targetUserKey: nextPresenterKey,
-          name: nextPresenterName || null,
+          action: 'presenter-set',
+          presenterUserKey: nextPresenterKey,
           targetClientIds: nextClientIds,
           targetClientId: nextClientIds[0],
-          allowed: true,
-          ts: ts + 2,
+          ts: ts + 1,
         })
       } catch {
         setActivePresenterUserKey(previousPresenterKey)
         activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
         activePresenterClientIdsRef.current = previousPresenterClientIds
-        controllerRightsUserAllowlistRef.current = previousUserAllowlist
-        controllerRightsAllowlistRef.current = previousClientAllowlist
         bumpControllerRightsVersion()
         showHandoffFailure('Switch failed. Please try again.')
       } finally {
@@ -1500,6 +1408,29 @@ export default function DiagramOverlayModule(props: {
         channelRef.current = channel
         await channel.attach()
 
+        if (isAdmin && !localOnly && !activePresenterUserKeyRef.current) {
+          const teacherClientId = clientIdRef.current
+          const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
+          if (teacherPresenterKey) {
+            setActivePresenterUserKey(teacherPresenterKey)
+            activePresenterUserKeyRef.current = String(teacherPresenterKey)
+            activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+            bumpControllerRightsVersion()
+            try {
+              await channel.publish('control', {
+                clientId: clientIdRef.current,
+                author: userDisplayName,
+                action: 'presenter-set',
+                presenterUserKey: teacherPresenterKey,
+                targetClientIds: teacherClientId ? [teacherClientId] : [],
+                ts: Date.now(),
+              })
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         const handle = (message: any) => {
           const data = message?.data as DiagramRealtimeMessage
           if (!data || typeof data !== 'object') return
@@ -1640,6 +1571,12 @@ export default function DiagramOverlayModule(props: {
             const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
             const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
             activePresenterClientIdsRef.current = new Set(dedupedTargets)
+            if (!nextKey) {
+              controllerRightsUserAllowlistRef.current.clear()
+              controllerRightsAllowlistRef.current.clear()
+              if (controlTs) lastControllerRightsTsRef.current = Math.max(lastControllerRightsTsRef.current, controlTs)
+              bumpControllerRightsVersion()
+            }
             return
           }
 

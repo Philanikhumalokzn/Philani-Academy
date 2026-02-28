@@ -337,13 +337,13 @@ export default function DiagramOverlayModule(props: {
   }, [])
 
   const isSelfActivePresenter = useCallback(() => {
-    const activeKey = activePresenterUserKeyRef.current
+    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
     if (!activeKey) return false
     if (selfUserKey && activeKey === selfUserKey) return true
     const myId = clientIdRef.current
     if (!myId) return false
     return activePresenterClientIdsRef.current.has(myId)
-  }, [selfUserKey])
+  }, [activePresenterUserKey, selfUserKey])
 
   const hasControllerRights = useCallback(() => {
     if (isAdmin) return true
@@ -484,6 +484,7 @@ export default function DiagramOverlayModule(props: {
       if (allowed) {
         const presenterKey = userKey || null
         setActivePresenterUserKey(presenterKey)
+        activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
         await channel.publish('control', {
           clientId: clientIdRef.current,
@@ -500,6 +501,7 @@ export default function DiagramOverlayModule(props: {
         const sameClient = targets.some(id => activePresenterClientIdsRef.current.has(id))
         if (sameKey || sameClient) {
           setActivePresenterUserKey(null)
+          activePresenterUserKeyRef.current = ''
           activePresenterClientIdsRef.current = new Set()
           await channel.publish('control', {
             clientId: clientIdRef.current,
@@ -531,6 +533,7 @@ export default function DiagramOverlayModule(props: {
     const teacherPresenterKey = (selfUserKey || '').trim() || null
     const teacherClientId = clientIdRef.current
     setActivePresenterUserKey(teacherPresenterKey)
+    activePresenterUserKeyRef.current = teacherPresenterKey ? String(teacherPresenterKey) : ''
     activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
 
     const channel = channelRef.current
@@ -671,6 +674,7 @@ export default function DiagramOverlayModule(props: {
         controllerRightsAllowlistRef.current.add(id)
       }
       setActivePresenterUserKey(nextPresenterKey)
+      activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
       activePresenterClientIdsRef.current = new Set(nextClientIds)
       bumpControllerRightsVersion()
 
@@ -719,6 +723,7 @@ export default function DiagramOverlayModule(props: {
         })
       } catch {
         setActivePresenterUserKey(previousPresenterKey)
+        activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
         activePresenterClientIdsRef.current = previousPresenterClientIds
         controllerRightsUserAllowlistRef.current = previousUserAllowlist
         controllerRightsAllowlistRef.current = previousClientAllowlist
@@ -762,7 +767,7 @@ export default function DiagramOverlayModule(props: {
   }, [userDisplayName])
 
   const activePresenterBadge = useMemo(() => {
-    const activeKey = activePresenterUserKeyRef.current
+    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
     const activeClientIds = activePresenterClientIdsRef.current
     if (!activeKey && !activeClientIds.size) return null
 
@@ -797,7 +802,7 @@ export default function DiagramOverlayModule(props: {
   const availableRosterAttendees = useMemo(() => {
     const selfId = clientIdRef.current || ''
     const selfIdRaw = String(userId || '').trim()
-    const activeKey = activePresenterUserKeyRef.current
+    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
     const activeClientIds = activePresenterClientIdsRef.current
     const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasUserId: boolean }>()
     for (const c of connectedClients) {
@@ -827,7 +832,7 @@ export default function DiagramOverlayModule(props: {
       }
     }
     return Array.from(byUser.values())
-  }, [connectedClients, controllerRightsVersion, userId])
+  }, [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
 
   const rosterAvatarLayout = useMemo(() => {
     const byUser = new Map<string, {
@@ -1729,6 +1734,7 @@ export default function DiagramOverlayModule(props: {
             const incomingKey = typeof data.presenterUserKey === 'string' ? String(data.presenterUserKey) : ''
             const nextKey = incomingKey ? incomingKey : null
             setActivePresenterUserKey(nextKey)
+            activePresenterUserKeyRef.current = nextKey ? String(nextKey) : ''
             const targets: string[] = Array.isArray(data.targetClientIds)
               ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
               : []

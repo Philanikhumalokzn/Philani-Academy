@@ -577,6 +577,47 @@ export default function DiagramOverlayModule(props: {
     return Array.from(byUser.values()).filter(entry => !entry.hasRights)
   }, [connectedClients, controllerRightsVersion, userId])
 
+  const rosterAvatarLayout = useMemo(() => {
+    const byUser = new Map<string, {
+      kind: 'presenter' | 'attendee'
+      userKey: string
+      name: string
+      initials: string
+      clientId?: string
+      userId?: string
+    }>()
+
+    for (const badge of editorBadges) {
+      byUser.set(badge.userKey, {
+        kind: 'presenter',
+        userKey: badge.userKey,
+        name: badge.name,
+        initials: badge.initials,
+      })
+    }
+
+    if (overlayRosterVisible) {
+      for (const attendee of availableRosterAttendees) {
+        if (byUser.has(attendee.userKey)) continue
+        byUser.set(attendee.userKey, {
+          kind: 'attendee',
+          userKey: attendee.userKey,
+          name: attendee.name,
+          initials: getInitials(attendee.name, 'U'),
+          clientId: attendee.clientId,
+          userId: attendee.userId,
+        })
+      }
+    }
+
+    const all = Array.from(byUser.values()).sort((a, b) => a.name.localeCompare(b.name))
+    const topCount = Math.floor(all.length / 2)
+    return {
+      top: all.slice(0, topCount),
+      bottom: all.slice(topCount),
+    }
+  }, [availableRosterAttendees, editorBadges, overlayRosterVisible])
+
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
   const diagramsRef = useRef<DiagramRecord[]>([])
   useEffect(() => {
@@ -4453,17 +4494,37 @@ export default function DiagramOverlayModule(props: {
               }}
             >
               <div className="relative w-6">
-                {editorBadges.length > 0 ? (
+                {rosterAvatarLayout.top.length > 0 ? (
                   <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
-                    {editorBadges.map((badge) => (
-                      <div
-                        key={badge.userKey || badge.clientId}
-                        className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
-                        title={`${badge.name} (presenter)`}
-                        aria-label={`${badge.name} is a presenter`}
-                      >
-                        {badge.initials}
-                      </div>
+                    {rosterAvatarLayout.top.map((avatar) => (
+                      avatar.kind === 'presenter' ? (
+                        <div
+                          key={avatar.userKey}
+                          className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                          title={`${avatar.name} (presenter)`}
+                          aria-label={`${avatar.name} is a presenter`}
+                        >
+                          {avatar.initials}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          key={avatar.userKey}
+                          data-client-id={avatar.clientId || ''}
+                          data-user-id={avatar.userId || ''}
+                          data-user-key={avatar.userKey}
+                          data-display-name={avatar.name}
+                          className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                          title={avatar.name}
+                          aria-label={`Make ${avatar.name} the presenter`}
+                          onClick={handleRosterAttendeeAvatarClick}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          {avatar.initials}
+                        </button>
+                      )
                     ))}
                   </div>
                 ) : null}
@@ -4493,26 +4554,37 @@ export default function DiagramOverlayModule(props: {
                   {teacherBadge.initials}
                 </button>
 
-                {overlayRosterVisible && availableRosterAttendees.length > 0 ? (
+                {rosterAvatarLayout.bottom.length > 0 ? (
                   <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
-                    {availableRosterAttendees.map((attendee) => (
-                      <button
-                        type="button"
-                        key={attendee.userKey}
-                        data-client-id={attendee.clientId}
-                        data-user-id={attendee.userId || ''}
-                        data-user-key={attendee.userKey}
-                        data-display-name={attendee.name}
-                        className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
-                        title={attendee.name}
-                        aria-label={`Make ${attendee.name} the presenter`}
-                        onClick={handleRosterAttendeeAvatarClick}
-                        onPointerDown={(e) => {
-                          e.stopPropagation()
-                        }}
-                      >
-                        {getInitials(attendee.name, 'U')}
-                      </button>
+                    {rosterAvatarLayout.bottom.map((avatar) => (
+                      avatar.kind === 'presenter' ? (
+                        <div
+                          key={avatar.userKey}
+                          className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                          title={`${avatar.name} (presenter)`}
+                          aria-label={`${avatar.name} is a presenter`}
+                        >
+                          {avatar.initials}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          key={avatar.userKey}
+                          data-client-id={avatar.clientId || ''}
+                          data-user-id={avatar.userId || ''}
+                          data-user-key={avatar.userKey}
+                          data-display-name={avatar.name}
+                          className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                          title={avatar.name}
+                          aria-label={`Make ${avatar.name} the presenter`}
+                          onClick={handleRosterAttendeeAvatarClick}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          {avatar.initials}
+                        </button>
+                      )
                     ))}
                   </div>
                 ) : null}

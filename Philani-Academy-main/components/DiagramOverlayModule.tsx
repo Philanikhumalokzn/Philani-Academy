@@ -70,6 +70,13 @@ type PresenceClient = {
   isAdmin?: boolean
 }
 
+type PresenterHandoffTarget = {
+  clientId: string
+  userId?: string
+  userKey: string
+  displayName: string
+} | null
+
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 const normalizeDisplayName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
 const getUserKey = (maybeUserId?: string, maybeName?: string) => {
@@ -275,6 +282,7 @@ export default function DiagramOverlayModule(props: {
   const activePresenterUserKeyRef = useRef<string>('')
   const activePresenterClientIdsRef = useRef<Set<string>>(new Set())
   const handoffInFlightRef = useRef(false)
+  const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
   const lastPresenterSetTsRef = useRef(0)
   const lastControllerRightsTsRef = useRef(0)
   const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
@@ -580,10 +588,13 @@ export default function DiagramOverlayModule(props: {
     }
   }, [bumpControllerRightsVersion, isAdmin, selfUserKey, userDisplayName])
 
-  const handOverPresentation = useCallback((target: null | { clientId: string; userId?: string; userKey: string; displayName: string }) => {
+  const handOverPresentation = useCallback((target: PresenterHandoffTarget) => {
     if (!isAdmin) return
     void (async () => {
-      if (handoffInFlightRef.current) return
+      if (handoffInFlightRef.current) {
+        pendingHandoffTargetRef.current = target
+        return
+      }
       handoffInFlightRef.current = true
       setHandoffSwitching(true)
       setHandoffMessage(null)
@@ -699,6 +710,11 @@ export default function DiagramOverlayModule(props: {
       } finally {
         setHandoffSwitching(false)
         handoffInFlightRef.current = false
+        const pending = pendingHandoffTargetRef.current
+        pendingHandoffTargetRef.current = null
+        if (pending) {
+          handOverPresentation(pending)
+        }
       }
     })()
   }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, showHandoffFailure, userDisplayName])

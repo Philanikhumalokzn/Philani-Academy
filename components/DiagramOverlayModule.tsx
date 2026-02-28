@@ -1744,6 +1744,10 @@ export default function DiagramOverlayModule(props: {
   const gridScenePublishTimerRef = useRef<number | null>(null)
   const gridPendingSceneRef = useRef<{ diagramId: string; elements: any[] } | null>(null)
   const lastPublishedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
+  const gridActiveDrawingRef = useRef(false)
+  const gridDrawingIdleTimerRef = useRef<number | null>(null)
+  const gridLastDrawingDiagramIdRef = useRef<string | null>(null)
+  const gridLastDrawingElementsRef = useRef<any[] | null>(null)
   const activeHistoryDiagramIdRef = useRef<string | null>(null)
 
   const setGridSceneToApi = useCallback((elements: any[]) => {
@@ -1796,6 +1800,7 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
 
     const tick = () => {
+      if (gridActiveDrawingRef.current) return
       const api = excalidrawApiRef.current
       const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
       if (!Array.isArray(live)) return
@@ -1807,6 +1812,16 @@ export default function DiagramOverlayModule(props: {
     const id = window.setInterval(tick, 450)
     return () => window.clearInterval(id)
   }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram, queueGridScenePublish])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridDrawingIdleTimerRef.current != null) {
+        window.clearTimeout(gridDrawingIdleTimerRef.current)
+        gridDrawingIdleTimerRef.current = null
+      }
+    }
+  }, [])
 
   const getExcalidrawToolType = useCallback((value: DiagramTool): 'selection' | 'freedraw' | 'arrow' | 'eraser' => {
     if (value === 'pen') return 'freedraw'
@@ -5061,6 +5076,26 @@ export default function DiagramOverlayModule(props: {
                   if (!diagramId) return
                   const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
                   gridSceneByDiagramRef.current.set(diagramId, nextElements)
+                  gridLastDrawingDiagramIdRef.current = diagramId
+                  gridLastDrawingElementsRef.current = nextElements
+                  gridActiveDrawingRef.current = true
+
+                  if (typeof window !== 'undefined') {
+                    if (gridDrawingIdleTimerRef.current != null) {
+                      window.clearTimeout(gridDrawingIdleTimerRef.current)
+                    }
+                    gridDrawingIdleTimerRef.current = window.setTimeout(() => {
+                      gridDrawingIdleTimerRef.current = null
+                      gridActiveDrawingRef.current = false
+                      const flushDiagramId = gridLastDrawingDiagramIdRef.current
+                      const flushElements = gridLastDrawingElementsRef.current
+                      if (!flushDiagramId || !Array.isArray(flushElements)) return
+                      if (suppressGridScenePublishRef.current) return
+                      if (!canPresentRef.current) return
+                      queueGridScenePublish(flushDiagramId, flushElements)
+                    }, 280)
+                  }
+
                   if (suppressGridScenePublishRef.current) return
                   if (!canPresentRef.current) return
                   queueGridScenePublish(diagramId, nextElements)

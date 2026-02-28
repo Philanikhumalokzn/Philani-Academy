@@ -659,12 +659,17 @@ export default function DiagramOverlayModule(props: {
     }
   }, [userDisplayName])
 
-  const activePresenterBadge = useMemo(() => deriveActivePresenterBadge({
+  const rawActivePresenterBadge = useMemo(() => deriveActivePresenterBadge({
     activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
     activePresenterClientIds: activePresenterClientIdsRef.current,
     connectedClients,
     fallbackInitial: 'P',
   }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
+
+  const activePresenterBadge = useMemo(() => {
+    if (isAdmin && isSelfActivePresenter()) return null
+    return rawActivePresenterBadge
+  }, [isAdmin, isSelfActivePresenter, rawActivePresenterBadge])
 
   const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
     connectedClients,

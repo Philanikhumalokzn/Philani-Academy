@@ -4451,51 +4451,11 @@ export default function DiagramOverlayModule(props: {
                 left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
               }}
             >
-              <div className="flex items-start gap-2">
-                {editorBadges.length > 0 ? (
-                  <div className="flex flex-col items-start">
-                    {editorBadges.map((badge) => (
-                      <div
-                        key={badge.userKey || badge.clientId}
-                        className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
-                        style={{ marginBottom: 6 }}
-                        title={`${badge.name} (presenter)`}
-                        aria-label={`${badge.name} is a presenter`}
-                      >
-                        {badge.initials}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {overlayRosterVisible ? (
-                  <div className="flex flex-col items-start">
-                    {availableRosterAttendees.map((attendee) => (
-                      <button
-                        type="button"
-                        key={attendee.userKey}
-                        data-client-id={attendee.clientId}
-                        data-user-id={attendee.userId || ''}
-                        data-user-key={attendee.userKey}
-                        data-display-name={attendee.name}
-                        className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
-                        style={{ marginBottom: 6 }}
-                        title={attendee.name}
-                        aria-label={`Make ${attendee.name} the presenter`}
-                        onClick={handleRosterAttendeeAvatarClick}
-                        onPointerDown={(e) => {
-                          e.stopPropagation()
-                        }}
-                      >
-                        {getInitials(attendee.name, 'U')}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
+              <div className="flex flex-col items-start">
                 <button
                   type="button"
-                  className="flex items-center gap-2 px-2 py-1 rounded-full bg-white/85 backdrop-blur border border-slate-200 shadow-sm"
+                  className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                  style={{ marginBottom: 6 }}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -4513,14 +4473,43 @@ export default function DiagramOverlayModule(props: {
                     e.stopPropagation()
                   }}
                   aria-label="Toggle diagram avatars"
+                  title={teacherBadge.name}
                 >
-                  <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
-                    {teacherBadge.initials}
-                  </div>
-                  <div className="text-[11px] text-slate-700 max-w-[160px] truncate">
-                    {teacherBadge.name}
-                  </div>
+                  {teacherBadge.initials}
                 </button>
+
+                {editorBadges.map((badge) => (
+                  <div
+                    key={badge.userKey || badge.clientId}
+                    className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                    style={{ marginBottom: 6 }}
+                    title={`${badge.name} (presenter)`}
+                    aria-label={`${badge.name} is a presenter`}
+                  >
+                    {badge.initials}
+                  </div>
+                ))}
+
+                {overlayRosterVisible ? availableRosterAttendees.map((attendee) => (
+                  <button
+                    type="button"
+                    key={attendee.userKey}
+                    data-client-id={attendee.clientId}
+                    data-user-id={attendee.userId || ''}
+                    data-user-key={attendee.userKey}
+                    data-display-name={attendee.name}
+                    className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                    style={{ marginBottom: 6 }}
+                    title={attendee.name}
+                    aria-label={`Make ${attendee.name} the presenter`}
+                    onClick={handleRosterAttendeeAvatarClick}
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                    }}
+                  >
+                    {getInitials(attendee.name, 'U')}
+                  </button>
+                )) : null}
               </div>
             </div>
           ) : null}

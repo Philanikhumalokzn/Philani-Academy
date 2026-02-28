@@ -7,6 +7,15 @@ import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
+import {
+  buildRosterAvatarLayout,
+  deriveActivePresenterBadge,
+  deriveAvailableRosterAttendees,
+  getInitials as getPresenterInitials,
+  getUserKey as getPresenterUserKey,
+  normalizeDisplayName,
+  resolveHandoffSelection,
+} from '../lib/presenterControl'
 
 function renderTextWithInlineKatex(inputRaw: string) {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
@@ -432,6 +441,13 @@ type PresenceClient = {
   name?: string
   userId?: string
   isAdmin?: boolean
+}
+
+type PresenterHandoffTarget = null | {
+  clientId: string
+  userId?: string
+  userKey: string
+  displayName: string
 }
 
 type OverlayControlsHandle = {
@@ -1213,13 +1229,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setControllerRightsVersion(v => v + 1)
   }, [])
 
-  const normalizeName = useCallback((value: string) => String(value || '').trim().replace(/\s+/g, ' '), [])
-  const getUserKey = useCallback((maybeUserId?: string, maybeName?: string) => {
-    const uid = typeof maybeUserId === 'string' ? maybeUserId.trim() : ''
-    if (uid) return `uid:${uid}`
-    const nk = normalizeName(maybeName || '').toLowerCase()
-    return nk ? `name:${nk}` : ''
-  }, [normalizeName])
+  const normalizeName = useCallback((value: string) => normalizeDisplayName(value), [])
+  const getUserKey = useCallback((maybeUserId?: string, maybeName?: string) => getPresenterUserKey(maybeUserId, maybeName), [])
 
   const selfUserKey = useMemo(() => getUserKey(userId, userDisplayName), [getUserKey, userDisplayName, userId])
 
@@ -1333,6 +1344,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [controlState, setControlState] = useState<ControlState>(null)
 
   const [overlayRosterVisible, setOverlayRosterVisible] = useState(false)
+  const [handoffSwitching, setHandoffSwitching] = useState(false)
+  const [handoffMessage, setHandoffMessage] = useState<string | null>(null)
+  const handoffMessageTimerRef = useRef<number | null>(null)
+  const handoffInFlightRef = useRef(false)
+  const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
+  const lastPresenterSetTsRef = useRef(0)
+  const lastControllerRightsTsRef = useRef(0)
   const [highlightedController, setHighlightedController] = useState<{ clientId: string; userId?: string; name?: string; ts: number } | null>(null)
   const highlightedControllerRef = useRef<{ clientId: string; userId?: string; name?: string; ts: number } | null>(null)
   useEffect(() => {
@@ -1344,87 +1362,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [isCompactViewport, isOverlayMode, overlayChromePeekVisible])
 
-  const selfBadge = useMemo(() => {
-    const resolvedName = (userDisplayName || '').trim() || (isAdmin ? 'Teacher' : 'You')
-    const parts = resolvedName.split(/\s+/).filter(Boolean)
-    const a = parts[0]?.[0] || (isAdmin ? 'T' : 'U')
-    const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-    const initials = (a + b).toUpperCase()
-    return { controllerId: clientIdRef.current || (isAdmin ? 'teacher' : 'self'), name: resolvedName, initials }
-  }, [isAdmin, userDisplayName])
+  const showHandoffFailure = useCallback((message: string) => {
+    setHandoffMessage(message)
+    if (typeof window === 'undefined') return
+    if (handoffMessageTimerRef.current != null) {
+      window.clearTimeout(handoffMessageTimerRef.current)
+    }
+    handoffMessageTimerRef.current = window.setTimeout(() => {
+      handoffMessageTimerRef.current = null
+      setHandoffMessage(null)
+    }, 2600)
+  }, [])
 
-  const teacherBadge = useMemo(() => {
-    if (isAdmin) return selfBadge
-    const teacher = connectedClients.find(c => Boolean((c as any)?.isAdmin))
-    const resolvedName = normalizeName((teacher as any)?.name || '') || 'Teacher'
-    const parts = resolvedName.split(/\s+/).filter(Boolean)
-    const a = parts[0]?.[0] || 'T'
-    const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-    const initials = (a + b).toUpperCase()
-    return { controllerId: teacher?.clientId || 'teacher', name: resolvedName, initials }
-  }, [connectedClients, isAdmin, normalizeName, selfBadge])
-
-  const editorBadges = useMemo(() => {
-    // Build a unique list of non-admin users who currently have controller rights.
-    const nameKey = (value: string) => normalizeName(value).toLowerCase()
-    const teacherUserId = isAdmin ? String(userId || '') : ''
-
-    const candidates = connectedClients
-      .filter(c => c.clientId && c.clientId !== ALL_STUDENTS_ID)
-      .map(c => {
-        const cUserId = typeof (c as any).userId === 'string' ? String((c as any).userId) : undefined
-        const displayName = normalizeName((c as any).name || '') || String(c.clientId)
-        const isAdminPresence = Boolean((c as any).isAdmin)
-        const key = getUserKey(cUserId, displayName) || `name:${nameKey(displayName)}`
-        return { clientId: c.clientId, userId: cUserId, name: displayName, isAdmin: isAdminPresence, userKey: key }
-      })
-      // Exclude admin/teacher presences.
-      .filter(c => !c.isAdmin)
-      // Prefer excluding our own admin userId if we are the teacher.
-      .filter(c => !(teacherUserId && c.userId && String(c.userId) === teacherUserId))
-
-    // Group by userKey and keep the first representative.
-    const byUser = new Map<string, { userKey: string; name: string; clientId: string }>()
-    for (const c of candidates) {
-      if (!c.userKey) continue
-      if (!byUser.has(c.userKey)) {
-        byUser.set(c.userKey, { userKey: c.userKey, name: c.name, clientId: c.clientId })
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (handoffMessageTimerRef.current != null) {
+        window.clearTimeout(handoffMessageTimerRef.current)
+        handoffMessageTimerRef.current = null
       }
     }
+  }, [])
 
-    const result: Array<{ userKey: string; name: string; initials: string; clientId: string }> = []
-    for (const entry of byUser.values()) {
-      const allowedByUser = controllerRightsUserAllowlistRef.current.has(entry.userKey)
-      const allowedByClient = controllerRightsAllowlistRef.current.has(entry.clientId)
-      if (!allowedByUser && !allowedByClient) continue
-      const parts = entry.name.split(/\s+/).filter(Boolean)
-      const a = parts[0]?.[0] || 'E'
-      const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-      result.push({ userKey: entry.userKey, name: entry.name, initials: (a + b).toUpperCase(), clientId: entry.clientId })
+  const teacherBadge = useMemo(() => {
+    const resolvedName = normalizeDisplayName(userDisplayName || '') || 'Teacher'
+    return {
+      name: resolvedName,
+      initials: getPresenterInitials(resolvedName, 'T'),
     }
-    return result
-  }, [connectedClients, controllerRightsVersion, getUserKey, isAdmin, normalizeName, userId])
+  }, [userDisplayName])
 
-  const currentEditorBadge = useMemo(() => {
-    const controllerId = controlState?.controllerId
-    if (!controllerId) return isAdmin ? selfBadge : null
+  const activePresenterBadge = useMemo(() => deriveActivePresenterBadge({
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    connectedClients,
+    fallbackInitial: 'P',
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
 
-    const name = (controlState?.controllerName && typeof controlState.controllerName === 'string')
-      ? controlState.controllerName.trim()
-      : ''
+  const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
+    connectedClients,
+    selfClientId: clientIdRef.current || '',
+    selfUserId: String(userId || '').trim(),
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    excludedClientIds: ['all', ALL_STUDENTS_ID],
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
 
-    const resolvedName = name || (connectedClients.find(c => c.clientId === controllerId)?.name || '').trim() || (controllerId === ALL_STUDENTS_ID ? 'All Students' : 'Editor')
-
-    const initials = (() => {
-      if (controllerId === ALL_STUDENTS_ID) return 'AS'
-      const parts = resolvedName.split(/\s+/).filter(Boolean)
-      const a = parts[0]?.[0] || 'E'
-      const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-      return (a + b).toUpperCase()
-    })()
-
-    return { controllerId, name: resolvedName, initials }
-  }, [connectedClients, controlState?.controllerId, controlState?.controllerName, isAdmin, selfBadge])
+  const rosterAvatarLayout = useMemo(() => buildRosterAvatarLayout({
+    activePresenterBadge,
+    availableAttendees: availableRosterAttendees,
+    overlayRosterVisible,
+    attendeeInitialFallback: 'U',
+  }), [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -2287,7 +2276,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [bumpControllerRightsVersion, isAdmin, updateControlState, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
-    if (!isAdmin) return
+    if (!isAdmin) return false
 
     const teacherPresenterKey = (selfUserKey || '').trim() || null
     const teacherClientId = clientIdRef.current
@@ -2312,7 +2301,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     updateControlState(controlStateRef.current)
 
     const channel = channelRef.current
-    if (!channel) return
+    if (!channel) return false
     const ts = Date.now()
 
     try {
@@ -2367,8 +2356,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           })
         }
       }
+      return true
     } catch (err) {
       console.warn('Failed to reclaim admin control', err)
+      return false
     }
   }, [bumpControllerRightsVersion, isAdmin, selfUserKey, updateControlState, userDisplayName])
 
@@ -2381,18 +2372,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const resolvedName = normalizeName((resolved as any)?.name || '') || String(targetClientId)
     const userKey = getUserKey(resolvedUserId, resolvedName) || (resolvedName ? `name:${normalizeName(resolvedName).toLowerCase()}` : '')
 
-    // Apply to all currently-connected presences for the same user (userId preferred, else normalized name).
-    const matchingClientIds = connectedClientsRef.current
-      .filter(x => x.clientId && x.clientId !== ALL_STUDENTS_ID)
-      .filter(x => {
-        const xUserId = typeof (x as any).userId === 'string' ? String((x as any).userId) : undefined
-        if (resolvedUserId && xUserId) return String(xUserId) === String(resolvedUserId)
-        const xName = normalizeName((x as any).name || '') || String(x.clientId)
-        return normalizeName(xName).toLowerCase() === normalizeName(resolvedName).toLowerCase()
-      })
-      .map(x => x.clientId)
+    const resolvedSelection = resolveHandoffSelection({
+      clickedClientId: targetClientId,
+      clickedUserId: resolvedUserId,
+      clickedUserKey: userKey,
+      clickedDisplayName: resolvedName,
+      connectedClients: connectedClientsRef.current,
+      excludedClientIds: ['all', ALL_STUDENTS_ID],
+    })
 
-    await setControllerRightsForClients(matchingClientIds.length ? matchingClientIds : [targetClientId], allowed, { userKey, name: resolvedName })
+    await setControllerRightsForClients(
+      resolvedSelection.nextClientIds.length ? resolvedSelection.nextClientIds : [targetClientId],
+      allowed,
+      {
+        userKey,
+        name: resolvedSelection.resolvedDisplayName || resolvedName,
+      }
+    )
   }, [setControllerRightsForClients])
 
   // Semantic alias: presenter == controller-rights.
@@ -2401,10 +2397,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const autoSaveCurrentQuestionAsNotesRef = useRef<null | ((options?: { requireEmptyBottom?: boolean }) => Promise<void>)>(null)
 
   const handOverPresentation = useCallback(
-    (target: null | { clientId: string; userId?: string; userKey: string; displayName: string }) => {
+    (target: PresenterHandoffTarget) => {
       if (!isAdmin) return
 
       void (async () => {
+        if (handoffInFlightRef.current) {
+          pendingHandoffTargetRef.current = target
+          return
+        }
+        handoffInFlightRef.current = true
+        setHandoffSwitching(true)
+        setHandoffMessage(null)
+
         // Best-effort: silently capture the current question into Notes before switching presenter context.
         // For admin reclaim, bypass the "bottom canvas empty" gating since the teacher may be viewing the
         // student's board state (which would otherwise block the auto-save).
@@ -2414,7 +2418,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Bidirectional: null target means the admin reclaims control.
         if (!target) {
-          await reclaimAdminControl()
+          try {
+            const ok = await reclaimAdminControl()
+            if (!ok) showHandoffFailure('Switch failed. Please try again.')
+          } finally {
+            setHandoffSwitching(false)
+            handoffInFlightRef.current = false
+          }
           return
         }
 
@@ -2422,45 +2432,132 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const clickedUserId = String(target.userId || '').trim()
         const clickedUserKey = String(target.userKey || '').trim()
         const displayName = String(target.displayName || '').trim()
-        if (!clickedClientId && !clickedUserKey) return
 
-        const prevPresenterUserKey = activePresenterUserKeyRef.current || ''
-        const prevPresenterClientIds = Array.from(activePresenterClientIdsRef.current)
+        if (!clickedClientId && !clickedUserKey) {
+          showHandoffFailure('Switch failed. Please select a valid user.')
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+          return
+        }
 
-        const nameKey = normalizeName(displayName).toLowerCase()
-        const matchingClientIds = connectedClients
-          .filter(x => x.clientId && x.clientId !== ALL_STUDENTS_ID)
-          .filter(x => {
-            const xUserId = typeof (x as any).userId === 'string' ? String((x as any).userId) : ''
-            if (clickedUserId && xUserId) return xUserId === clickedUserId
-            const xName = normalizeName((x as any).name || '') || String(x.clientId)
-            return normalizeName(xName).toLowerCase() === nameKey
-          })
-          .map(x => x.clientId)
-
-        const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
-        if (!nextClientIds.length) return
-
-        // Promote the tapped attendee to presenter.
-        await setPresenterRightsForClients(nextClientIds, true, {
-          userKey: clickedUserKey,
-          name: displayName,
+        const resolvedSelection = resolveHandoffSelection({
+          clickedClientId,
+          clickedUserId,
+          clickedUserKey,
+          clickedDisplayName: displayName,
+          connectedClients,
+          excludedClientIds: ['all', ALL_STUDENTS_ID],
         })
 
-        // Demote the previous presenter (if any), so there's only one presenter at a time.
-        const samePresenter = (prevPresenterUserKey && clickedUserKey && prevPresenterUserKey === clickedUserKey)
-          || prevPresenterClientIds.some(id => nextClientIds.includes(id))
+        const nextClientIds = resolvedSelection.nextClientIds
+        if (!nextClientIds.length) {
+          showHandoffFailure('Switch failed. User is not connected.')
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+          return
+        }
 
-        if (!samePresenter && (prevPresenterUserKey || prevPresenterClientIds.length)) {
-          await setPresenterRightsForClients(
-            prevPresenterClientIds,
-            false,
-            prevPresenterUserKey ? { userKey: prevPresenterUserKey } : undefined
-          )
+        const resolvedPresenterKey = resolvedSelection.resolvedPresenterKey
+        if (!resolvedPresenterKey) {
+          showHandoffFailure('Switch failed. Could not resolve user identity.')
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+          return
+        }
+
+        const previousPresenterKey = activePresenterUserKeyRef.current || null
+        const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
+        const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
+        const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
+
+        const nextPresenterKey = resolvedPresenterKey
+        const nextPresenterName = resolvedSelection.resolvedDisplayName || displayName
+        controllerRightsUserAllowlistRef.current.clear()
+        controllerRightsAllowlistRef.current.clear()
+        if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
+        for (const id of nextClientIds) {
+          if (!id || id === 'all' || id === ALL_STUDENTS_ID) continue
+          controllerRightsAllowlistRef.current.add(id)
+        }
+        setActivePresenterUserKey(nextPresenterKey)
+        activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
+        activePresenterClientIdsRef.current = new Set(nextClientIds)
+        bumpControllerRightsVersion()
+        updateControlState(controlStateRef.current)
+
+        pendingPublishQueueRef.current = []
+        if (pendingBroadcastRef.current) {
+          clearTimeout(pendingBroadcastRef.current)
+          pendingBroadcastRef.current = null
+        }
+
+        const channel = channelRef.current
+        if (!channel) {
+          setActivePresenterUserKey(previousPresenterKey)
+          activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
+          activePresenterClientIdsRef.current = previousPresenterClientIds
+          controllerRightsUserAllowlistRef.current = previousUserAllowlist
+          controllerRightsAllowlistRef.current = previousClientAllowlist
+          bumpControllerRightsVersion()
+          updateControlState(controlStateRef.current)
+          showHandoffFailure('Switch failed. Realtime channel unavailable.')
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+          return
+        }
+
+        const ts = Date.now()
+        try {
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'presenter-set',
+            presenterUserKey: nextPresenterKey,
+            targetClientIds: nextClientIds,
+            targetClientId: nextClientIds[0],
+            ts,
+          } satisfies PresenterSetMessage)
+
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'controller-rights-reset',
+            ts: ts + 1,
+          })
+
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'controller-rights',
+            targetUserKey: nextPresenterKey,
+            name: nextPresenterName || null,
+            targetClientIds: nextClientIds,
+            targetClientId: nextClientIds[0],
+            allowed: true,
+            ts: ts + 2,
+          })
+        } catch (err) {
+          setActivePresenterUserKey(previousPresenterKey)
+          activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
+          activePresenterClientIdsRef.current = previousPresenterClientIds
+          controllerRightsUserAllowlistRef.current = previousUserAllowlist
+          controllerRightsAllowlistRef.current = previousClientAllowlist
+          bumpControllerRightsVersion()
+          updateControlState(controlStateRef.current)
+          showHandoffFailure('Switch failed. Please try again.')
+          console.warn('Failed to hand over presentation', err)
+        } finally {
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+          const pending = pendingHandoffTargetRef.current
+          pendingHandoffTargetRef.current = null
+          if (pending) {
+            handOverPresentation(pending)
+          }
         }
       })()
     },
-    [connectedClients, isAdmin, normalizeName, reclaimAdminControl, setPresenterRightsForClients]
+    [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, showHandoffFailure, updateControlState, userDisplayName]
   )
 
   const handleRosterAttendeeAvatarClick = useCallback(
@@ -5585,6 +5682,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
 
           if (data?.action === 'presenter-set') {
+            const incomingTs = typeof (data as any)?.ts === 'number' ? Number((data as any).ts) : Date.now()
+            if (incomingTs < lastPresenterSetTsRef.current) {
+              return
+            }
+            lastPresenterSetTsRef.current = incomingTs
             const incomingKey = typeof (data as any).presenterUserKey === 'string' ? String((data as any).presenterUserKey) : ''
             const nextKey = incomingKey ? incomingKey : null
             setActivePresenterUserKey(nextKey)
@@ -5865,6 +5967,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const controlAction = typeof (data as any)?.action === 'string' ? (data as any).action : ''
           if (controlAction === 'controller-rights-reset') {
+            const incomingTs = typeof (data as any)?.ts === 'number' ? Number((data as any).ts) : Date.now()
+            if (incomingTs < lastControllerRightsTsRef.current) {
+              return
+            }
+            lastControllerRightsTsRef.current = incomingTs
             controllerRightsUserAllowlistRef.current.clear()
             controllerRightsAllowlistRef.current.clear()
             bumpControllerRightsVersion()
@@ -5874,6 +5981,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
+            const incomingTs = typeof (data as any)?.ts === 'number' ? Number((data as any).ts) : Date.now()
+            if (incomingTs < lastControllerRightsTsRef.current) {
+              return
+            }
+            lastControllerRightsTsRef.current = incomingTs
             const targets: string[] = Array.isArray((data as any).targetClientIds)
               ? (data as any).targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
               : []
@@ -10268,146 +10380,125 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   )}
 
                   {overlayChromePeekVisible && isOverlayMode && isCompactViewport && teacherBadge && (
-                    <div
-                      className="absolute left-3 bottom-3 flex flex-col items-start"
-                    >
-                      {editorBadges.length > 0 && (
-                        <div className="flex flex-col items-start" style={{ marginBottom: 6 }}>
-                          {editorBadges.map(b => (
-                            <div
-                              key={b.userKey}
-                              className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-[#6b4f00] ring-2 ring-[#a87f12] shadow-sm"
-                              style={{ marginBottom: 6 }}
-                              title={`${b.name} (presenter)`}
-                              aria-label={`${b.name} is a presenter`}
-                            >
-                              {b.initials}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {isAdmin && overlayRosterVisible && (
-                        <div className="flex flex-col items-start" style={{ marginBottom: 6 }}>
-                          {(() => {
-                            const nameKey = (value: string) => normalizeName(value).toLowerCase()
-
-                            const clients = connectedClients
-                              // Don't show the admin twice; the admin is already the tappable badge.
-                              .filter(c => c.clientId && c.clientId !== clientId && c.clientId !== ALL_STUDENTS_ID)
-                              .map(c => ({
-                                clientId: c.clientId,
-                                name: normalizeName(c.name || '') || c.clientId,
-                                userId: typeof (c as any).userId === 'string' ? (c as any).userId : undefined,
-                                isAdmin: Boolean((c as any).isAdmin),
-                                userKey: (() => {
-                                  const displayName = normalizeName((c as any)?.name || '') || String(c.clientId)
-                                  const cUserId = typeof (c as any)?.userId === 'string' ? String((c as any).userId) : undefined
-                                  return getUserKey(cUserId, displayName) || `name:${nameKey(displayName)}`
-                                })(),
-                              }))
-                              // Prefer excluding the admin by stable userId when available.
-                              .filter(c => !(userId && c.userId && String(c.userId) === String(userId)))
-                              // Also exclude any admin presences (teacher/admin should only appear once).
-                              .filter(c => !c.isAdmin)
-                              // Exclude presenters from the expanded roster: they already render above as a gold badge.
-                              .filter(c => {
-                                const hasRights = (c.userKey && controllerRightsUserAllowlistRef.current.has(c.userKey))
-                                  || controllerRightsAllowlistRef.current.has(c.clientId)
-                                return !hasRights
-                              })
-
-                            // Dedupe by stable userId when available; fall back to name.
-                            const uniqueUsers = new Map<string, { clientId: string; name: string; userId?: string }>()
-                            for (const c of clients) {
-                              const key = (c.userId && String(c.userId))
-                                ? `uid:${String(c.userId)}`
-                                : `name:${nameKey(c.name)}`
-                              if (!key.trim()) continue
-                              if (!uniqueUsers.has(key)) uniqueUsers.set(key, c)
-                            }
-
-                            return Array.from(uniqueUsers.values())
-                          })().map(c => {
-                              const displayName = (c.name || c.clientId || '').trim()
-                              const parts = displayName.split(/\s+/).filter(Boolean)
-                              const a = parts[0]?.[0] || 'U'
-                              const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-                              const initials = (a + b).toUpperCase()
-                              const userKey = getUserKey(c.userId, displayName) || `name:${normalizeName(displayName).toLowerCase()}`
-                              const hasControllerRights = (userKey && controllerRightsUserAllowlistRef.current.has(userKey)) || controllerRightsAllowlistRef.current.has(c.clientId)
-                              return (
+                    <div className="absolute left-3 bottom-3">
+                      <div className="relative w-6">
+                        {rosterAvatarLayout.top.length > 0 ? (
+                          <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
+                            {rosterAvatarLayout.top.map((avatar) => (
+                              avatar.kind === 'presenter' ? (
+                                <div
+                                  key={avatar.userKey}
+                                  className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                                  title={`${avatar.name} (presenter)`}
+                                  aria-label={`${avatar.name} is a presenter`}
+                                >
+                                  {avatar.initials}
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
-                                  key={c.clientId}
-                                  data-client-id={c.clientId}
-                                  data-user-id={c.userId || ''}
-                                  data-user-key={userKey}
-                                  data-display-name={displayName}
-                                  className={
-                                    "w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm focus:outline-none "
-                                    + (hasControllerRights
-                                      ? "border-[#6b4f00] ring-2 ring-[#a87f12]"
-                                      : "border-white/60")
-                                  }
-                                  style={{ marginBottom: 6 }}
-                                  title={displayName}
-                                  aria-label={`Make ${displayName} the presenter`}
+                                  key={avatar.userKey}
+                                  data-client-id={avatar.clientId || ''}
+                                  data-user-id={avatar.userId || ''}
+                                  data-user-key={avatar.userKey}
+                                  data-display-name={avatar.name}
+                                  className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                                  title={avatar.name}
+                                  aria-label={`Make ${avatar.name} the presenter`}
                                   onClick={handleRosterAttendeeAvatarClick}
-                                  onPointerDown={e => {
+                                  onPointerDown={(e) => {
                                     e.stopPropagation()
                                   }}
                                 >
-                                  {initials}
+                                  {avatar.initials}
                                 </button>
                               )
-                            })}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        ) : null}
 
-                      {(() => {
-                        const badge = teacherBadge
-
-                        if (!badge) return null
-                        return (
-                          <button
-                            type="button"
-                            className={
-                              "flex items-center gap-2 px-2 py-1 rounded-full bg-white/85 backdrop-blur border shadow-sm border-slate-200"
-                            }
-                            onClick={e => {
-                              if (!isAdmin) return
-                              e.preventDefault()
-                              e.stopPropagation()
-                              // If the roster is open, tapping the admin badge reclaims control by clearing/revoking any presenters.
-                              // Otherwise, it toggles the roster open.
-                              if (overlayRosterVisible) {
-                                if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
-                                  handOverPresentation(null)
-                                  return
-                                }
-                                setOverlayRosterVisible(false)
+                        <button
+                          type="button"
+                          className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                          onClick={(e) => {
+                            if (!isAdmin) return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (overlayRosterVisible) {
+                              if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
+                                handOverPresentation(null)
                                 return
                               }
+                              setOverlayRosterVisible(false)
+                              return
+                            }
+                            setOverlayRosterVisible(true)
+                          }}
+                          onPointerDown={(e) => {
+                            if (!isAdmin) return
+                            e.stopPropagation()
+                          }}
+                          aria-label={isAdmin ? 'Toggle session avatars' : undefined}
+                          title={teacherBadge.name}
+                          style={{ pointerEvents: isAdmin ? 'auto' : 'none' }}
+                        >
+                          {teacherBadge.initials}
+                        </button>
 
-                              setOverlayRosterVisible(true)
-                            }}
-                            onPointerDown={e => {
-                              if (!isAdmin) return
-                              e.stopPropagation()
-                            }}
-                            aria-label={isAdmin ? 'Toggle session avatars' : undefined}
-                            style={{ pointerEvents: isAdmin ? 'auto' : 'none' }}
+                        {handoffSwitching ? (
+                          <div
+                            className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
+                            role="status"
+                            aria-live="polite"
                           >
-                            <div className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center">
-                              {badge.initials}
-                            </div>
-                            <div className="text-[11px] text-slate-700 max-w-[180px] truncate">
-                              {badge.name}
-                            </div>
-                          </button>
-                        )
-                      })()}
+                            Switching...
+                          </div>
+                        ) : null}
+
+                        {!handoffSwitching && handoffMessage ? (
+                          <div
+                            className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
+                            role="alert"
+                          >
+                            {handoffMessage}
+                          </div>
+                        ) : null}
+
+                        {rosterAvatarLayout.bottom.length > 0 ? (
+                          <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
+                            {rosterAvatarLayout.bottom.map((avatar) => (
+                              avatar.kind === 'presenter' ? (
+                                <div
+                                  key={avatar.userKey}
+                                  className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                                  title={`${avatar.name} (presenter)`}
+                                  aria-label={`${avatar.name} is a presenter`}
+                                >
+                                  {avatar.initials}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  key={avatar.userKey}
+                                  data-client-id={avatar.clientId || ''}
+                                  data-user-id={avatar.userId || ''}
+                                  data-user-key={avatar.userKey}
+                                  data-display-name={avatar.name}
+                                  className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                                  title={avatar.name}
+                                  aria-label={`Make ${avatar.name} the presenter`}
+                                  onClick={handleRosterAttendeeAvatarClick}
+                                  onPointerDown={(e) => {
+                                    e.stopPropagation()
+                                  }}
+                                >
+                                  {avatar.initials}
+                                </button>
+                              )
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   )}
                   {hasWriteAccess ? (

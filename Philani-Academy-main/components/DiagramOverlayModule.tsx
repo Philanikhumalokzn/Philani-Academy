@@ -3,6 +3,15 @@ import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
+import {
+  buildRosterAvatarLayout,
+  deriveActivePresenterBadge,
+  deriveAvailableRosterAttendees,
+  getInitials,
+  getUserKey,
+  normalizeDisplayName,
+  resolveHandoffSelection,
+} from '../lib/presenterControl'
 
 const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw), { ssr: false })
 
@@ -78,20 +87,6 @@ type PresenterHandoffTarget = {
 } | null
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
-const normalizeDisplayName = (value: string) => String(value || '').trim().replace(/\s+/g, ' ')
-const getUserKey = (maybeUserId?: string, maybeName?: string) => {
-  const uid = typeof maybeUserId === 'string' ? maybeUserId.trim() : ''
-  if (uid) return `uid:${uid}`
-  const nk = normalizeDisplayName(maybeName || '').toLowerCase()
-  return nk ? `name:${nk}` : ''
-}
-const getInitials = (name: string, fallback: string) => {
-  const normalized = normalizeDisplayName(name)
-  const parts = normalized.split(/\s+/).filter(Boolean)
-  const a = parts[0]?.[0] || fallback
-  const b = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '')
-  return (a + b).toUpperCase()
-}
 
 const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeScopeId?: string) => {
   const base = realtimeScopeId
@@ -624,18 +619,16 @@ export default function DiagramOverlayModule(props: {
         return
       }
 
-      const nameKey = normalizeDisplayName(displayName).toLowerCase()
-      const matchingClientIds = connectedClients
-        .filter(x => x.clientId && x.clientId !== 'all')
-        .filter(x => {
-          const xUserId = typeof x.userId === 'string' ? String(x.userId) : ''
-          if (clickedUserId && xUserId) return xUserId === clickedUserId
-          const xName = normalizeDisplayName(x.name || '') || String(x.clientId)
-          return normalizeDisplayName(xName).toLowerCase() === nameKey
-        })
-        .map(x => x.clientId)
+      const resolvedSelection = resolveHandoffSelection({
+        clickedClientId,
+        clickedUserId,
+        clickedUserKey,
+        clickedDisplayName: displayName,
+        connectedClients,
+        excludedClientIds: ['all'],
+      })
 
-      const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
+      const nextClientIds = resolvedSelection.nextClientIds
       if (!nextClientIds.length) {
         showHandoffFailure('Switch failed. User is not connected.')
         setHandoffSwitching(false)
@@ -643,16 +636,7 @@ export default function DiagramOverlayModule(props: {
         return
       }
 
-      const resolvedPresenterKey = (() => {
-        if (clickedUserKey) return clickedUserKey
-        for (const c of connectedClients) {
-          if (!c.clientId || !nextClientIds.includes(c.clientId)) continue
-          const display = normalizeDisplayName(c.name || '') || String(c.clientId)
-          const key = getUserKey(c.userId, display)
-          if (key) return key
-        }
-        return ''
-      })()
+      const resolvedPresenterKey = resolvedSelection.resolvedPresenterKey
       if (!resolvedPresenterKey) {
         showHandoffFailure('Switch failed. Could not resolve user identity.')
         setHandoffSwitching(false)
@@ -666,6 +650,7 @@ export default function DiagramOverlayModule(props: {
       const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
 
       const nextPresenterKey = resolvedPresenterKey
+      const nextPresenterName = resolvedSelection.resolvedDisplayName || displayName
       controllerRightsUserAllowlistRef.current.clear()
       controllerRightsAllowlistRef.current.clear()
       if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
@@ -715,7 +700,7 @@ export default function DiagramOverlayModule(props: {
           author: userDisplayName,
           action: 'controller-rights',
           targetUserKey: nextPresenterKey,
-          name: displayName || null,
+          name: nextPresenterName || null,
           targetClientIds: nextClientIds,
           targetClientId: nextClientIds[0],
           allowed: true,
@@ -766,114 +751,28 @@ export default function DiagramOverlayModule(props: {
     }
   }, [userDisplayName])
 
-  const activePresenterBadge = useMemo(() => {
-    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
-    const activeClientIds = activePresenterClientIdsRef.current
-    if (!activeKey && !activeClientIds.size) return null
+  const activePresenterBadge = useMemo(() => deriveActivePresenterBadge({
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    connectedClients,
+    fallbackInitial: 'P',
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
 
-    const candidates = connectedClients.filter(c => {
-      if (!c.clientId || c.clientId === 'all') return false
-      if (Boolean(c.isAdmin)) return false
-      const key = getUserKey(c.userId, c.name || '')
-      if (activeKey && key && key === activeKey) return true
-      return activeClientIds.has(c.clientId)
-    })
+  const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
+    connectedClients,
+    selfClientId: clientIdRef.current || '',
+    selfUserId: String(userId || '').trim(),
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    excludedClientIds: ['all'],
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
 
-    const chosen = candidates[0] || null
-    if (!chosen) {
-      const fallbackName = activeKey ? activeKey.replace(/^uid:|^name:/, '') : 'Presenter'
-      return {
-        clientId: '',
-        userKey: activeKey || 'presenter',
-        name: fallbackName,
-        initials: getInitials(fallbackName, 'P'),
-      }
-    }
-
-    const displayName = normalizeDisplayName(chosen.name || '') || String(chosen.clientId)
-    return {
-      clientId: chosen.clientId,
-      userKey: getUserKey(chosen.userId, displayName) || activeKey || `name:${displayName.toLowerCase()}`,
-      name: displayName,
-      initials: getInitials(displayName, 'P'),
-    }
-  }, [activePresenterUserKey, connectedClients, controllerRightsVersion])
-
-  const availableRosterAttendees = useMemo(() => {
-    const selfId = clientIdRef.current || ''
-    const selfIdRaw = String(userId || '').trim()
-    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
-    const activeClientIds = activePresenterClientIdsRef.current
-    const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasUserId: boolean }>()
-    for (const c of connectedClients) {
-      if (!c.clientId || c.clientId === 'all' || c.clientId === selfId) continue
-      if (c.isAdmin) continue
-      if (selfIdRaw && c.userId && String(c.userId) === selfIdRaw) continue
-      const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
-      const nameKey = normalizeDisplayName(displayName).toLowerCase()
-      const personKey = c.userId ? `uid:${String(c.userId)}` : `name:${nameKey}`
-      const userKey = getUserKey(c.userId, displayName) || `name:${nameKey}`
-      if (!userKey) continue
-      if ((activeKey && userKey === activeKey) || activeClientIds.has(c.clientId)) continue
-      const existing = byUser.get(personKey)
-      if (!existing) {
-        byUser.set(personKey, { clientId: c.clientId, userId: c.userId, name: displayName, userKey, hasUserId: Boolean(c.userId) })
-        continue
-      }
-
-      if (!existing.hasUserId && c.userId) {
-        existing.clientId = c.clientId
-        existing.userId = c.userId
-        existing.userKey = userKey
-        existing.hasUserId = true
-      }
-      if (!existing.name && displayName) {
-        existing.name = displayName
-      }
-    }
-    return Array.from(byUser.values())
-  }, [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
-
-  const rosterAvatarLayout = useMemo(() => {
-    const byUser = new Map<string, {
-      kind: 'presenter' | 'attendee'
-      userKey: string
-      name: string
-      initials: string
-      clientId?: string
-      userId?: string
-    }>()
-
-    if (activePresenterBadge) {
-      byUser.set(activePresenterBadge.userKey, {
-        kind: 'presenter',
-        userKey: activePresenterBadge.userKey,
-        name: activePresenterBadge.name,
-        initials: activePresenterBadge.initials,
-      })
-    }
-
-    if (overlayRosterVisible) {
-      for (const attendee of availableRosterAttendees) {
-        if (byUser.has(attendee.userKey)) continue
-        byUser.set(attendee.userKey, {
-          kind: 'attendee',
-          userKey: attendee.userKey,
-          name: attendee.name,
-          initials: getInitials(attendee.name, 'U'),
-          clientId: attendee.clientId,
-          userId: attendee.userId,
-        })
-      }
-    }
-
-    const all = Array.from(byUser.values()).sort((a, b) => a.name.localeCompare(b.name))
-    const topCount = Math.floor(all.length / 2)
-    return {
-      top: all.slice(0, topCount),
-      bottom: all.slice(topCount),
-    }
-  }, [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
+  const rosterAvatarLayout = useMemo(() => buildRosterAvatarLayout({
+    activePresenterBadge,
+    availableAttendees: availableRosterAttendees,
+    overlayRosterVisible,
+    attendeeInitialFallback: 'U',
+  }), [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
   const diagramsRef = useRef<DiagramRecord[]>([])

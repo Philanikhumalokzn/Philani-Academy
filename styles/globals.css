@@ -90,17 +90,20 @@
   align-items: center;
 }
 
+.philani-excalidraw-bottom-toolbar .mobile-misc-tools-container,
 .philani-excalidraw-bottom-toolbar .excalidraw .mobile-misc-tools-container {
+  position: fixed !important;
   top: auto !important;
   right: auto !important;
-  bottom: 8px !important;
-  left: calc(var(--editor-container-padding) * -1) !important;
+  bottom: calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 10px) !important;
+  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
   border-left: 0 !important;
   border-right: 1px solid var(--sidebar-border-color) !important;
   border-top-left-radius: 0 !important;
   border-bottom-left-radius: 0 !important;
   border-top-right-radius: var(--border-radius-lg) !important;
   border-bottom-right-radius: var(--border-radius-lg) !important;
+  z-index: calc(var(--zIndex-layerUI) + 1) !important;
 }
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar,

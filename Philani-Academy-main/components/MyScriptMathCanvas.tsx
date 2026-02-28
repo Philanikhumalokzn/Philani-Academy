@@ -10442,6 +10442,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         {handoffSwitching ? (
                           <div
                             className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
+                            style={{ zIndex: 2147483647 }}
                             role="status"
                             aria-live="polite"
                           >
@@ -10452,6 +10453,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         {!handoffSwitching && handoffMessage ? (
                           <div
                             className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
+                            style={{ zIndex: 2147483647 }}
                             role="alert"
                           >
                             {handoffMessage}

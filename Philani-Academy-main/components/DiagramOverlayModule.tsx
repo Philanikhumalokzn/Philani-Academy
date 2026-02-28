@@ -111,7 +111,53 @@ const getGridSceneSignature = (elements: any[]) => {
   if (!Array.isArray(elements) || elements.length === 0) return 'empty'
   return elements
     .map((el: any) => `${String(el?.id ?? '')}:${Number(el?.version ?? 0)}:${Number(el?.versionNonce ?? 0)}:${el?.isDeleted ? 1 : 0}`)
+    .sort()
     .join('|')
+}
+
+const isIncomingGridElementNewer = (incoming: any, current: any) => {
+  const incomingVersion = Number(incoming?.version ?? 0)
+  const currentVersion = Number(current?.version ?? 0)
+  if (incomingVersion !== currentVersion) return incomingVersion > currentVersion
+
+  const incomingNonce = Number(incoming?.versionNonce ?? 0)
+  const currentNonce = Number(current?.versionNonce ?? 0)
+  if (incomingNonce !== currentNonce) return incomingNonce > currentNonce
+
+  const incomingDeleted = Boolean(incoming?.isDeleted)
+  const currentDeleted = Boolean(current?.isDeleted)
+  if (incomingDeleted !== currentDeleted) return incomingDeleted && !currentDeleted
+
+  return false
+}
+
+const mergeGridSceneElements = (base: any[], incoming: any[]) => {
+  const byId = new Map<string, any>()
+  const order: string[] = []
+
+  for (const raw of Array.isArray(base) ? base : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    if (!byId.has(id)) order.push(id)
+    byId.set(id, { ...raw })
+  }
+
+  for (const raw of Array.isArray(incoming) ? incoming : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    const incomingElement = { ...raw }
+    const current = byId.get(id)
+    if (!current) {
+      order.push(id)
+      byId.set(id, incomingElement)
+      continue
+    }
+    if (isIncomingGridElementNewer(incomingElement, current)) {
+      byId.set(id, incomingElement)
+    }
+  }
+
+  return order.map((id) => byId.get(id)).filter(Boolean)
 }
 
 export default function DiagramOverlayModule(props: {
@@ -1279,12 +1325,23 @@ export default function DiagramOverlayModule(props: {
           }
 
           if (data.kind === 'grid-scene-set') {
-            const sceneElements = Array.isArray(data.elements) ? cloneGridElementsPayload(data.elements) : []
-            gridSceneByDiagramRef.current.set(data.diagramId, sceneElements)
+            const incomingElements = Array.isArray(data.elements) ? cloneGridElementsPayload(data.elements) : []
             const activeId = diagramStateRef.current.activeDiagramId
             const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
-            if (activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL) {
-              setGridSceneToApi(sceneElements)
+            const isActiveGrid = activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL
+
+            const live = isActiveGrid
+              ? (excalidrawApiRef.current?.getSceneElementsIncludingDeleted?.() || excalidrawApiRef.current?.getSceneElements?.())
+              : null
+            const cached = gridSceneByDiagramRef.current.get(data.diagramId)
+            const baseElements = Array.isArray(live)
+              ? cloneGridElementsPayload(live)
+              : (Array.isArray(cached) ? cloneGridElementsPayload(cached) : [])
+            const mergedElements = mergeGridSceneElements(baseElements, incomingElements)
+
+            gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            if (isActiveGrid) {
+              setGridSceneToApi(mergedElements)
             }
             return
           }

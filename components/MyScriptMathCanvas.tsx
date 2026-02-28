@@ -5722,6 +5722,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
             // If the presenter was cleared (admin reclaim), ensure nobody flushes queued publishes.
             if (!nextKey) {
+              controllerRightsUserAllowlistRef.current.clear()
+              controllerRightsAllowlistRef.current.clear()
+              bumpControllerRightsVersion()
+              // Treat presenter clear as authoritative over any older rights grants.
+              lastControllerRightsTsRef.current = Math.max(lastControllerRightsTsRef.current, incomingTs)
               pendingPublishQueueRef.current = []
             }
 

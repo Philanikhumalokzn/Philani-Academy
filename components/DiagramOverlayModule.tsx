@@ -146,7 +146,6 @@ export default function DiagramOverlayModule(props: {
   const [mobileTrayOpen, setMobileTrayOpen] = useState(false)
   const [mobileTrayBottomOffsetPx, setMobileTrayBottomOffsetPx] = useState(0)
   const [mobileTrayReservePx, setMobileTrayReservePx] = useState(28)
-  const [gridExcalidrawTool, setGridExcalidrawTool] = useState<string>('freedraw')
   const [gridToolbarOffsets, setGridToolbarOffsets] = useState({
     top: { x: 0, y: 0 },
     bottom: { x: 0, y: 0 },
@@ -3715,19 +3714,6 @@ export default function DiagramOverlayModule(props: {
     endGridToolbarDrag(e)
   }, [endGridToolbarDrag])
 
-  const onGridExcalidrawChange = useCallback((_elements: readonly any[], appState: any) => {
-    const activeType = appState?.activeTool?.type
-    if (typeof activeType === 'string') setGridExcalidrawTool(activeType)
-  }, [])
-
-  const activateGridShapeTool = useCallback((shapeType: 'rectangle' | 'diamond' | 'ellipse') => {
-    const api = excalidrawApiRef.current
-    if (!api?.setActiveTool) return
-    api.setActiveTool({ type: shapeType, locked: false })
-    api.updateScene?.({ appState: { activeTool: { type: shapeType, locked: false } } })
-    setGridExcalidrawTool(shapeType)
-  }, [])
-
   return (
     <>
       {mobileDiagramTray}
@@ -4275,7 +4261,6 @@ export default function DiagramOverlayModule(props: {
                   excalidrawApiRef.current = api
                   setGridApiReadyVersion((prev) => prev + 1)
                 }}
-                onChange={onGridExcalidrawChange}
                 zenModeEnabled={false}
                 viewModeEnabled={false}
                 initialData={{
@@ -4300,62 +4285,6 @@ export default function DiagramOverlayModule(props: {
                   </button>
                 )}
               />
-              <div
-                className="pointer-events-auto absolute z-[var(--zIndex-layerUI)]"
-                style={{
-                  left: '56px',
-                  bottom: '2px',
-                  transform: 'translateY(calc(var(--philani-exc-bottom-y, 0px) + 50%))',
-                }}
-              >
-                <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white/95 px-1 py-1 shadow-sm">
-                  <button
-                    type="button"
-                    className={gridExcalidrawTool === 'rectangle'
-                      ? 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-slate-900'
-                      : 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }
-                    onClick={() => activateGridShapeTool('rectangle')}
-                    disabled={!canPresent}
-                    aria-label="Rectangle"
-                    title="Rectangle"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="4" y="5" width="16" height="14" rx="1" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className={gridExcalidrawTool === 'diamond'
-                      ? 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-slate-900'
-                      : 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }
-                    onClick={() => activateGridShapeTool('diamond')}
-                    disabled={!canPresent}
-                    aria-label="Diamond"
-                    title="Diamond"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 3l9 9-9 9-9-9 9-9z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className={gridExcalidrawTool === 'ellipse'
-                      ? 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-slate-900'
-                      : 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }
-                    onClick={() => activateGridShapeTool('ellipse')}
-                    disabled={!canPresent}
-                    aria-label="Circle"
-                    title="Circle"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <circle cx="12" cy="12" r="8" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
             </div>
           ) : (
             <>

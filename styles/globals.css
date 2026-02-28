@@ -59,8 +59,8 @@
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar {
   position: absolute;
   top: auto !important;
-  left: calc(8px + 0.25rem) !important;
-  right: calc(8px + 0.25rem) !important;
+  left: calc(8px + 0.75rem) !important;
+  right: calc(8px + 0.75rem) !important;
   bottom: 2px !important;
   width: auto !important;
   margin-inline: 0;

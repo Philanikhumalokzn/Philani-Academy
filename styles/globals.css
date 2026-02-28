@@ -64,7 +64,7 @@
   bottom: auto !important;
   width: auto !important;
   margin-inline: 0;
-  transform: translateY(var(--philani-exc-top-y, 0px)) !important;
+  transform: translateY(calc(var(--philani-exc-top-y, 0px) - 50%)) !important;
   z-index: var(--zIndex-layerUI);
   pointer-events: auto;
   touch-action: none;
@@ -78,7 +78,7 @@
   bottom: 2px !important;
   width: auto !important;
   margin-inline: 0;
-  transform: translateY(var(--philani-exc-bottom-y, 0px)) !important;
+  transform: translateY(calc(var(--philani-exc-bottom-y, 0px) + 100%)) !important;
   pointer-events: auto;
   touch-action: none;
 }

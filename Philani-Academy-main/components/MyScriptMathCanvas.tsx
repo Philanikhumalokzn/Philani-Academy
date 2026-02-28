@@ -10279,7 +10279,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               )}
               <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
                 <div
-                  className="h-full bg-white rounded-lg p-3 overflow-auto relative"
+                  className="h-full bg-white rounded-lg p-3 overflow-visible relative"
                   ref={useAdminStepComposer ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
                     if ((useAdminStepComposer || useStudentStepComposer) && topPanelEditingMode) {

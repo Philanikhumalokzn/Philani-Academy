@@ -103,6 +103,16 @@
   border-bottom-right-radius: var(--border-radius-lg) !important;
 }
 
+.philani-excalidraw-bottom-toolbar .excalidraw .App-toolbar-content .dropdown-menu--mobile {
+  top: 55px !important;
+  bottom: auto !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-toolbar-content .dropdown-menu--mobile .dropdown-menu-container {
+  max-height: calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - 72px);
+  overflow-y: auto;
+}
+
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar,
 .philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar,
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .Island,

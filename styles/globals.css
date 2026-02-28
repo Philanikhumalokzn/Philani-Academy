@@ -101,6 +101,12 @@
   box-shadow: none !important;
 }
 
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar [data-testid='toolbar-rectangle'],
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar [data-testid='toolbar-diamond'],
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar [data-testid='toolbar-ellipse'] {
+  display: none !important;
+}
+
 
 :root{
   --bg: #030712;

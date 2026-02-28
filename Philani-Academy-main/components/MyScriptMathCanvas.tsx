@@ -2306,13 +2306,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const ts = Date.now()
 
     try {
-      // Make the teacher the exclusive presenter globally.
+      // Defensive ordering for reclaim:
+      // 1) Drop any existing presenter globally.
+      // 2) Reset controller rights.
+      // 3) Re-assert teacher as exclusive presenter.
+      // This prevents stale student edit rights if one presenter-set message is missed.
       await channel.publish('control', {
         clientId: clientIdRef.current,
         author: userDisplayName,
         action: 'presenter-set',
-        presenterUserKey: teacherPresenterKey,
-        targetClientIds: teacherClientId ? [teacherClientId] : [],
+        presenterUserKey: null,
+        targetClientIds: [],
         ts,
       } satisfies PresenterSetMessage)
 
@@ -2325,6 +2329,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ts: ts + 1,
       })
 
+      // Re-assert teacher as the exclusive presenter globally.
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: teacherPresenterKey,
+        targetClientIds: teacherClientId ? [teacherClientId] : [],
+        ts: ts + 2,
+      } satisfies PresenterSetMessage)
+
       // Revoke presenter/controller rights by clientId (legacy allowlist) in one message.
       if (currentClientIds.length) {
         await channel.publish('control', {
@@ -2336,7 +2350,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           targetClientIds: currentClientIds,
           targetClientId: currentClientIds[0],
           allowed: false,
-          ts: ts + 2,
+          ts: ts + 3,
         })
       }
 
@@ -2353,7 +2367,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             name: null,
             targetClientIds: [],
             allowed: false,
-            ts: ts + 2 + i,
+            ts: ts + 3 + i,
           })
         }
       }

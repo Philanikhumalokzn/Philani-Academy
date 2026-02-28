@@ -282,6 +282,9 @@ export default function DiagramOverlayModule(props: {
   const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const [overlayRosterVisible, setOverlayRosterVisible] = useState(false)
+  const [handoffSwitching, setHandoffSwitching] = useState(false)
+  const [handoffMessage, setHandoffMessage] = useState<string | null>(null)
+  const handoffMessageTimerRef = useRef<number | null>(null)
   const clientId = useMemo(() => {
     const base = sanitizeIdentifier(userId || 'anonymous')
     const randomSuffix = Math.random().toString(36).slice(2, 8)
@@ -301,6 +304,28 @@ export default function DiagramOverlayModule(props: {
 
   const bumpControllerRightsVersion = useCallback(() => {
     setControllerRightsVersion(v => v + 1)
+  }, [])
+
+  const showHandoffFailure = useCallback((message: string) => {
+    setHandoffMessage(message)
+    if (typeof window === 'undefined') return
+    if (handoffMessageTimerRef.current != null) {
+      window.clearTimeout(handoffMessageTimerRef.current)
+    }
+    handoffMessageTimerRef.current = window.setTimeout(() => {
+      handoffMessageTimerRef.current = null
+      setHandoffMessage(null)
+    }, 2600)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (handoffMessageTimerRef.current != null) {
+        window.clearTimeout(handoffMessageTimerRef.current)
+        handoffMessageTimerRef.current = null
+      }
+    }
   }, [])
 
   const isSelfActivePresenter = useCallback(() => {
@@ -484,7 +509,7 @@ export default function DiagramOverlayModule(props: {
   }, [bumpControllerRightsVersion, isAdmin, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
-    if (!isAdmin) return
+    if (!isAdmin) return false
 
     const currentUserKeys = Array.from(controllerRightsUserAllowlistRef.current)
       .filter(k => k && k !== selfUserKey)
@@ -501,7 +526,7 @@ export default function DiagramOverlayModule(props: {
     activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
 
     const channel = channelRef.current
-    if (!channel) return
+    if (!channel) return false
     const ts = Date.now()
     try {
       await channel.publish('control', {
@@ -549,8 +574,9 @@ export default function DiagramOverlayModule(props: {
           })
         }
       }
+      return true
     } catch {
-      // ignore
+      return false
     }
   }, [bumpControllerRightsVersion, isAdmin, selfUserKey, userDisplayName])
 
@@ -559,11 +585,15 @@ export default function DiagramOverlayModule(props: {
     void (async () => {
       if (handoffInFlightRef.current) return
       handoffInFlightRef.current = true
+      setHandoffSwitching(true)
+      setHandoffMessage(null)
 
       if (!target) {
         try {
-          await reclaimAdminControl()
+          const ok = await reclaimAdminControl()
+          if (!ok) showHandoffFailure('Switch failed. Please try again.')
         } finally {
+          setHandoffSwitching(false)
           handoffInFlightRef.current = false
         }
         return
@@ -574,6 +604,8 @@ export default function DiagramOverlayModule(props: {
       const clickedUserKey = String(target.userKey || '').trim()
       const displayName = String(target.displayName || '').trim()
       if (!clickedClientId && !clickedUserKey) {
+        showHandoffFailure('Switch failed. Please select a valid user.')
+        setHandoffSwitching(false)
         handoffInFlightRef.current = false
         return
       }
@@ -591,6 +623,8 @@ export default function DiagramOverlayModule(props: {
 
       const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
       if (!nextClientIds.length) {
+        showHandoffFailure('Switch failed. User is not connected.')
+        setHandoffSwitching(false)
         handoffInFlightRef.current = false
         return
       }
@@ -614,6 +648,13 @@ export default function DiagramOverlayModule(props: {
 
       const channel = channelRef.current
       if (!channel) {
+        setActivePresenterUserKey(previousPresenterKey)
+        activePresenterClientIdsRef.current = previousPresenterClientIds
+        controllerRightsUserAllowlistRef.current = previousUserAllowlist
+        controllerRightsAllowlistRef.current = previousClientAllowlist
+        bumpControllerRightsVersion()
+        showHandoffFailure('Switch failed. Realtime channel unavailable.')
+        setHandoffSwitching(false)
         handoffInFlightRef.current = false
         return
       }
@@ -654,11 +695,13 @@ export default function DiagramOverlayModule(props: {
         controllerRightsUserAllowlistRef.current = previousUserAllowlist
         controllerRightsAllowlistRef.current = previousClientAllowlist
         bumpControllerRightsVersion()
+        showHandoffFailure('Switch failed. Please try again.')
       } finally {
+        setHandoffSwitching(false)
         handoffInFlightRef.current = false
       }
     })()
-  }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, userDisplayName])
+  }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, showHandoffFailure, userDisplayName])
 
   const handleRosterAttendeeAvatarClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
@@ -4825,6 +4868,25 @@ export default function DiagramOverlayModule(props: {
                 >
                   {teacherBadge.initials}
                 </button>
+
+                {handoffSwitching ? (
+                  <div
+                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Switching...
+                  </div>
+                ) : null}
+
+                {!handoffSwitching && handoffMessage ? (
+                  <div
+                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
+                    role="alert"
+                  >
+                    {handoffMessage}
+                  </div>
+                ) : null}
 
                 {rosterAvatarLayout.bottom.length > 0 ? (
                   <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">

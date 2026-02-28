@@ -10333,7 +10333,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   )}
 
                   {overlayChromePeekVisible && isOverlayMode && isCompactViewport && teacherBadge && (
-                    <div className="absolute left-3 bottom-3" style={{ zIndex: 2147483647 }}>
+                    <div
+                      className="absolute"
+                      style={{
+                        top: '50%',
+                        left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                        transform: 'translateY(-50%)',
+                        zIndex: 2147483647,
+                      }}
+                    >
                       <div className="relative w-6">
                         {rosterAvatarLayout.top.length > 0 ? (
                           <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">

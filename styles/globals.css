@@ -118,6 +118,10 @@
   overflow-y: auto;
 }
 
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .Stack_horizontal {
+  column-gap: 0 !important;
+}
+
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar,
 .philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar,
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .Island,

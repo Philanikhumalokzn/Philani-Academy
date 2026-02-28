@@ -274,6 +274,9 @@ export default function DiagramOverlayModule(props: {
   const [activePresenterUserKey, setActivePresenterUserKey] = useState<string | null>(null)
   const activePresenterUserKeyRef = useRef<string>('')
   const activePresenterClientIdsRef = useRef<Set<string>>(new Set())
+  const handoffInFlightRef = useRef(false)
+  const lastPresenterSetTsRef = useRef(0)
+  const lastControllerRightsTsRef = useRef(0)
   const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
   const controllerRightsUserAllowlistRef = useRef<Set<string>>(new Set())
   const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
@@ -554,8 +557,15 @@ export default function DiagramOverlayModule(props: {
   const handOverPresentation = useCallback((target: null | { clientId: string; userId?: string; userKey: string; displayName: string }) => {
     if (!isAdmin) return
     void (async () => {
+      if (handoffInFlightRef.current) return
+      handoffInFlightRef.current = true
+
       if (!target) {
-        await reclaimAdminControl()
+        try {
+          await reclaimAdminControl()
+        } finally {
+          handoffInFlightRef.current = false
+        }
         return
       }
 
@@ -563,10 +573,11 @@ export default function DiagramOverlayModule(props: {
       const clickedUserId = String(target.userId || '').trim()
       const clickedUserKey = String(target.userKey || '').trim()
       const displayName = String(target.displayName || '').trim()
-      if (!clickedClientId && !clickedUserKey) return
+      if (!clickedClientId && !clickedUserKey) {
+        handoffInFlightRef.current = false
+        return
+      }
 
-      const prevPresenterUserKey = activePresenterUserKeyRef.current || ''
-      const prevPresenterClientIds = Array.from(activePresenterClientIdsRef.current)
       const nameKey = normalizeDisplayName(displayName).toLowerCase()
       const matchingClientIds = connectedClients
         .filter(x => x.clientId && x.clientId !== 'all')
@@ -579,24 +590,75 @@ export default function DiagramOverlayModule(props: {
         .map(x => x.clientId)
 
       const nextClientIds = matchingClientIds.length ? matchingClientIds : (clickedClientId ? [clickedClientId] : [])
-      if (!nextClientIds.length) return
+      if (!nextClientIds.length) {
+        handoffInFlightRef.current = false
+        return
+      }
 
-      await setPresenterRightsForClients(nextClientIds, true, {
-        userKey: clickedUserKey,
-        name: displayName,
-      })
+      const previousPresenterKey = activePresenterUserKeyRef.current || null
+      const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
+      const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
+      const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
 
-      const samePresenter = (prevPresenterUserKey && clickedUserKey && prevPresenterUserKey === clickedUserKey)
-        || prevPresenterClientIds.some(id => nextClientIds.includes(id))
-      if (!samePresenter && (prevPresenterUserKey || prevPresenterClientIds.length)) {
-        await setPresenterRightsForClients(
-          prevPresenterClientIds,
-          false,
-          prevPresenterUserKey ? { userKey: prevPresenterUserKey } : undefined
-        )
+      const nextPresenterKey = clickedUserKey || null
+      controllerRightsUserAllowlistRef.current.clear()
+      controllerRightsAllowlistRef.current.clear()
+      if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
+      for (const id of nextClientIds) {
+        if (!id || id === 'all') continue
+        controllerRightsAllowlistRef.current.add(id)
+      }
+      setActivePresenterUserKey(nextPresenterKey)
+      activePresenterClientIdsRef.current = new Set(nextClientIds)
+      bumpControllerRightsVersion()
+
+      const channel = channelRef.current
+      if (!channel) {
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const ts = Date.now()
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'presenter-set',
+          presenterUserKey: nextPresenterKey,
+          targetClientIds: nextClientIds,
+          targetClientId: nextClientIds[0],
+          ts,
+        })
+
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights-reset',
+          ts: ts + 1,
+        })
+
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights',
+          targetUserKey: nextPresenterKey,
+          name: displayName || null,
+          targetClientIds: nextClientIds,
+          targetClientId: nextClientIds[0],
+          allowed: true,
+          ts: ts + 2,
+        })
+      } catch {
+        setActivePresenterUserKey(previousPresenterKey)
+        activePresenterClientIdsRef.current = previousPresenterClientIds
+        controllerRightsUserAllowlistRef.current = previousUserAllowlist
+        controllerRightsAllowlistRef.current = previousClientAllowlist
+        bumpControllerRightsVersion()
+      } finally {
+        handoffInFlightRef.current = false
       }
     })()
-  }, [connectedClients, isAdmin, reclaimAdminControl, setPresenterRightsForClients])
+  }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, userDisplayName])
 
   const handleRosterAttendeeAvatarClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
@@ -623,63 +685,45 @@ export default function DiagramOverlayModule(props: {
     }
   }, [userDisplayName])
 
-  const editorBadges = useMemo(() => {
-    const byPerson = new Map<string, {
-      userKey: string
-      name: string
-      clientIds: Set<string>
-      hasRights: boolean
-      hasUserId: boolean
-    }>()
+  const activePresenterBadge = useMemo(() => {
+    const activeKey = activePresenterUserKeyRef.current
+    const activeClientIds = activePresenterClientIdsRef.current
+    if (!activeKey && !activeClientIds.size) return null
 
-    for (const c of connectedClients) {
-      if (!c.clientId || c.clientId === 'all') continue
-      if (Boolean(c.isAdmin)) continue
+    const candidates = connectedClients.filter(c => {
+      if (!c.clientId || c.clientId === 'all') return false
+      if (Boolean(c.isAdmin)) return false
+      const key = getUserKey(c.userId, c.name || '')
+      if (activeKey && key && key === activeKey) return true
+      return activeClientIds.has(c.clientId)
+    })
 
-      const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
-      const nameKey = normalizeDisplayName(displayName).toLowerCase()
-      const personKey = c.userId ? `uid:${String(c.userId)}` : `name:${nameKey}`
-      const userKey = getUserKey(c.userId, displayName) || `name:${nameKey}`
-      const hasRights = controllerRightsUserAllowlistRef.current.has(userKey) || controllerRightsAllowlistRef.current.has(c.clientId)
-
-      const existing = byPerson.get(personKey)
-      if (!existing) {
-        byPerson.set(personKey, {
-          userKey,
-          name: displayName,
-          clientIds: new Set([c.clientId]),
-          hasRights,
-          hasUserId: Boolean(c.userId),
-        })
-        continue
-      }
-
-      existing.clientIds.add(c.clientId)
-      existing.hasRights = existing.hasRights || hasRights
-
-      if (c.userId && !existing.hasUserId) {
-        existing.hasUserId = true
-        existing.userKey = userKey
-      }
-      if (!existing.name && displayName) {
-        existing.name = displayName
+    const chosen = candidates[0] || null
+    if (!chosen) {
+      const fallbackName = activeKey ? activeKey.replace(/^uid:|^name:/, '') : 'Presenter'
+      return {
+        clientId: '',
+        userKey: activeKey || 'presenter',
+        name: fallbackName,
+        initials: getInitials(fallbackName, 'P'),
       }
     }
 
-    return Array.from(byPerson.values())
-      .filter(entry => entry.hasRights)
-      .map(entry => ({
-        clientId: Array.from(entry.clientIds)[0] || '',
-        userKey: entry.userKey,
-        name: entry.name,
-        initials: getInitials(entry.name, 'E'),
-      }))
-  }, [connectedClients, controllerRightsVersion])
+    const displayName = normalizeDisplayName(chosen.name || '') || String(chosen.clientId)
+    return {
+      clientId: chosen.clientId,
+      userKey: getUserKey(chosen.userId, displayName) || activeKey || `name:${displayName.toLowerCase()}`,
+      name: displayName,
+      initials: getInitials(displayName, 'P'),
+    }
+  }, [activePresenterUserKey, connectedClients, controllerRightsVersion])
 
   const availableRosterAttendees = useMemo(() => {
     const selfId = clientIdRef.current || ''
     const selfIdRaw = String(userId || '').trim()
-    const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasRights: boolean; hasUserId: boolean }>()
+    const activeKey = activePresenterUserKeyRef.current
+    const activeClientIds = activePresenterClientIdsRef.current
+    const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasUserId: boolean }>()
     for (const c of connectedClients) {
       if (!c.clientId || c.clientId === 'all' || c.clientId === selfId) continue
       if (c.isAdmin) continue
@@ -689,10 +733,10 @@ export default function DiagramOverlayModule(props: {
       const personKey = c.userId ? `uid:${String(c.userId)}` : `name:${nameKey}`
       const userKey = getUserKey(c.userId, displayName) || `name:${nameKey}`
       if (!userKey) continue
-      const hasRights = controllerRightsUserAllowlistRef.current.has(userKey) || controllerRightsAllowlistRef.current.has(c.clientId)
+      if ((activeKey && userKey === activeKey) || activeClientIds.has(c.clientId)) continue
       const existing = byUser.get(personKey)
       if (!existing) {
-        byUser.set(personKey, { clientId: c.clientId, userId: c.userId, name: displayName, userKey, hasRights, hasUserId: Boolean(c.userId) })
+        byUser.set(personKey, { clientId: c.clientId, userId: c.userId, name: displayName, userKey, hasUserId: Boolean(c.userId) })
         continue
       }
 
@@ -705,9 +749,8 @@ export default function DiagramOverlayModule(props: {
       if (!existing.name && displayName) {
         existing.name = displayName
       }
-      existing.hasRights = existing.hasRights || hasRights
     }
-    return Array.from(byUser.values()).filter(entry => !entry.hasRights)
+    return Array.from(byUser.values())
   }, [connectedClients, controllerRightsVersion, userId])
 
   const rosterAvatarLayout = useMemo(() => {
@@ -720,12 +763,12 @@ export default function DiagramOverlayModule(props: {
       userId?: string
     }>()
 
-    for (const badge of editorBadges) {
-      byUser.set(badge.userKey, {
+    if (activePresenterBadge) {
+      byUser.set(activePresenterBadge.userKey, {
         kind: 'presenter',
-        userKey: badge.userKey,
-        name: badge.name,
-        initials: badge.initials,
+        userKey: activePresenterBadge.userKey,
+        name: activePresenterBadge.name,
+        initials: activePresenterBadge.initials,
       })
     }
 
@@ -749,7 +792,7 @@ export default function DiagramOverlayModule(props: {
       top: all.slice(0, topCount),
       bottom: all.slice(topCount),
     }
-  }, [availableRosterAttendees, editorBadges, overlayRosterVisible])
+  }, [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
   const diagramsRef = useRef<DiagramRecord[]>([])
@@ -1601,8 +1644,12 @@ export default function DiagramOverlayModule(props: {
           const data = message?.data as any
           if (!data || typeof data !== 'object') return
           const controlAction = typeof data?.action === 'string' ? data.action : ''
+          const controlTsRaw = Number(data?.ts ?? 0)
+          const controlTs = Number.isFinite(controlTsRaw) ? controlTsRaw : 0
 
           if (controlAction === 'presenter-set') {
+            if (controlTs && controlTs < lastPresenterSetTsRef.current) return
+            if (controlTs) lastPresenterSetTsRef.current = controlTs
             const incomingKey = typeof data.presenterUserKey === 'string' ? String(data.presenterUserKey) : ''
             const nextKey = incomingKey ? incomingKey : null
             setActivePresenterUserKey(nextKey)
@@ -1616,6 +1663,8 @@ export default function DiagramOverlayModule(props: {
           }
 
           if (controlAction === 'controller-rights-reset') {
+            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
+            if (controlTs) lastControllerRightsTsRef.current = controlTs
             controllerRightsUserAllowlistRef.current.clear()
             controllerRightsAllowlistRef.current.clear()
             bumpControllerRightsVersion()
@@ -1623,6 +1672,8 @@ export default function DiagramOverlayModule(props: {
           }
 
           if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
+            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
+            if (controlTs) lastControllerRightsTsRef.current = controlTs
             const targets: string[] = Array.isArray(data.targetClientIds)
               ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
               : []
@@ -4757,7 +4808,7 @@ export default function DiagramOverlayModule(props: {
                     e.preventDefault()
                     e.stopPropagation()
                     if (overlayRosterVisible) {
-                      if (activePresenterUserKeyRef.current || controllerRightsAllowlistRef.current.size || controllerRightsUserAllowlistRef.current.size) {
+                      if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
                         handOverPresentation(null)
                         return
                       }

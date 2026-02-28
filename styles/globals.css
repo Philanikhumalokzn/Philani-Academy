@@ -58,13 +58,13 @@
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar {
   position: absolute;
-  top: 8px !important;
+  top: auto !important;
   left: 8px !important;
   right: 8px !important;
-  bottom: auto !important;
+  bottom: 2px !important;
   width: auto !important;
   margin-inline: 0;
-  transform: translateY(calc(var(--philani-exc-top-y, 0px) - 25%)) !important;
+  transform: translateY(calc(var(--philani-exc-top-y, 0px) + 50%)) !important;
   z-index: var(--zIndex-layerUI);
   pointer-events: auto;
   touch-action: none;
@@ -72,13 +72,13 @@
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar {
   position: absolute !important;
-  top: auto !important;
+  top: 8px !important;
   left: 8px !important;
   right: 8px !important;
-  bottom: 2px !important;
+  bottom: auto !important;
   width: auto !important;
   margin-inline: 0;
-  transform: translateY(calc(var(--philani-exc-bottom-y, 0px) + 50%)) !important;
+  transform: translateY(calc(var(--philani-exc-bottom-y, 0px) - 25%)) !important;
   pointer-events: auto;
   touch-action: none;
 }

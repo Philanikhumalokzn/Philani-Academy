@@ -1276,6 +1276,7 @@ export default function TextOverlayModule(props: {
           const isQuizFeedbackBox = box.id === QUIZ_FEEDBACK_BOX_ID
           const isQuizPopupBox = isQuizBox || isQuizFeedbackBox
           const isClosing = Boolean(closingPopupIds[box.id])
+          const isReadOnlyForUser = !canPresent && !isQuizPopupBox
           // For learners we want to support drag-anywhere on the quiz prompt.
           // This requires pointer events on the popup (so we can't fully allow ink-through underneath).
           const allowCanvasInkThrough = !isAdmin && isQuizPopupBox && !isQuizBox
@@ -1309,7 +1310,7 @@ export default function TextOverlayModule(props: {
                 transform: isQuizFeedbackBox ? 'translateX(-50%)' : undefined,
                 // Critical: allow handwriting on the canvas even if the quiz popup overlaps it.
                 // We keep specific interactive controls (close, textarea) as pointer-events:auto.
-                pointerEvents: allowCanvasInkThrough ? 'none' : 'auto',
+                pointerEvents: (isReadOnlyForUser || allowCanvasInkThrough) ? 'none' : 'auto',
               }}
               onPointerDown={event => onBoxPointerDown(box, event)}
               onPointerMove={onBoxPointerMove}
@@ -1327,9 +1328,9 @@ export default function TextOverlayModule(props: {
                   cursor: (canPresent || isQuizBox) ? (box.locked ? 'default' : 'grab') : 'default',
                   height: shouldAutoFitHeight ? 'auto' : '100%',
                   overflow: shouldAutoFitHeight ? 'hidden' : 'auto',
-                  touchAction: 'none',
+                  touchAction: isReadOnlyForUser ? 'auto' : 'none',
                   userSelect: 'none',
-                  pointerEvents: allowCanvasInkThrough ? 'none' : 'auto',
+                  pointerEvents: (isReadOnlyForUser || allowCanvasInkThrough) ? 'none' : 'auto',
                 }}
               >
                 {(isQuizBox || isQuizFeedbackBox) && (

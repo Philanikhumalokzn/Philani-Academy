@@ -123,10 +123,14 @@
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .dropdown-menu {
   top: auto !important;
   bottom: 100% !important;
-  left: auto !important;
-  right: 0 !important;
   margin-top: 0 !important;
   margin-bottom: 0.5rem !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .shapes-section .dropdown-menu {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
 }
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-toolbar-content .dropdown-menu--mobile .dropdown-menu-container {

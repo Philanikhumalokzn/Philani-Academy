@@ -1274,6 +1274,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return hasControllerRights()
   }, [hasControllerRights, isSelfActivePresenter])
 
+  const canPublishSnapshotsRef = useRef(canPublishSnapshots)
+
+  useEffect(() => {
+    canPublishSnapshotsRef.current = canPublishSnapshots
+  }, [canPublishSnapshots])
+
   // Board write rights (edit UI + mutate local editor state) should follow the same exclusivity
   // as snapshot publishing when a presenter is active.
   const hasBoardWriteRights = useCallback(() => {
@@ -2491,7 +2497,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           pendingBroadcastRef.current = null
         }
 
-        const channel = channelRef.current
+        const waitForControlChannel = async (timeoutMs: number) => {
+          const startTs = Date.now()
+          while (Date.now() - startTs < timeoutMs) {
+            const liveChannel = channelRef.current
+            if (liveChannel) return liveChannel
+            await new Promise(resolve => setTimeout(resolve, 50))
+          }
+          return channelRef.current
+        }
+
+        const channel = await waitForControlChannel(1000)
         if (!channel) {
           setActivePresenterUserKey(previousPresenterKey)
           activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
@@ -5305,7 +5321,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = canPublishSnapshots() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = canPublishSnapshotsRef.current() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -5392,7 +5408,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setIsConverting(false)
 
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = canPublishSnapshots() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = canPublishSnapshotsRef.current() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           if (forcedConvertDepthRef.current > 0) {
             forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
             return
@@ -5490,7 +5506,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, canPublishSnapshots, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useAdminStepComposer])
+  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useAdminStepComposer])
 
   useEffect(() => {
     if (!useAdminStepComposer) return

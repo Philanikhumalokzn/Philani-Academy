@@ -3782,6 +3782,7 @@ export default function DiagramOverlayModule(props: {
   const gridToolbarDragThresholdPx = 4
 
   const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLElement>) => {
+    if (!canPresentRef.current) return
     const node = e.currentTarget
     node.setPointerCapture?.(e.pointerId)
     const origin = gridToolbarOffsets[target]
@@ -3797,6 +3798,7 @@ export default function DiagramOverlayModule(props: {
   }, [gridToolbarOffsets])
 
   const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (!canPresentRef.current) return
     const drag = gridToolbarDragRef.current
     if (!drag.target || drag.pointerId !== e.pointerId) return
     const dy = e.clientY - drag.startY
@@ -3840,6 +3842,7 @@ export default function DiagramOverlayModule(props: {
   }, [])
 
   const onGridToolbarPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canPresentRef.current) return
     const target = detectGridToolbarDragTarget(e.target)
     if (!target) return
     startGridToolbarDrag(target, e)
@@ -4410,7 +4413,7 @@ export default function DiagramOverlayModule(props: {
                   queueGridScenePublish(diagramId, nextElements)
                 }}
                 zenModeEnabled={false}
-                viewModeEnabled={false}
+                viewModeEnabled={!canPresent}
                 initialData={{
                   appState: {
                     currentItemStrokeWidth: 1,

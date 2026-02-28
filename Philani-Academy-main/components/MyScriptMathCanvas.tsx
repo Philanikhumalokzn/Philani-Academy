@@ -1255,24 +1255,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [selfUserKey])
 
   const hasControllerRights = useCallback(() => {
-    if (isAdmin) return true
-    if (selfUserKey && controllerRightsUserAllowlistRef.current.has(selfUserKey)) return true
-    const myId = clientIdRef.current
-    if (!myId) return false
-    // Legacy fallback: clientId-based allowlist.
-    return controllerRightsAllowlistRef.current.has(myId)
-  }, [isAdmin, selfUserKey])
+    // Controller-only actions (quiz/lesson orchestration) are teacher-only.
+    return Boolean(isAdmin)
+  }, [isAdmin])
 
   // Exclusive snapshot publishing rule:
-  // - If a presenter is active, ONLY that presenter may publish SnapshotPayload.
-  // - Otherwise fall back to controller-rights (admin + allowlisted presenter(s)).
+  // - ONLY the active presenter may publish SnapshotPayload.
+  // - Assignments/challenges remain locally editable regardless of presenter state.
   const canPublishSnapshots = useCallback(() => {
-    const activeKey = activePresenterUserKeyRef.current
-    if (activeKey) {
-      return isSelfActivePresenter()
-    }
-    return hasControllerRights()
-  }, [hasControllerRights, isSelfActivePresenter])
+    if (forceEditableForAssignment) return true
+    return isSelfActivePresenter()
+  }, [forceEditableForAssignment, isSelfActivePresenter])
 
   const canPublishSnapshotsRef = useRef(canPublishSnapshots)
 
@@ -1280,17 +1273,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     canPublishSnapshotsRef.current = canPublishSnapshots
   }, [canPublishSnapshots])
 
-  // Board write rights (edit UI + mutate local editor state) should follow the same exclusivity
-  // as snapshot publishing when a presenter is active.
+  // Board write rights (edit UI + mutate local editor state):
+  // - presenter-owned in live sessions,
+  // - explicit quiz unlock for students,
+  // - assignment/challenge local override.
   const hasBoardWriteRights = useCallback(() => {
     if (forceEditableForAssignment) return true
     if (!isAdmin && isSessionQuizMode && quizActiveRef.current) return true
-    const activeKey = activePresenterUserKeyRef.current
-    if (activeKey) {
-      return isSelfActivePresenter()
-    }
-    return hasControllerRights()
-  }, [forceEditableForAssignment, hasControllerRights, isAdmin, isSelfActivePresenter, isSessionQuizMode])
+    return isSelfActivePresenter()
+  }, [forceEditableForAssignment, isAdmin, isSelfActivePresenter, isSessionQuizMode])
 
   const [viewOnlyMode, setViewOnlyMode] = useState(() => !hasBoardWriteRights())
 
@@ -1326,7 +1317,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canPublishSnapshots, userDisplayName])
 
-  // Step-composer mode is available to the teacher and to any presenter (controller-rights allowlisted user).
+  // Step-composer mode is available to the teacher and to the active presenter.
   // This powers the multi-step editing UX (commit steps, recall/edit steps, step-boundary undo/redo).
   const useAdminStepComposer = Boolean(
     useStackedStudentLayout
@@ -2187,53 +2178,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!isAdmin) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
     const userKey = typeof opts?.userKey === 'string' ? opts?.userKey : ''
-    const displayName = typeof opts?.name === 'string' ? opts?.name : ''
     if (!targets.length && !userKey) return
-
-    if (userKey) {
-      if (allowed) {
-        controllerRightsUserAllowlistRef.current.add(userKey)
-      } else {
-        controllerRightsUserAllowlistRef.current.delete(userKey)
-      }
-    }
-
-    for (const target of targets) {
-      if (allowed) {
-        controllerRightsAllowlistRef.current.add(target)
-      } else {
-        controllerRightsAllowlistRef.current.delete(target)
-      }
-    }
-    bumpControllerRightsVersion()
-    // Recompute local permission refs immediately.
-    updateControlState(controlStateRef.current)
 
     const channel = channelRef.current
     if (!channel) return
     const ts = Date.now()
     try {
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights',
-        targetUserKey: userKey || null,
-        name: displayName || null,
-        targetClientIds: targets,
-        targetClientId: targets[0],
-        allowed,
-        ts,
-      })
-
-      // Explicit presenter handoff:
-      // When the admin grants presenter/controller-rights to a student, we immediately declare
-      // that student as the exclusive snapshot publisher.
-      // (Admin remains connected but must stop publishing SnapshotPayload.)
       if (allowed) {
         const presenterKey = userKey || null
+        if (!presenterKey) return
         setActivePresenterUserKey(presenterKey)
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
+        bumpControllerRightsVersion()
 
         // Recompute permissions now that presenter changed.
         updateControlState(controlStateRef.current)
@@ -2251,7 +2208,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           presenterUserKey: presenterKey,
           targetClientIds: targets,
           targetClientId: targets[0],
-          ts: ts + 1,
+          ts,
         } satisfies PresenterSetMessage)
       } else {
         // If we're revoking the active presenter, clear it.
@@ -2260,6 +2217,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setActivePresenterUserKey(null)
           activePresenterUserKeyRef.current = ''
           activePresenterClientIdsRef.current = new Set()
+          bumpControllerRightsVersion()
           updateControlState(controlStateRef.current)
           await channel.publish('control', {
             clientId: clientIdRef.current,
@@ -2267,12 +2225,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             action: 'presenter-set',
             presenterUserKey: null,
             targetClientIds: [],
-            ts: ts + 1,
+            ts,
           } satisfies PresenterSetMessage)
         }
       }
     } catch (err) {
-      console.warn('Failed to update controller rights', err)
+      console.warn('Failed to update presenter handoff', err)
     }
   }, [bumpControllerRightsVersion, isAdmin, updateControlState, userDisplayName])
 
@@ -2281,15 +2239,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const teacherClientId = clientIdRef.current
   const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
-
-    const currentUserKeys = Array.from(controllerRightsUserAllowlistRef.current)
-      .filter(k => k && k !== selfUserKey)
-    const currentClientIds = Array.from(controllerRightsAllowlistRef.current)
-      .filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID && id !== clientIdRef.current)
-
-    // Clear local state immediately.
-    controllerRightsUserAllowlistRef.current.clear()
-    controllerRightsAllowlistRef.current.clear()
     bumpControllerRightsVersion()
 
     // Reclaim means the teacher becomes the exclusive snapshot publisher.
@@ -2308,9 +2257,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       // Defensive ordering for reclaim:
       // 1) Drop any existing presenter globally.
-      // 2) Reset controller rights.
-      // 3) Re-assert teacher as exclusive presenter.
-      // This prevents stale student edit rights if one presenter-set message is missed.
+      // 2) Re-assert teacher as exclusive presenter.
       await channel.publish('control', {
         clientId: clientIdRef.current,
         author: userDisplayName,
@@ -2320,15 +2267,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ts,
       } satisfies PresenterSetMessage)
 
-      // Hard reset: ensure all clients (including the former presenter) drop controller rights.
-      // This prevents any stale allowlist state from leaving multiple publishers active.
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights-reset',
-        ts: ts + 1,
-      })
-
       // Re-assert teacher as the exclusive presenter globally.
       await channel.publish('control', {
         clientId: clientIdRef.current,
@@ -2336,41 +2274,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         action: 'presenter-set',
         presenterUserKey: teacherPresenterKey,
         targetClientIds: teacherClientId ? [teacherClientId] : [],
-        ts: ts + 2,
+        ts: ts + 1,
       } satisfies PresenterSetMessage)
-
-      // Revoke presenter/controller rights by clientId (legacy allowlist) in one message.
-      if (currentClientIds.length) {
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          action: 'controller-rights',
-          targetUserKey: null,
-          name: null,
-          targetClientIds: currentClientIds,
-          targetClientId: currentClientIds[0],
-          allowed: false,
-          ts: ts + 3,
-        })
-      }
-
-      // Revoke presenter/controller rights by userKey (preferred allowlist) one-by-one.
-      if (currentUserKeys.length) {
-        let i = 0
-        for (const userKey of currentUserKeys) {
-          i += 1
-          await channel.publish('control', {
-            clientId: clientIdRef.current,
-            author: userDisplayName,
-            action: 'controller-rights',
-            targetUserKey: userKey,
-            name: null,
-            targetClientIds: [],
-            allowed: false,
-            ts: ts + 3 + i,
-          })
-        }
-      }
       return true
     } catch (err) {
       console.warn('Failed to reclaim admin control', err)
@@ -5605,6 +5510,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         channel = realtime.channels.get(channelName)
         channelRef.current = channel
         await channel.attach()
+
+        if (isAdmin && !forceEditableForAssignment && !activePresenterUserKeyRef.current) {
+          const teacherClientId = clientIdRef.current
+          const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
+          if (teacherPresenterKey) {
+            setActivePresenterUserKey(teacherPresenterKey)
+            activePresenterUserKeyRef.current = String(teacherPresenterKey)
+            activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+            updateControlState(controlStateRef.current)
+            try {
+              await channel.publish('control', {
+                clientId: clientIdRef.current,
+                author: userDisplayName,
+                action: 'presenter-set',
+                presenterUserKey: teacherPresenterKey,
+                targetClientIds: teacherClientId ? [teacherClientId] : [],
+                ts: Date.now(),
+              } satisfies PresenterSetMessage)
+            } catch (err) {
+              console.warn('Failed to bootstrap teacher presenter state', err)
+            }
+          }
+        }
 
         const handleStroke = (message: any) => {
           if (!isAdmin && latexDisplayStateRef.current.enabled) {

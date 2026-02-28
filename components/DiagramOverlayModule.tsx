@@ -54,6 +54,7 @@ type DiagramRealtimeMessage =
   | { kind: 'remove'; diagramId: string; ts?: number; sender?: string }
   | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
   | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
+  | { kind: 'grid-scene-set'; diagramId: string; elements: any[]; ts?: number; sender?: string }
   | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
 
 type ScriptDiagramEventDetail = {
@@ -72,6 +73,24 @@ const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeS
         ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
         : 'shared'
   return `myscript:${base}`
+}
+
+const cloneGridElementsPayload = (elements: any[]) => {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(elements)
+    }
+    return JSON.parse(JSON.stringify(elements))
+  } catch {
+    return Array.isArray(elements) ? elements.map((el: any) => ({ ...el })) : []
+  }
+}
+
+const getGridSceneSignature = (elements: any[]) => {
+  if (!Array.isArray(elements) || elements.length === 0) return 'empty'
+  return elements
+    .map((el: any) => `${String(el?.id ?? '')}:${Number(el?.version ?? 0)}:${Number(el?.versionNonce ?? 0)}:${el?.isDeleted ? 1 : 0}`)
+    .join('|')
 }
 
 export default function DiagramOverlayModule(props: {
@@ -596,6 +615,15 @@ export default function DiagramOverlayModule(props: {
       if (diag) {
         await publish({ kind: 'add', diagram: diag })
         await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
+        if (diag.imageUrl === GRID_DIAGRAM_URL) {
+          const api = excalidrawApiRef.current
+          const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+          const cached = gridSceneByDiagramRef.current.get(diag.id)
+          const elements = Array.isArray(live) ? cloneGridElementsPayload(live) : cached
+          if (Array.isArray(elements)) {
+            await publish({ kind: 'grid-scene-set', diagramId: diag.id, elements })
+          }
+        }
       }
     }
   }, [isAdmin, persistState, publish, toTransportAnnotations])
@@ -964,6 +992,17 @@ export default function DiagramOverlayModule(props: {
             return
           }
 
+          if (data.kind === 'grid-scene-set') {
+            const sceneElements = Array.isArray(data.elements) ? cloneGridElementsPayload(data.elements) : []
+            gridSceneByDiagramRef.current.set(data.diagramId, sceneElements)
+            const activeId = diagramStateRef.current.activeDiagramId
+            const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
+            if (activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL) {
+              setGridSceneToApi(sceneElements)
+            }
+            return
+          }
+
           if (data.kind === 'stroke-commit') {
             setDiagrams(prev => prev.map(d => {
               if (d.id !== data.diagramId) return d
@@ -989,6 +1028,15 @@ export default function DiagramOverlayModule(props: {
               if (diag) {
                 await publish({ kind: 'add', diagram: diag })
                 await publish({ kind: 'annotations-set', diagramId: activeId, annotations: toTransportAnnotations(activeId, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
+                if (diag.imageUrl === GRID_DIAGRAM_URL) {
+                  const api = excalidrawApiRef.current
+                  const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+                  const cached = gridSceneByDiagramRef.current.get(activeId)
+                  const elements = Array.isArray(live) ? cloneGridElementsPayload(live) : cached
+                  if (Array.isArray(elements)) {
+                    await publish({ kind: 'grid-scene-set', diagramId: activeId, elements })
+                  }
+                }
               }
             }
           })
@@ -1017,7 +1065,21 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, localOnly, publish, toTransportAnnotations, userDisplayName, userId])
+  }, [channelName, isAdmin, loadFromServer, localOnly, publish, setGridSceneToApi, toTransportAnnotations, userDisplayName, userId])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+        gridSceneSuppressTimerRef.current = null
+      }
+      if (gridScenePublishTimerRef.current != null) {
+        window.clearTimeout(gridScenePublishTimerRef.current)
+        gridScenePublishTimerRef.current = null
+      }
+    }
+  }, [])
 
   // Rendering
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -1131,7 +1193,75 @@ export default function DiagramOverlayModule(props: {
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [gridApiReadyVersion, setGridApiReadyVersion] = useState(0)
+  const gridSceneByDiagramRef = useRef<Map<string, any[]>>(new Map())
+  const suppressGridScenePublishRef = useRef(false)
+  const gridSceneSuppressTimerRef = useRef<number | null>(null)
+  const gridScenePublishTimerRef = useRef<number | null>(null)
+  const gridPendingSceneRef = useRef<{ diagramId: string; elements: any[] } | null>(null)
+  const lastPublishedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
   const activeHistoryDiagramIdRef = useRef<string | null>(null)
+
+  const setGridSceneToApi = useCallback((elements: any[]) => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return
+    suppressGridScenePublishRef.current = true
+    if (typeof window !== 'undefined') {
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+      }
+      gridSceneSuppressTimerRef.current = window.setTimeout(() => {
+        suppressGridScenePublishRef.current = false
+        gridSceneSuppressTimerRef.current = null
+      }, 0)
+    }
+    api.updateScene({ elements })
+  }, [])
+
+  const queueGridScenePublish = useCallback((diagramId: string, elements: any[]) => {
+    const snapshot = cloneGridElementsPayload(elements)
+    const signature = getGridSceneSignature(snapshot)
+    const lastSignature = lastPublishedGridSceneSignatureRef.current.get(diagramId)
+    if (lastSignature === signature) return
+    gridPendingSceneRef.current = { diagramId, elements: snapshot }
+    if (typeof window === 'undefined') {
+      void publish({ kind: 'grid-scene-set', diagramId, elements: snapshot })
+      lastPublishedGridSceneSignatureRef.current.set(diagramId, signature)
+      gridPendingSceneRef.current = null
+      return
+    }
+    if (gridScenePublishTimerRef.current != null) return
+    gridScenePublishTimerRef.current = window.setTimeout(() => {
+      gridScenePublishTimerRef.current = null
+      const pending = gridPendingSceneRef.current
+      gridPendingSceneRef.current = null
+      if (!pending) return
+      const nextSignature = getGridSceneSignature(pending.elements)
+      const prevSignature = lastPublishedGridSceneSignatureRef.current.get(pending.diagramId)
+      if (nextSignature === prevSignature) return
+      void publish({ kind: 'grid-scene-set', diagramId: pending.diagramId, elements: pending.elements })
+      lastPublishedGridSceneSignatureRef.current.set(pending.diagramId, nextSignature)
+    }, 120)
+  }, [publish])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (!activeDiagram?.id) return
+    if (!canPresentRef.current) return
+
+    const tick = () => {
+      const api = excalidrawApiRef.current
+      const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+      if (!Array.isArray(live)) return
+      const snapshot = cloneGridElementsPayload(live)
+      gridSceneByDiagramRef.current.set(activeDiagram.id, snapshot)
+      queueGridScenePublish(activeDiagram.id, snapshot)
+    }
+
+    const id = window.setInterval(tick, 450)
+    return () => window.clearInterval(id)
+  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram, queueGridScenePublish])
 
   const getExcalidrawToolType = useCallback((value: DiagramTool): 'selection' | 'freedraw' | 'arrow' | 'eraser' => {
     if (value === 'pen') return 'freedraw'
@@ -1177,6 +1307,15 @@ export default function DiagramOverlayModule(props: {
 
     return () => window.clearTimeout(settle)
   }, [activeDiagram?.id, diagramState.isOpen, getExcalidrawToolType, gridApiReadyVersion, isGridDiagram, tool])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (!activeDiagram?.id) return
+    const cached = gridSceneByDiagramRef.current.get(activeDiagram.id)
+    if (!cached) return
+    setGridSceneToApi(cloneGridElementsPayload(cached))
+  }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, setGridSceneToApi])
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(undoRef.current.length > 0)
@@ -4260,6 +4399,15 @@ export default function DiagramOverlayModule(props: {
                 excalidrawAPI={(api) => {
                   excalidrawApiRef.current = api
                   setGridApiReadyVersion((prev) => prev + 1)
+                }}
+                onChange={(elements: any[]) => {
+                  const diagramId = activeDiagram?.id
+                  if (!diagramId) return
+                  const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
+                  gridSceneByDiagramRef.current.set(diagramId, nextElements)
+                  if (suppressGridScenePublishRef.current) return
+                  if (!canPresentRef.current) return
+                  queueGridScenePublish(diagramId, nextElements)
                 }}
                 zenModeEnabled={false}
                 viewModeEnabled={false}

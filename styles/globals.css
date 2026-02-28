@@ -90,6 +90,19 @@
   align-items: center;
 }
 
+.philani-excalidraw-bottom-toolbar .excalidraw .mobile-misc-tools-container {
+  top: auto !important;
+  right: auto !important;
+  bottom: 8px !important;
+  left: calc(var(--editor-container-padding) * -1) !important;
+  border-left: 0 !important;
+  border-right: 1px solid var(--sidebar-border-color) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-top-right-radius: var(--border-radius-lg) !important;
+  border-bottom-right-radius: var(--border-radius-lg) !important;
+}
+
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar,
 .philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar,
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .Island,

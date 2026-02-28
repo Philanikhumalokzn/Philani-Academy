@@ -110,7 +110,16 @@ const cloneGridElementsPayload = (elements: any[]) => {
 const getGridSceneSignature = (elements: any[]) => {
   if (!Array.isArray(elements) || elements.length === 0) return 'empty'
   return elements
-    .map((el: any) => `${String(el?.id ?? '')}:${Number(el?.version ?? 0)}:${Number(el?.versionNonce ?? 0)}:${el?.isDeleted ? 1 : 0}`)
+    .map((el: any) => {
+      const id = String(el?.id ?? '')
+      const version = Number(el?.version ?? 0)
+      const versionNonce = Number(el?.versionNonce ?? 0)
+      const deleted = el?.isDeleted ? 1 : 0
+      const pointsLen = Array.isArray(el?.points) ? el.points.length : 0
+      const width = Number.isFinite(el?.width) ? Number(el.width) : 0
+      const height = Number.isFinite(el?.height) ? Number(el.height) : 0
+      return `${id}:${version}:${versionNonce}:${deleted}:${pointsLen}:${width}:${height}`
+    })
     .sort()
     .join('|')
 }
@@ -120,9 +129,18 @@ const isIncomingGridElementNewer = (incoming: any, current: any) => {
   const currentVersion = Number(current?.version ?? 0)
   if (incomingVersion !== currentVersion) return incomingVersion > currentVersion
 
-  const incomingNonce = Number(incoming?.versionNonce ?? 0)
-  const currentNonce = Number(current?.versionNonce ?? 0)
-  if (incomingNonce !== currentNonce) return incomingNonce > currentNonce
+  // Same-version updates can still carry meaningful geometry growth while drawing.
+  const incomingPointsLen = Array.isArray(incoming?.points) ? incoming.points.length : 0
+  const currentPointsLen = Array.isArray(current?.points) ? current.points.length : 0
+  if (incomingPointsLen !== currentPointsLen) return incomingPointsLen > currentPointsLen
+
+  const incomingWidth = Number.isFinite(incoming?.width) ? Number(incoming.width) : 0
+  const currentWidth = Number.isFinite(current?.width) ? Number(current.width) : 0
+  const incomingHeight = Number.isFinite(incoming?.height) ? Number(incoming.height) : 0
+  const currentHeight = Number.isFinite(current?.height) ? Number(current.height) : 0
+  const incomingArea = incomingWidth * incomingHeight
+  const currentArea = currentWidth * currentHeight
+  if (incomingArea !== currentArea) return incomingArea > currentArea
 
   const incomingDeleted = Boolean(incoming?.isDeleted)
   const currentDeleted = Boolean(current?.isDeleted)

@@ -94,7 +94,7 @@
   left: 8px !important;
   right: auto !important;
   top: 8px !important;
-  transform: translate(-10%, calc(-28% - 4rem)) !important;
+  transform: translate(calc(-10% - 0.5rem), calc(-28% - 4rem)) !important;
   border-left: 0 !important;
   border-right: 1px solid var(--sidebar-border-color) !important;
   border-top-left-radius: 0 !important;

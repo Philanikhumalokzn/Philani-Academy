@@ -2279,8 +2279,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const reclaimAdminControl = useCallback(async () => {
     if (!isAdmin) return false
 
-    const teacherPresenterKey = (selfUserKey || '').trim() || null
     const teacherClientId = clientIdRef.current
+  const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
 
     const currentUserKeys = Array.from(controllerRightsUserAllowlistRef.current)
       .filter(k => k && k !== selfUserKey)

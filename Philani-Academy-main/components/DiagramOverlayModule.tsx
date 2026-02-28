@@ -491,50 +491,90 @@ export default function DiagramOverlayModule(props: {
   }, [userDisplayName])
 
   const editorBadges = useMemo(() => {
-    const candidates = connectedClients
-      .filter(c => c.clientId && c.clientId !== 'all')
-      .filter(c => !Boolean(c.isAdmin))
-      .map(c => {
-        const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
-        const key = getUserKey(c.userId, displayName) || `name:${normalizeDisplayName(displayName).toLowerCase()}`
-        return { clientId: c.clientId, userKey: key, name: displayName }
-      })
-    const seen = new Set<string>()
-    const list: Array<{ clientId: string; userKey: string; name: string; initials: string }> = []
-    for (const c of candidates) {
-      const allowedByUser = c.userKey && controllerRightsUserAllowlistRef.current.has(c.userKey)
-      const allowedByClient = controllerRightsAllowlistRef.current.has(c.clientId)
-      if (!allowedByUser && !allowedByClient) continue
-      if (seen.has(c.userKey)) continue
-      seen.add(c.userKey)
-      list.push({
-        clientId: c.clientId,
-        userKey: c.userKey,
-        name: c.name,
-        initials: getInitials(c.name, 'E'),
-      })
+    const byPerson = new Map<string, {
+      userKey: string
+      name: string
+      clientIds: Set<string>
+      hasRights: boolean
+      hasUserId: boolean
+    }>()
+
+    for (const c of connectedClients) {
+      if (!c.clientId || c.clientId === 'all') continue
+      if (Boolean(c.isAdmin)) continue
+
+      const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
+      const nameKey = normalizeDisplayName(displayName).toLowerCase()
+      const personKey = c.userId ? `uid:${String(c.userId)}` : `name:${nameKey}`
+      const userKey = getUserKey(c.userId, displayName) || `name:${nameKey}`
+      const hasRights = controllerRightsUserAllowlistRef.current.has(userKey) || controllerRightsAllowlistRef.current.has(c.clientId)
+
+      const existing = byPerson.get(personKey)
+      if (!existing) {
+        byPerson.set(personKey, {
+          userKey,
+          name: displayName,
+          clientIds: new Set([c.clientId]),
+          hasRights,
+          hasUserId: Boolean(c.userId),
+        })
+        continue
+      }
+
+      existing.clientIds.add(c.clientId)
+      existing.hasRights = existing.hasRights || hasRights
+
+      if (c.userId && !existing.hasUserId) {
+        existing.hasUserId = true
+        existing.userKey = userKey
+      }
+      if (!existing.name && displayName) {
+        existing.name = displayName
+      }
     }
-    return list
+
+    return Array.from(byPerson.values())
+      .filter(entry => entry.hasRights)
+      .map(entry => ({
+        clientId: Array.from(entry.clientIds)[0] || '',
+        userKey: entry.userKey,
+        name: entry.name,
+        initials: getInitials(entry.name, 'E'),
+      }))
   }, [connectedClients, controllerRightsVersion])
 
   const availableRosterAttendees = useMemo(() => {
     const selfId = clientIdRef.current || ''
     const selfIdRaw = String(userId || '').trim()
-    const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasRights: boolean }>()
+    const byUser = new Map<string, { clientId: string; userId?: string; name: string; userKey: string; hasRights: boolean; hasUserId: boolean }>()
     for (const c of connectedClients) {
       if (!c.clientId || c.clientId === 'all' || c.clientId === selfId) continue
       if (c.isAdmin) continue
       if (selfIdRaw && c.userId && String(c.userId) === selfIdRaw) continue
       const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)
-      const userKey = getUserKey(c.userId, displayName) || `name:${normalizeDisplayName(displayName).toLowerCase()}`
+      const nameKey = normalizeDisplayName(displayName).toLowerCase()
+      const personKey = c.userId ? `uid:${String(c.userId)}` : `name:${nameKey}`
+      const userKey = getUserKey(c.userId, displayName) || `name:${nameKey}`
       if (!userKey) continue
       const hasRights = controllerRightsUserAllowlistRef.current.has(userKey) || controllerRightsAllowlistRef.current.has(c.clientId)
-      if (hasRights) continue
-      if (!byUser.has(userKey)) {
-        byUser.set(userKey, { clientId: c.clientId, userId: c.userId, name: displayName, userKey, hasRights })
+      const existing = byUser.get(personKey)
+      if (!existing) {
+        byUser.set(personKey, { clientId: c.clientId, userId: c.userId, name: displayName, userKey, hasRights, hasUserId: Boolean(c.userId) })
+        continue
       }
+
+      if (!existing.hasUserId && c.userId) {
+        existing.clientId = c.clientId
+        existing.userId = c.userId
+        existing.userKey = userKey
+        existing.hasUserId = true
+      }
+      if (!existing.name && displayName) {
+        existing.name = displayName
+      }
+      existing.hasRights = existing.hasRights || hasRights
     }
-    return Array.from(byUser.values())
+    return Array.from(byUser.values()).filter(entry => !entry.hasRights)
   }, [connectedClients, controllerRightsVersion, userId])
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
@@ -1416,11 +1456,42 @@ export default function DiagramOverlayModule(props: {
           })
           const dedupePresence = (list: any[]) => {
             const byKey = new Map<string, PresenceClient>()
+            const nameToKey = new Map<string, string>()
             for (const raw of Array.isArray(list) ? list : []) {
               const c = toPresenceClient(raw)
               if (!c.clientId) continue
-              const key = c.userId ? `uid:${c.userId}` : `name:${normalizeDisplayName(c.name || c.clientId).toLowerCase()}`
-              if (!byKey.has(key)) byKey.set(key, c)
+
+              const normalizedName = normalizeDisplayName(c.name || c.clientId)
+              const nameKey = normalizedName.toLowerCase()
+
+              if (c.userId) {
+                const uidKey = `uid:${c.userId}`
+                const existingNameKey = nameToKey.get(nameKey)
+
+                if (existingNameKey && existingNameKey !== uidKey && !existingNameKey.startsWith('uid:')) {
+                  const existing = byKey.get(existingNameKey)
+                  if (existing) {
+                    byKey.delete(existingNameKey)
+                    byKey.set(uidKey, { ...existing, ...c, name: normalizedName || existing.name })
+                  } else if (!byKey.has(uidKey)) {
+                    byKey.set(uidKey, { ...c, name: normalizedName })
+                  }
+                } else if (!byKey.has(uidKey)) {
+                  byKey.set(uidKey, { ...c, name: normalizedName })
+                } else {
+                  const prev = byKey.get(uidKey)!
+                  byKey.set(uidKey, { ...prev, ...c, name: prev.name || normalizedName })
+                }
+
+                nameToKey.set(nameKey, uidKey)
+                continue
+              }
+
+              const mappedKey = nameToKey.get(nameKey) || `name:${nameKey}`
+              const prev = byKey.get(mappedKey)
+              if (prev?.userId) continue
+              byKey.set(mappedKey, prev ? { ...c, ...prev, name: prev.name || normalizedName } : { ...c, name: normalizedName })
+              if (!nameToKey.has(nameKey)) nameToKey.set(nameKey, mappedKey)
             }
             return Array.from(byKey.values())
           }

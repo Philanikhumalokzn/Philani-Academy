@@ -4448,15 +4448,30 @@ export default function DiagramOverlayModule(props: {
             <div
               className="absolute z-50"
               style={{
-                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+                top: '50%',
                 left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                transform: 'translateY(-50%)',
               }}
             >
-              <div className="flex flex-col items-start">
+              <div className="relative w-6">
+                {editorBadges.length > 0 ? (
+                  <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
+                    {editorBadges.map((badge) => (
+                      <div
+                        key={badge.userKey || badge.clientId}
+                        className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                        title={`${badge.name} (presenter)`}
+                        aria-label={`${badge.name} is a presenter`}
+                      >
+                        {badge.initials}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 <button
                   type="button"
                   className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
-                  style={{ marginBottom: 6 }}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -4479,38 +4494,29 @@ export default function DiagramOverlayModule(props: {
                   {teacherBadge.initials}
                 </button>
 
-                {editorBadges.map((badge) => (
-                  <div
-                    key={badge.userKey || badge.clientId}
-                    className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
-                    style={{ marginBottom: 6 }}
-                    title={`${badge.name} (presenter)`}
-                    aria-label={`${badge.name} is a presenter`}
-                  >
-                    {badge.initials}
+                {overlayRosterVisible && availableRosterAttendees.length > 0 ? (
+                  <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
+                    {availableRosterAttendees.map((attendee) => (
+                      <button
+                        type="button"
+                        key={attendee.userKey}
+                        data-client-id={attendee.clientId}
+                        data-user-id={attendee.userId || ''}
+                        data-user-key={attendee.userKey}
+                        data-display-name={attendee.name}
+                        className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                        title={attendee.name}
+                        aria-label={`Make ${attendee.name} the presenter`}
+                        onClick={handleRosterAttendeeAvatarClick}
+                        onPointerDown={(e) => {
+                          e.stopPropagation()
+                        }}
+                      >
+                        {getInitials(attendee.name, 'U')}
+                      </button>
+                    ))}
                   </div>
-                ))}
-
-                {overlayRosterVisible ? availableRosterAttendees.map((attendee) => (
-                  <button
-                    type="button"
-                    key={attendee.userKey}
-                    data-client-id={attendee.clientId}
-                    data-user-id={attendee.userId || ''}
-                    data-user-key={attendee.userKey}
-                    data-display-name={attendee.name}
-                    className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
-                    style={{ marginBottom: 6 }}
-                    title={attendee.name}
-                    aria-label={`Make ${attendee.name} the presenter`}
-                    onClick={handleRosterAttendeeAvatarClick}
-                    onPointerDown={(e) => {
-                      e.stopPropagation()
-                    }}
-                  >
-                    {getInitials(attendee.name, 'U')}
-                  </button>
-                )) : null}
+                ) : null}
               </div>
             </div>
           ) : null}

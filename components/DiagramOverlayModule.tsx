@@ -4271,7 +4271,7 @@ export default function DiagramOverlayModule(props: {
                 renderTopRightUI={() => (
                   <button
                     type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white/95 text-slate-700 shadow-sm hover:bg-white disabled:opacity-50"
+                    className="inline-flex h-9 w-9 items-center justify-center text-slate-700 hover:text-slate-900 disabled:opacity-50"
                     onClick={handleClearInk}
                     disabled={!canPresent}
                     aria-label="Clear canvas"

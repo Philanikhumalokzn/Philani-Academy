@@ -55,6 +55,7 @@ type DiagramRealtimeMessage =
   | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
   | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
   | { kind: 'grid-scene-set'; diagramId: string; elements: any[]; ts?: number; sender?: string }
+  | { kind: 'grid-scene-delta'; diagramId: string; upserts: any[]; removedIds?: string[]; ts?: number; sender?: string }
   | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
 
 type ScriptDiagramEventDetail = {
@@ -122,6 +123,79 @@ const getGridSceneSignature = (elements: any[]) => {
     })
     .sort()
     .join('|')
+}
+
+const getGridElementSignature = (el: any) => {
+  const version = Number(el?.version ?? 0)
+  const versionNonce = Number(el?.versionNonce ?? 0)
+  const deleted = el?.isDeleted ? 1 : 0
+  const pointsLen = Array.isArray(el?.points) ? el.points.length : 0
+  const width = Number.isFinite(el?.width) ? Number(el.width) : 0
+  const height = Number.isFinite(el?.height) ? Number(el.height) : 0
+  return `${version}:${versionNonce}:${deleted}:${pointsLen}:${width}:${height}`
+}
+
+const computeGridSceneDelta = (prevElements: any[], nextElements: any[]) => {
+  const prevById = new Map<string, string>()
+  for (const el of Array.isArray(prevElements) ? prevElements : []) {
+    const id = String(el?.id || '')
+    if (!id) continue
+    prevById.set(id, getGridElementSignature(el))
+  }
+
+  const nextById = new Set<string>()
+  const upserts: any[] = []
+  for (const el of Array.isArray(nextElements) ? nextElements : []) {
+    const id = String(el?.id || '')
+    if (!id) continue
+    nextById.add(id)
+    const nextSig = getGridElementSignature(el)
+    const prevSig = prevById.get(id)
+    if (prevSig !== nextSig) upserts.push({ ...el })
+  }
+
+  const removedIds: string[] = []
+  for (const id of prevById.keys()) {
+    if (!nextById.has(id)) removedIds.push(id)
+  }
+
+  return { upserts, removedIds }
+}
+
+const applyGridSceneDelta = (base: any[], upserts: any[], removedIds?: string[]) => {
+  const byId = new Map<string, any>()
+  const order: string[] = []
+
+  for (const raw of Array.isArray(base) ? base : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    if (!byId.has(id)) order.push(id)
+    byId.set(id, { ...raw })
+  }
+
+  for (const rid of Array.isArray(removedIds) ? removedIds : []) {
+    const id = String(rid || '')
+    if (!id) continue
+    byId.delete(id)
+  }
+
+  for (const raw of Array.isArray(upserts) ? upserts : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    const incoming = { ...raw }
+    const current = byId.get(id)
+    if (!current) {
+      order.push(id)
+      byId.set(id, incoming)
+      continue
+    }
+    if (isIncomingGridElementNewer(incoming, current)) {
+      byId.set(id, incoming)
+    }
+  }
+
+  const uniqueOrder = Array.from(new Set(order))
+  return uniqueOrder.map((id) => byId.get(id)).filter(Boolean)
 }
 
 const isIncomingGridElementNewer = (incoming: any, current: any) => {
@@ -1439,6 +1513,34 @@ export default function DiagramOverlayModule(props: {
             const mergedElements = mergeGridSceneElements(baseElements, incomingElements)
 
             gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            gridLastDeltaBaseByDiagramRef.current.set(data.diagramId, mergedElements)
+            if (isActiveGrid) {
+              setGridSceneToApi(mergedElements)
+            }
+            return
+          }
+
+          if (data.kind === 'grid-scene-delta') {
+            const incomingUpserts = Array.isArray(data.upserts) ? cloneGridElementsPayload(data.upserts) : []
+            const incomingRemovedIds = Array.isArray((data as any).removedIds)
+              ? (data as any).removedIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+
+            const activeId = diagramStateRef.current.activeDiagramId
+            const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
+            const isActiveGrid = activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL
+
+            const live = isActiveGrid
+              ? (excalidrawApiRef.current?.getSceneElementsIncludingDeleted?.() || excalidrawApiRef.current?.getSceneElements?.())
+              : null
+            const cached = gridSceneByDiagramRef.current.get(data.diagramId)
+            const baseElements = Array.isArray(live)
+              ? cloneGridElementsPayload(live)
+              : (Array.isArray(cached) ? cloneGridElementsPayload(cached) : [])
+            const mergedElements = applyGridSceneDelta(baseElements, incomingUpserts, incomingRemovedIds)
+
+            gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            gridLastDeltaBaseByDiagramRef.current.set(data.diagramId, mergedElements)
             if (isActiveGrid) {
               setGridSceneToApi(mergedElements)
             }
@@ -1743,6 +1845,9 @@ export default function DiagramOverlayModule(props: {
   const gridSceneSuppressTimerRef = useRef<number | null>(null)
   const gridScenePublishTimerRef = useRef<number | null>(null)
   const gridPendingSceneRef = useRef<{ diagramId: string; elements: any[] } | null>(null)
+  const gridDeltaPublishTimerRef = useRef<number | null>(null)
+  const gridPendingDeltaRef = useRef<{ diagramId: string; prevElements: any[]; nextElements: any[] } | null>(null)
+  const gridLastDeltaBaseByDiagramRef = useRef<Map<string, any[]>>(new Map())
   const lastPublishedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
   const gridActiveDrawingRef = useRef(false)
   const gridDrawingIdleTimerRef = useRef<number | null>(null)
@@ -1790,6 +1895,47 @@ export default function DiagramOverlayModule(props: {
       void publish({ kind: 'grid-scene-set', diagramId: pending.diagramId, elements: pending.elements })
       lastPublishedGridSceneSignatureRef.current.set(pending.diagramId, nextSignature)
     }, 120)
+  }, [publish])
+
+  const queueGridSceneDeltaPublish = useCallback((diagramId: string, prevElements: any[], nextElements: any[]) => {
+    const prevSnapshot = cloneGridElementsPayload(prevElements)
+    const nextSnapshot = cloneGridElementsPayload(nextElements)
+
+    const pending = gridPendingDeltaRef.current
+    if (pending && pending.diagramId === diagramId) {
+      gridPendingDeltaRef.current = {
+        diagramId,
+        prevElements: pending.prevElements,
+        nextElements: nextSnapshot,
+      }
+    } else {
+      gridPendingDeltaRef.current = {
+        diagramId,
+        prevElements: prevSnapshot,
+        nextElements: nextSnapshot,
+      }
+    }
+
+    if (typeof window === 'undefined') {
+      const current = gridPendingDeltaRef.current
+      gridPendingDeltaRef.current = null
+      if (!current) return
+      const delta = computeGridSceneDelta(current.prevElements, current.nextElements)
+      if (!delta.upserts.length && !delta.removedIds.length) return
+      void publish({ kind: 'grid-scene-delta', diagramId: current.diagramId, upserts: delta.upserts, removedIds: delta.removedIds })
+      return
+    }
+
+    if (gridDeltaPublishTimerRef.current != null) return
+    gridDeltaPublishTimerRef.current = window.setTimeout(() => {
+      gridDeltaPublishTimerRef.current = null
+      const current = gridPendingDeltaRef.current
+      gridPendingDeltaRef.current = null
+      if (!current) return
+      const delta = computeGridSceneDelta(current.prevElements, current.nextElements)
+      if (!delta.upserts.length && !delta.removedIds.length) return
+      void publish({ kind: 'grid-scene-delta', diagramId: current.diagramId, upserts: delta.upserts, removedIds: delta.removedIds })
+    }, 80)
   }, [publish])
 
   useEffect(() => {
@@ -5091,13 +5237,17 @@ export default function DiagramOverlayModule(props: {
                       if (!flushDiagramId || !Array.isArray(flushElements)) return
                       if (suppressGridScenePublishRef.current) return
                       if (!canPresentRef.current) return
-                      queueGridScenePublish(flushDiagramId, flushElements)
+                      const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(flushDiagramId) || []
+                      queueGridSceneDeltaPublish(flushDiagramId, prevForDelta, flushElements)
+                      gridLastDeltaBaseByDiagramRef.current.set(flushDiagramId, cloneGridElementsPayload(flushElements))
                     }, 280)
                   }
 
                   if (suppressGridScenePublishRef.current) return
                   if (!canPresentRef.current) return
-                  queueGridScenePublish(diagramId, nextElements)
+                  const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(diagramId) || []
+                  queueGridSceneDeltaPublish(diagramId, prevForDelta, nextElements)
+                  gridLastDeltaBaseByDiagramRef.current.set(diagramId, cloneGridElementsPayload(nextElements))
                 }}
                 zenModeEnabled={false}
                 viewModeEnabled={!canPresent}

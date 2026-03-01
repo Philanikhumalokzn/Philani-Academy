@@ -10047,13 +10047,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       mergedSymbols = steps.flatMap((s: any) => (Array.isArray(s.symbols) ? s.symbols : []))
     }
 
+    const payloadLatex = stepsForComposer
+      .map(step => String(step?.latex || '').trim())
+      .filter(Boolean)
+      .join(' \\\\ ')
+      .trim()
+    const loadedLatexRaw = (save as any)?.latex
+    const loadedLatex = typeof loadedLatexRaw === 'string' ? loadedLatexRaw.trim() : ''
+    const continuityLatex = loadedLatex || payloadLatex
+
     if (options?.continuity && !mergedSymbols.length) {
-      const loadedLatex = (save as any)?.latex || null
-      const latexValue = typeof loadedLatex === 'string' ? loadedLatex : ''
+      const latexValue = continuityLatex
       if (latexValue) {
         setLatexOutput(latexValue)
         setStackedNotesState(curr => ({ ...curr, latex: latexValue, ts: Date.now() }))
       }
+      setLatexDisplayState(curr => ({ ...curr, enabled: false, latex: latexValue }))
       return
     }
 
@@ -10096,14 +10105,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setTopPanelSelectedStep(null)
     }
 
-    const loadedLatex = (save as any)?.latex || null
     if (options?.continuity) {
-      const latexValue = typeof loadedLatex === 'string' ? loadedLatex : ''
+      const latexValue = continuityLatex
       setLatexOutput(latexValue)
       setStackedNotesState(curr => ({ ...curr, latex: latexValue, ts: Date.now() }))
-      setLatexDisplayState(curr => ({ ...curr, enabled: false, latex: '' }))
+      setLatexDisplayState(curr => ({ ...curr, enabled: false, latex: latexValue }))
     } else {
-      applyLoadedLatex(loadedLatex)
+      applyLoadedLatex(continuityLatex || null)
     }
     const canonical = captureFullSnapshot()
     if (canonical && !isSnapshotEmpty(canonical)) {

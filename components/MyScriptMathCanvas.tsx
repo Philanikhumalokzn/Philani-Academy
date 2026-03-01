@@ -1782,6 +1782,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const [latestSharedSave, setLatestSharedSave] = useState<NotesSaveRecord | null>(null)
   const [latestPersonalSave, setLatestPersonalSave] = useState<NotesSaveRecord | null>(null)
+  const latestSharedSaveRef = useRef<NotesSaveRecord | null>(null)
+  useEffect(() => {
+    latestSharedSaveRef.current = latestSharedSave
+  }, [latestSharedSave])
   const [isSavingLatex, setIsSavingLatex] = useState(false)
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
 
@@ -2452,7 +2456,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Semantic alias: presenter == controller-rights.
   const setPresenterRightsForClient = setControllerRightsForClient
 
-  const autoSaveCurrentQuestionAsNotesRef = useRef<null | ((options?: { requireEmptyBottom?: boolean }) => Promise<void>)>(null)
+  const autoSaveCurrentQuestionAsNotesRef = useRef<null | ((options?: { requireEmptyBottom?: boolean }) => Promise<NotesSaveRecord | null>)>(null)
+  const pendingPresenterContinuitySaveRef = useRef<NotesSaveRecord | null>(null)
 
   const handOverPresentation = useCallback(
     (target: PresenterHandoffTarget) => {
@@ -2467,11 +2472,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setHandoffSwitching(true)
         setHandoffMessage(null)
 
+        let continuitySave: NotesSaveRecord | null = null
+
         // Best-effort: silently capture the current question into Notes before switching presenter context.
         // For admin reclaim, bypass the "bottom canvas empty" gating since the teacher may be viewing the
         // student's board state (which would otherwise block the auto-save).
         try {
-          await autoSaveCurrentQuestionAsNotesRef.current?.({ requireEmptyBottom: Boolean(target) })
+          continuitySave = await autoSaveCurrentQuestionAsNotesRef.current?.({ requireEmptyBottom: Boolean(target) }) ?? null
         } catch {}
 
         // Bidirectional: null target means the admin reclaims control.
@@ -2595,6 +2602,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             allowed: true,
             ts: ts + 2,
           })
+
+          const continuityRecord = continuitySave || latestSharedSaveRef.current
+          if (continuityRecord) {
+            await channel.publish('control', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              action: 'presenter-continuity-load',
+              targetClientIds: nextClientIds,
+              targetClientId: nextClientIds[0],
+              save: continuityRecord,
+              ts: ts + 3,
+            })
+          }
         } catch (err) {
           setActivePresenterUserKey(previousPresenterKey)
           activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
@@ -5993,10 +6013,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'stacked-notes' | 'quiz' | 'controller-eligibility' | 'controller-rights' | 'controller-rights-reset' | 'controller-highlight' | 'presenter-set' | 'shared-page'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'stacked-notes' | 'quiz' | 'controller-eligibility' | 'controller-rights' | 'controller-rights-reset' | 'controller-highlight' | 'presenter-set' | 'shared-page' | 'presenter-continuity-load'
             targetClientId?: string
             targetClientIds?: string[]
             snapshot?: SnapshotPayload | null
+            save?: NotesSaveRecord | null
             enabled?: boolean
             allowed?: boolean
             presenterUserKey?: string | null
@@ -6064,10 +6085,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
             // If we ARE the active presenter, immediately assert our current page + state.
             if (nextKey) {
+              const pendingContinuitySave = pendingPresenterContinuitySaveRef.current
+              if (pendingContinuitySave && isSelfActivePresenter()) {
+                pendingPresenterContinuitySaveRef.current = null
+                void applySavedNotesRecord(pendingContinuitySave, { publish: true })
+                return
+              }
               const currentPage = pageIndexRef.current
               setSharedPageIndex(currentPage)
               void publishSharedPage(currentPage, Date.now())
               void forcePublishCanvas(undefined, { shareIndex: currentPage })
+            }
+            return
+          }
+
+          if (data?.action === 'presenter-continuity-load') {
+            const targets: string[] = Array.isArray((data as any).targetClientIds)
+              ? (data as any).targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets: string[] = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            if (dedupedTargets.length) {
+              const myClientId = String(clientIdRef.current || '')
+              if (!myClientId || !dedupedTargets.includes(myClientId)) return
+            }
+
+            const continuitySave = data?.save
+            if (!continuitySave || typeof continuitySave !== 'object') return
+            pendingPresenterContinuitySaveRef.current = continuitySave as NotesSaveRecord
+
+            if (isSelfActivePresenter()) {
+              const pending = pendingPresenterContinuitySaveRef.current
+              pendingPresenterContinuitySaveRef.current = null
+              if (pending) {
+                void applySavedNotesRecord(pending, { publish: true })
+              }
             }
             return
           }
@@ -9835,9 +9887,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // Mirrors the paper-plane empty-canvas flow by saving the full question (top steps) into Notes.
   const lastAutoQuestionNotesHashRef = useRef<string | null>(null)
   const autoSaveCurrentQuestionAsNotes = useCallback(async (options?: { requireEmptyBottom?: boolean }) => {
-    if (isLessonAuthoring) return
-    if (!isAdmin) return
-    if (!canPersistLatex || !sessionKey) return
+    if (isLessonAuthoring) return null
+    if (!isAdmin) return null
+    if (!canPersistLatex || !sessionKey) return null
 
     const requireEmptyBottom = options?.requireEmptyBottom !== false
 
@@ -9876,28 +9928,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         emptyCanvas = isEditorEmptyNow()
         emptyLine = isCurrentLineEmptyNow()
       } catch {
-        return
+        return null
       }
-      if (!emptyCanvas || !emptyLine) return
+      if (!emptyCanvas || !emptyLine) return null
     }
 
-    if (!stepsForSave.length) return
+    if (!stepsForSave.length) return null
     const normalizedLatexParts = stepsForSave.map(s => normalizeStepLatex(s.latex || '')).filter(Boolean)
     const hash = normalizedLatexParts.length
       ? normalizedLatexParts.join('\n')
       : `symbols:${stepsForSave.reduce((acc, step) => acc + (Array.isArray((step as any).symbols) ? (step as any).symbols.length : 0), 0)}`
-    if (lastAutoQuestionNotesHashRef.current === hash) return
+    if (lastAutoQuestionNotesHashRef.current === hash) return latestSharedSaveRef.current
     lastAutoQuestionNotesHashRef.current = hash
 
     const noteId = createSessionNoteId()
     const inferredTitle = prettyPrintTitleFromLatex(stepsForSave[0]?.latex || '')
     const title = (inferredTitle || '').trim() || 'Untitled question'
-    await saveQuestionAsNotes({ title, noteId, stepsOverride: stepsForSave })
+    return await saveQuestionAsNotes({ title, noteId, stepsOverride: stepsForSave })
   }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {
     autoSaveCurrentQuestionAsNotesRef.current = async (options?: { requireEmptyBottom?: boolean }) => {
-      await autoSaveCurrentQuestionAsNotes(options)
+      return await autoSaveCurrentQuestionAsNotes(options)
     }
     return () => {
       autoSaveCurrentQuestionAsNotesRef.current = null
@@ -9976,10 +10028,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canPersistLatex, isAdmin, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
-  const applySavedNotesRecord = useCallback((save: NotesSaveRecord) => {
+  const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean }) => {
     if (!save) return
 
     // Overwrite the current local state.
+    suppressBroadcastUntilTsRef.current = Date.now() + 1200
     try {
       editorInstanceRef.current?.clear?.()
     } catch {}
@@ -9987,16 +10040,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastBroadcastBaseCountRef.current = 0
 
     const payload: any = (save as any)?.payload
-    if (useAdminStepComposer && hasControllerRights() && payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
+    if (payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
       const steps = payload.steps
         .filter((s: any) => s && typeof s === 'object')
         .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
         .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
 
-      setAdminSteps(steps)
-      setAdminEditIndex(null)
-      setAdminDraftLatex('')
-      setTopPanelSelectedStep(null)
+      const mergedSymbols = steps.flatMap((s: any) => (Array.isArray(s.symbols) ? s.symbols : []))
+      if (mergedSymbols.length) {
+        try {
+          await nextAnimationFrame()
+          await editorInstanceRef.current?.importPointEvents?.(mergedSymbols)
+          if (typeof editorInstanceRef.current?.waitForIdle === 'function') {
+            await editorInstanceRef.current.waitForIdle()
+          }
+        } catch (err) {
+          console.warn('Failed to import continuity notes symbols', err)
+        }
+      }
+      lastSymbolCountRef.current = mergedSymbols.length
+      lastBroadcastBaseCountRef.current = mergedSymbols.length
+
+      if (useAdminStepComposer && hasControllerRights()) {
+        setAdminSteps(steps)
+        setAdminEditIndex(null)
+        setAdminDraftLatex('')
+        setTopPanelSelectedStep(null)
+      }
     } else if (useAdminStepComposer && hasControllerRights()) {
       // If a non-question note is loaded in composer mode, clear the step list so the LaTeX panel can take over.
       setAdminSteps([])
@@ -10006,7 +10076,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     applyLoadedLatex((save as any)?.latex || null)
-  }, [applyLoadedLatex, hasControllerRights, useAdminStepComposer])
+    const canonical = captureFullSnapshot()
+    if (canonical) {
+      latestSnapshotRef.current = { snapshot: canonical, ts: Date.now(), reason: 'update' }
+    }
+
+    if (options?.publish && canPublishSnapshots()) {
+      await forcePublishCanvas(undefined, { shareIndex: pageIndexRef.current })
+    }
+  }, [applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, useAdminStepComposer])
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {

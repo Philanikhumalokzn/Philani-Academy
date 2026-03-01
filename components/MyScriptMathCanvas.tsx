@@ -10343,7 +10343,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       className="fixed"
                       style={{
                         top: '50%',
-                        left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                        left: 'calc(env(safe-area-inset-left, 0px) + 1rem)',
                         transform: 'translateY(-50%)',
                         zIndex: 2147483647,
                       }}

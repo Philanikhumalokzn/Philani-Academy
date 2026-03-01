@@ -443,6 +443,15 @@ type PresenceClient = {
   isAdmin?: boolean
 }
 
+type EditingAuthorityCandidate = {
+  userKey: string
+  name: string
+  clientIds: Set<string>
+  grantTs: number
+  lastBroadcastTs: number
+  reasons: Set<string>
+}
+
 type PresenterHandoffTarget = null | {
   clientId: string
   userId?: string
@@ -1343,16 +1352,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [overlayRosterVisible, setOverlayRosterVisible] = useState(false)
   const [handoffSwitching, setHandoffSwitching] = useState(false)
   const [handoffMessage, setHandoffMessage] = useState<string | null>(null)
+  const [editingAuthorityUserKeys, setEditingAuthorityUserKeys] = useState<string[]>([])
+  const [switchConflictActive, setSwitchConflictActive] = useState(false)
   const handoffMessageTimerRef = useRef<number | null>(null)
   const handoffInFlightRef = useRef(false)
   const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
   const lastPresenterSetTsRef = useRef(0)
   const lastControllerRightsTsRef = useRef(0)
+  const rightsGrantedAtByUserKeyRef = useRef<Map<string, number>>(new Map())
+  const recentBroadcastTsByUserKeyRef = useRef<Map<string, number>>(new Map())
+  const editingAuthorityUserKeysRef = useRef<Set<string>>(new Set())
+  const switchConflictActiveRef = useRef(false)
+  const conflictStartedAtRef = useRef<number | null>(null)
+  const lastConflictReasonRef = useRef('')
+  const conflictResolverInFlightRef = useRef(false)
+  const lastConflictEnforceSignatureRef = useRef('')
+  const lastConflictEnforceTsRef = useRef(0)
   const [highlightedController, setHighlightedController] = useState<{ clientId: string; userId?: string; name?: string; ts: number } | null>(null)
   const highlightedControllerRef = useRef<{ clientId: string; userId?: string; name?: string; ts: number } | null>(null)
   useEffect(() => {
     highlightedControllerRef.current = highlightedController
   }, [highlightedController])
+  useEffect(() => {
+    editingAuthorityUserKeysRef.current = new Set(editingAuthorityUserKeys)
+  }, [editingAuthorityUserKeys])
+  useEffect(() => {
+    switchConflictActiveRef.current = switchConflictActive
+  }, [switchConflictActive])
   useEffect(() => {
     if (!overlayChromePeekVisible || !isOverlayMode || !isCompactViewport) {
       setOverlayRosterVisible(false)
@@ -1401,6 +1427,90 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return rawActivePresenterBadge
   }, [isAdmin, isSelfActivePresenter, rawActivePresenterBadge])
 
+  const setEditingAuthorityKeysStable = useCallback((nextKeys: string[]) => {
+    const nextUnique = Array.from(new Set(nextKeys.filter(Boolean))).sort((a, b) => a.localeCompare(b))
+    const current = editingAuthorityUserKeysRef.current
+    if (current.size === nextUnique.length) {
+      let same = true
+      for (const key of nextUnique) {
+        if (!current.has(key)) {
+          same = false
+          break
+        }
+      }
+      if (same) return
+    }
+    setEditingAuthorityUserKeys(nextUnique)
+  }, [])
+
+  const setSwitchConflictActiveStable = useCallback((next: boolean) => {
+    if (switchConflictActiveRef.current === next) return
+    setSwitchConflictActive(next)
+  }, [])
+
+  const resolvePresenceByClientId = useCallback((candidateClientId?: string) => {
+    const wanted = String(candidateClientId || '').trim()
+    if (!wanted) return null
+    return connectedClientsRef.current.find(client => client.clientId === wanted) || null
+  }, [])
+
+  const resolveUserForClientId = useCallback((candidateClientId?: string) => {
+    const member = resolvePresenceByClientId(candidateClientId)
+    if (!member) return null
+    const name = normalizeDisplayName(member.name || '') || member.clientId
+    const userKey = getUserKey(member.userId, name) || `client:${member.clientId}`
+    return {
+      userKey,
+      name,
+      clientId: member.clientId,
+      userId: member.userId,
+    }
+  }, [getUserKey, resolvePresenceByClientId])
+
+  const resolveIdentityForUserKey = useCallback((candidateUserKey?: string) => {
+    const userKey = String(candidateUserKey || '').trim()
+    if (!userKey) return null
+    const members = connectedClientsRef.current.filter(client => {
+      if (!client.clientId || client.clientId === 'all' || client.clientId === ALL_STUDENTS_ID) return false
+      const name = normalizeDisplayName(client.name || '') || client.clientId
+      const key = getUserKey(client.userId, name) || `client:${client.clientId}`
+      return key === userKey
+    })
+    const first = members[0] || null
+    return {
+      userKey,
+      name: first ? (normalizeDisplayName(first.name || '') || first.clientId) : userKey.replace(/^uid:|^name:|^client:/, ''),
+      userId: first?.userId,
+      clientIds: members.map(member => member.clientId),
+    }
+  }, [getUserKey])
+
+  const recordRightsGrant = useCallback((userKey: string | null | undefined, ts?: number) => {
+    const key = String(userKey || '').trim()
+    if (!key) return
+    const grantTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
+    const previous = rightsGrantedAtByUserKeyRef.current.get(key) ?? 0
+    if (grantTs >= previous) {
+      rightsGrantedAtByUserKeyRef.current.set(key, grantTs)
+    }
+  }, [])
+
+  const recordBroadcastActivity = useCallback((userKey: string | null | undefined, ts?: number) => {
+    const key = String(userKey || '').trim()
+    if (!key) return
+    const activityTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
+    const previous = recentBroadcastTsByUserKeyRef.current.get(key) ?? 0
+    if (activityTs >= previous) {
+      recentBroadcastTsByUserKeyRef.current.set(key, activityTs)
+    }
+  }, [])
+
+  const isAvatarEditingAuthority = useCallback((userKey?: string | null) => {
+    const key = String(userKey || '').trim()
+    if (!key) return false
+    return editingAuthorityUserKeysRef.current.has(key)
+  }, [])
+
   const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
     connectedClients,
     selfClientId: clientIdRef.current || '',
@@ -1416,6 +1526,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     overlayRosterVisible,
     attendeeInitialFallback: 'U',
   }), [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
+  const showSwitchingToast = handoffSwitching || switchConflictActive
+  const switchingStatusLabel = switchConflictActive ? 'Switching... conflict detected' : 'Switching...'
+  const teacherAvatarGold = isAvatarEditingAuthority(selfUserKey)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -2192,6 +2305,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (allowed) {
         const presenterKey = userKey || null
         if (!presenterKey) return
+        recordRightsGrant(presenterKey, ts)
         setActivePresenterUserKey(presenterKey)
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
@@ -2237,13 +2351,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to update presenter handoff', err)
     }
-  }, [bumpControllerRightsVersion, isAdmin, updateControlState, userDisplayName])
+  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, updateControlState, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
     if (!isAdmin) return false
 
     const teacherClientId = clientIdRef.current
   const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
+    if (teacherPresenterKey) {
+      recordRightsGrant(teacherPresenterKey, Date.now())
+    }
+    controllerRightsUserAllowlistRef.current.clear()
+    controllerRightsAllowlistRef.current.clear()
     bumpControllerRightsVersion()
 
     // Reclaim means the teacher becomes the exclusive snapshot publisher.
@@ -2281,12 +2400,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         targetClientIds: teacherClientId ? [teacherClientId] : [],
         ts: ts + 1,
       } satisfies PresenterSetMessage)
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: ts + 2,
+      })
       return true
     } catch (err) {
       console.warn('Failed to reclaim admin control', err)
       return false
     }
-  }, [bumpControllerRightsVersion, isAdmin, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, selfUserKey, updateControlState, userDisplayName])
 
   // Semantic alias: presenter == controller-rights.
   const setPresenterRightsForClients = setControllerRightsForClients
@@ -2397,6 +2523,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         const nextPresenterKey = resolvedPresenterKey
         const nextPresenterName = resolvedSelection.resolvedDisplayName || displayName
+        recordRightsGrant(nextPresenterKey, Date.now())
         controllerRightsUserAllowlistRef.current.clear()
         controllerRightsAllowlistRef.current.clear()
         if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
@@ -2482,7 +2609,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       })()
     },
-    [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, showHandoffFailure, updateControlState, userDisplayName]
+    [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
   )
 
   const handleRosterAttendeeAvatarClick = useCallback(
@@ -2525,6 +2652,401 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to broadcast highlighted controller', err)
     }
   }, [isAdmin, userDisplayName])
+
+  const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
+    if (!isAdmin) return
+    if (handoffInFlightRef.current || conflictResolverInFlightRef.current) return
+
+    const now = Date.now()
+    const signature = `${userKey}::${reason}`
+    if (signature === lastConflictEnforceSignatureRef.current && now - lastConflictEnforceTsRef.current < 1500) {
+      return
+    }
+    lastConflictEnforceSignatureRef.current = signature
+    lastConflictEnforceTsRef.current = now
+
+    conflictResolverInFlightRef.current = true
+    try {
+      if (selfUserKey && userKey === selfUserKey) {
+        await reclaimAdminControl()
+        return
+      }
+
+      const identity = resolveIdentityForUserKey(userKey)
+      const targetClientIds = Array.from(new Set((identity?.clientIds || []).filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
+      if (!targetClientIds.length) return
+
+      controllerRightsUserAllowlistRef.current.clear()
+      controllerRightsAllowlistRef.current.clear()
+      controllerRightsUserAllowlistRef.current.add(userKey)
+      for (const id of targetClientIds) {
+        controllerRightsAllowlistRef.current.add(id)
+      }
+
+      setActivePresenterUserKey(userKey)
+      activePresenterUserKeyRef.current = userKey
+      activePresenterClientIdsRef.current = new Set(targetClientIds)
+      bumpControllerRightsVersion()
+      updateControlState(controlStateRef.current)
+      recordRightsGrant(userKey, now)
+
+      const channel = channelRef.current
+      if (!channel) return
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: userKey,
+        targetClientIds,
+        targetClientId: targetClientIds[0],
+        ts: now,
+      } satisfies PresenterSetMessage)
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: now + 1,
+      })
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights',
+        targetUserKey: userKey,
+        targetClientIds,
+        targetClientId: targetClientIds[0],
+        name: identity?.name || null,
+        allowed: true,
+        ts: now + 2,
+      })
+    } catch (err) {
+      console.warn('Failed to enforce canonical presenter', err)
+    } finally {
+      conflictResolverInFlightRef.current = false
+    }
+  }, [bumpControllerRightsVersion, isAdmin, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
+
+  const evaluateSwitchingAuthority = useCallback(() => {
+    if (!isAdmin || forceEditableForAssignment || (isSessionQuizMode && quizActiveRef.current)) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      setSwitchConflictActiveStable(false)
+      setEditingAuthorityKeysStable([])
+      if (!handoffInFlightRef.current) {
+        setHandoffSwitching(false)
+      }
+      return
+    }
+
+    const BROADCAST_SIGNAL_WINDOW_MS = 12000
+    const FAILURE_TIMEOUT_MS = 60000
+    const now = Date.now()
+
+    const candidates = new Map<string, EditingAuthorityCandidate>()
+    const addCandidate = (params: {
+      userKey?: string | null
+      name?: string | null
+      clientId?: string | null
+      reason: string
+      grantTs?: number
+      broadcastTs?: number
+    }) => {
+      const key = String(params.userKey || '').trim()
+      if (!key) return
+      const existing = candidates.get(key) || {
+        userKey: key,
+        name: String(params.name || '').trim() || key,
+        clientIds: new Set<string>(),
+        grantTs: 0,
+        lastBroadcastTs: 0,
+        reasons: new Set<string>(),
+      }
+      if (params.clientId) {
+        existing.clientIds.add(String(params.clientId))
+      }
+      if (params.name && !existing.name) {
+        existing.name = String(params.name)
+      }
+      const grantTs = Number.isFinite(params.grantTs) ? Number(params.grantTs) : 0
+      const broadcastTs = Number.isFinite(params.broadcastTs) ? Number(params.broadcastTs) : 0
+      existing.grantTs = Math.max(existing.grantTs, grantTs)
+      existing.lastBroadcastTs = Math.max(existing.lastBroadcastTs, broadcastTs)
+      existing.reasons.add(params.reason)
+      candidates.set(key, existing)
+    }
+
+    const activePresenterKey = String(activePresenterUserKeyRef.current || '').trim()
+    if (activePresenterKey) {
+      const identity = resolveIdentityForUserKey(activePresenterKey)
+      const presenterGrant = rightsGrantedAtByUserKeyRef.current.get(activePresenterKey) ?? lastPresenterSetTsRef.current
+      if (identity?.clientIds?.length) {
+        for (const clientId of identity.clientIds) {
+          addCandidate({
+            userKey: activePresenterKey,
+            name: identity.name,
+            clientId,
+            reason: 'presenter',
+            grantTs: presenterGrant,
+          })
+        }
+      } else {
+        addCandidate({
+          userKey: activePresenterKey,
+          name: identity?.name || activePresenterKey,
+          reason: 'presenter',
+          grantTs: presenterGrant,
+        })
+      }
+      for (const clientId of Array.from(activePresenterClientIdsRef.current)) {
+        const resolved = resolveUserForClientId(clientId)
+        addCandidate({
+          userKey: resolved?.userKey || activePresenterKey,
+          name: resolved?.name || identity?.name || activePresenterKey,
+          clientId,
+          reason: 'presenter-client',
+          grantTs: presenterGrant,
+        })
+      }
+    }
+
+    for (const userKey of Array.from(controllerRightsUserAllowlistRef.current)) {
+      const identity = resolveIdentityForUserKey(userKey)
+      const grantTs = rightsGrantedAtByUserKeyRef.current.get(userKey) ?? lastControllerRightsTsRef.current
+      addCandidate({
+        userKey,
+        name: identity?.name || userKey,
+        reason: 'controller-rights-user',
+        grantTs,
+      })
+      for (const clientId of identity?.clientIds || []) {
+        addCandidate({
+          userKey,
+          name: identity?.name || userKey,
+          clientId,
+          reason: 'controller-rights-user-client',
+          grantTs,
+        })
+      }
+    }
+
+    for (const clientId of Array.from(controllerRightsAllowlistRef.current)) {
+      const resolved = resolveUserForClientId(clientId)
+      if (!resolved) {
+        addCandidate({
+          userKey: `client:${clientId}`,
+          name: clientId,
+          clientId,
+          reason: 'controller-rights-client',
+          grantTs: lastControllerRightsTsRef.current,
+        })
+        continue
+      }
+      addCandidate({
+        userKey: resolved.userKey,
+        name: resolved.name,
+        clientId,
+        reason: 'controller-rights-client',
+        grantTs: rightsGrantedAtByUserKeyRef.current.get(resolved.userKey) ?? lastControllerRightsTsRef.current,
+      })
+    }
+
+    const control = controlStateRef.current
+    if (control && control.controllerId && control.controllerId !== ALL_STUDENTS_ID) {
+      const resolved = resolveUserForClientId(control.controllerId)
+      addCandidate({
+        userKey: resolved?.userKey || `client:${control.controllerId}`,
+        name: resolved?.name || control.controllerName || control.controllerId,
+        clientId: control.controllerId,
+        reason: 'control-lock',
+        grantTs: Number(control.ts) || now,
+      })
+    }
+
+    const staleBroadcastKeys: string[] = []
+    recentBroadcastTsByUserKeyRef.current.forEach((activityTs, userKey) => {
+      if (!userKey) return
+      if (now - activityTs > BROADCAST_SIGNAL_WINDOW_MS) {
+        staleBroadcastKeys.push(userKey)
+        return
+      }
+      const identity = resolveIdentityForUserKey(userKey)
+      addCandidate({
+        userKey,
+        name: identity?.name || userKey,
+        reason: 'recent-broadcast',
+        broadcastTs: activityTs,
+        grantTs: rightsGrantedAtByUserKeyRef.current.get(userKey) ?? 0,
+      })
+      for (const clientId of identity?.clientIds || []) {
+        addCandidate({
+          userKey,
+          name: identity?.name || userKey,
+          clientId,
+          reason: 'recent-broadcast-client',
+          broadcastTs: activityTs,
+          grantTs: rightsGrantedAtByUserKeyRef.current.get(userKey) ?? 0,
+        })
+      }
+    })
+    for (const key of staleBroadcastKeys) {
+      recentBroadcastTsByUserKeyRef.current.delete(key)
+    }
+
+    if (hasBoardWriteRights()) {
+      addCandidate({
+        userKey: selfUserKey,
+        name: normalizeDisplayName(userDisplayName || '') || 'Teacher',
+        clientId: clientIdRef.current || undefined,
+        reason: 'self-write-rights',
+        grantTs: rightsGrantedAtByUserKeyRef.current.get(selfUserKey) ?? now,
+      })
+    }
+
+    const activeCandidates = Array.from(candidates.values())
+    const activeUserKeys = activeCandidates.map(candidate => candidate.userKey)
+    setEditingAuthorityKeysStable(activeUserKeys)
+
+    if (activeCandidates.length <= 1) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      setSwitchConflictActiveStable(false)
+      if (!handoffInFlightRef.current) {
+        setHandoffSwitching(false)
+      }
+      const only = activeCandidates[0]
+      if (only) {
+        const highlightedClientId = Array.from(only.clientIds)[0] || ''
+        const resolvedIdentity = resolveIdentityForUserKey(only.userKey)
+        const prev = highlightedControllerRef.current
+        const changed = !prev || prev.clientId !== highlightedClientId || prev.userId !== resolvedIdentity?.userId || prev.name !== only.name
+        if (changed) {
+          setHighlightedController({
+            clientId: highlightedClientId,
+            userId: resolvedIdentity?.userId,
+            name: only.name,
+            ts: now,
+          })
+        }
+        if (changed && highlightedClientId) {
+          void broadcastHighlightedController({
+            clientId: highlightedClientId,
+            userId: resolvedIdentity?.userId,
+            name: only.name,
+          })
+        }
+      }
+      return
+    }
+
+    setSwitchConflictActiveStable(true)
+    setHandoffSwitching(true)
+
+    const grants = activeCandidates
+      .map(candidate => ({ key: candidate.userKey, grantTs: candidate.grantTs, candidate }))
+      .filter(item => item.grantTs > 0)
+      .sort((a, b) => b.grantTs - a.grantTs)
+
+    let canonical: EditingAuthorityCandidate | null = null
+    let unresolvedReason = ''
+    if (!grants.length) {
+      unresolvedReason = 'No grant timestamps were available for conflicting editors.'
+    } else {
+      const topGrantTs = grants[0].grantTs
+      const top = grants.filter(item => item.grantTs === topGrantTs)
+      if (top.length !== 1) {
+        unresolvedReason = 'Conflicting editors share the same grant timestamp.'
+      } else {
+        canonical = top[0].candidate
+      }
+    }
+
+    if (canonical) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      const canonicalClientId = Array.from(canonical.clientIds)[0] || ''
+      const resolvedIdentity = resolveIdentityForUserKey(canonical.userKey)
+      const prev = highlightedControllerRef.current
+      const changed = !prev || prev.clientId !== canonicalClientId || prev.userId !== resolvedIdentity?.userId || prev.name !== canonical.name
+      if (changed) {
+        setHighlightedController({
+          clientId: canonicalClientId,
+          userId: resolvedIdentity?.userId,
+          name: canonical.name,
+          ts: now,
+        })
+      }
+      if (changed && canonicalClientId) {
+        void broadcastHighlightedController({
+          clientId: canonicalClientId,
+          userId: resolvedIdentity?.userId,
+          name: canonical.name,
+        })
+      }
+      void enforceCanonicalPresenter(canonical.userKey, 'timestamp-winner')
+      return
+    }
+
+    if (!conflictStartedAtRef.current) {
+      conflictStartedAtRef.current = now
+    }
+    lastConflictReasonRef.current = unresolvedReason
+    if (now - conflictStartedAtRef.current < FAILURE_TIMEOUT_MS) {
+      return
+    }
+    if (conflictResolverInFlightRef.current) {
+      return
+    }
+
+    conflictResolverInFlightRef.current = true
+    void (async () => {
+      try {
+        const fallbackReason = lastConflictReasonRef.current || 'Unknown conflict state'
+        const ok = await reclaimAdminControl()
+        if (ok) {
+          showHandoffFailure(`Failed to switch: ${fallbackReason} Returned editing to admin.`)
+        } else {
+          showHandoffFailure(`Failed to switch: ${fallbackReason} Could not force admin reclaim.`)
+        }
+      } finally {
+        conflictStartedAtRef.current = null
+        setSwitchConflictActiveStable(false)
+        setHandoffSwitching(false)
+        conflictResolverInFlightRef.current = false
+      }
+    })()
+  }, [
+    broadcastHighlightedController,
+    enforceCanonicalPresenter,
+    forceEditableForAssignment,
+    hasBoardWriteRights,
+    isAdmin,
+    isSessionQuizMode,
+    reclaimAdminControl,
+    resolveIdentityForUserKey,
+    resolveUserForClientId,
+    selfUserKey,
+    setEditingAuthorityKeysStable,
+    setSwitchConflictActiveStable,
+    showHandoffFailure,
+    userDisplayName,
+  ])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setEditingAuthorityKeysStable([])
+      setSwitchConflictActiveStable(false)
+      return
+    }
+    evaluateSwitchingAuthority()
+    if (typeof window === 'undefined') return
+    const timer = window.setInterval(() => {
+      evaluateSwitchingAuthority()
+    }, 1000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [evaluateSwitchingAuthority, isAdmin, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
 
   const clearOverlayAutoHide = useCallback(() => {
     if (overlayHideTimeoutRef.current) {
@@ -3949,6 +4471,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             reason: record.reason,
             originClientId: clientIdRef.current,
           })
+          recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), record.ts)
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
           pendingPublishQueueRef.current.push(record)
@@ -3972,7 +4495,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         publish()
       }, broadcastDebounceMs)
     },
-    [broadcastDebounceMs, canPublishSnapshots, collectEditorSnapshot, hasControllerRights, pageIndex, userDisplayName]
+    [broadcastDebounceMs, canPublishSnapshots, collectEditorSnapshot, hasControllerRights, pageIndex, recordBroadcastActivity, selfUserKey, userDisplayName]
   )
 
   const publishLatexDisplayState = useCallback(
@@ -5491,6 +6014,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   reason: rec.reason,
                   originClientId: clientIdRef.current,
                 })
+                recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), rec.ts)
                 lastBroadcastBaseCountRef.current = countSymbols(rec.snapshot.symbols)
               } catch (e) {
                 console.warn('Retry publish failed', e)
@@ -5520,6 +6044,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const teacherClientId = clientIdRef.current
           const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
           if (teacherPresenterKey) {
+            recordRightsGrant(teacherPresenterKey, Date.now())
             setActivePresenterUserKey(teacherPresenterKey)
             activePresenterUserKeyRef.current = String(teacherPresenterKey)
             activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
@@ -5545,6 +6070,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
+          const sourceUser = resolveUserForClientId(data.clientId)
+          recordBroadcastActivity(sourceUser?.userKey || `client:${String(data.clientId || '')}`, data.ts)
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -5554,6 +6081,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
+          const sourceUser = resolveUserForClientId(data.clientId)
+          recordBroadcastActivity(sourceUser?.userKey || `client:${String(data.clientId || '')}`, data.ts)
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -5593,6 +6122,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               reason: existingRecord.reason ?? 'update',
               originClientId: clientIdRef.current,
             })
+            recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), existingRecord.ts)
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
           }
@@ -5637,6 +6167,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             lastPresenterSetTsRef.current = incomingTs
             const incomingKey = typeof (data as any).presenterUserKey === 'string' ? String((data as any).presenterUserKey) : ''
             const nextKey = incomingKey ? incomingKey : null
+            if (nextKey) {
+              recordRightsGrant(nextKey, incomingTs)
+            }
             setActivePresenterUserKey(nextKey)
             activePresenterUserKeyRef.current = nextKey ? incomingKey : ''
 
@@ -5951,6 +6484,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
             if (targetUserKey) {
               if (allowed) {
+                recordRightsGrant(targetUserKey, incomingTs)
                 controllerRightsUserAllowlistRef.current.add(targetUserKey)
               } else {
                 controllerRightsUserAllowlistRef.current.delete(targetUserKey)
@@ -6023,6 +6557,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const controlTs = data?.ts ?? Date.now()
           if (data.locked) {
             if (!data.controllerId) return
+            const controlResolved = resolveUserForClientId(data.controllerId)
+            recordRightsGrant(controlResolved?.userKey || `client:${String(data.controllerId)}`, controlTs)
             updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: controlTs })
             return
           }
@@ -6142,6 +6678,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               ts: record.ts,
               reason: record.reason,
             })
+            recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), record.ts)
           }
         }
 
@@ -10349,7 +10886,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               avatar.kind === 'presenter' ? (
                                 <div
                                   key={avatar.userKey}
-                                  className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
                                   title={`${avatar.name} (presenter)`}
                                   aria-label={`${avatar.name} is a presenter`}
                                 >
@@ -10363,7 +10900,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   data-user-id={avatar.userId || ''}
                                   data-user-key={avatar.userKey}
                                   data-display-name={avatar.name}
-                                  className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
                                   title={avatar.name}
                                   aria-label={`Make ${avatar.name} the presenter`}
                                   onClick={handleRosterAttendeeAvatarClick}
@@ -10380,7 +10917,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                         <button
                           type="button"
-                          className="w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
                           onClick={(e) => {
                             if (!isAdmin) return
                             e.preventDefault()
@@ -10406,18 +10943,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           {teacherBadge.initials}
                         </button>
 
-                        {handoffSwitching ? (
+                        {showSwitchingToast ? (
                           <div
                             className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
                             style={{ zIndex: 2147483647 }}
                             role="status"
                             aria-live="polite"
                           >
-                            Switching...
+                            {switchingStatusLabel}
                           </div>
                         ) : null}
 
-                        {!handoffSwitching && handoffMessage ? (
+                        {!showSwitchingToast && handoffMessage ? (
                           <div
                             className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
                             style={{ zIndex: 2147483647 }}
@@ -10433,7 +10970,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               avatar.kind === 'presenter' ? (
                                 <div
                                   key={avatar.userKey}
-                                  className="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center border border-amber-700 shadow-sm"
+                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
                                   title={`${avatar.name} (presenter)`}
                                   aria-label={`${avatar.name} is a presenter`}
                                 >
@@ -10447,7 +10984,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                                   data-user-id={avatar.userId || ''}
                                   data-user-key={avatar.userKey}
                                   data-display-name={avatar.name}
-                                  className="w-6 h-6 rounded-full bg-slate-700 text-white text-[10px] font-semibold flex items-center justify-center border border-white/60 shadow-sm"
+                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
                                   title={avatar.name}
                                   aria-label={`Make ${avatar.name} the presenter`}
                                   onClick={handleRosterAttendeeAvatarClick}

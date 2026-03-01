@@ -6088,7 +6088,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               const pendingContinuitySave = pendingPresenterContinuitySaveRef.current
               if (pendingContinuitySave && isSelfActivePresenter()) {
                 pendingPresenterContinuitySaveRef.current = null
-                void applySavedNotesRecord(pendingContinuitySave, { publish: true })
+                void applySavedNotesRecord(pendingContinuitySave, { publish: true, continuity: true })
                 return
               }
               const currentPage = pageIndexRef.current
@@ -6118,7 +6118,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               const pending = pendingPresenterContinuitySaveRef.current
               pendingPresenterContinuitySaveRef.current = null
               if (pending) {
-                void applySavedNotesRecord(pending, { publish: true })
+                void applySavedNotesRecord(pending, { publish: true, continuity: true })
               }
             }
             return
@@ -10028,7 +10028,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canPersistLatex, isAdmin, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
-  const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean }) => {
+  const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean; continuity?: boolean }) => {
     if (!save) return
 
     // Overwrite the current local state.
@@ -10075,7 +10075,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setTopPanelSelectedStep(null)
     }
 
-    applyLoadedLatex((save as any)?.latex || null)
+    const loadedLatex = (save as any)?.latex || null
+    if (options?.continuity) {
+      const latexValue = typeof loadedLatex === 'string' ? loadedLatex : ''
+      setLatexOutput(latexValue)
+      setStackedNotesState(curr => ({ ...curr, latex: latexValue, ts: Date.now() }))
+      setLatexDisplayState(curr => ({ ...curr, enabled: false, latex: '' }))
+    } else {
+      applyLoadedLatex(loadedLatex)
+    }
     const canonical = captureFullSnapshot()
     if (canonical) {
       latestSnapshotRef.current = { snapshot: canonical, ts: Date.now(), reason: 'update' }

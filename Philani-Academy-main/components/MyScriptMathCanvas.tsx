@@ -10334,7 +10334,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
                   {overlayChromePeekVisible && isOverlayMode && isCompactViewport && teacherBadge && (
                     <div
-                      className="absolute"
+                      className="fixed"
                       style={{
                         top: '50%',
                         left: 'calc(env(safe-area-inset-left, 0px) + 8px)',

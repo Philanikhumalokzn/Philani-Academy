@@ -2574,6 +2574,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         const ts = Date.now()
         try {
+          const continuityRecord = continuitySave || latestSharedSaveRef.current
+          if (continuityRecord) {
+            await channel.publish('control', {
+              clientId: clientIdRef.current,
+              author: userDisplayName,
+              action: 'presenter-continuity-load',
+              targetClientIds: nextClientIds,
+              targetClientId: nextClientIds[0],
+              save: continuityRecord,
+              ts,
+            })
+          }
+
           await channel.publish('control', {
             clientId: clientIdRef.current,
             author: userDisplayName,
@@ -2581,14 +2594,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             presenterUserKey: nextPresenterKey,
             targetClientIds: nextClientIds,
             targetClientId: nextClientIds[0],
-            ts,
+            ts: ts + 1,
           } satisfies PresenterSetMessage)
 
           await channel.publish('control', {
             clientId: clientIdRef.current,
             author: userDisplayName,
             action: 'controller-rights-reset',
-            ts: ts + 1,
+            ts: ts + 2,
           })
 
           await channel.publish('control', {
@@ -2600,21 +2613,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             targetClientIds: nextClientIds,
             targetClientId: nextClientIds[0],
             allowed: true,
-            ts: ts + 2,
-          })
-
-          const continuityRecord = continuitySave || latestSharedSaveRef.current
-          if (continuityRecord) {
-            await channel.publish('control', {
-              clientId: clientIdRef.current,
-              author: userDisplayName,
-              action: 'presenter-continuity-load',
-              targetClientIds: nextClientIds,
-              targetClientId: nextClientIds[0],
-              save: continuityRecord,
               ts: ts + 3,
-            })
-          }
+          })
         } catch (err) {
           setActivePresenterUserKey(previousPresenterKey)
           activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
@@ -5970,7 +5970,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (!canPublishSnapshots()) return
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
-              return latestSnapshotRef.current
+              const current = latestSnapshotRef.current
+              if (current?.snapshot && !isSnapshotEmpty(current.snapshot)) {
+                return current
+              }
             }
             const freshSnapshot = captureFullSnapshot()
             if (!freshSnapshot) {
@@ -10031,6 +10034,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean; continuity?: boolean }) => {
     if (!save) return
 
+    const payload: any = (save as any)?.payload
+    let mergedSymbols: any[] = []
+    let stepsForComposer: Array<{ latex: string; symbols: any[] }> = []
+    if (payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
+      const steps = payload.steps
+        .filter((s: any) => s && typeof s === 'object')
+        .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
+        .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
+
+      stepsForComposer = steps
+      mergedSymbols = steps.flatMap((s: any) => (Array.isArray(s.symbols) ? s.symbols : []))
+    }
+
+    if (options?.continuity && !mergedSymbols.length) {
+      const loadedLatex = (save as any)?.latex || null
+      const latexValue = typeof loadedLatex === 'string' ? loadedLatex : ''
+      if (latexValue) {
+        setLatexOutput(latexValue)
+        setStackedNotesState(curr => ({ ...curr, latex: latexValue, ts: Date.now() }))
+      }
+      return
+    }
+
     // Overwrite the current local state.
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
     try {
@@ -10039,14 +10065,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
 
-    const payload: any = (save as any)?.payload
-    if (payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
-      const steps = payload.steps
-        .filter((s: any) => s && typeof s === 'object')
-        .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
-        .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
-
-      const mergedSymbols = steps.flatMap((s: any) => (Array.isArray(s.symbols) ? s.symbols : []))
+    if (mergedSymbols.length) {
       if (mergedSymbols.length) {
         try {
           await nextAnimationFrame()
@@ -10060,9 +10079,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       lastSymbolCountRef.current = mergedSymbols.length
       lastBroadcastBaseCountRef.current = mergedSymbols.length
+    }
 
+    if (stepsForComposer.length) {
       if (useAdminStepComposer && hasControllerRights()) {
-        setAdminSteps(steps)
+        setAdminSteps(stepsForComposer)
         setAdminEditIndex(null)
         setAdminDraftLatex('')
         setTopPanelSelectedStep(null)
@@ -10085,7 +10106,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       applyLoadedLatex(loadedLatex)
     }
     const canonical = captureFullSnapshot()
-    if (canonical) {
+    if (canonical && !isSnapshotEmpty(canonical)) {
       latestSnapshotRef.current = { snapshot: canonical, ts: Date.now(), reason: 'update' }
     }
 

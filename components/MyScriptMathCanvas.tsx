@@ -1406,6 +1406,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         window.clearTimeout(handoffMessageTimerRef.current)
         handoffMessageTimerRef.current = null
       }
+      if (continuityFallbackTimerRef.current != null) {
+        window.clearTimeout(continuityFallbackTimerRef.current)
+        continuityFallbackTimerRef.current = null
+      }
     }
   }, [])
 
@@ -2458,6 +2462,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const autoSaveCurrentQuestionAsNotesRef = useRef<null | ((options?: { requireEmptyBottom?: boolean }) => Promise<NotesSaveRecord | null>)>(null)
   const pendingPresenterContinuitySaveRef = useRef<NotesSaveRecord | null>(null)
+  const continuityPullInFlightRef = useRef(false)
+  const continuityFallbackTimerRef = useRef<number | null>(null)
 
   const handOverPresentation = useCallback(
     (target: PresenterHandoffTarget) => {
@@ -2484,6 +2490,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         // Bidirectional: null target means the admin reclaims control.
         if (!target) {
           try {
+            const continuityRecord = continuitySave || latestSharedSaveRef.current
+            const channel = channelRef.current
+            const myClientId = clientIdRef.current
+            if (continuityRecord && channel && myClientId) {
+              const now = Date.now()
+              await channel.publish('control', {
+                clientId: myClientId,
+                author: userDisplayName,
+                action: 'presenter-continuity-load',
+                targetClientIds: [myClientId],
+                targetClientId: myClientId,
+                continuitySaveId: continuityRecord.id,
+                continuitySessionKey: boardId || null,
+                ts: now,
+              })
+            }
             const ok = await reclaimAdminControl()
             if (!ok) showHandoffFailure('Switch failed. Please try again.')
           } finally {
@@ -2582,7 +2604,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               action: 'presenter-continuity-load',
               targetClientIds: nextClientIds,
               targetClientId: nextClientIds[0],
-              save: continuityRecord,
+              continuitySaveId: continuityRecord.id,
+              continuitySessionKey: boardId || null,
               ts,
             })
           }
@@ -2636,7 +2659,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       })()
     },
-    [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
+    [boardId, bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
   )
 
   const handleRosterAttendeeAvatarClick = useCallback(
@@ -6021,6 +6044,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             targetClientIds?: string[]
             snapshot?: SnapshotPayload | null
             save?: NotesSaveRecord | null
+            continuitySaveId?: string
+            continuitySessionKey?: string
             enabled?: boolean
             allowed?: boolean
             presenterUserKey?: string | null
@@ -6090,8 +6115,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (nextKey) {
               const pendingContinuitySave = pendingPresenterContinuitySaveRef.current
               if (pendingContinuitySave && isSelfActivePresenter()) {
+                if (continuityFallbackTimerRef.current && typeof window !== 'undefined') {
+                  window.clearTimeout(continuityFallbackTimerRef.current)
+                  continuityFallbackTimerRef.current = null
+                }
                 pendingPresenterContinuitySaveRef.current = null
                 void applySavedNotesRecord(pendingContinuitySave, { publish: true, continuity: true })
+                return
+              }
+              if (continuityPullInFlightRef.current) {
+                return
+              }
+              if (continuityFallbackTimerRef.current && typeof window !== 'undefined') {
+                window.clearTimeout(continuityFallbackTimerRef.current)
+                continuityFallbackTimerRef.current = null
+              }
+              if (typeof window !== 'undefined') {
+                continuityFallbackTimerRef.current = window.setTimeout(() => {
+                  continuityFallbackTimerRef.current = null
+                  const pending = pendingPresenterContinuitySaveRef.current
+                  if (pending && isSelfActivePresenter()) {
+                    pendingPresenterContinuitySaveRef.current = null
+                    void applySavedNotesRecord(pending, { publish: true, continuity: true })
+                    return
+                  }
+                  const currentPage = pageIndexRef.current
+                  setSharedPageIndex(currentPage)
+                  void publishSharedPage(currentPage, Date.now())
+                  void forcePublishCanvas(undefined, { shareIndex: currentPage })
+                }, 600)
                 return
               }
               const currentPage = pageIndexRef.current
@@ -6114,16 +6166,56 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             }
 
             const continuitySave = data?.save
-            if (!continuitySave || typeof continuitySave !== 'object') return
-            pendingPresenterContinuitySaveRef.current = continuitySave as NotesSaveRecord
+            const continuitySaveId = typeof data?.continuitySaveId === 'string' ? data.continuitySaveId.trim() : ''
+            const continuitySessionKey = typeof data?.continuitySessionKey === 'string' ? data.continuitySessionKey.trim() : ''
 
-            if (isSelfActivePresenter()) {
-              const pending = pendingPresenterContinuitySaveRef.current
-              pendingPresenterContinuitySaveRef.current = null
-              if (pending) {
-                void applySavedNotesRecord(pending, { publish: true, continuity: true })
+            if (continuitySave && typeof continuitySave === 'object') {
+              pendingPresenterContinuitySaveRef.current = continuitySave as NotesSaveRecord
+              if (isSelfActivePresenter()) {
+                const pending = pendingPresenterContinuitySaveRef.current
+                pendingPresenterContinuitySaveRef.current = null
+                if (pending) {
+                  if (continuityFallbackTimerRef.current && typeof window !== 'undefined') {
+                    window.clearTimeout(continuityFallbackTimerRef.current)
+                    continuityFallbackTimerRef.current = null
+                  }
+                  void applySavedNotesRecord(pending, { publish: true, continuity: true })
+                }
               }
+              return
             }
+
+            if (!continuitySaveId || !continuitySessionKey) return
+            continuityPullInFlightRef.current = true
+            void (async () => {
+              try {
+                const res = await fetch(`/api/sessions/${encodeURIComponent(continuitySessionKey)}/latex-saves?take=200`, {
+                  credentials: 'same-origin',
+                })
+                if (!res.ok) return
+                const payload = await res.json().catch(() => null)
+                const shared = Array.isArray(payload?.shared) ? payload.shared : []
+                const pulled = shared.find((item: any) => String(item?.id || '') === continuitySaveId) || null
+                if (!pulled || typeof pulled !== 'object') return
+                pendingPresenterContinuitySaveRef.current = pulled as NotesSaveRecord
+
+                if (isSelfActivePresenter()) {
+                  const pending = pendingPresenterContinuitySaveRef.current
+                  pendingPresenterContinuitySaveRef.current = null
+                  if (pending) {
+                    if (continuityFallbackTimerRef.current && typeof window !== 'undefined') {
+                      window.clearTimeout(continuityFallbackTimerRef.current)
+                      continuityFallbackTimerRef.current = null
+                    }
+                    await applySavedNotesRecord(pending, { publish: true, continuity: true })
+                  }
+                }
+              } catch {
+                // ignore continuity pull errors
+              } finally {
+                continuityPullInFlightRef.current = false
+              }
+            })()
             return
           }
 
@@ -9909,7 +10001,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const displayedLatex = normalizeStepLatex(typeof latexOutput === 'string' ? latexOutput : '')
     const remoteLatex = displayedLatex || snapshotLatex
-    const remoteSymbols = Array.isArray(snapshotSymbols) ? snapshotSymbols : []
+    const remoteSymbols = Array.isArray(snapshotSymbols)
+      ? snapshotSymbols
+      : Array.isArray((snapshotSymbols as any)?.events)
+        ? (snapshotSymbols as any).events
+        : []
 
     const stepsForSave = remotePresenterActive
       ? ((remoteLatex || remoteSymbols.length)

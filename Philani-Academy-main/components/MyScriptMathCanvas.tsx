@@ -5,6 +5,7 @@ import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 import {
   buildRosterAvatarLayout,
@@ -16,6 +17,7 @@ import {
   resolveHandoffSelection,
   waitForResolvedValue,
 } from '../lib/presenterControl'
+import { evaluateSwitchingAuthorities } from '../lib/switchingBehavior'
 
 function renderTextWithInlineKatex(inputRaw: string) {
   const input = typeof inputRaw === 'string' ? inputRaw : ''
@@ -1578,6 +1580,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const binLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const binLongPressTriggeredRef = useRef(false)
 
+  const diagramLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const diagramLongPressTriggeredRef = useRef(false)
+
   const textIconLastTapRef = useRef<number | null>(null)
   const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -2014,11 +2019,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
+    pendingTouch: null | { pointerId: number; startTs: number; startX: number; startY: number }
   }>({
     pointers: new Map(),
     active: false,
     lastMid: null,
     suppressedPointers: new Set(),
+    pendingTouch: null,
   })
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2357,7 +2364,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!isAdmin) return false
 
     const teacherClientId = clientIdRef.current
-  const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
+    const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
     if (teacherPresenterKey) {
       recordRightsGrant(teacherPresenterKey, Date.now())
     }
@@ -2743,168 +2750,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const FAILURE_TIMEOUT_MS = 60000
     const now = Date.now()
 
-    const candidates = new Map<string, EditingAuthorityCandidate>()
-    const addCandidate = (params: {
-      userKey?: string | null
-      name?: string | null
-      clientId?: string | null
-      reason: string
-      grantTs?: number
-      broadcastTs?: number
-    }) => {
-      const key = String(params.userKey || '').trim()
-      if (!key) return
-      const existing = candidates.get(key) || {
-        userKey: key,
-        name: String(params.name || '').trim() || key,
-        clientIds: new Set<string>(),
-        grantTs: 0,
-        lastBroadcastTs: 0,
-        reasons: new Set<string>(),
-      }
-      if (params.clientId) {
-        existing.clientIds.add(String(params.clientId))
-      }
-      if (params.name && !existing.name) {
-        existing.name = String(params.name)
-      }
-      const grantTs = Number.isFinite(params.grantTs) ? Number(params.grantTs) : 0
-      const broadcastTs = Number.isFinite(params.broadcastTs) ? Number(params.broadcastTs) : 0
-      existing.grantTs = Math.max(existing.grantTs, grantTs)
-      existing.lastBroadcastTs = Math.max(existing.lastBroadcastTs, broadcastTs)
-      existing.reasons.add(params.reason)
-      candidates.set(key, existing)
-    }
-
-    const activePresenterKey = String(activePresenterUserKeyRef.current || '').trim()
-    if (activePresenterKey) {
-      const identity = resolveIdentityForUserKey(activePresenterKey)
-      const presenterGrant = rightsGrantedAtByUserKeyRef.current.get(activePresenterKey) ?? lastPresenterSetTsRef.current
-      if (identity?.clientIds?.length) {
-        for (const clientId of identity.clientIds) {
-          addCandidate({
-            userKey: activePresenterKey,
-            name: identity.name,
-            clientId,
-            reason: 'presenter',
-            grantTs: presenterGrant,
-          })
-        }
-      } else {
-        addCandidate({
-          userKey: activePresenterKey,
-          name: identity?.name || activePresenterKey,
-          reason: 'presenter',
-          grantTs: presenterGrant,
-        })
-      }
-      for (const clientId of Array.from(activePresenterClientIdsRef.current)) {
-        const resolved = resolveUserForClientId(clientId)
-        addCandidate({
-          userKey: resolved?.userKey || activePresenterKey,
-          name: resolved?.name || identity?.name || activePresenterKey,
-          clientId,
-          reason: 'presenter-client',
-          grantTs: presenterGrant,
-        })
-      }
-    }
-
-    for (const userKey of Array.from(controllerRightsUserAllowlistRef.current)) {
-      const identity = resolveIdentityForUserKey(userKey)
-      const grantTs = rightsGrantedAtByUserKeyRef.current.get(userKey) ?? lastControllerRightsTsRef.current
-      addCandidate({
-        userKey,
-        name: identity?.name || userKey,
-        reason: 'controller-rights-user',
-        grantTs,
-      })
-      for (const clientId of identity?.clientIds || []) {
-        addCandidate({
-          userKey,
-          name: identity?.name || userKey,
-          clientId,
-          reason: 'controller-rights-user-client',
-          grantTs,
-        })
-      }
-    }
-
-    for (const clientId of Array.from(controllerRightsAllowlistRef.current)) {
-      const resolved = resolveUserForClientId(clientId)
-      if (!resolved) {
-        addCandidate({
-          userKey: `client:${clientId}`,
-          name: clientId,
-          clientId,
-          reason: 'controller-rights-client',
-          grantTs: lastControllerRightsTsRef.current,
-        })
-        continue
-      }
-      addCandidate({
-        userKey: resolved.userKey,
-        name: resolved.name,
-        clientId,
-        reason: 'controller-rights-client',
-        grantTs: rightsGrantedAtByUserKeyRef.current.get(resolved.userKey) ?? lastControllerRightsTsRef.current,
-      })
-    }
-
     const control = controlStateRef.current
-    if (control && control.controllerId && control.controllerId !== ALL_STUDENTS_ID) {
-      const resolved = resolveUserForClientId(control.controllerId)
-      addCandidate({
-        userKey: resolved?.userKey || `client:${control.controllerId}`,
-        name: resolved?.name || control.controllerName || control.controllerId,
-        clientId: control.controllerId,
-        reason: 'control-lock',
-        grantTs: Number(control.ts) || now,
-      })
-    }
-
-    const staleBroadcastKeys: string[] = []
-    recentBroadcastTsByUserKeyRef.current.forEach((activityTs, userKey) => {
-      if (!userKey) return
-      if (now - activityTs > BROADCAST_SIGNAL_WINDOW_MS) {
-        staleBroadcastKeys.push(userKey)
-        return
-      }
-      const identity = resolveIdentityForUserKey(userKey)
-      addCandidate({
-        userKey,
-        name: identity?.name || userKey,
-        reason: 'recent-broadcast',
-        broadcastTs: activityTs,
-        grantTs: rightsGrantedAtByUserKeyRef.current.get(userKey) ?? 0,
-      })
-      for (const clientId of identity?.clientIds || []) {
-        addCandidate({
-          userKey,
-          name: identity?.name || userKey,
-          clientId,
-          reason: 'recent-broadcast-client',
-          broadcastTs: activityTs,
-          grantTs: rightsGrantedAtByUserKeyRef.current.get(userKey) ?? 0,
-        })
-      }
+    const evaluation = evaluateSwitchingAuthorities({
+      connectedClients: connectedClientsRef.current,
+      excludedClientIds: ['all', ALL_STUDENTS_ID],
+      activePresenterUserKey: activePresenterUserKeyRef.current,
+      activePresenterClientIds: activePresenterClientIdsRef.current,
+      controllerRightsUserAllowlist: controllerRightsUserAllowlistRef.current,
+      controllerRightsClientAllowlist: controllerRightsAllowlistRef.current,
+      rightsGrantedAtByUserKey: rightsGrantedAtByUserKeyRef.current,
+      recentBroadcastTsByUserKey: recentBroadcastTsByUserKeyRef.current,
+      lastPresenterSetTs: lastPresenterSetTsRef.current,
+      lastControllerRightsTs: lastControllerRightsTsRef.current,
+      controlLock: control && control.controllerId && control.controllerId !== ALL_STUDENTS_ID
+        ? { controllerId: control.controllerId, controllerName: control.controllerName, ts: control.ts }
+        : null,
+      selfCanWrite: hasBoardWriteRights(),
+      selfUserKey,
+      selfClientId: clientIdRef.current || undefined,
+      selfDisplayName: normalizeDisplayName(userDisplayName || '') || 'Teacher',
+      nowTs: now,
+      broadcastSignalWindowMs: BROADCAST_SIGNAL_WINDOW_MS,
     })
-    for (const key of staleBroadcastKeys) {
+
+    for (const key of evaluation.staleBroadcastUserKeys) {
       recentBroadcastTsByUserKeyRef.current.delete(key)
     }
 
-    if (hasBoardWriteRights()) {
-      addCandidate({
-        userKey: selfUserKey,
-        name: normalizeDisplayName(userDisplayName || '') || 'Teacher',
-        clientId: clientIdRef.current || undefined,
-        reason: 'self-write-rights',
-        grantTs: rightsGrantedAtByUserKeyRef.current.get(selfUserKey) ?? now,
-      })
-    }
-
-    const activeCandidates = Array.from(candidates.values())
-    const activeUserKeys = activeCandidates.map(candidate => candidate.userKey)
+    const activeCandidates = evaluation.activeCandidates as EditingAuthorityCandidate[]
+    const activeUserKeys = evaluation.activeUserKeys
     setEditingAuthorityKeysStable(activeUserKeys)
 
     if (activeCandidates.length <= 1) {
@@ -2942,24 +2816,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setSwitchConflictActiveStable(true)
     setHandoffSwitching(true)
 
-    const grants = activeCandidates
-      .map(candidate => ({ key: candidate.userKey, grantTs: candidate.grantTs, candidate }))
-      .filter(item => item.grantTs > 0)
-      .sort((a, b) => b.grantTs - a.grantTs)
-
-    let canonical: EditingAuthorityCandidate | null = null
-    let unresolvedReason = ''
-    if (!grants.length) {
-      unresolvedReason = 'No grant timestamps were available for conflicting editors.'
-    } else {
-      const topGrantTs = grants[0].grantTs
-      const top = grants.filter(item => item.grantTs === topGrantTs)
-      if (top.length !== 1) {
-        unresolvedReason = 'Conflicting editors share the same grant timestamp.'
-      } else {
-        canonical = top[0].candidate
-      }
-    }
+    const canonical: EditingAuthorityCandidate | null = evaluation.canonicalCandidate as EditingAuthorityCandidate | null
+    const unresolvedReason = evaluation.unresolvedReason
 
     if (canonical) {
       conflictStartedAtRef.current = null
@@ -9225,7 +9083,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       autoPanAnimRef.current = null
     }
 
-    const durationMs = 220
+    const durationMs = 440
     const startTs = window.performance?.now?.() ?? Date.now()
     const ease = (t: number) => 1 - Math.pow(1 - t, 3)
 
@@ -11458,8 +11316,42 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         className="px-2 py-1"
                         title="Diagrams"
                         onClick={() => {
+                          if (diagramLongPressTriggeredRef.current) {
+                            diagramLongPressTriggeredRef.current = false
+                            return
+                          }
                           toggleMobileDiagramTray()
                           openPickerOrApplySingle('diagram')
+                        }}
+                        onPointerDown={(e) => {
+                          if (!hasWriteAccess) return
+                          diagramLongPressTriggeredRef.current = false
+                          if (diagramLongPressTimeoutRef.current) {
+                            clearTimeout(diagramLongPressTimeoutRef.current)
+                            diagramLongPressTimeoutRef.current = null
+                          }
+                          diagramLongPressTimeoutRef.current = setTimeout(() => {
+                            diagramLongPressTimeoutRef.current = null
+                            diagramLongPressTriggeredRef.current = true
+                            try {
+                              window.dispatchEvent(new CustomEvent('philani-diagrams:open-grid'))
+                            } catch {}
+                          }, 520)
+                          try {
+                            e.currentTarget.setPointerCapture(e.pointerId)
+                          } catch {}
+                        }}
+                        onPointerUp={() => {
+                          if (diagramLongPressTimeoutRef.current) {
+                            clearTimeout(diagramLongPressTimeoutRef.current)
+                            diagramLongPressTimeoutRef.current = null
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          if (diagramLongPressTimeoutRef.current) {
+                            clearTimeout(diagramLongPressTimeoutRef.current)
+                            diagramLongPressTimeoutRef.current = null
+                          }
                         }}
                         disabled={Boolean(fatalError)}
                       >
@@ -12059,7 +11951,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             method: 'POST',
                             credentials: 'same-origin',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ sessionKey: channelName, imageUrl: url, title: diagramTitleInput || file.name }),
+                            body: JSON.stringify({
+                              sessionKey: channelName,
+                              imageUrl: url,
+                              title: diagramTitleInput || toDisplayFileName(file.name) || file.name,
+                            }),
                           })
                           if (!createRes.ok) throw new Error('Create failed')
                           const createdPayload = await createRes.json()

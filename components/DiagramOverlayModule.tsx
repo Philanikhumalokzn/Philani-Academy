@@ -4968,7 +4968,6 @@ export default function DiagramOverlayModule(props: {
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
           panelSize="full"
-          hideHeader={isGridDiagram}
           onClose={() => {
             if (!isAdmin) return
             void handleClose()

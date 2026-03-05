@@ -1908,6 +1908,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const latexProjectionOptionsRef = useRef<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const studentStackRef = useRef<HTMLDivElement | null>(null)
   const studentViewportRef = useRef<HTMLDivElement | null>(null)
+  const stackedZoomContentRef = useRef<HTMLDivElement | null>(null)
   const multiTouchPanRef = useRef<{
     pointers: Map<number, { x: number; y: number }>
     active: boolean
@@ -7086,15 +7087,47 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
 
+  // Keep stacked-canvas zoom behavior aligned with the PDF viewer gesture model.
+  const stackedRenderZoomRef = useRef(110)
+  const stackedZoomRef = useRef(110)
+  const stackedPinchActiveRef = useRef(false)
+  const stackedPinchStateRef = useRef<{
+    active: boolean
+    startDist: number
+    startZoom: number
+    anchorX: number
+    anchorY: number
+    startScrollLeft: number
+    startScrollTop: number
+    lastDist: number
+    lastMidpointX: number
+    lastMidpointY: number
+  }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
+  const [stackedZoom, setStackedZoom] = useState(110)
+  const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
+  const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
+  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
+  const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
+
+  useEffect(() => {
+    stackedZoomRef.current = stackedEffectiveZoom
+  }, [stackedEffectiveZoom])
+
+  const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
+    const contentEl = stackedZoomContentRef.current
+    if (!contentEl) return
+    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
+    contentEl.style.zoom = String(scale)
+    contentEl.style.transform = ''
+    contentEl.style.willChange = stackedPinchActiveRef.current ? 'transform' : ''
+  }, [])
+
   // Mobile stacked mode: provide extra horizontal writing room by making the ink surface wider than
   // the viewport so users can scroll sideways for long expressions.
   const inkSurfaceWidthFactor = useMemo(() => {
     if (!useStackedStudentLayout) return 1
-    if (!isCompactViewport) return 1
-    // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
-    // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
-    return 12
-  }, [isCompactViewport, useStackedStudentLayout])
+    return 1
+  }, [useStackedStudentLayout])
 
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
@@ -9557,152 +9590,141 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [applySavedNotesRecord, latestPersonalSave, latestSharedSave]
   )
 
-  // Zoom has been removed for stacked student layout to avoid any ink offset.
-  // Two-finger gestures are treated as 2D pan (scroll) instead of drawing.
-
   useEffect(() => {
-    if (typeof window === 'undefined') return
     if (!useStackedStudentLayout) return
 
     const viewport = studentViewportRef.current
     if (!viewport) return
 
-    const state = multiTouchPanRef.current
+    const touchState = { active: false, startX: 0, startY: 0, lastX: 0, lastY: 0 }
 
-    const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
-
-    const updatePointer = (evt: PointerEvent) => {
-      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    const getPinchDistance = (touches: TouchList) => {
+      const a = touches[0]
+      const b = touches[1]
+      if (!a || !b) return 0
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
     }
 
-    const getMid = () => {
-      if (state.pointers.size < 2) return null
-      const values = Array.from(state.pointers.values())
-      const a = values[0]
-      const b = values[1]
-      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-    }
-
-    const suppressEvent = (evt: PointerEvent) => {
-      if (evt.cancelable) evt.preventDefault()
-      evt.stopImmediatePropagation()
-    }
-
-    const beginGestureIfReady = () => {
-      if (state.active) return
-      if (state.pointers.size < 2) return
-      const mid = getMid()
-      if (!mid) return
-
-      // Start treating this as a two-finger pan gesture.
-      state.active = true
-      state.lastMid = mid
-      state.suppressedPointers = new Set(state.pointers.keys())
-    }
-
-    const endGestureIfNeeded = () => {
-      if (state.active && state.pointers.size < 2) {
-        state.active = false
-        state.lastMid = null
-      }
-      if (state.pointers.size === 0) {
-        state.suppressedPointers.clear()
-      }
-    }
-
-    const handlePointerDown = (evt: PointerEvent) => {
-      if (!isTouchLike(evt)) return
-      updatePointer(evt)
-      if (state.pointers.size >= 2) {
-        beginGestureIfReady()
-        state.suppressedPointers.add(evt.pointerId)
-        suppressEvent(evt)
-      } else if (state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerMove = (evt: PointerEvent) => {
-      if (!isTouchLike(evt)) return
-      updatePointer(evt)
-
-      if (state.active && state.pointers.size >= 2) {
-        const mid = getMid()
-        if (mid && state.lastMid) {
-          const dx = mid.x - state.lastMid.x
-          const dy = mid.y - state.lastMid.y
-
-          const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-          const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-
-          let nextLeft = viewport.scrollLeft - dx
-          let nextTop = viewport.scrollTop - dy
-
-          nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-          nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-          viewport.scrollLeft = nextLeft
-          viewport.scrollTop = nextTop
-        }
-        state.lastMid = getMid()
-        suppressEvent(evt)
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const rect = viewport.getBoundingClientRect()
+        const a = e.touches[0]
+        const b = e.touches[1]
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : viewport.clientWidth / 2
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : viewport.clientHeight / 2
+        stackedPinchActiveRef.current = true
+        stackedPinchStateRef.current.active = true
+        stackedPinchStateRef.current.startDist = getPinchDistance(e.touches)
+        stackedPinchStateRef.current.startZoom = stackedZoomRef.current
+        stackedPinchStateRef.current.startScrollLeft = viewport.scrollLeft
+        stackedPinchStateRef.current.startScrollTop = viewport.scrollTop
+        stackedPinchStateRef.current.anchorX = midpointX
+        stackedPinchStateRef.current.anchorY = midpointY
+        stackedPinchStateRef.current.lastDist = stackedPinchStateRef.current.startDist
+        stackedPinchStateRef.current.lastMidpointX = midpointX
+        stackedPinchStateRef.current.lastMidpointY = midpointY
+        applyStackedLivePinchStyle(stackedZoomRef.current)
+        touchState.active = false
         return
       }
 
-      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      touchState.active = true
+      touchState.startX = t.clientX
+      touchState.startY = t.clientY
+      touchState.lastX = t.clientX
+      touchState.lastY = t.clientY
     }
 
-    const handlePointerUp = (evt: PointerEvent) => {
-      if (!isTouchLike(evt)) return
-      const hadPan = state.active || state.suppressedPointers.size > 0
-      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
-      state.pointers.delete(evt.pointerId)
-      state.suppressedPointers.delete(evt.pointerId)
-      endGestureIfNeeded()
-      const gestureEnded = hadPan && !state.active && state.pointers.size === 0
+    const onTouchMove = (e: TouchEvent) => {
+      if (stackedPinchStateRef.current.active && e.touches.length === 2) {
+        const PINCH_START_THRESHOLD = 0.025
+        const PAN_START_THRESHOLD_PX = 1.5
+        const ZOOM_UPDATE_THRESHOLD = 0.08
+        const PAN_UPDATE_THRESHOLD_PX = 0.8
+        e.preventDefault()
 
-      // Once the two-finger gesture is fully over (no active pointers
-      // left), schedule a single debug undo after a short delay so we
-      // can observe what stroke MyScript considers "latest" in this
-      // scenario.
-      if (gestureEnded) {
-        const UNDO_DELAY_MS = 250
-        if (debugPanUndoTimeoutRef.current) {
-          clearTimeout(debugPanUndoTimeoutRef.current)
-          debugPanUndoTimeoutRef.current = null
+        const dist = getPinchDistance(e.touches)
+        if (!dist || !stackedPinchStateRef.current.startDist) return
+
+        const rect = viewport.getBoundingClientRect()
+        const a = e.touches[0]
+        const b = e.touches[1]
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : stackedPinchStateRef.current.anchorX
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : stackedPinchStateRef.current.anchorY
+        const scale = dist / stackedPinchStateRef.current.startDist
+        const midpointDx = midpointX - stackedPinchStateRef.current.anchorX
+        const midpointDy = midpointY - stackedPinchStateRef.current.anchorY
+        const panDistance = Math.hypot(midpointDx, midpointDy)
+
+        if (Math.abs(scale - 1) < PINCH_START_THRESHOLD && panDistance < PAN_START_THRESHOLD_PX) return
+
+        const gestureMinZoom = Math.max(50, stackedRenderZoomRef.current)
+        const nextZoom = Math.min(Math.max(stackedPinchStateRef.current.startZoom * scale, gestureMinZoom), 220)
+        if (Math.abs(nextZoom - stackedZoomRef.current) < ZOOM_UPDATE_THRESHOLD && panDistance < PAN_UPDATE_THRESHOLD_PX) return
+
+        if (stackedZoomRef.current > 0) {
+          const prevZoom = Math.max(1, stackedZoomRef.current)
+          const ratioDelta = nextZoom / prevZoom
+          const currentLeft = viewport.scrollLeft
+          const currentTop = viewport.scrollTop
+
+          applyStackedLivePinchStyle(nextZoom)
+
+          const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+          const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+          const nextLeft = (ratioDelta * (currentLeft + midpointX)) - midpointX
+          const nextTop = (ratioDelta * (currentTop + midpointY)) - midpointY
+
+          const clampedLeft = Math.min(Math.max(nextLeft, 0), maxLeft)
+          const clampedTop = Math.min(Math.max(nextTop, 0), maxTop)
+
+          if (maxLeft > 1) {
+            viewport.scrollLeft = clampedLeft
+          }
+          if (maxTop > 1) {
+            viewport.scrollTop = clampedTop
+          }
         }
-        const shouldUndo = !lockedOutRef.current
-        if (shouldUndo && editorInstanceRef.current) {
-          try {
-            debugPanUndoTimeoutRef.current = setTimeout(() => {
-              try {
-                editorInstanceRef.current?.undo?.()
-              } catch {}
-              debugPanUndoTimeoutRef.current = null
-            }, UNDO_DELAY_MS)
-          } catch {}
-        }
+
+        stackedZoomRef.current = nextZoom
+        setStackedZoom(nextZoom)
+        return
       }
 
-      if (state.active || wasSuppressed) {
-        suppressEvent(evt)
-      }
+      if (!touchState.active || e.touches.length !== 1) return
+      const t = e.touches[0]
+      touchState.lastX = t.clientX
+      touchState.lastY = t.clientY
     }
 
-    viewport.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
-    viewport.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
-    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
-    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
+    const onTouchEnd = () => {
+      if (stackedPinchStateRef.current.active) {
+        stackedPinchActiveRef.current = false
+        stackedPinchStateRef.current.active = false
+        applyStackedLivePinchStyle(stackedZoomRef.current)
+        return
+      }
+
+      if (!touchState.active) return
+      touchState.active = false
+    }
+
+    viewport.addEventListener('touchstart', onTouchStart, { passive: true })
+    viewport.addEventListener('touchmove', onTouchMove, { passive: false })
+    viewport.addEventListener('touchend', onTouchEnd)
+    viewport.addEventListener('touchcancel', onTouchEnd)
 
     return () => {
-      viewport.removeEventListener('pointerdown', handlePointerDown as any, true)
-      viewport.removeEventListener('pointermove', handlePointerMove as any, true)
-      window.removeEventListener('pointerup', handlePointerUp as any, true)
-      window.removeEventListener('pointercancel', handlePointerUp as any, true)
+      viewport.removeEventListener('touchstart', onTouchStart)
+      viewport.removeEventListener('touchmove', onTouchMove)
+      viewport.removeEventListener('touchend', onTouchEnd)
+      viewport.removeEventListener('touchcancel', onTouchEnd)
+      stackedPinchActiveRef.current = false
+      applyStackedLivePinchStyle(stackedZoomRef.current)
     }
-  }, [multiTouchPanRef, studentViewportRef, useStackedStudentLayout])
+  }, [applyStackedLivePinchStyle, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -9712,7 +9734,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const stopWheel = (event: WheelEvent) => {
       if (!event.cancelable) return
-      event.preventDefault()
+      if (event.ctrlKey) {
+        event.preventDefault()
+      }
     }
 
     const stopGesture = (event: Event) => {
@@ -11258,7 +11282,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 <div
                   ref={studentViewportRef}
-                  className="relative flex-1 min-h-0 overflow-hidden"
+                  className="relative flex-1 min-h-0 overflow-auto"
                   style={{
                     touchAction: 'none',
                     paddingBottom: showBottomHorizontalScrollbar
@@ -11267,7 +11291,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   }}
                 >
                   <div
+                    ref={stackedZoomContentRef}
+                    className={`${stackedIsZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col`}
                     style={{
+                      zoom: stackedLiveScale,
+                      willChange: stackedPinchStateRef.current.active ? 'transform' : undefined,
+                    }}
+                  >
+                    <div
+                      style={{
                       backgroundColor: '#ffffff',
                       backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
                       backgroundSize: '24px 24px',
@@ -11275,14 +11307,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       // Give extra vertical room so the viewport can scroll
                       // vertically independent of zoom.
                       height: '200%',
-                    }}
-                  >
-                    <div
-                      ref={editorHostRef}
-                      className={editorHostClass}
-                      style={{ ...editorHostStyle, height: '100%' }}
-                      data-orientation={canvasOrientation}
-                    />
+                      }
+                    }
+                    >
+                      <div
+                        ref={editorHostRef}
+                        className={editorHostClass}
+                        style={{ ...editorHostStyle, height: '100%' }}
+                        data-orientation={canvasOrientation}
+                      />
+                    </div>
                   </div>
                 </div>
 

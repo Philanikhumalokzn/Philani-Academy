@@ -3,6 +3,16 @@ import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
+import {
+  buildRosterAvatarLayout,
+  deriveActivePresenterBadge,
+  deriveAvailableRosterAttendees,
+  getInitials,
+  getUserKey,
+  normalizeDisplayName,
+  resolveHandoffSelection,
+} from '../lib/presenterControl'
+import { evaluateSwitchingAuthorities } from '../lib/switchingBehavior'
 
 const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw), { ssr: false })
 
@@ -54,12 +64,28 @@ type DiagramRealtimeMessage =
   | { kind: 'remove'; diagramId: string; ts?: number; sender?: string }
   | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
   | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
+  | { kind: 'grid-scene-set'; diagramId: string; elements: any[]; ts?: number; sender?: string }
+  | { kind: 'grid-scene-delta'; diagramId: string; upserts: any[]; removedIds?: string[]; ts?: number; sender?: string }
   | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
 
 type ScriptDiagramEventDetail = {
   title?: string | null
   open?: boolean
 }
+
+type PresenceClient = {
+  clientId: string
+  name: string
+  userId?: string
+  isAdmin?: boolean
+}
+
+type PresenterHandoffTarget = {
+  clientId: string
+  userId?: string
+  userKey: string
+  displayName: string
+} | null
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
@@ -72,6 +98,161 @@ const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeS
         ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
         : 'shared'
   return `myscript:${base}`
+}
+
+const cloneGridElementsPayload = (elements: any[]) => {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(elements)
+    }
+    return JSON.parse(JSON.stringify(elements))
+  } catch {
+    return Array.isArray(elements) ? elements.map((el: any) => ({ ...el })) : []
+  }
+}
+
+const getGridSceneSignature = (elements: any[]) => {
+  if (!Array.isArray(elements) || elements.length === 0) return 'empty'
+  return elements
+    .map((el: any) => {
+      const id = String(el?.id ?? '')
+      const version = Number(el?.version ?? 0)
+      const versionNonce = Number(el?.versionNonce ?? 0)
+      const deleted = el?.isDeleted ? 1 : 0
+      const pointsLen = Array.isArray(el?.points) ? el.points.length : 0
+      const width = Number.isFinite(el?.width) ? Number(el.width) : 0
+      const height = Number.isFinite(el?.height) ? Number(el.height) : 0
+      return `${id}:${version}:${versionNonce}:${deleted}:${pointsLen}:${width}:${height}`
+    })
+    .sort()
+    .join('|')
+}
+
+const getGridElementSignature = (el: any) => {
+  const version = Number(el?.version ?? 0)
+  const versionNonce = Number(el?.versionNonce ?? 0)
+  const deleted = el?.isDeleted ? 1 : 0
+  const pointsLen = Array.isArray(el?.points) ? el.points.length : 0
+  const width = Number.isFinite(el?.width) ? Number(el.width) : 0
+  const height = Number.isFinite(el?.height) ? Number(el.height) : 0
+  return `${version}:${versionNonce}:${deleted}:${pointsLen}:${width}:${height}`
+}
+
+const computeGridSceneDelta = (prevElements: any[], nextElements: any[]) => {
+  const prevById = new Map<string, string>()
+  for (const el of Array.isArray(prevElements) ? prevElements : []) {
+    const id = String(el?.id || '')
+    if (!id) continue
+    prevById.set(id, getGridElementSignature(el))
+  }
+
+  const nextById = new Set<string>()
+  const upserts: any[] = []
+  for (const el of Array.isArray(nextElements) ? nextElements : []) {
+    const id = String(el?.id || '')
+    if (!id) continue
+    nextById.add(id)
+    const nextSig = getGridElementSignature(el)
+    const prevSig = prevById.get(id)
+    if (prevSig !== nextSig) upserts.push({ ...el })
+  }
+
+  const removedIds: string[] = []
+  for (const id of prevById.keys()) {
+    if (!nextById.has(id)) removedIds.push(id)
+  }
+
+  return { upserts, removedIds }
+}
+
+const applyGridSceneDelta = (base: any[], upserts: any[], removedIds?: string[]) => {
+  const byId = new Map<string, any>()
+  const order: string[] = []
+
+  for (const raw of Array.isArray(base) ? base : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    if (!byId.has(id)) order.push(id)
+    byId.set(id, { ...raw })
+  }
+
+  for (const rid of Array.isArray(removedIds) ? removedIds : []) {
+    const id = String(rid || '')
+    if (!id) continue
+    byId.delete(id)
+  }
+
+  for (const raw of Array.isArray(upserts) ? upserts : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    const incoming = { ...raw }
+    const current = byId.get(id)
+    if (!current) {
+      order.push(id)
+      byId.set(id, incoming)
+      continue
+    }
+    if (isIncomingGridElementNewer(incoming, current)) {
+      byId.set(id, incoming)
+    }
+  }
+
+  const uniqueOrder = Array.from(new Set(order))
+  return uniqueOrder.map((id) => byId.get(id)).filter(Boolean)
+}
+
+const isIncomingGridElementNewer = (incoming: any, current: any) => {
+  const incomingVersion = Number(incoming?.version ?? 0)
+  const currentVersion = Number(current?.version ?? 0)
+  if (incomingVersion !== currentVersion) return incomingVersion > currentVersion
+
+  // Same-version updates can still carry meaningful geometry growth while drawing.
+  const incomingPointsLen = Array.isArray(incoming?.points) ? incoming.points.length : 0
+  const currentPointsLen = Array.isArray(current?.points) ? current.points.length : 0
+  if (incomingPointsLen !== currentPointsLen) return incomingPointsLen > currentPointsLen
+
+  const incomingWidth = Number.isFinite(incoming?.width) ? Number(incoming.width) : 0
+  const currentWidth = Number.isFinite(current?.width) ? Number(current.width) : 0
+  const incomingHeight = Number.isFinite(incoming?.height) ? Number(incoming.height) : 0
+  const currentHeight = Number.isFinite(current?.height) ? Number(current.height) : 0
+  const incomingArea = incomingWidth * incomingHeight
+  const currentArea = currentWidth * currentHeight
+  if (incomingArea !== currentArea) return incomingArea > currentArea
+
+  const incomingDeleted = Boolean(incoming?.isDeleted)
+  const currentDeleted = Boolean(current?.isDeleted)
+  if (incomingDeleted !== currentDeleted) return incomingDeleted && !currentDeleted
+
+  return false
+}
+
+const mergeGridSceneElements = (base: any[], incoming: any[]) => {
+  const byId = new Map<string, any>()
+  const order: string[] = []
+
+  for (const raw of Array.isArray(base) ? base : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    if (!byId.has(id)) order.push(id)
+    byId.set(id, { ...raw })
+  }
+
+  for (const raw of Array.isArray(incoming) ? incoming : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    const incomingElement = { ...raw }
+    const current = byId.get(id)
+    if (!current) {
+      order.push(id)
+      byId.set(id, incomingElement)
+      continue
+    }
+    if (isIncomingGridElementNewer(incomingElement, current)) {
+      byId.set(id, incomingElement)
+    }
+  }
+
+  return order.map((id) => byId.get(id)).filter(Boolean)
 }
 
 export default function DiagramOverlayModule(props: {
@@ -93,7 +274,187 @@ export default function DiagramOverlayModule(props: {
   const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
   const [presenterOverride, setPresenterOverride] = useState(false)
-  const canPresent = localOnly ? true : (Boolean(isAdmin) || presenterOverride)
+  const [activePresenterUserKey, setActivePresenterUserKey] = useState<string | null>(null)
+  const activePresenterUserKeyRef = useRef<string>('')
+  const activePresenterClientIdsRef = useRef<Set<string>>(new Set())
+  const handoffInFlightRef = useRef(false)
+  const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
+  const lastPresenterSetTsRef = useRef(0)
+  const lastControllerRightsTsRef = useRef(0)
+  const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
+  const controllerRightsUserAllowlistRef = useRef<Set<string>>(new Set())
+  const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
+  const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
+  const connectedClientsRef = useRef<Array<PresenceClient>>([])
+  useEffect(() => {
+    connectedClientsRef.current = connectedClients
+  }, [connectedClients])
+  const [overlayRosterVisible, setOverlayRosterVisible] = useState(false)
+  const [handoffSwitching, setHandoffSwitching] = useState(false)
+  const [handoffMessage, setHandoffMessage] = useState<string | null>(null)
+  const [editingAuthorityUserKeys, setEditingAuthorityUserKeys] = useState<string[]>([])
+  const [switchConflictActive, setSwitchConflictActive] = useState(false)
+  const handoffMessageTimerRef = useRef<number | null>(null)
+  const rightsGrantedAtByUserKeyRef = useRef<Map<string, number>>(new Map())
+  const recentBroadcastTsByUserKeyRef = useRef<Map<string, number>>(new Map())
+  const editingAuthorityUserKeysRef = useRef<Set<string>>(new Set())
+  const switchConflictActiveRef = useRef(false)
+  const conflictStartedAtRef = useRef<number | null>(null)
+  const lastConflictReasonRef = useRef('')
+  const conflictResolverInFlightRef = useRef(false)
+  const lastConflictEnforceSignatureRef = useRef('')
+  const lastConflictEnforceTsRef = useRef(0)
+  const clientId = useMemo(() => {
+    const base = sanitizeIdentifier(userId || 'anonymous')
+    const randomSuffix = Math.random().toString(36).slice(2, 8)
+    return `${base}-${randomSuffix}`
+  }, [userId])
+  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+  const channelRef = useRef<any>(null)
+  const clientIdRef = useRef(clientId)
+  useEffect(() => {
+    clientIdRef.current = clientId
+  }, [clientId])
+  const selfUserKey = useMemo(() => getUserKey(userId, userDisplayName), [userId, userDisplayName])
+
+  useEffect(() => {
+    activePresenterUserKeyRef.current = activePresenterUserKey ? String(activePresenterUserKey) : ''
+  }, [activePresenterUserKey])
+
+  const bumpControllerRightsVersion = useCallback(() => {
+    setControllerRightsVersion(v => v + 1)
+  }, [])
+
+  const showHandoffFailure = useCallback((message: string) => {
+    setHandoffMessage(message)
+    if (typeof window === 'undefined') return
+    if (handoffMessageTimerRef.current != null) {
+      window.clearTimeout(handoffMessageTimerRef.current)
+    }
+    handoffMessageTimerRef.current = window.setTimeout(() => {
+      handoffMessageTimerRef.current = null
+      setHandoffMessage(null)
+    }, 2600)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (handoffMessageTimerRef.current != null) {
+        window.clearTimeout(handoffMessageTimerRef.current)
+        handoffMessageTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    editingAuthorityUserKeysRef.current = new Set(editingAuthorityUserKeys)
+  }, [editingAuthorityUserKeys])
+
+  useEffect(() => {
+    switchConflictActiveRef.current = switchConflictActive
+  }, [switchConflictActive])
+
+  const setEditingAuthorityKeysStable = useCallback((nextKeys: string[]) => {
+    const nextUnique = Array.from(new Set(nextKeys.filter(Boolean))).sort((a, b) => a.localeCompare(b))
+    const current = editingAuthorityUserKeysRef.current
+    if (current.size === nextUnique.length) {
+      let same = true
+      for (const key of nextUnique) {
+        if (!current.has(key)) {
+          same = false
+          break
+        }
+      }
+      if (same) return
+    }
+    setEditingAuthorityUserKeys(nextUnique)
+  }, [])
+
+  const setSwitchConflictActiveStable = useCallback((next: boolean) => {
+    if (switchConflictActiveRef.current === next) return
+    setSwitchConflictActive(next)
+  }, [])
+
+  const resolveUserForClientId = useCallback((candidateClientId?: string) => {
+    const wanted = String(candidateClientId || '').trim()
+    if (!wanted) return null
+    const member = connectedClientsRef.current.find(client => client.clientId === wanted)
+    if (!member) return null
+    const name = normalizeDisplayName(member.name || '') || member.clientId
+    const userKey = getUserKey(member.userId, name) || `client:${member.clientId}`
+    return {
+      userKey,
+      name,
+      userId: member.userId,
+      clientId: member.clientId,
+    }
+  }, [])
+
+  const resolveIdentityForUserKey = useCallback((candidateUserKey?: string) => {
+    const userKey = String(candidateUserKey || '').trim()
+    if (!userKey) return null
+    const members = connectedClientsRef.current.filter(client => {
+      if (!client.clientId || client.clientId === 'all') return false
+      const name = normalizeDisplayName(client.name || '') || client.clientId
+      const key = getUserKey(client.userId, name) || `client:${client.clientId}`
+      return key === userKey
+    })
+    const first = members[0] || null
+    return {
+      userKey,
+      name: first ? (normalizeDisplayName(first.name || '') || first.clientId) : userKey.replace(/^uid:|^name:|^client:/, ''),
+      userId: first?.userId,
+      clientIds: members.map(member => member.clientId),
+    }
+  }, [])
+
+  const recordRightsGrant = useCallback((userKey: string | null | undefined, ts?: number) => {
+    const key = String(userKey || '').trim()
+    if (!key) return
+    const grantTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
+    const previous = rightsGrantedAtByUserKeyRef.current.get(key) ?? 0
+    if (grantTs >= previous) {
+      rightsGrantedAtByUserKeyRef.current.set(key, grantTs)
+    }
+  }, [])
+
+  const recordBroadcastActivity = useCallback((userKey: string | null | undefined, ts?: number) => {
+    const key = String(userKey || '').trim()
+    if (!key) return
+    const activityTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
+    const previous = recentBroadcastTsByUserKeyRef.current.get(key) ?? 0
+    if (activityTs >= previous) {
+      recentBroadcastTsByUserKeyRef.current.set(key, activityTs)
+    }
+  }, [])
+
+  const isAvatarEditingAuthority = useCallback((userKey?: string | null) => {
+    const key = String(userKey || '').trim()
+    if (!key) return false
+    return editingAuthorityUserKeysRef.current.has(key)
+  }, [])
+
+  const isSelfActivePresenter = useCallback(() => {
+    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
+    if (!activeKey) return false
+    if (selfUserKey && activeKey === selfUserKey) return true
+    const myId = clientIdRef.current
+    if (!myId) return false
+    return activePresenterClientIdsRef.current.has(myId)
+  }, [activePresenterUserKey, selfUserKey])
+
+  const hasControllerRights = useCallback(() => {
+    return Boolean(isAdmin)
+  }, [isAdmin, selfUserKey])
+
+  const presenterControlCanPresent = useMemo(() => {
+    return isSelfActivePresenter()
+  }, [activePresenterUserKey, hasControllerRights, isSelfActivePresenter])
+
+  const canPresent = localOnly
+    ? true
+    : presenterControlCanPresent
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -177,19 +538,477 @@ export default function DiagramOverlayModule(props: {
     [mobileTrayBottomOffsetPx, mobileTrayReservePx]
   )
 
-  const clientId = useMemo(() => {
-    const base = sanitizeIdentifier(userId || 'anonymous')
-    const randomSuffix = Math.random().toString(36).slice(2, 8)
-    return `${base}-${randomSuffix}`
-  }, [userId])
+  const setPresenterRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
+    if (!isAdmin) return
+    const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all')))
+    const userKey = typeof opts?.userKey === 'string' ? opts.userKey : ''
+    if (!targets.length && !userKey) return
+    bumpControllerRightsVersion()
 
-  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      if (allowed) {
+        const presenterKey = userKey || null
+        if (!presenterKey) return
+        recordRightsGrant(presenterKey, ts)
+        setActivePresenterUserKey(presenterKey)
+        activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
+        activePresenterClientIdsRef.current = new Set(targets)
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'presenter-set',
+          presenterUserKey: presenterKey,
+          targetClientIds: targets,
+          targetClientId: targets[0],
+          ts,
+        })
+      } else {
+        const activeKey = activePresenterUserKeyRef.current
+        const sameKey = Boolean(userKey && activeKey && userKey === activeKey)
+        const sameClient = targets.some(id => activePresenterClientIdsRef.current.has(id))
+        if (sameKey || sameClient) {
+          setActivePresenterUserKey(null)
+          activePresenterUserKeyRef.current = ''
+          activePresenterClientIdsRef.current = new Set()
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'presenter-set',
+            presenterUserKey: null,
+            targetClientIds: [],
+            ts,
+          })
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, userDisplayName])
 
-  const channelRef = useRef<any>(null)
-  const clientIdRef = useRef(clientId)
+  const reclaimAdminControl = useCallback(async () => {
+    if (!isAdmin) return false
+    bumpControllerRightsVersion()
+
+    const teacherPresenterKey = (selfUserKey || '').trim() || null
+    const teacherClientId = clientIdRef.current
+    if (teacherPresenterKey) {
+      recordRightsGrant(teacherPresenterKey, Date.now())
+    }
+    controllerRightsUserAllowlistRef.current.clear()
+    controllerRightsAllowlistRef.current.clear()
+    setActivePresenterUserKey(teacherPresenterKey)
+    activePresenterUserKeyRef.current = teacherPresenterKey ? String(teacherPresenterKey) : ''
+    activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+
+    const channel = channelRef.current
+    if (!channel) return false
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: null,
+        targetClientIds: [],
+        ts,
+      })
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: teacherPresenterKey,
+        targetClientIds: teacherClientId ? [teacherClientId] : [],
+        ts: ts + 1,
+      })
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: ts + 2,
+      })
+      return true
+    } catch {
+      return false
+    }
+  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, selfUserKey, userDisplayName])
+
+  const handOverPresentation = useCallback((target: PresenterHandoffTarget) => {
+    if (!isAdmin) return
+    void (async () => {
+      if (handoffInFlightRef.current) {
+        pendingHandoffTargetRef.current = target
+        return
+      }
+      handoffInFlightRef.current = true
+      setHandoffSwitching(true)
+      setHandoffMessage(null)
+
+      if (!target) {
+        try {
+          const ok = await reclaimAdminControl()
+          if (!ok) showHandoffFailure('Switch failed. Please try again.')
+        } finally {
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+        }
+        return
+      }
+
+      const clickedClientId = String(target.clientId || '').trim()
+      const clickedUserId = String(target.userId || '').trim()
+      const clickedUserKey = String(target.userKey || '').trim()
+      const displayName = String(target.displayName || '').trim()
+      if (!clickedClientId && !clickedUserKey) {
+        showHandoffFailure('Switch failed. Please select a valid user.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const resolvedSelection = resolveHandoffSelection({
+        clickedClientId,
+        clickedUserId,
+        clickedUserKey,
+        clickedDisplayName: displayName,
+        connectedClients,
+        excludedClientIds: ['all'],
+      })
+
+      const nextClientIds = resolvedSelection.nextClientIds
+      if (!nextClientIds.length) {
+        showHandoffFailure('Switch failed. User is not connected.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const resolvedPresenterKey = resolvedSelection.resolvedPresenterKey
+      if (!resolvedPresenterKey) {
+        showHandoffFailure('Switch failed. Could not resolve user identity.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const previousPresenterKey = activePresenterUserKeyRef.current || null
+      const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
+      const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
+      const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
+      const nextPresenterKey = resolvedPresenterKey
+      recordRightsGrant(nextPresenterKey, Date.now())
+      controllerRightsUserAllowlistRef.current.clear()
+      controllerRightsAllowlistRef.current.clear()
+      controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
+      for (const id of nextClientIds) {
+        if (!id || id === 'all') continue
+        controllerRightsAllowlistRef.current.add(id)
+      }
+      setActivePresenterUserKey(nextPresenterKey)
+      activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
+      activePresenterClientIdsRef.current = new Set(nextClientIds)
+      bumpControllerRightsVersion()
+
+      const channel = channelRef.current
+      if (!channel) {
+        setActivePresenterUserKey(previousPresenterKey)
+        activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
+        activePresenterClientIdsRef.current = previousPresenterClientIds
+        controllerRightsUserAllowlistRef.current = previousUserAllowlist
+        controllerRightsAllowlistRef.current = previousClientAllowlist
+        bumpControllerRightsVersion()
+        showHandoffFailure('Switch failed. Realtime channel unavailable.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const ts = Date.now()
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'presenter-set',
+          presenterUserKey: nextPresenterKey,
+          targetClientIds: nextClientIds,
+          targetClientId: nextClientIds[0],
+          ts,
+        })
+
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights-reset',
+          ts: ts + 1,
+        })
+
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights',
+          targetUserKey: nextPresenterKey,
+          targetClientIds: nextClientIds,
+          targetClientId: nextClientIds[0],
+          name: resolvedSelection.resolvedDisplayName || displayName,
+          allowed: true,
+          ts: ts + 2,
+        })
+      } catch {
+        setActivePresenterUserKey(previousPresenterKey)
+        activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
+        activePresenterClientIdsRef.current = previousPresenterClientIds
+        controllerRightsUserAllowlistRef.current = previousUserAllowlist
+        controllerRightsAllowlistRef.current = previousClientAllowlist
+        bumpControllerRightsVersion()
+        showHandoffFailure('Switch failed. Please try again.')
+      } finally {
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        const pending = pendingHandoffTargetRef.current
+        pendingHandoffTargetRef.current = null
+        if (pending) {
+          handOverPresentation(pending)
+        }
+      }
+    })()
+  }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
+
+  const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
+    if (!isAdmin) return
+    if (handoffInFlightRef.current || conflictResolverInFlightRef.current) return
+
+    const now = Date.now()
+    const signature = `${userKey}::${reason}`
+    if (signature === lastConflictEnforceSignatureRef.current && now - lastConflictEnforceTsRef.current < 1500) {
+      return
+    }
+    lastConflictEnforceSignatureRef.current = signature
+    lastConflictEnforceTsRef.current = now
+
+    conflictResolverInFlightRef.current = true
+    try {
+      if (selfUserKey && userKey === selfUserKey) {
+        await reclaimAdminControl()
+        return
+      }
+
+      const identity = resolveIdentityForUserKey(userKey)
+      const targetClientIds = Array.from(new Set((identity?.clientIds || []).filter(id => id && id !== 'all')))
+      if (!targetClientIds.length) return
+
+      controllerRightsUserAllowlistRef.current.clear()
+      controllerRightsAllowlistRef.current.clear()
+      controllerRightsUserAllowlistRef.current.add(userKey)
+      for (const id of targetClientIds) {
+        controllerRightsAllowlistRef.current.add(id)
+      }
+
+      setActivePresenterUserKey(userKey)
+      activePresenterUserKeyRef.current = userKey
+      activePresenterClientIdsRef.current = new Set(targetClientIds)
+      bumpControllerRightsVersion()
+      recordRightsGrant(userKey, now)
+
+      const channel = channelRef.current
+      if (!channel) return
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: userKey,
+        targetClientIds,
+        targetClientId: targetClientIds[0],
+        ts: now,
+      })
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: now + 1,
+      })
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights',
+        targetUserKey: userKey,
+        targetClientIds,
+        targetClientId: targetClientIds[0],
+        name: identity?.name || null,
+        allowed: true,
+        ts: now + 2,
+      })
+    } catch {
+      // ignore
+    } finally {
+      conflictResolverInFlightRef.current = false
+    }
+  }, [bumpControllerRightsVersion, isAdmin, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
+
+  const evaluateSwitchingAuthority = useCallback(() => {
+    if (!isAdmin || localOnly) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      setSwitchConflictActiveStable(false)
+      setEditingAuthorityKeysStable([])
+      if (!handoffInFlightRef.current) {
+        setHandoffSwitching(false)
+      }
+      return
+    }
+
+    const FAILURE_TIMEOUT_MS = 60000
+    const now = Date.now()
+    const evaluation = evaluateSwitchingAuthorities({
+      connectedClients: connectedClientsRef.current,
+      excludedClientIds: ['all'],
+      activePresenterUserKey: activePresenterUserKeyRef.current,
+      activePresenterClientIds: activePresenterClientIdsRef.current,
+      controllerRightsUserAllowlist: controllerRightsUserAllowlistRef.current,
+      controllerRightsClientAllowlist: controllerRightsAllowlistRef.current,
+      rightsGrantedAtByUserKey: rightsGrantedAtByUserKeyRef.current,
+      recentBroadcastTsByUserKey: recentBroadcastTsByUserKeyRef.current,
+      lastPresenterSetTs: lastPresenterSetTsRef.current,
+      lastControllerRightsTs: lastControllerRightsTsRef.current,
+      controlLock: null,
+      selfCanWrite: canPresentRef.current,
+      selfUserKey,
+      selfClientId: clientIdRef.current || undefined,
+      selfDisplayName: normalizeDisplayName(userDisplayName || '') || 'Teacher',
+      nowTs: now,
+      broadcastSignalWindowMs: 12000,
+    })
+
+    for (const key of evaluation.staleBroadcastUserKeys) {
+      recentBroadcastTsByUserKeyRef.current.delete(key)
+    }
+
+    setEditingAuthorityKeysStable(evaluation.activeUserKeys)
+
+    if (evaluation.activeCandidates.length <= 1) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      setSwitchConflictActiveStable(false)
+      if (!handoffInFlightRef.current) {
+        setHandoffSwitching(false)
+      }
+      return
+    }
+
+    setSwitchConflictActiveStable(true)
+    setHandoffSwitching(true)
+
+    if (evaluation.canonicalCandidate) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      void enforceCanonicalPresenter(evaluation.canonicalCandidate.userKey, 'timestamp-winner')
+      return
+    }
+
+    if (!conflictStartedAtRef.current) {
+      conflictStartedAtRef.current = now
+    }
+    lastConflictReasonRef.current = evaluation.unresolvedReason || 'Unknown conflict state'
+    if (now - conflictStartedAtRef.current < FAILURE_TIMEOUT_MS) {
+      return
+    }
+    if (conflictResolverInFlightRef.current) {
+      return
+    }
+
+    conflictResolverInFlightRef.current = true
+    void (async () => {
+      try {
+        const fallbackReason = lastConflictReasonRef.current || 'Unknown conflict state'
+        const ok = await reclaimAdminControl()
+        if (ok) {
+          showHandoffFailure(`Failed to switch: ${fallbackReason} Returned editing to admin.`)
+        } else {
+          showHandoffFailure(`Failed to switch: ${fallbackReason} Could not force admin reclaim.`)
+        }
+      } finally {
+        conflictStartedAtRef.current = null
+        setSwitchConflictActiveStable(false)
+        setHandoffSwitching(false)
+        conflictResolverInFlightRef.current = false
+      }
+    })()
+  }, [enforceCanonicalPresenter, isAdmin, localOnly, reclaimAdminControl, selfUserKey, setEditingAuthorityKeysStable, setSwitchConflictActiveStable, showHandoffFailure, userDisplayName])
+
   useEffect(() => {
-    clientIdRef.current = clientId
-  }, [clientId])
+    if (!isAdmin || localOnly) {
+      setEditingAuthorityKeysStable([])
+      setSwitchConflictActiveStable(false)
+      return
+    }
+    evaluateSwitchingAuthority()
+    if (typeof window === 'undefined') return
+    const timer = window.setInterval(() => {
+      evaluateSwitchingAuthority()
+    }, 1000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [evaluateSwitchingAuthority, isAdmin, localOnly, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
+
+  const handleRosterAttendeeAvatarClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isAdmin) return
+    const el = e.currentTarget
+    const clickedClientId = String(el?.dataset?.clientId || '').trim()
+    const clickedUserId = String(el?.dataset?.userId || '').trim()
+    const clickedUserKey = String(el?.dataset?.userKey || '').trim()
+    const displayName = String(el?.dataset?.displayName || '').trim()
+    handOverPresentation({
+      clientId: clickedClientId,
+      userId: clickedUserId || undefined,
+      userKey: clickedUserKey,
+      displayName,
+    })
+  }, [handOverPresentation, isAdmin])
+
+  const teacherBadge = useMemo(() => {
+    const resolvedName = normalizeDisplayName(userDisplayName || '') || 'Teacher'
+    return {
+      name: resolvedName,
+      initials: getInitials(resolvedName, 'T'),
+    }
+  }, [userDisplayName])
+
+  const rawActivePresenterBadge = useMemo(() => deriveActivePresenterBadge({
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    connectedClients,
+    fallbackInitial: 'P',
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
+
+  const activePresenterBadge = useMemo(() => {
+    if (isAdmin && isSelfActivePresenter()) return null
+    return rawActivePresenterBadge
+  }, [isAdmin, isSelfActivePresenter, rawActivePresenterBadge])
+
+  const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
+    connectedClients,
+    selfClientId: clientIdRef.current || '',
+    selfUserId: String(userId || '').trim(),
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    excludedClientIds: ['all'],
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
+
+  const rosterAvatarLayout = useMemo(() => buildRosterAvatarLayout({
+    activePresenterBadge,
+    availableAttendees: availableRosterAttendees,
+    overlayRosterVisible,
+    attendeeInitialFallback: 'U',
+  }), [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
+  const showSwitchingToast = handoffSwitching || switchConflictActive
+  const switchingStatusLabel = switchConflictActive ? 'Switching... conflict detected' : 'Switching...'
+  const teacherAvatarGold = isAvatarEditingAuthority(selfUserKey)
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
   const diagramsRef = useRef<DiagramRecord[]>([])
@@ -242,6 +1061,11 @@ export default function DiagramOverlayModule(props: {
     if (diagramState.isOpen && isGridDiagram && isAdmin) return
     clearGridCloseTimer()
   }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
+
+  useEffect(() => {
+    if (diagramState.isOpen && isGridDiagram && isAdmin) return
+    setOverlayRosterVisible(false)
+  }, [diagramState.isOpen, isAdmin, isGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -536,15 +1360,19 @@ export default function DiagramOverlayModule(props: {
     const ch = channelRef.current
     if (!ch) return
     try {
+      const ts = message.ts ?? Date.now()
       await ch.publish('diagram', {
         ...message,
-        ts: message.ts ?? Date.now(),
+        ts,
         sender: message.sender ?? clientIdRef.current,
       })
+      if (message.kind !== 'state') {
+        recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), ts)
+      }
     } catch {
       // ignore
     }
-  }, [])
+  }, [recordBroadcastActivity, selfUserKey])
 
   const persistState = useCallback(async (next: DiagramState) => {
     if (!isAdmin) return
@@ -596,6 +1424,15 @@ export default function DiagramOverlayModule(props: {
       if (diag) {
         await publish({ kind: 'add', diagram: diag })
         await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
+        if (diag.imageUrl === GRID_DIAGRAM_URL) {
+          const api = excalidrawApiRef.current
+          const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+          const cached = gridSceneByDiagramRef.current.get(diag.id)
+          const elements = Array.isArray(live) ? cloneGridElementsPayload(live) : cached
+          if (Array.isArray(elements)) {
+            await publish({ kind: 'grid-scene-set', diagramId: diag.id, elements })
+          }
+        }
       }
     }
   }, [isAdmin, persistState, publish, toTransportAnnotations])
@@ -903,10 +1740,40 @@ export default function DiagramOverlayModule(props: {
         channelRef.current = channel
         await channel.attach()
 
+        if (isAdmin && !localOnly && !activePresenterUserKeyRef.current) {
+          const teacherClientId = clientIdRef.current
+          const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
+          if (teacherPresenterKey) {
+            recordRightsGrant(teacherPresenterKey, Date.now())
+            setActivePresenterUserKey(teacherPresenterKey)
+            activePresenterUserKeyRef.current = String(teacherPresenterKey)
+            activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+            bumpControllerRightsVersion()
+            try {
+              await channel.publish('control', {
+                clientId: clientIdRef.current,
+                author: userDisplayName,
+                action: 'presenter-set',
+                presenterUserKey: teacherPresenterKey,
+                targetClientIds: teacherClientId ? [teacherClientId] : [],
+                ts: Date.now(),
+              })
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         const handle = (message: any) => {
           const data = message?.data as DiagramRealtimeMessage
           if (!data || typeof data !== 'object') return
           if ((data as any).sender && (data as any).sender === clientIdRef.current) return
+          const senderClientId = typeof (data as any).sender === 'string' ? String((data as any).sender) : ''
+          if (senderClientId && data.kind !== 'state') {
+            const resolved = resolveUserForClientId(senderClientId)
+            const activityTs = Number((data as any).ts || Date.now())
+            recordBroadcastActivity(resolved?.userKey || `client:${senderClientId}`, activityTs)
+          }
 
           if (data.kind === 'state') {
             const next: DiagramState = {
@@ -964,6 +1831,56 @@ export default function DiagramOverlayModule(props: {
             return
           }
 
+          if (data.kind === 'grid-scene-set') {
+            const incomingElements = Array.isArray(data.elements) ? cloneGridElementsPayload(data.elements) : []
+            const activeId = diagramStateRef.current.activeDiagramId
+            const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
+            const isActiveGrid = activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL
+
+            const live = isActiveGrid
+              ? (excalidrawApiRef.current?.getSceneElementsIncludingDeleted?.() || excalidrawApiRef.current?.getSceneElements?.())
+              : null
+            const cached = gridSceneByDiagramRef.current.get(data.diagramId)
+            const baseElements = Array.isArray(live)
+              ? cloneGridElementsPayload(live)
+              : (Array.isArray(cached) ? cloneGridElementsPayload(cached) : [])
+            const mergedElements = mergeGridSceneElements(baseElements, incomingElements)
+
+            gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            gridLastDeltaBaseByDiagramRef.current.set(data.diagramId, mergedElements)
+            if (isActiveGrid) {
+              setGridSceneToApi(mergedElements)
+            }
+            return
+          }
+
+          if (data.kind === 'grid-scene-delta') {
+            const incomingUpserts = Array.isArray(data.upserts) ? cloneGridElementsPayload(data.upserts) : []
+            const incomingRemovedIds = Array.isArray((data as any).removedIds)
+              ? (data as any).removedIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+
+            const activeId = diagramStateRef.current.activeDiagramId
+            const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
+            const isActiveGrid = activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL
+
+            const live = isActiveGrid
+              ? (excalidrawApiRef.current?.getSceneElementsIncludingDeleted?.() || excalidrawApiRef.current?.getSceneElements?.())
+              : null
+            const cached = gridSceneByDiagramRef.current.get(data.diagramId)
+            const baseElements = Array.isArray(live)
+              ? cloneGridElementsPayload(live)
+              : (Array.isArray(cached) ? cloneGridElementsPayload(cached) : [])
+            const mergedElements = applyGridSceneDelta(baseElements, incomingUpserts, incomingRemovedIds)
+
+            gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            gridLastDeltaBaseByDiagramRef.current.set(data.diagramId, mergedElements)
+            if (isActiveGrid) {
+              setGridSceneToApi(mergedElements)
+            }
+            return
+          }
+
           if (data.kind === 'stroke-commit') {
             setDiagrams(prev => prev.map(d => {
               if (d.id !== data.diagramId) return d
@@ -973,12 +1890,136 @@ export default function DiagramOverlayModule(props: {
           }
         }
 
+        const handleControl = (message: any) => {
+          const data = message?.data as any
+          if (!data || typeof data !== 'object') return
+          const controlAction = typeof data?.action === 'string' ? data.action : ''
+          const controlTsRaw = Number(data?.ts ?? 0)
+          const controlTs = Number.isFinite(controlTsRaw) ? controlTsRaw : 0
+
+          if (controlAction === 'presenter-set') {
+            if (controlTs && controlTs < lastPresenterSetTsRef.current) return
+            if (controlTs) lastPresenterSetTsRef.current = controlTs
+            const incomingKey = typeof data.presenterUserKey === 'string' ? String(data.presenterUserKey) : ''
+            const nextKey = incomingKey ? incomingKey : null
+            if (nextKey) {
+              recordRightsGrant(nextKey, controlTs || Date.now())
+            }
+            setActivePresenterUserKey(nextKey)
+            activePresenterUserKeyRef.current = nextKey ? String(nextKey) : ''
+            const targets: string[] = Array.isArray(data.targetClientIds)
+              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            activePresenterClientIdsRef.current = new Set(dedupedTargets)
+            if (!nextKey) {
+              controllerRightsUserAllowlistRef.current.clear()
+              controllerRightsAllowlistRef.current.clear()
+              if (controlTs) lastControllerRightsTsRef.current = Math.max(lastControllerRightsTsRef.current, controlTs)
+              bumpControllerRightsVersion()
+            }
+            return
+          }
+
+          if (controlAction === 'controller-rights-reset') {
+            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
+            if (controlTs) lastControllerRightsTsRef.current = controlTs
+            controllerRightsUserAllowlistRef.current.clear()
+            controllerRightsAllowlistRef.current.clear()
+            bumpControllerRightsVersion()
+            return
+          }
+
+          if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
+            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
+            if (controlTs) lastControllerRightsTsRef.current = controlTs
+            const targets: string[] = Array.isArray(data.targetClientIds)
+              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            const allowed = Boolean(data.allowed)
+            const targetUserKey = typeof data.targetUserKey === 'string' ? String(data.targetUserKey) : ''
+
+            if (targetUserKey) {
+              if (allowed) {
+                recordRightsGrant(targetUserKey, controlTs || Date.now())
+                controllerRightsUserAllowlistRef.current.add(targetUserKey)
+              }
+              else controllerRightsUserAllowlistRef.current.delete(targetUserKey)
+            }
+            for (const target of dedupedTargets) {
+              if (!target) continue
+              if (allowed) controllerRightsAllowlistRef.current.add(target)
+              else controllerRightsAllowlistRef.current.delete(target)
+            }
+            if (targetUserKey || dedupedTargets.length) bumpControllerRightsVersion()
+          }
+        }
+
         channel.subscribe('diagram', handle)
+        channel.subscribe('control', handleControl)
 
         // Presence: on new join, admin pushes current diagram state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName || 'Participant', userId, isAdmin: Boolean(isAdmin) })
+          const toPresenceClient = (m: any): PresenceClient => ({
+            clientId: String(m?.clientId || ''),
+            name: normalizeDisplayName(m?.data?.name),
+            isAdmin: Boolean(m?.data?.isAdmin),
+            userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
+          })
+          const dedupePresence = (list: any[]) => {
+            const byKey = new Map<string, PresenceClient>()
+            const nameToKey = new Map<string, string>()
+            for (const raw of Array.isArray(list) ? list : []) {
+              const c = toPresenceClient(raw)
+              if (!c.clientId) continue
+
+              const normalizedName = normalizeDisplayName(c.name || c.clientId)
+              const nameKey = normalizedName.toLowerCase()
+
+              if (c.userId) {
+                const uidKey = `uid:${c.userId}`
+                const existingNameKey = nameToKey.get(nameKey)
+
+                if (existingNameKey && existingNameKey !== uidKey && !existingNameKey.startsWith('uid:')) {
+                  const existing = byKey.get(existingNameKey)
+                  if (existing) {
+                    byKey.delete(existingNameKey)
+                    byKey.set(uidKey, { ...existing, ...c, name: normalizedName || existing.name })
+                  } else if (!byKey.has(uidKey)) {
+                    byKey.set(uidKey, { ...c, name: normalizedName })
+                  }
+                } else if (!byKey.has(uidKey)) {
+                  byKey.set(uidKey, { ...c, name: normalizedName })
+                } else {
+                  const prev = byKey.get(uidKey)!
+                  byKey.set(uidKey, { ...prev, ...c, name: prev.name || normalizedName })
+                }
+
+                nameToKey.set(nameKey, uidKey)
+                continue
+              }
+
+              const mappedKey = nameToKey.get(nameKey) || `name:${nameKey}`
+              const prev = byKey.get(mappedKey)
+              if (prev?.userId) continue
+              byKey.set(mappedKey, prev ? { ...c, ...prev, name: prev.name || normalizedName } : { ...c, name: normalizedName })
+              if (!nameToKey.has(nameKey)) nameToKey.set(nameKey, mappedKey)
+            }
+            return Array.from(byKey.values())
+          }
+          const members = await channel.presence.get()
+          setConnectedClients(dedupePresence(members))
           channel.presence.subscribe(async (presenceMsg: any) => {
+            try {
+              const list = await channel.presence.get()
+              setConnectedClients(dedupePresence(list))
+            } catch {
+              // ignore
+            }
             if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return
             const state = diagramStateRef.current
@@ -989,6 +2030,15 @@ export default function DiagramOverlayModule(props: {
               if (diag) {
                 await publish({ kind: 'add', diagram: diag })
                 await publish({ kind: 'annotations-set', diagramId: activeId, annotations: toTransportAnnotations(activeId, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
+                if (diag.imageUrl === GRID_DIAGRAM_URL) {
+                  const api = excalidrawApiRef.current
+                  const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+                  const cached = gridSceneByDiagramRef.current.get(activeId)
+                  const elements = Array.isArray(live) ? cloneGridElementsPayload(live) : cached
+                  if (Array.isArray(elements)) {
+                    await publish({ kind: 'grid-scene-set', diagramId: activeId, elements })
+                  }
+                }
               }
             }
           })
@@ -1017,7 +2067,21 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, localOnly, publish, toTransportAnnotations, userDisplayName, userId])
+  }, [bumpControllerRightsVersion, channelName, isAdmin, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+        gridSceneSuppressTimerRef.current = null
+      }
+      if (gridScenePublishTimerRef.current != null) {
+        window.clearTimeout(gridScenePublishTimerRef.current)
+        gridScenePublishTimerRef.current = null
+      }
+    }
+  }, [])
 
   // Rendering
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -1131,7 +2195,134 @@ export default function DiagramOverlayModule(props: {
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [gridApiReadyVersion, setGridApiReadyVersion] = useState(0)
+  const gridSceneByDiagramRef = useRef<Map<string, any[]>>(new Map())
+  const suppressGridScenePublishRef = useRef(false)
+  const gridSceneSuppressTimerRef = useRef<number | null>(null)
+  const gridScenePublishTimerRef = useRef<number | null>(null)
+  const gridPendingSceneRef = useRef<{ diagramId: string; elements: any[] } | null>(null)
+  const gridDeltaPublishTimerRef = useRef<number | null>(null)
+  const gridPendingDeltaRef = useRef<{ diagramId: string; prevElements: any[]; nextElements: any[] } | null>(null)
+  const gridLastDeltaBaseByDiagramRef = useRef<Map<string, any[]>>(new Map())
+  const lastPublishedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
+  const gridActiveDrawingRef = useRef(false)
+  const gridDrawingIdleTimerRef = useRef<number | null>(null)
+  const gridLastDrawingDiagramIdRef = useRef<string | null>(null)
+  const gridLastDrawingElementsRef = useRef<any[] | null>(null)
   const activeHistoryDiagramIdRef = useRef<string | null>(null)
+
+  const setGridSceneToApi = useCallback((elements: any[]) => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return
+    suppressGridScenePublishRef.current = true
+    if (typeof window !== 'undefined') {
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+      }
+      gridSceneSuppressTimerRef.current = window.setTimeout(() => {
+        suppressGridScenePublishRef.current = false
+        gridSceneSuppressTimerRef.current = null
+      }, 0)
+    }
+    api.updateScene({ elements })
+  }, [])
+
+  const queueGridScenePublish = useCallback((diagramId: string, elements: any[]) => {
+    const snapshot = cloneGridElementsPayload(elements)
+    const signature = getGridSceneSignature(snapshot)
+    const lastSignature = lastPublishedGridSceneSignatureRef.current.get(diagramId)
+    if (lastSignature === signature) return
+    gridPendingSceneRef.current = { diagramId, elements: snapshot }
+    if (typeof window === 'undefined') {
+      void publish({ kind: 'grid-scene-set', diagramId, elements: snapshot })
+      lastPublishedGridSceneSignatureRef.current.set(diagramId, signature)
+      gridPendingSceneRef.current = null
+      return
+    }
+    if (gridScenePublishTimerRef.current != null) return
+    gridScenePublishTimerRef.current = window.setTimeout(() => {
+      gridScenePublishTimerRef.current = null
+      const pending = gridPendingSceneRef.current
+      gridPendingSceneRef.current = null
+      if (!pending) return
+      const nextSignature = getGridSceneSignature(pending.elements)
+      const prevSignature = lastPublishedGridSceneSignatureRef.current.get(pending.diagramId)
+      if (nextSignature === prevSignature) return
+      void publish({ kind: 'grid-scene-set', diagramId: pending.diagramId, elements: pending.elements })
+      lastPublishedGridSceneSignatureRef.current.set(pending.diagramId, nextSignature)
+    }, 120)
+  }, [publish])
+
+  const queueGridSceneDeltaPublish = useCallback((diagramId: string, prevElements: any[], nextElements: any[]) => {
+    const prevSnapshot = cloneGridElementsPayload(prevElements)
+    const nextSnapshot = cloneGridElementsPayload(nextElements)
+
+    const pending = gridPendingDeltaRef.current
+    if (pending && pending.diagramId === diagramId) {
+      gridPendingDeltaRef.current = {
+        diagramId,
+        prevElements: pending.prevElements,
+        nextElements: nextSnapshot,
+      }
+    } else {
+      gridPendingDeltaRef.current = {
+        diagramId,
+        prevElements: prevSnapshot,
+        nextElements: nextSnapshot,
+      }
+    }
+
+    if (typeof window === 'undefined') {
+      const current = gridPendingDeltaRef.current
+      gridPendingDeltaRef.current = null
+      if (!current) return
+      const delta = computeGridSceneDelta(current.prevElements, current.nextElements)
+      if (!delta.upserts.length && !delta.removedIds.length) return
+      void publish({ kind: 'grid-scene-delta', diagramId: current.diagramId, upserts: delta.upserts, removedIds: delta.removedIds })
+      return
+    }
+
+    if (gridDeltaPublishTimerRef.current != null) return
+    gridDeltaPublishTimerRef.current = window.setTimeout(() => {
+      gridDeltaPublishTimerRef.current = null
+      const current = gridPendingDeltaRef.current
+      gridPendingDeltaRef.current = null
+      if (!current) return
+      const delta = computeGridSceneDelta(current.prevElements, current.nextElements)
+      if (!delta.upserts.length && !delta.removedIds.length) return
+      void publish({ kind: 'grid-scene-delta', diagramId: current.diagramId, upserts: delta.upserts, removedIds: delta.removedIds })
+    }, 80)
+  }, [publish])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (!activeDiagram?.id) return
+    if (!canPresentRef.current) return
+
+    const tick = () => {
+      if (gridActiveDrawingRef.current) return
+      const api = excalidrawApiRef.current
+      const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+      if (!Array.isArray(live)) return
+      const snapshot = cloneGridElementsPayload(live)
+      gridSceneByDiagramRef.current.set(activeDiagram.id, snapshot)
+      queueGridScenePublish(activeDiagram.id, snapshot)
+    }
+
+    const id = window.setInterval(tick, 450)
+    return () => window.clearInterval(id)
+  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram, queueGridScenePublish])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridDrawingIdleTimerRef.current != null) {
+        window.clearTimeout(gridDrawingIdleTimerRef.current)
+        gridDrawingIdleTimerRef.current = null
+      }
+    }
+  }, [])
 
   const getExcalidrawToolType = useCallback((value: DiagramTool): 'selection' | 'freedraw' | 'arrow' | 'eraser' => {
     if (value === 'pen') return 'freedraw'
@@ -1177,6 +2368,15 @@ export default function DiagramOverlayModule(props: {
 
     return () => window.clearTimeout(settle)
   }, [activeDiagram?.id, diagramState.isOpen, getExcalidrawToolType, gridApiReadyVersion, isGridDiagram, tool])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (!activeDiagram?.id) return
+    const cached = gridSceneByDiagramRef.current.get(activeDiagram.id)
+    if (!cached) return
+    setGridSceneToApi(cloneGridElementsPayload(cached))
+  }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, setGridSceneToApi])
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(undoRef.current.length > 0)
@@ -3643,6 +4843,7 @@ export default function DiagramOverlayModule(props: {
   const gridToolbarDragThresholdPx = 4
 
   const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLElement>) => {
+    if (!canPresentRef.current) return
     const node = e.currentTarget
     node.setPointerCapture?.(e.pointerId)
     const origin = gridToolbarOffsets[target]
@@ -3658,6 +4859,7 @@ export default function DiagramOverlayModule(props: {
   }, [gridToolbarOffsets])
 
   const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (!canPresentRef.current) return
     const drag = gridToolbarDragRef.current
     if (!drag.target || drag.pointerId !== e.pointerId) return
     const dy = e.clientY - drag.startY
@@ -3701,6 +4903,7 @@ export default function DiagramOverlayModule(props: {
   }, [])
 
   const onGridToolbarPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canPresentRef.current) return
     const target = detectGridToolbarDragTarget(e.target)
     if (!target) return
     startGridToolbarDrag(target, e)
@@ -3765,7 +4968,6 @@ export default function DiagramOverlayModule(props: {
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
           panelSize="full"
-          hideHeader={isGridDiagram}
           onClose={() => {
             if (!isAdmin) return
             void handleClose()
@@ -3813,6 +5015,136 @@ export default function DiagramOverlayModule(props: {
                   <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
+            </div>
+          ) : null}
+
+          {isGridDiagram && isAdmin ? (
+            <div
+              className="absolute"
+              style={{
+                top: '50%',
+                left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                transform: 'translateY(-50%)',
+                zIndex: 2147483647,
+              }}
+            >
+              <div className="relative w-6">
+                {rosterAvatarLayout.top.length > 0 ? (
+                  <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
+                    {rosterAvatarLayout.top.map((avatar) => (
+                      avatar.kind === 'presenter' ? (
+                        <div
+                          key={avatar.userKey}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={`${avatar.name} (presenter)`}
+                          aria-label={`${avatar.name} is a presenter`}
+                        >
+                          {avatar.initials}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          key={avatar.userKey}
+                          data-client-id={avatar.clientId || ''}
+                          data-user-id={avatar.userId || ''}
+                          data-user-key={avatar.userKey}
+                          data-display-name={avatar.name}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={avatar.name}
+                          aria-label={`Make ${avatar.name} the presenter`}
+                          onClick={handleRosterAttendeeAvatarClick}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          {avatar.initials}
+                        </button>
+                      )
+                    ))}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (overlayRosterVisible) {
+                      if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
+                        handOverPresentation(null)
+                        return
+                      }
+                      setOverlayRosterVisible(false)
+                      return
+                    }
+                    setOverlayRosterVisible(true)
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                  }}
+                  aria-label="Toggle diagram avatars"
+                  title={teacherBadge.name}
+                >
+                  {teacherBadge.initials}
+                </button>
+
+                {showSwitchingToast ? (
+                  <div
+                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
+                    style={{ zIndex: 2147483647 }}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {switchingStatusLabel}
+                  </div>
+                ) : null}
+
+                {!showSwitchingToast && handoffMessage ? (
+                  <div
+                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
+                    style={{ zIndex: 2147483647 }}
+                    role="alert"
+                  >
+                    {handoffMessage}
+                  </div>
+                ) : null}
+
+                {rosterAvatarLayout.bottom.length > 0 ? (
+                  <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
+                    {rosterAvatarLayout.bottom.map((avatar) => (
+                      avatar.kind === 'presenter' ? (
+                        <div
+                          key={avatar.userKey}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={`${avatar.name} (presenter)`}
+                          aria-label={`${avatar.name} is a presenter`}
+                        >
+                          {avatar.initials}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          key={avatar.userKey}
+                          data-client-id={avatar.clientId || ''}
+                          data-user-id={avatar.userId || ''}
+                          data-user-key={avatar.userKey}
+                          data-display-name={avatar.name}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={avatar.name}
+                          aria-label={`Make ${avatar.name} the presenter`}
+                          onClick={handleRosterAttendeeAvatarClick}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          {avatar.initials}
+                        </button>
+                      )
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -4261,8 +5593,41 @@ export default function DiagramOverlayModule(props: {
                   excalidrawApiRef.current = api
                   setGridApiReadyVersion((prev) => prev + 1)
                 }}
+                onChange={(elements: any[]) => {
+                  const diagramId = activeDiagram?.id
+                  if (!diagramId) return
+                  const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
+                  gridSceneByDiagramRef.current.set(diagramId, nextElements)
+                  gridLastDrawingDiagramIdRef.current = diagramId
+                  gridLastDrawingElementsRef.current = nextElements
+                  gridActiveDrawingRef.current = true
+
+                  if (typeof window !== 'undefined') {
+                    if (gridDrawingIdleTimerRef.current != null) {
+                      window.clearTimeout(gridDrawingIdleTimerRef.current)
+                    }
+                    gridDrawingIdleTimerRef.current = window.setTimeout(() => {
+                      gridDrawingIdleTimerRef.current = null
+                      gridActiveDrawingRef.current = false
+                      const flushDiagramId = gridLastDrawingDiagramIdRef.current
+                      const flushElements = gridLastDrawingElementsRef.current
+                      if (!flushDiagramId || !Array.isArray(flushElements)) return
+                      if (suppressGridScenePublishRef.current) return
+                      if (!canPresentRef.current) return
+                      const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(flushDiagramId) || []
+                      queueGridSceneDeltaPublish(flushDiagramId, prevForDelta, flushElements)
+                      gridLastDeltaBaseByDiagramRef.current.set(flushDiagramId, cloneGridElementsPayload(flushElements))
+                    }, 280)
+                  }
+
+                  if (suppressGridScenePublishRef.current) return
+                  if (!canPresentRef.current) return
+                  const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(diagramId) || []
+                  queueGridSceneDeltaPublish(diagramId, prevForDelta, nextElements)
+                  gridLastDeltaBaseByDiagramRef.current.set(diagramId, cloneGridElementsPayload(nextElements))
+                }}
                 zenModeEnabled={false}
-                viewModeEnabled={false}
+                viewModeEnabled={!canPresent}
                 initialData={{
                   appState: {
                     currentItemStrokeWidth: 1,
@@ -4271,7 +5636,7 @@ export default function DiagramOverlayModule(props: {
                 renderTopRightUI={() => (
                   <button
                     type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white/95 text-slate-700 shadow-sm hover:bg-white disabled:opacity-50"
+                    className="inline-flex h-9 w-9 items-center justify-center text-slate-700 hover:text-slate-900 disabled:opacity-50"
                     onClick={handleClearInk}
                     disabled={!canPresent}
                     aria-label="Clear canvas"

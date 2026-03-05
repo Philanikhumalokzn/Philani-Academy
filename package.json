@@ -7,6 +7,7 @@
     "build": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true npm run prisma:generate && npm run silence:baseline-warning && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next build",
     "vercel-build": "npm run build",
     "start": "next start",
+    "test:e2e": "playwright test",
     "postinstall": "npm run silence:baseline-warning",
     "prisma:generate": "npx prisma generate && node scripts/fix_prisma_client.js",
     "silence:baseline-warning": "node scripts/silence_baseline_warning.js",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
+    "@playwright/test": "^1.58.2",
     "@types/formidable": "^3.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.25",

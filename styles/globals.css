@@ -58,13 +58,13 @@
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar {
   position: absolute;
-  top: calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 8px) !important;
-  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
-  right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px) !important;
-  bottom: auto !important;
+  top: auto !important;
+  left: calc(8px + 0.75rem) !important;
+  right: calc(8px + 0.75rem) !important;
+  bottom: 2px !important;
   width: auto !important;
   margin-inline: 0;
-  transform: translateY(var(--philani-exc-top-y, 0px)) !important;
+  transform: translateY(calc(var(--philani-exc-top-y, 0px) + 50%)) !important;
   z-index: var(--zIndex-layerUI);
   pointer-events: auto;
   touch-action: none;
@@ -72,13 +72,13 @@
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar {
   position: absolute !important;
-  top: auto !important;
-  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
-  right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px) !important;
-  bottom: calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 2px) !important;
+  top: 8px !important;
+  left: calc(8px - 1rem) !important;
+  right: calc(8px - 1rem) !important;
+  bottom: auto !important;
   width: auto !important;
   margin-inline: 0;
-  transform: translateY(var(--philani-exc-bottom-y, 0px)) !important;
+  transform: translateY(calc(var(--philani-exc-bottom-y, 0px) - 25%)) !important;
   pointer-events: auto;
   touch-action: none;
 }
@@ -88,6 +88,58 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-gap: 0.5rem;
   align-items: center;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .mobile-misc-tools-container {
+  left: 8px !important;
+  right: auto !important;
+  top: 8px !important;
+  transform: translate(calc(-10% - 0.5rem), calc(-28% - 4rem)) !important;
+  border-left: 0 !important;
+  border-right: 1px solid var(--sidebar-border-color) !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-top-right-radius: var(--border-radius-lg) !important;
+  border-bottom-right-radius: var(--border-radius-lg) !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar .App-toolbar-content .dropdown-menu--mobile {
+  top: 55px !important;
+  bottom: auto !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .App-toolbar-content .dropdown-menu--mobile {
+  top: auto !important;
+  bottom: 55px !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-bottom-bar .dropdown-menu {
+  top: 100% !important;
+  bottom: auto !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0 !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .dropdown-menu {
+  top: auto !important;
+  bottom: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .shapes-section .dropdown-menu {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-toolbar-content .dropdown-menu--mobile .dropdown-menu-container {
+  max-height: calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - 72px);
+  overflow-y: auto;
+}
+
+.philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar .Stack_horizontal {
+  column-gap: 0 !important;
 }
 
 .philani-excalidraw-bottom-toolbar .excalidraw .App-top-bar,

@@ -1,12 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import { toDisplayFileName } from '../lib/fileName'
+import { useTapToPeek } from '../lib/useTapToPeek'
+import {
+  buildRosterAvatarLayout,
+  deriveActivePresenterBadge,
+  deriveAvailableRosterAttendees,
+  getInitials,
+  getUserKey,
+  normalizeDisplayName,
+  resolveHandoffSelection,
+} from '../lib/presenterControl'
+import { evaluateSwitchingAuthorities } from '../lib/switchingBehavior'
+
+const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw), { ssr: false })
 
 const IMAGE_SPACE = 'image' as const
+const GRID_DIAGRAM_TITLE = 'Grid Background'
+const GRID_DIAGRAM_URL = '/diagram-grid.svg'
+const GRID_OVERFLOW_SCALE = 2.4
+const GRID_MIN_ZOOM = 1
+const GRID_MAX_ZOOM = 4
+const IMAGE_MIN_ZOOM = 1
+const IMAGE_MAX_ZOOM = 4
+const GRID_BACKGROUND_STYLE = {
+  backgroundColor: '#ffffff',
+  backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
+  backgroundSize: '24px 24px',
+} as const
 
 type DiagramStrokePoint = { x: number; y: number }
+type DiagramWorldPoint = { x: number; y: number }
+type DiagramScreenPoint = { x: number; y: number }
+type DiagramFrame = { width: number; height: number }
+type DiagramCamera = { x: number; y: number; zoom: number }
 type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
 type DiagramArrow = { id: string; color: string; width: number; start: DiagramStrokePoint; end: DiagramStrokePoint; headSize?: number; z?: number; locked?: boolean }
-type DiagramAnnotations = { space?: 'image'; strokes: DiagramStroke[]; arrows?: DiagramArrow[] }
+type DiagramAnnotations = { space?: 'image' | 'world'; worldFrame?: { width: number; height: number }; strokes: DiagramStroke[]; arrows?: DiagramArrow[] }
 
 type DiagramTool = 'select' | 'pen' | 'arrow' | 'eraser'
 type DiagramSelection = { kind: 'stroke' | 'arrow'; id: string } | null
@@ -33,12 +64,28 @@ type DiagramRealtimeMessage =
   | { kind: 'remove'; diagramId: string; ts?: number; sender?: string }
   | { kind: 'stroke-commit'; diagramId: string; stroke: DiagramStroke; ts?: number; sender?: string }
   | { kind: 'annotations-set'; diagramId: string; annotations: DiagramAnnotations | null; ts?: number; sender?: string }
+  | { kind: 'grid-scene-set'; diagramId: string; elements: any[]; ts?: number; sender?: string }
+  | { kind: 'grid-scene-delta'; diagramId: string; upserts: any[]; removedIds?: string[]; ts?: number; sender?: string }
   | { kind: 'clear'; diagramId: string; ts?: number; sender?: string }
 
 type ScriptDiagramEventDetail = {
   title?: string | null
   open?: boolean
 }
+
+type PresenceClient = {
+  clientId: string
+  name: string
+  userId?: string
+  isAdmin?: boolean
+}
+
+type PresenterHandoffTarget = {
+  clientId: string
+  userId?: string
+  userKey: string
+  displayName: string
+} | null
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
@@ -51,6 +98,161 @@ const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeS
         ? `grade-${sanitizeIdentifier(gradeLabel).toLowerCase()}`
         : 'shared'
   return `myscript:${base}`
+}
+
+const cloneGridElementsPayload = (elements: any[]) => {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(elements)
+    }
+    return JSON.parse(JSON.stringify(elements))
+  } catch {
+    return Array.isArray(elements) ? elements.map((el: any) => ({ ...el })) : []
+  }
+}
+
+const getGridSceneSignature = (elements: any[]) => {
+  if (!Array.isArray(elements) || elements.length === 0) return 'empty'
+  return elements
+    .map((el: any) => {
+      const id = String(el?.id ?? '')
+      const version = Number(el?.version ?? 0)
+      const versionNonce = Number(el?.versionNonce ?? 0)
+      const deleted = el?.isDeleted ? 1 : 0
+      const pointsLen = Array.isArray(el?.points) ? el.points.length : 0
+      const width = Number.isFinite(el?.width) ? Number(el.width) : 0
+      const height = Number.isFinite(el?.height) ? Number(el.height) : 0
+      return `${id}:${version}:${versionNonce}:${deleted}:${pointsLen}:${width}:${height}`
+    })
+    .sort()
+    .join('|')
+}
+
+const getGridElementSignature = (el: any) => {
+  const version = Number(el?.version ?? 0)
+  const versionNonce = Number(el?.versionNonce ?? 0)
+  const deleted = el?.isDeleted ? 1 : 0
+  const pointsLen = Array.isArray(el?.points) ? el.points.length : 0
+  const width = Number.isFinite(el?.width) ? Number(el.width) : 0
+  const height = Number.isFinite(el?.height) ? Number(el.height) : 0
+  return `${version}:${versionNonce}:${deleted}:${pointsLen}:${width}:${height}`
+}
+
+const computeGridSceneDelta = (prevElements: any[], nextElements: any[]) => {
+  const prevById = new Map<string, string>()
+  for (const el of Array.isArray(prevElements) ? prevElements : []) {
+    const id = String(el?.id || '')
+    if (!id) continue
+    prevById.set(id, getGridElementSignature(el))
+  }
+
+  const nextById = new Set<string>()
+  const upserts: any[] = []
+  for (const el of Array.isArray(nextElements) ? nextElements : []) {
+    const id = String(el?.id || '')
+    if (!id) continue
+    nextById.add(id)
+    const nextSig = getGridElementSignature(el)
+    const prevSig = prevById.get(id)
+    if (prevSig !== nextSig) upserts.push({ ...el })
+  }
+
+  const removedIds: string[] = []
+  for (const id of prevById.keys()) {
+    if (!nextById.has(id)) removedIds.push(id)
+  }
+
+  return { upserts, removedIds }
+}
+
+const applyGridSceneDelta = (base: any[], upserts: any[], removedIds?: string[]) => {
+  const byId = new Map<string, any>()
+  const order: string[] = []
+
+  for (const raw of Array.isArray(base) ? base : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    if (!byId.has(id)) order.push(id)
+    byId.set(id, { ...raw })
+  }
+
+  for (const rid of Array.isArray(removedIds) ? removedIds : []) {
+    const id = String(rid || '')
+    if (!id) continue
+    byId.delete(id)
+  }
+
+  for (const raw of Array.isArray(upserts) ? upserts : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    const incoming = { ...raw }
+    const current = byId.get(id)
+    if (!current) {
+      order.push(id)
+      byId.set(id, incoming)
+      continue
+    }
+    if (isIncomingGridElementNewer(incoming, current)) {
+      byId.set(id, incoming)
+    }
+  }
+
+  const uniqueOrder = Array.from(new Set(order))
+  return uniqueOrder.map((id) => byId.get(id)).filter(Boolean)
+}
+
+const isIncomingGridElementNewer = (incoming: any, current: any) => {
+  const incomingVersion = Number(incoming?.version ?? 0)
+  const currentVersion = Number(current?.version ?? 0)
+  if (incomingVersion !== currentVersion) return incomingVersion > currentVersion
+
+  // Same-version updates can still carry meaningful geometry growth while drawing.
+  const incomingPointsLen = Array.isArray(incoming?.points) ? incoming.points.length : 0
+  const currentPointsLen = Array.isArray(current?.points) ? current.points.length : 0
+  if (incomingPointsLen !== currentPointsLen) return incomingPointsLen > currentPointsLen
+
+  const incomingWidth = Number.isFinite(incoming?.width) ? Number(incoming.width) : 0
+  const currentWidth = Number.isFinite(current?.width) ? Number(current.width) : 0
+  const incomingHeight = Number.isFinite(incoming?.height) ? Number(incoming.height) : 0
+  const currentHeight = Number.isFinite(current?.height) ? Number(current.height) : 0
+  const incomingArea = incomingWidth * incomingHeight
+  const currentArea = currentWidth * currentHeight
+  if (incomingArea !== currentArea) return incomingArea > currentArea
+
+  const incomingDeleted = Boolean(incoming?.isDeleted)
+  const currentDeleted = Boolean(current?.isDeleted)
+  if (incomingDeleted !== currentDeleted) return incomingDeleted && !currentDeleted
+
+  return false
+}
+
+const mergeGridSceneElements = (base: any[], incoming: any[]) => {
+  const byId = new Map<string, any>()
+  const order: string[] = []
+
+  for (const raw of Array.isArray(base) ? base : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    if (!byId.has(id)) order.push(id)
+    byId.set(id, { ...raw })
+  }
+
+  for (const raw of Array.isArray(incoming) ? incoming : []) {
+    const id = String(raw?.id || '')
+    if (!id) continue
+    const incomingElement = { ...raw }
+    const current = byId.get(id)
+    if (!current) {
+      order.push(id)
+      byId.set(id, incomingElement)
+      continue
+    }
+    if (isIncomingGridElementNewer(incomingElement, current)) {
+      byId.set(id, incomingElement)
+    }
+  }
+
+  return order.map((id) => byId.get(id)).filter(Boolean)
 }
 
 export default function DiagramOverlayModule(props: {
@@ -72,7 +274,187 @@ export default function DiagramOverlayModule(props: {
   const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
   const [presenterOverride, setPresenterOverride] = useState(false)
-  const canPresent = localOnly ? true : (Boolean(isAdmin) || presenterOverride)
+  const [activePresenterUserKey, setActivePresenterUserKey] = useState<string | null>(null)
+  const activePresenterUserKeyRef = useRef<string>('')
+  const activePresenterClientIdsRef = useRef<Set<string>>(new Set())
+  const handoffInFlightRef = useRef(false)
+  const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
+  const lastPresenterSetTsRef = useRef(0)
+  const lastControllerRightsTsRef = useRef(0)
+  const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
+  const controllerRightsUserAllowlistRef = useRef<Set<string>>(new Set())
+  const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
+  const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
+  const connectedClientsRef = useRef<Array<PresenceClient>>([])
+  useEffect(() => {
+    connectedClientsRef.current = connectedClients
+  }, [connectedClients])
+  const [overlayRosterVisible, setOverlayRosterVisible] = useState(false)
+  const [handoffSwitching, setHandoffSwitching] = useState(false)
+  const [handoffMessage, setHandoffMessage] = useState<string | null>(null)
+  const [editingAuthorityUserKeys, setEditingAuthorityUserKeys] = useState<string[]>([])
+  const [switchConflictActive, setSwitchConflictActive] = useState(false)
+  const handoffMessageTimerRef = useRef<number | null>(null)
+  const rightsGrantedAtByUserKeyRef = useRef<Map<string, number>>(new Map())
+  const recentBroadcastTsByUserKeyRef = useRef<Map<string, number>>(new Map())
+  const editingAuthorityUserKeysRef = useRef<Set<string>>(new Set())
+  const switchConflictActiveRef = useRef(false)
+  const conflictStartedAtRef = useRef<number | null>(null)
+  const lastConflictReasonRef = useRef('')
+  const conflictResolverInFlightRef = useRef(false)
+  const lastConflictEnforceSignatureRef = useRef('')
+  const lastConflictEnforceTsRef = useRef(0)
+  const clientId = useMemo(() => {
+    const base = sanitizeIdentifier(userId || 'anonymous')
+    const randomSuffix = Math.random().toString(36).slice(2, 8)
+    return `${base}-${randomSuffix}`
+  }, [userId])
+  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+  const channelRef = useRef<any>(null)
+  const clientIdRef = useRef(clientId)
+  useEffect(() => {
+    clientIdRef.current = clientId
+  }, [clientId])
+  const selfUserKey = useMemo(() => getUserKey(userId, userDisplayName), [userId, userDisplayName])
+
+  useEffect(() => {
+    activePresenterUserKeyRef.current = activePresenterUserKey ? String(activePresenterUserKey) : ''
+  }, [activePresenterUserKey])
+
+  const bumpControllerRightsVersion = useCallback(() => {
+    setControllerRightsVersion(v => v + 1)
+  }, [])
+
+  const showHandoffFailure = useCallback((message: string) => {
+    setHandoffMessage(message)
+    if (typeof window === 'undefined') return
+    if (handoffMessageTimerRef.current != null) {
+      window.clearTimeout(handoffMessageTimerRef.current)
+    }
+    handoffMessageTimerRef.current = window.setTimeout(() => {
+      handoffMessageTimerRef.current = null
+      setHandoffMessage(null)
+    }, 2600)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (handoffMessageTimerRef.current != null) {
+        window.clearTimeout(handoffMessageTimerRef.current)
+        handoffMessageTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    editingAuthorityUserKeysRef.current = new Set(editingAuthorityUserKeys)
+  }, [editingAuthorityUserKeys])
+
+  useEffect(() => {
+    switchConflictActiveRef.current = switchConflictActive
+  }, [switchConflictActive])
+
+  const setEditingAuthorityKeysStable = useCallback((nextKeys: string[]) => {
+    const nextUnique = Array.from(new Set(nextKeys.filter(Boolean))).sort((a, b) => a.localeCompare(b))
+    const current = editingAuthorityUserKeysRef.current
+    if (current.size === nextUnique.length) {
+      let same = true
+      for (const key of nextUnique) {
+        if (!current.has(key)) {
+          same = false
+          break
+        }
+      }
+      if (same) return
+    }
+    setEditingAuthorityUserKeys(nextUnique)
+  }, [])
+
+  const setSwitchConflictActiveStable = useCallback((next: boolean) => {
+    if (switchConflictActiveRef.current === next) return
+    setSwitchConflictActive(next)
+  }, [])
+
+  const resolveUserForClientId = useCallback((candidateClientId?: string) => {
+    const wanted = String(candidateClientId || '').trim()
+    if (!wanted) return null
+    const member = connectedClientsRef.current.find(client => client.clientId === wanted)
+    if (!member) return null
+    const name = normalizeDisplayName(member.name || '') || member.clientId
+    const userKey = getUserKey(member.userId, name) || `client:${member.clientId}`
+    return {
+      userKey,
+      name,
+      userId: member.userId,
+      clientId: member.clientId,
+    }
+  }, [])
+
+  const resolveIdentityForUserKey = useCallback((candidateUserKey?: string) => {
+    const userKey = String(candidateUserKey || '').trim()
+    if (!userKey) return null
+    const members = connectedClientsRef.current.filter(client => {
+      if (!client.clientId || client.clientId === 'all') return false
+      const name = normalizeDisplayName(client.name || '') || client.clientId
+      const key = getUserKey(client.userId, name) || `client:${client.clientId}`
+      return key === userKey
+    })
+    const first = members[0] || null
+    return {
+      userKey,
+      name: first ? (normalizeDisplayName(first.name || '') || first.clientId) : userKey.replace(/^uid:|^name:|^client:/, ''),
+      userId: first?.userId,
+      clientIds: members.map(member => member.clientId),
+    }
+  }, [])
+
+  const recordRightsGrant = useCallback((userKey: string | null | undefined, ts?: number) => {
+    const key = String(userKey || '').trim()
+    if (!key) return
+    const grantTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
+    const previous = rightsGrantedAtByUserKeyRef.current.get(key) ?? 0
+    if (grantTs >= previous) {
+      rightsGrantedAtByUserKeyRef.current.set(key, grantTs)
+    }
+  }, [])
+
+  const recordBroadcastActivity = useCallback((userKey: string | null | undefined, ts?: number) => {
+    const key = String(userKey || '').trim()
+    if (!key) return
+    const activityTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
+    const previous = recentBroadcastTsByUserKeyRef.current.get(key) ?? 0
+    if (activityTs >= previous) {
+      recentBroadcastTsByUserKeyRef.current.set(key, activityTs)
+    }
+  }, [])
+
+  const isAvatarEditingAuthority = useCallback((userKey?: string | null) => {
+    const key = String(userKey || '').trim()
+    if (!key) return false
+    return editingAuthorityUserKeysRef.current.has(key)
+  }, [])
+
+  const isSelfActivePresenter = useCallback(() => {
+    const activeKey = (activePresenterUserKey || activePresenterUserKeyRef.current || '').trim()
+    if (!activeKey) return false
+    if (selfUserKey && activeKey === selfUserKey) return true
+    const myId = clientIdRef.current
+    if (!myId) return false
+    return activePresenterClientIdsRef.current.has(myId)
+  }, [activePresenterUserKey, selfUserKey])
+
+  const hasControllerRights = useCallback(() => {
+    return Boolean(isAdmin)
+  }, [isAdmin, selfUserKey])
+
+  const presenterControlCanPresent = useMemo(() => {
+    return isSelfActivePresenter()
+  }, [activePresenterUserKey, hasControllerRights, isSelfActivePresenter])
+
+  const canPresent = localOnly
+    ? true
+    : presenterControlCanPresent
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -125,6 +507,27 @@ export default function DiagramOverlayModule(props: {
   const [mobileTrayOpen, setMobileTrayOpen] = useState(false)
   const [mobileTrayBottomOffsetPx, setMobileTrayBottomOffsetPx] = useState(0)
   const [mobileTrayReservePx, setMobileTrayReservePx] = useState(28)
+  const [gridToolbarOffsets, setGridToolbarOffsets] = useState({
+    top: { x: 0, y: 0 },
+    bottom: { x: 0, y: 0 },
+  })
+  const gridToolbarDragRef = useRef<{
+    target: 'top' | 'bottom' | null
+    pointerId: number | null
+    isDragging: boolean
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+  }>({
+    target: null,
+    pointerId: null,
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+  })
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -135,19 +538,477 @@ export default function DiagramOverlayModule(props: {
     [mobileTrayBottomOffsetPx, mobileTrayReservePx]
   )
 
-  const clientId = useMemo(() => {
-    const base = sanitizeIdentifier(userId || 'anonymous')
-    const randomSuffix = Math.random().toString(36).slice(2, 8)
-    return `${base}-${randomSuffix}`
-  }, [userId])
+  const setPresenterRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
+    if (!isAdmin) return
+    const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all')))
+    const userKey = typeof opts?.userKey === 'string' ? opts.userKey : ''
+    if (!targets.length && !userKey) return
+    bumpControllerRightsVersion()
 
-  const channelName = useMemo(() => makeChannelName(boardId, gradeLabel, realtimeScopeId), [boardId, gradeLabel, realtimeScopeId])
+    const channel = channelRef.current
+    if (!channel) return
+    const ts = Date.now()
+    try {
+      if (allowed) {
+        const presenterKey = userKey || null
+        if (!presenterKey) return
+        recordRightsGrant(presenterKey, ts)
+        setActivePresenterUserKey(presenterKey)
+        activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
+        activePresenterClientIdsRef.current = new Set(targets)
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'presenter-set',
+          presenterUserKey: presenterKey,
+          targetClientIds: targets,
+          targetClientId: targets[0],
+          ts,
+        })
+      } else {
+        const activeKey = activePresenterUserKeyRef.current
+        const sameKey = Boolean(userKey && activeKey && userKey === activeKey)
+        const sameClient = targets.some(id => activePresenterClientIdsRef.current.has(id))
+        if (sameKey || sameClient) {
+          setActivePresenterUserKey(null)
+          activePresenterUserKeyRef.current = ''
+          activePresenterClientIdsRef.current = new Set()
+          await channel.publish('control', {
+            clientId: clientIdRef.current,
+            author: userDisplayName,
+            action: 'presenter-set',
+            presenterUserKey: null,
+            targetClientIds: [],
+            ts,
+          })
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, userDisplayName])
 
-  const channelRef = useRef<any>(null)
-  const clientIdRef = useRef(clientId)
+  const reclaimAdminControl = useCallback(async () => {
+    if (!isAdmin) return false
+    bumpControllerRightsVersion()
+
+    const teacherPresenterKey = (selfUserKey || '').trim() || null
+    const teacherClientId = clientIdRef.current
+    if (teacherPresenterKey) {
+      recordRightsGrant(teacherPresenterKey, Date.now())
+    }
+    controllerRightsUserAllowlistRef.current.clear()
+    controllerRightsAllowlistRef.current.clear()
+    setActivePresenterUserKey(teacherPresenterKey)
+    activePresenterUserKeyRef.current = teacherPresenterKey ? String(teacherPresenterKey) : ''
+    activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+
+    const channel = channelRef.current
+    if (!channel) return false
+    const ts = Date.now()
+    try {
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: null,
+        targetClientIds: [],
+        ts,
+      })
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: teacherPresenterKey,
+        targetClientIds: teacherClientId ? [teacherClientId] : [],
+        ts: ts + 1,
+      })
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: ts + 2,
+      })
+      return true
+    } catch {
+      return false
+    }
+  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, selfUserKey, userDisplayName])
+
+  const handOverPresentation = useCallback((target: PresenterHandoffTarget) => {
+    if (!isAdmin) return
+    void (async () => {
+      if (handoffInFlightRef.current) {
+        pendingHandoffTargetRef.current = target
+        return
+      }
+      handoffInFlightRef.current = true
+      setHandoffSwitching(true)
+      setHandoffMessage(null)
+
+      if (!target) {
+        try {
+          const ok = await reclaimAdminControl()
+          if (!ok) showHandoffFailure('Switch failed. Please try again.')
+        } finally {
+          setHandoffSwitching(false)
+          handoffInFlightRef.current = false
+        }
+        return
+      }
+
+      const clickedClientId = String(target.clientId || '').trim()
+      const clickedUserId = String(target.userId || '').trim()
+      const clickedUserKey = String(target.userKey || '').trim()
+      const displayName = String(target.displayName || '').trim()
+      if (!clickedClientId && !clickedUserKey) {
+        showHandoffFailure('Switch failed. Please select a valid user.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const resolvedSelection = resolveHandoffSelection({
+        clickedClientId,
+        clickedUserId,
+        clickedUserKey,
+        clickedDisplayName: displayName,
+        connectedClients,
+        excludedClientIds: ['all'],
+      })
+
+      const nextClientIds = resolvedSelection.nextClientIds
+      if (!nextClientIds.length) {
+        showHandoffFailure('Switch failed. User is not connected.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const resolvedPresenterKey = resolvedSelection.resolvedPresenterKey
+      if (!resolvedPresenterKey) {
+        showHandoffFailure('Switch failed. Could not resolve user identity.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const previousPresenterKey = activePresenterUserKeyRef.current || null
+      const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
+      const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
+      const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
+      const nextPresenterKey = resolvedPresenterKey
+      recordRightsGrant(nextPresenterKey, Date.now())
+      controllerRightsUserAllowlistRef.current.clear()
+      controllerRightsAllowlistRef.current.clear()
+      controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
+      for (const id of nextClientIds) {
+        if (!id || id === 'all') continue
+        controllerRightsAllowlistRef.current.add(id)
+      }
+      setActivePresenterUserKey(nextPresenterKey)
+      activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
+      activePresenterClientIdsRef.current = new Set(nextClientIds)
+      bumpControllerRightsVersion()
+
+      const channel = channelRef.current
+      if (!channel) {
+        setActivePresenterUserKey(previousPresenterKey)
+        activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
+        activePresenterClientIdsRef.current = previousPresenterClientIds
+        controllerRightsUserAllowlistRef.current = previousUserAllowlist
+        controllerRightsAllowlistRef.current = previousClientAllowlist
+        bumpControllerRightsVersion()
+        showHandoffFailure('Switch failed. Realtime channel unavailable.')
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        return
+      }
+
+      const ts = Date.now()
+      try {
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'presenter-set',
+          presenterUserKey: nextPresenterKey,
+          targetClientIds: nextClientIds,
+          targetClientId: nextClientIds[0],
+          ts,
+        })
+
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights-reset',
+          ts: ts + 1,
+        })
+
+        await channel.publish('control', {
+          clientId: clientIdRef.current,
+          author: userDisplayName,
+          action: 'controller-rights',
+          targetUserKey: nextPresenterKey,
+          targetClientIds: nextClientIds,
+          targetClientId: nextClientIds[0],
+          name: resolvedSelection.resolvedDisplayName || displayName,
+          allowed: true,
+          ts: ts + 2,
+        })
+      } catch {
+        setActivePresenterUserKey(previousPresenterKey)
+        activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
+        activePresenterClientIdsRef.current = previousPresenterClientIds
+        controllerRightsUserAllowlistRef.current = previousUserAllowlist
+        controllerRightsAllowlistRef.current = previousClientAllowlist
+        bumpControllerRightsVersion()
+        showHandoffFailure('Switch failed. Please try again.')
+      } finally {
+        setHandoffSwitching(false)
+        handoffInFlightRef.current = false
+        const pending = pendingHandoffTargetRef.current
+        pendingHandoffTargetRef.current = null
+        if (pending) {
+          handOverPresentation(pending)
+        }
+      }
+    })()
+  }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
+
+  const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
+    if (!isAdmin) return
+    if (handoffInFlightRef.current || conflictResolverInFlightRef.current) return
+
+    const now = Date.now()
+    const signature = `${userKey}::${reason}`
+    if (signature === lastConflictEnforceSignatureRef.current && now - lastConflictEnforceTsRef.current < 1500) {
+      return
+    }
+    lastConflictEnforceSignatureRef.current = signature
+    lastConflictEnforceTsRef.current = now
+
+    conflictResolverInFlightRef.current = true
+    try {
+      if (selfUserKey && userKey === selfUserKey) {
+        await reclaimAdminControl()
+        return
+      }
+
+      const identity = resolveIdentityForUserKey(userKey)
+      const targetClientIds = Array.from(new Set((identity?.clientIds || []).filter(id => id && id !== 'all')))
+      if (!targetClientIds.length) return
+
+      controllerRightsUserAllowlistRef.current.clear()
+      controllerRightsAllowlistRef.current.clear()
+      controllerRightsUserAllowlistRef.current.add(userKey)
+      for (const id of targetClientIds) {
+        controllerRightsAllowlistRef.current.add(id)
+      }
+
+      setActivePresenterUserKey(userKey)
+      activePresenterUserKeyRef.current = userKey
+      activePresenterClientIdsRef.current = new Set(targetClientIds)
+      bumpControllerRightsVersion()
+      recordRightsGrant(userKey, now)
+
+      const channel = channelRef.current
+      if (!channel) return
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'presenter-set',
+        presenterUserKey: userKey,
+        targetClientIds,
+        targetClientId: targetClientIds[0],
+        ts: now,
+      })
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights-reset',
+        ts: now + 1,
+      })
+
+      await channel.publish('control', {
+        clientId: clientIdRef.current,
+        author: userDisplayName,
+        action: 'controller-rights',
+        targetUserKey: userKey,
+        targetClientIds,
+        targetClientId: targetClientIds[0],
+        name: identity?.name || null,
+        allowed: true,
+        ts: now + 2,
+      })
+    } catch {
+      // ignore
+    } finally {
+      conflictResolverInFlightRef.current = false
+    }
+  }, [bumpControllerRightsVersion, isAdmin, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
+
+  const evaluateSwitchingAuthority = useCallback(() => {
+    if (!isAdmin || localOnly) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      setSwitchConflictActiveStable(false)
+      setEditingAuthorityKeysStable([])
+      if (!handoffInFlightRef.current) {
+        setHandoffSwitching(false)
+      }
+      return
+    }
+
+    const FAILURE_TIMEOUT_MS = 60000
+    const now = Date.now()
+    const evaluation = evaluateSwitchingAuthorities({
+      connectedClients: connectedClientsRef.current,
+      excludedClientIds: ['all'],
+      activePresenterUserKey: activePresenterUserKeyRef.current,
+      activePresenterClientIds: activePresenterClientIdsRef.current,
+      controllerRightsUserAllowlist: controllerRightsUserAllowlistRef.current,
+      controllerRightsClientAllowlist: controllerRightsAllowlistRef.current,
+      rightsGrantedAtByUserKey: rightsGrantedAtByUserKeyRef.current,
+      recentBroadcastTsByUserKey: recentBroadcastTsByUserKeyRef.current,
+      lastPresenterSetTs: lastPresenterSetTsRef.current,
+      lastControllerRightsTs: lastControllerRightsTsRef.current,
+      controlLock: null,
+      selfCanWrite: canPresentRef.current,
+      selfUserKey,
+      selfClientId: clientIdRef.current || undefined,
+      selfDisplayName: normalizeDisplayName(userDisplayName || '') || 'Teacher',
+      nowTs: now,
+      broadcastSignalWindowMs: 12000,
+    })
+
+    for (const key of evaluation.staleBroadcastUserKeys) {
+      recentBroadcastTsByUserKeyRef.current.delete(key)
+    }
+
+    setEditingAuthorityKeysStable(evaluation.activeUserKeys)
+
+    if (evaluation.activeCandidates.length <= 1) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      setSwitchConflictActiveStable(false)
+      if (!handoffInFlightRef.current) {
+        setHandoffSwitching(false)
+      }
+      return
+    }
+
+    setSwitchConflictActiveStable(true)
+    setHandoffSwitching(true)
+
+    if (evaluation.canonicalCandidate) {
+      conflictStartedAtRef.current = null
+      lastConflictReasonRef.current = ''
+      void enforceCanonicalPresenter(evaluation.canonicalCandidate.userKey, 'timestamp-winner')
+      return
+    }
+
+    if (!conflictStartedAtRef.current) {
+      conflictStartedAtRef.current = now
+    }
+    lastConflictReasonRef.current = evaluation.unresolvedReason || 'Unknown conflict state'
+    if (now - conflictStartedAtRef.current < FAILURE_TIMEOUT_MS) {
+      return
+    }
+    if (conflictResolverInFlightRef.current) {
+      return
+    }
+
+    conflictResolverInFlightRef.current = true
+    void (async () => {
+      try {
+        const fallbackReason = lastConflictReasonRef.current || 'Unknown conflict state'
+        const ok = await reclaimAdminControl()
+        if (ok) {
+          showHandoffFailure(`Failed to switch: ${fallbackReason} Returned editing to admin.`)
+        } else {
+          showHandoffFailure(`Failed to switch: ${fallbackReason} Could not force admin reclaim.`)
+        }
+      } finally {
+        conflictStartedAtRef.current = null
+        setSwitchConflictActiveStable(false)
+        setHandoffSwitching(false)
+        conflictResolverInFlightRef.current = false
+      }
+    })()
+  }, [enforceCanonicalPresenter, isAdmin, localOnly, reclaimAdminControl, selfUserKey, setEditingAuthorityKeysStable, setSwitchConflictActiveStable, showHandoffFailure, userDisplayName])
+
   useEffect(() => {
-    clientIdRef.current = clientId
-  }, [clientId])
+    if (!isAdmin || localOnly) {
+      setEditingAuthorityKeysStable([])
+      setSwitchConflictActiveStable(false)
+      return
+    }
+    evaluateSwitchingAuthority()
+    if (typeof window === 'undefined') return
+    const timer = window.setInterval(() => {
+      evaluateSwitchingAuthority()
+    }, 1000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [evaluateSwitchingAuthority, isAdmin, localOnly, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
+
+  const handleRosterAttendeeAvatarClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isAdmin) return
+    const el = e.currentTarget
+    const clickedClientId = String(el?.dataset?.clientId || '').trim()
+    const clickedUserId = String(el?.dataset?.userId || '').trim()
+    const clickedUserKey = String(el?.dataset?.userKey || '').trim()
+    const displayName = String(el?.dataset?.displayName || '').trim()
+    handOverPresentation({
+      clientId: clickedClientId,
+      userId: clickedUserId || undefined,
+      userKey: clickedUserKey,
+      displayName,
+    })
+  }, [handOverPresentation, isAdmin])
+
+  const teacherBadge = useMemo(() => {
+    const resolvedName = normalizeDisplayName(userDisplayName || '') || 'Teacher'
+    return {
+      name: resolvedName,
+      initials: getInitials(resolvedName, 'T'),
+    }
+  }, [userDisplayName])
+
+  const rawActivePresenterBadge = useMemo(() => deriveActivePresenterBadge({
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    connectedClients,
+    fallbackInitial: 'P',
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
+
+  const activePresenterBadge = useMemo(() => {
+    if (isAdmin && isSelfActivePresenter()) return null
+    return rawActivePresenterBadge
+  }, [isAdmin, isSelfActivePresenter, rawActivePresenterBadge])
+
+  const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
+    connectedClients,
+    selfClientId: clientIdRef.current || '',
+    selfUserId: String(userId || '').trim(),
+    activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
+    activePresenterClientIds: activePresenterClientIdsRef.current,
+    excludedClientIds: ['all'],
+  }), [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
+
+  const rosterAvatarLayout = useMemo(() => buildRosterAvatarLayout({
+    activePresenterBadge,
+    availableAttendees: availableRosterAttendees,
+    overlayRosterVisible,
+    attendeeInitialFallback: 'U',
+  }), [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
+  const showSwitchingToast = handoffSwitching || switchConflictActive
+  const switchingStatusLabel = switchConflictActive ? 'Switching... conflict detected' : 'Switching...'
+  const teacherAvatarGold = isAvatarEditingAuthority(selfUserKey)
 
   const [diagrams, setDiagrams] = useState<DiagramRecord[]>([])
   const diagramsRef = useRef<DiagramRecord[]>([])
@@ -189,6 +1050,22 @@ export default function DiagramOverlayModule(props: {
     if (!diagramState.activeDiagramId) return null
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
   }, [diagramState.activeDiagramId, diagrams])
+  const isGridDiagram = activeDiagram?.imageUrl === GRID_DIAGRAM_URL
+  const { visible: gridCloseVisible, peek: peekGridCloseButton, clearTimer: clearGridCloseTimer } = useTapToPeek({
+    autoHideMs: 1800,
+    defaultVisible: false,
+    disabled: !diagramState.isOpen || !isGridDiagram || !isAdmin,
+  })
+
+  useEffect(() => {
+    if (diagramState.isOpen && isGridDiagram && isAdmin) return
+    clearGridCloseTimer()
+  }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
+
+  useEffect(() => {
+    if (diagramState.isOpen && isGridDiagram && isAdmin) return
+    setOverlayRosterVisible(false)
+  }, [diagramState.isOpen, isAdmin, isGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -249,11 +1126,28 @@ export default function DiagramOverlayModule(props: {
   ])
 
   const normalizeAnnotations = (value: any): DiagramAnnotations => {
-    const space = value?.space === 'image' ? 'image' : undefined
+    const space = value?.space === 'image' || value?.space === 'world' ? value.space : undefined
+    const worldFrame =
+      value?.worldFrame && Number.isFinite(value.worldFrame.width) && Number.isFinite(value.worldFrame.height)
+        ? { width: Math.max(1e-6, Number(value.worldFrame.width)), height: Math.max(1e-6, Number(value.worldFrame.height)) }
+        : undefined
+    const worldW = worldFrame?.width ?? 1
+    const worldH = worldFrame?.height ?? 1
+    const toImagePoint = (p: any) => {
+      if (space === 'world') {
+        const wx = Number.isFinite(p?.wx) ? Number(p.wx) : Number.isFinite(p?.x) ? Number(p.x) : 0
+        const wy = Number.isFinite(p?.wy) ? Number(p.wy) : Number.isFinite(p?.y) ? Number(p.y) : 0
+        return { x: wx / worldW, y: wy / worldH }
+      }
+      return {
+        x: Number.isFinite(p?.x) ? Number(p.x) : 0,
+        y: Number.isFinite(p?.y) ? Number(p.y) : 0,
+      }
+    }
     const strokes = Array.isArray(value?.strokes) ? value.strokes : []
     const arrows = Array.isArray(value?.arrows) ? value.arrows : []
     return {
-      space,
+      space: IMAGE_SPACE,
       strokes: strokes
         .map((s: any) => ({
           id: typeof s?.id === 'string' ? s.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -263,7 +1157,7 @@ export default function DiagramOverlayModule(props: {
           locked: Boolean(s?.locked),
           points: Array.isArray(s?.points)
             ? s.points
-                .map((p: any) => ({ x: typeof p?.x === 'number' ? p.x : 0, y: typeof p?.y === 'number' ? p.y : 0 }))
+                .map((p: any) => toImagePoint(p))
                 .filter((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y))
             : [],
         }))
@@ -276,12 +1170,54 @@ export default function DiagramOverlayModule(props: {
           headSize: typeof a?.headSize === 'number' ? a.headSize : 12,
           z: typeof a?.z === 'number' && Number.isFinite(a.z) ? a.z : undefined,
           locked: Boolean(a?.locked),
-          start: { x: typeof a?.start?.x === 'number' ? a.start.x : 0, y: typeof a?.start?.y === 'number' ? a.start.y : 0 },
-          end: { x: typeof a?.end?.x === 'number' ? a.end.x : 0, y: typeof a?.end?.y === 'number' ? a.end.y : 0 },
+          start: toImagePoint(a?.start),
+          end: toImagePoint(a?.end),
         }))
         .filter((a: any) => Number.isFinite(a.start.x) && Number.isFinite(a.start.y) && Number.isFinite(a.end.x) && Number.isFinite(a.end.y)),
     }
   }
+
+  const toTransportAnnotations = useCallback((diagramId: string, annotations: DiagramAnnotations | null): DiagramAnnotations | null => {
+    if (!annotations) return null
+    const diag = diagramsRef.current.find(d => d.id === diagramId)
+    if (!diag || diag.imageUrl === GRID_DIAGRAM_URL) return annotations
+
+    const fallbackW = Number.isFinite((annotations as any)?.worldFrame?.width) ? Math.max(1, Number((annotations as any).worldFrame.width)) : 1000
+    const fallbackH = Number.isFinite((annotations as any)?.worldFrame?.height) ? Math.max(1, Number((annotations as any).worldFrame.height)) : 1000
+    const cachedFrame = diagramWorldFrameRef.current.get(diagramId)
+
+    let worldW = cachedFrame?.width ?? fallbackW
+    let worldH = cachedFrame?.height ?? fallbackH
+
+    if (activeDiagram?.id === diagramId) {
+      const img = imageRef.current
+      if (img?.naturalWidth && img?.naturalHeight) {
+        worldW = Math.max(1, img.naturalWidth)
+        worldH = Math.max(1, img.naturalHeight)
+      }
+    }
+
+    const toWorldPoint = (p: DiagramStrokePoint) => ({
+      x: p.x,
+      y: p.y,
+      wx: p.x * worldW,
+      wy: p.y * worldH,
+    })
+
+    return {
+      space: 'world',
+      worldFrame: { width: worldW, height: worldH },
+      strokes: (annotations.strokes || []).map(s => ({
+        ...s,
+        points: (s.points || []).map(toWorldPoint as any),
+      })),
+      arrows: (annotations.arrows || []).map(a => ({
+        ...a,
+        start: toWorldPoint(a.start) as any,
+        end: toWorldPoint(a.end) as any,
+      })),
+    }
+  }, [activeDiagram?.id])
 
   const loadFromServer = useCallback(async () => {
     try {
@@ -304,7 +1240,7 @@ export default function DiagramOverlayModule(props: {
       const serverState = payload.state
       const nextState: DiagramState = {
         activeDiagramId: typeof serverState?.activeDiagramId === 'string' ? serverState.activeDiagramId : null,
-        isOpen: typeof serverState?.isOpen === 'boolean' ? serverState.isOpen : false,
+        isOpen: false,
       }
       if (!nextState.activeDiagramId && nextDiagrams.length) nextState.activeDiagramId = nextDiagrams[0].id
       setDiagramState(nextState)
@@ -373,7 +1309,7 @@ export default function DiagramOverlayModule(props: {
           body: JSON.stringify({
             sessionKey: channelName,
             imageUrl: url,
-            title: title || file.name,
+            title: title || toDisplayFileName(file.name) || file.name,
           }),
         })
 
@@ -403,7 +1339,8 @@ export default function DiagramOverlayModule(props: {
       if (e?.target) e.target.value = ''
       if (!file) return
 
-      const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', file.name) : null) ?? undefined
+      const fallbackTitle = toDisplayFileName(file.name) || file.name
+      const title = (typeof window !== 'undefined' ? window.prompt('Diagram title?', fallbackTitle) : null) ?? undefined
       try {
         await uploadAndCreateDiagram(file, title)
       } catch (err) {
@@ -423,15 +1360,19 @@ export default function DiagramOverlayModule(props: {
     const ch = channelRef.current
     if (!ch) return
     try {
+      const ts = message.ts ?? Date.now()
       await ch.publish('diagram', {
         ...message,
-        ts: message.ts ?? Date.now(),
+        ts,
         sender: message.sender ?? clientIdRef.current,
       })
+      if (message.kind !== 'state') {
+        recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), ts)
+      }
     } catch {
       // ignore
     }
-  }, [])
+  }, [recordBroadcastActivity, selfUserKey])
 
   const persistState = useCallback(async (next: DiagramState) => {
     if (!isAdmin) return
@@ -482,10 +1423,98 @@ export default function DiagramOverlayModule(props: {
       const diag = diagramsRef.current.find(d => d.id === next.activeDiagramId)
       if (diag) {
         await publish({ kind: 'add', diagram: diag })
-        await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] } })
+        await publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
+        if (diag.imageUrl === GRID_DIAGRAM_URL) {
+          const api = excalidrawApiRef.current
+          const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+          const cached = gridSceneByDiagramRef.current.get(diag.id)
+          const elements = Array.isArray(live) ? cloneGridElementsPayload(live) : cached
+          if (Array.isArray(elements)) {
+            await publish({ kind: 'grid-scene-set', diagramId: diag.id, elements })
+          }
+        }
       }
     }
-  }, [isAdmin, persistState, publish])
+  }, [isAdmin, persistState, publish, toTransportAnnotations])
+
+  const clearDiagramAnnotations = useCallback(async (diagramId: string) => {
+    const emptyAnnotations: DiagramAnnotations = { space: IMAGE_SPACE, strokes: [], arrows: [] }
+    const next = diagramsRef.current.map(d => (d.id === diagramId ? { ...d, annotations: emptyAnnotations } : d))
+    diagramsRef.current = next
+    setDiagrams(next)
+
+    if (!isAdmin || localOnly) return
+    try {
+      await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annotations: emptyAnnotations }),
+      })
+    } catch {
+      // ignore
+    }
+  }, [isAdmin, localOnly])
+
+  const openGridDiagram = useCallback(async () => {
+    if (!canPresentRef.current) return
+    const normalizedTitle = GRID_DIAGRAM_TITLE.toLowerCase()
+    const existing = diagramsRef.current.find(d => (d.title || '').trim().toLowerCase() === normalizedTitle)
+    if (existing) {
+      if (isAdmin) {
+        await clearDiagramAnnotations(existing.id)
+      }
+      await setOverlayState({ activeDiagramId: existing.id, isOpen: true })
+      return
+    }
+
+    if (!isAdmin || !channelName) {
+      await setOverlayState({ ...diagramStateRef.current, isOpen: true })
+      return
+    }
+
+    try {
+      const createRes = await fetch('/api/diagrams', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionKey: channelName,
+          imageUrl: GRID_DIAGRAM_URL,
+          title: GRID_DIAGRAM_TITLE,
+        }),
+      })
+
+      if (createRes.ok) {
+        const payload = await createRes.json().catch(() => null)
+        const diagram = payload?.diagram
+        if (diagram?.id) {
+          const record: DiagramRecord = {
+            id: String(diagram.id),
+            title: typeof diagram.title === 'string' ? diagram.title : GRID_DIAGRAM_TITLE,
+            imageUrl: typeof diagram.imageUrl === 'string' && diagram.imageUrl ? diagram.imageUrl : GRID_DIAGRAM_URL,
+            order: typeof diagram.order === 'number' ? diagram.order : 0,
+            annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
+          }
+
+          const current = diagramsRef.current
+          if (!current.some(d => d.id === record.id)) {
+            const next = [...current, record]
+            next.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+            diagramsRef.current = next
+            setDiagrams(next)
+          }
+
+          await setOverlayState({ activeDiagramId: record.id, isOpen: true })
+          return
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    await setOverlayState({ ...diagramStateRef.current, isOpen: true })
+  }, [channelName, clearDiagramAnnotations, isAdmin, normalizeAnnotations, setOverlayState])
 
   const handleClose = useCallback(async () => {
     // Ensure lesson-authoring snapshots are persisted before closing.
@@ -584,7 +1613,7 @@ export default function DiagramOverlayModule(props: {
                     <img src={d.imageUrl} alt={d.title || 'Diagram'} className="w-full h-full object-cover" />
                   ) : null}
                 </div>
-                <div className="mt-1 text-[11px] text-slate-700 truncate">{d.title || 'Diagram'}</div>
+                <div className="mt-1 text-[11px] text-slate-700 truncate">{toDisplayFileName(d.title) || d.title || 'Diagram'}</div>
               </button>
             ))
           )}
@@ -616,6 +1645,15 @@ export default function DiagramOverlayModule(props: {
       window.removeEventListener('philani-diagrams:toggle-tray', handler as any)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      void openGridDiagram()
+    }
+    window.addEventListener('philani-diagrams:open-grid', handler as any)
+    return () => window.removeEventListener('philani-diagrams:open-grid', handler as any)
+  }, [openGridDiagram])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -660,16 +1698,17 @@ export default function DiagramOverlayModule(props: {
     if (!isAdmin) return
     if (localOnly) return
     try {
+      const transport = toTransportAnnotations(diagramId, annotations)
       await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ annotations }),
+        body: JSON.stringify({ annotations: transport }),
       })
     } catch {
       // ignore
     }
-  }, [isAdmin, localOnly])
+  }, [isAdmin, localOnly, toTransportAnnotations])
 
   // Ably connection (independent from canvas)
   useEffect(() => {
@@ -701,10 +1740,40 @@ export default function DiagramOverlayModule(props: {
         channelRef.current = channel
         await channel.attach()
 
+        if (isAdmin && !localOnly && !activePresenterUserKeyRef.current) {
+          const teacherClientId = clientIdRef.current
+          const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
+          if (teacherPresenterKey) {
+            recordRightsGrant(teacherPresenterKey, Date.now())
+            setActivePresenterUserKey(teacherPresenterKey)
+            activePresenterUserKeyRef.current = String(teacherPresenterKey)
+            activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
+            bumpControllerRightsVersion()
+            try {
+              await channel.publish('control', {
+                clientId: clientIdRef.current,
+                author: userDisplayName,
+                action: 'presenter-set',
+                presenterUserKey: teacherPresenterKey,
+                targetClientIds: teacherClientId ? [teacherClientId] : [],
+                ts: Date.now(),
+              })
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         const handle = (message: any) => {
           const data = message?.data as DiagramRealtimeMessage
           if (!data || typeof data !== 'object') return
           if ((data as any).sender && (data as any).sender === clientIdRef.current) return
+          const senderClientId = typeof (data as any).sender === 'string' ? String((data as any).sender) : ''
+          if (senderClientId && data.kind !== 'state') {
+            const resolved = resolveUserForClientId(senderClientId)
+            const activityTs = Number((data as any).ts || Date.now())
+            recordBroadcastActivity(resolved?.userKey || `client:${senderClientId}`, activityTs)
+          }
 
           if (data.kind === 'state') {
             const next: DiagramState = {
@@ -762,6 +1831,56 @@ export default function DiagramOverlayModule(props: {
             return
           }
 
+          if (data.kind === 'grid-scene-set') {
+            const incomingElements = Array.isArray(data.elements) ? cloneGridElementsPayload(data.elements) : []
+            const activeId = diagramStateRef.current.activeDiagramId
+            const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
+            const isActiveGrid = activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL
+
+            const live = isActiveGrid
+              ? (excalidrawApiRef.current?.getSceneElementsIncludingDeleted?.() || excalidrawApiRef.current?.getSceneElements?.())
+              : null
+            const cached = gridSceneByDiagramRef.current.get(data.diagramId)
+            const baseElements = Array.isArray(live)
+              ? cloneGridElementsPayload(live)
+              : (Array.isArray(cached) ? cloneGridElementsPayload(cached) : [])
+            const mergedElements = mergeGridSceneElements(baseElements, incomingElements)
+
+            gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            gridLastDeltaBaseByDiagramRef.current.set(data.diagramId, mergedElements)
+            if (isActiveGrid) {
+              setGridSceneToApi(mergedElements)
+            }
+            return
+          }
+
+          if (data.kind === 'grid-scene-delta') {
+            const incomingUpserts = Array.isArray(data.upserts) ? cloneGridElementsPayload(data.upserts) : []
+            const incomingRemovedIds = Array.isArray((data as any).removedIds)
+              ? (data as any).removedIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+
+            const activeId = diagramStateRef.current.activeDiagramId
+            const active = activeId ? diagramsRef.current.find(d => d.id === activeId) : null
+            const isActiveGrid = activeId === data.diagramId && active?.imageUrl === GRID_DIAGRAM_URL
+
+            const live = isActiveGrid
+              ? (excalidrawApiRef.current?.getSceneElementsIncludingDeleted?.() || excalidrawApiRef.current?.getSceneElements?.())
+              : null
+            const cached = gridSceneByDiagramRef.current.get(data.diagramId)
+            const baseElements = Array.isArray(live)
+              ? cloneGridElementsPayload(live)
+              : (Array.isArray(cached) ? cloneGridElementsPayload(cached) : [])
+            const mergedElements = applyGridSceneDelta(baseElements, incomingUpserts, incomingRemovedIds)
+
+            gridSceneByDiagramRef.current.set(data.diagramId, mergedElements)
+            gridLastDeltaBaseByDiagramRef.current.set(data.diagramId, mergedElements)
+            if (isActiveGrid) {
+              setGridSceneToApi(mergedElements)
+            }
+            return
+          }
+
           if (data.kind === 'stroke-commit') {
             setDiagrams(prev => prev.map(d => {
               if (d.id !== data.diagramId) return d
@@ -771,12 +1890,136 @@ export default function DiagramOverlayModule(props: {
           }
         }
 
+        const handleControl = (message: any) => {
+          const data = message?.data as any
+          if (!data || typeof data !== 'object') return
+          const controlAction = typeof data?.action === 'string' ? data.action : ''
+          const controlTsRaw = Number(data?.ts ?? 0)
+          const controlTs = Number.isFinite(controlTsRaw) ? controlTsRaw : 0
+
+          if (controlAction === 'presenter-set') {
+            if (controlTs && controlTs < lastPresenterSetTsRef.current) return
+            if (controlTs) lastPresenterSetTsRef.current = controlTs
+            const incomingKey = typeof data.presenterUserKey === 'string' ? String(data.presenterUserKey) : ''
+            const nextKey = incomingKey ? incomingKey : null
+            if (nextKey) {
+              recordRightsGrant(nextKey, controlTs || Date.now())
+            }
+            setActivePresenterUserKey(nextKey)
+            activePresenterUserKeyRef.current = nextKey ? String(nextKey) : ''
+            const targets: string[] = Array.isArray(data.targetClientIds)
+              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            activePresenterClientIdsRef.current = new Set(dedupedTargets)
+            if (!nextKey) {
+              controllerRightsUserAllowlistRef.current.clear()
+              controllerRightsAllowlistRef.current.clear()
+              if (controlTs) lastControllerRightsTsRef.current = Math.max(lastControllerRightsTsRef.current, controlTs)
+              bumpControllerRightsVersion()
+            }
+            return
+          }
+
+          if (controlAction === 'controller-rights-reset') {
+            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
+            if (controlTs) lastControllerRightsTsRef.current = controlTs
+            controllerRightsUserAllowlistRef.current.clear()
+            controllerRightsAllowlistRef.current.clear()
+            bumpControllerRightsVersion()
+            return
+          }
+
+          if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
+            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
+            if (controlTs) lastControllerRightsTsRef.current = controlTs
+            const targets: string[] = Array.isArray(data.targetClientIds)
+              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
+            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
+            const allowed = Boolean(data.allowed)
+            const targetUserKey = typeof data.targetUserKey === 'string' ? String(data.targetUserKey) : ''
+
+            if (targetUserKey) {
+              if (allowed) {
+                recordRightsGrant(targetUserKey, controlTs || Date.now())
+                controllerRightsUserAllowlistRef.current.add(targetUserKey)
+              }
+              else controllerRightsUserAllowlistRef.current.delete(targetUserKey)
+            }
+            for (const target of dedupedTargets) {
+              if (!target) continue
+              if (allowed) controllerRightsAllowlistRef.current.add(target)
+              else controllerRightsAllowlistRef.current.delete(target)
+            }
+            if (targetUserKey || dedupedTargets.length) bumpControllerRightsVersion()
+          }
+        }
+
         channel.subscribe('diagram', handle)
+        channel.subscribe('control', handleControl)
 
         // Presence: on new join, admin pushes current diagram state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName || 'Participant', userId, isAdmin: Boolean(isAdmin) })
+          const toPresenceClient = (m: any): PresenceClient => ({
+            clientId: String(m?.clientId || ''),
+            name: normalizeDisplayName(m?.data?.name),
+            isAdmin: Boolean(m?.data?.isAdmin),
+            userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
+          })
+          const dedupePresence = (list: any[]) => {
+            const byKey = new Map<string, PresenceClient>()
+            const nameToKey = new Map<string, string>()
+            for (const raw of Array.isArray(list) ? list : []) {
+              const c = toPresenceClient(raw)
+              if (!c.clientId) continue
+
+              const normalizedName = normalizeDisplayName(c.name || c.clientId)
+              const nameKey = normalizedName.toLowerCase()
+
+              if (c.userId) {
+                const uidKey = `uid:${c.userId}`
+                const existingNameKey = nameToKey.get(nameKey)
+
+                if (existingNameKey && existingNameKey !== uidKey && !existingNameKey.startsWith('uid:')) {
+                  const existing = byKey.get(existingNameKey)
+                  if (existing) {
+                    byKey.delete(existingNameKey)
+                    byKey.set(uidKey, { ...existing, ...c, name: normalizedName || existing.name })
+                  } else if (!byKey.has(uidKey)) {
+                    byKey.set(uidKey, { ...c, name: normalizedName })
+                  }
+                } else if (!byKey.has(uidKey)) {
+                  byKey.set(uidKey, { ...c, name: normalizedName })
+                } else {
+                  const prev = byKey.get(uidKey)!
+                  byKey.set(uidKey, { ...prev, ...c, name: prev.name || normalizedName })
+                }
+
+                nameToKey.set(nameKey, uidKey)
+                continue
+              }
+
+              const mappedKey = nameToKey.get(nameKey) || `name:${nameKey}`
+              const prev = byKey.get(mappedKey)
+              if (prev?.userId) continue
+              byKey.set(mappedKey, prev ? { ...c, ...prev, name: prev.name || normalizedName } : { ...c, name: normalizedName })
+              if (!nameToKey.has(nameKey)) nameToKey.set(nameKey, mappedKey)
+            }
+            return Array.from(byKey.values())
+          }
+          const members = await channel.presence.get()
+          setConnectedClients(dedupePresence(members))
           channel.presence.subscribe(async (presenceMsg: any) => {
+            try {
+              const list = await channel.presence.get()
+              setConnectedClients(dedupePresence(list))
+            } catch {
+              // ignore
+            }
             if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return
             const state = diagramStateRef.current
@@ -786,7 +2029,16 @@ export default function DiagramOverlayModule(props: {
               const diag = diagramsRef.current.find(d => d.id === activeId)
               if (diag) {
                 await publish({ kind: 'add', diagram: diag })
-                await publish({ kind: 'annotations-set', diagramId: activeId, annotations: diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] } })
+                await publish({ kind: 'annotations-set', diagramId: activeId, annotations: toTransportAnnotations(activeId, diag.annotations ?? { space: IMAGE_SPACE, strokes: [], arrows: [] }) })
+                if (diag.imageUrl === GRID_DIAGRAM_URL) {
+                  const api = excalidrawApiRef.current
+                  const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+                  const cached = gridSceneByDiagramRef.current.get(activeId)
+                  const elements = Array.isArray(live) ? cloneGridElementsPayload(live) : cached
+                  if (Array.isArray(elements)) {
+                    await publish({ kind: 'grid-scene-set', diagramId: activeId, elements })
+                  }
+                }
               }
             }
           })
@@ -815,20 +2067,70 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [channelName, isAdmin, loadFromServer, localOnly, publish, userDisplayName, userId])
+  }, [bumpControllerRightsVersion, channelName, isAdmin, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+        gridSceneSuppressTimerRef.current = null
+      }
+      if (gridScenePublishTimerRef.current != null) {
+        window.clearTimeout(gridScenePublishTimerRef.current)
+        gridScenePublishTimerRef.current = null
+      }
+    }
+  }, [])
 
   // Rendering
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const gridViewportRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const excalidrawApiRef = useRef<any>(null)
+  const diagramWorldFrameRef = useRef<Map<string, { width: number; height: number }>>(new Map())
   const drawingRef = useRef(false)
   const currentStrokeRef = useRef<DiagramStroke | null>(null)
   const currentArrowRef = useRef<DiagramArrow | null>(null)
+  const toolGestureSnapshotRef = useRef<DiagramAnnotations | null>(null)
+  const toolGestureDiagramIdRef = useRef<string | null>(null)
+  const toolGesturePointerIdRef = useRef<number | null>(null)
+  const toolGestureMutatedRef = useRef(false)
+  const pendingTouchRef = useRef<null | {
+    pointerId: number
+    diagramId: string
+    tool: DiagramTool
+    startPoint: DiagramStrokePoint
+    startTs: number
+    snapshot: DiagramAnnotations | null
+  }>(null)
+  const gridEdgePanRafRef = useRef<number | null>(null)
+  const gridEdgePanPendingDxRef = useRef(0)
+  const gridEdgeAutoPanAnimRef = useRef<number | null>(null)
+  const gridStrokeTrackRef = useRef({
+    active: false,
+    pointerId: null as number | null,
+    lastX: 0,
+    minX: 0,
+    maxX: 0,
+    leftPanArmed: false,
+    rightPanArmed: false,
+  })
   const previewRef = useRef<null | { diagramId: string; annotations: DiagramAnnotations | null }>(null)
   const migratedDiagramIdsRef = useRef<Set<string>>(new Set())
 
   const [tool, setTool] = useState<DiagramTool>('pen')
   const [cropMode, setCropMode] = useState(false)
+  const { visible: cropControlsVisible, peek: peekCropControls, clearTimer: clearCropControlsTimer } = useTapToPeek({
+    autoHideMs: 1800,
+    defaultVisible: false,
+    disabled: !diagramState.isOpen || !cropMode || !canPresent,
+  })
+  useEffect(() => {
+    if (diagramState.isOpen && cropMode && canPresent) return
+    clearCropControlsTimer()
+  }, [canPresent, clearCropControlsTimer, cropMode, diagramState.isOpen])
   const [cropRect, setCropRect] = useState<CropRect | null>(null)
   const cropRectRef = useRef<CropRect | null>(null)
   useEffect(() => {
@@ -892,7 +2194,189 @@ export default function DiagramOverlayModule(props: {
   const redoRef = useRef<DiagramAnnotations[]>([])
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
+  const [gridApiReadyVersion, setGridApiReadyVersion] = useState(0)
+  const gridSceneByDiagramRef = useRef<Map<string, any[]>>(new Map())
+  const suppressGridScenePublishRef = useRef(false)
+  const gridSceneSuppressTimerRef = useRef<number | null>(null)
+  const gridScenePublishTimerRef = useRef<number | null>(null)
+  const gridPendingSceneRef = useRef<{ diagramId: string; elements: any[] } | null>(null)
+  const gridDeltaPublishTimerRef = useRef<number | null>(null)
+  const gridPendingDeltaRef = useRef<{ diagramId: string; prevElements: any[]; nextElements: any[] } | null>(null)
+  const gridLastDeltaBaseByDiagramRef = useRef<Map<string, any[]>>(new Map())
+  const lastPublishedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
+  const gridActiveDrawingRef = useRef(false)
+  const gridDrawingIdleTimerRef = useRef<number | null>(null)
+  const gridLastDrawingDiagramIdRef = useRef<string | null>(null)
+  const gridLastDrawingElementsRef = useRef<any[] | null>(null)
   const activeHistoryDiagramIdRef = useRef<string | null>(null)
+
+  const setGridSceneToApi = useCallback((elements: any[]) => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return
+    suppressGridScenePublishRef.current = true
+    if (typeof window !== 'undefined') {
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+      }
+      gridSceneSuppressTimerRef.current = window.setTimeout(() => {
+        suppressGridScenePublishRef.current = false
+        gridSceneSuppressTimerRef.current = null
+      }, 0)
+    }
+    api.updateScene({ elements })
+  }, [])
+
+  const queueGridScenePublish = useCallback((diagramId: string, elements: any[]) => {
+    const snapshot = cloneGridElementsPayload(elements)
+    const signature = getGridSceneSignature(snapshot)
+    const lastSignature = lastPublishedGridSceneSignatureRef.current.get(diagramId)
+    if (lastSignature === signature) return
+    gridPendingSceneRef.current = { diagramId, elements: snapshot }
+    if (typeof window === 'undefined') {
+      void publish({ kind: 'grid-scene-set', diagramId, elements: snapshot })
+      lastPublishedGridSceneSignatureRef.current.set(diagramId, signature)
+      gridPendingSceneRef.current = null
+      return
+    }
+    if (gridScenePublishTimerRef.current != null) return
+    gridScenePublishTimerRef.current = window.setTimeout(() => {
+      gridScenePublishTimerRef.current = null
+      const pending = gridPendingSceneRef.current
+      gridPendingSceneRef.current = null
+      if (!pending) return
+      const nextSignature = getGridSceneSignature(pending.elements)
+      const prevSignature = lastPublishedGridSceneSignatureRef.current.get(pending.diagramId)
+      if (nextSignature === prevSignature) return
+      void publish({ kind: 'grid-scene-set', diagramId: pending.diagramId, elements: pending.elements })
+      lastPublishedGridSceneSignatureRef.current.set(pending.diagramId, nextSignature)
+    }, 120)
+  }, [publish])
+
+  const queueGridSceneDeltaPublish = useCallback((diagramId: string, prevElements: any[], nextElements: any[]) => {
+    const prevSnapshot = cloneGridElementsPayload(prevElements)
+    const nextSnapshot = cloneGridElementsPayload(nextElements)
+
+    const pending = gridPendingDeltaRef.current
+    if (pending && pending.diagramId === diagramId) {
+      gridPendingDeltaRef.current = {
+        diagramId,
+        prevElements: pending.prevElements,
+        nextElements: nextSnapshot,
+      }
+    } else {
+      gridPendingDeltaRef.current = {
+        diagramId,
+        prevElements: prevSnapshot,
+        nextElements: nextSnapshot,
+      }
+    }
+
+    if (typeof window === 'undefined') {
+      const current = gridPendingDeltaRef.current
+      gridPendingDeltaRef.current = null
+      if (!current) return
+      const delta = computeGridSceneDelta(current.prevElements, current.nextElements)
+      if (!delta.upserts.length && !delta.removedIds.length) return
+      void publish({ kind: 'grid-scene-delta', diagramId: current.diagramId, upserts: delta.upserts, removedIds: delta.removedIds })
+      return
+    }
+
+    if (gridDeltaPublishTimerRef.current != null) return
+    gridDeltaPublishTimerRef.current = window.setTimeout(() => {
+      gridDeltaPublishTimerRef.current = null
+      const current = gridPendingDeltaRef.current
+      gridPendingDeltaRef.current = null
+      if (!current) return
+      const delta = computeGridSceneDelta(current.prevElements, current.nextElements)
+      if (!delta.upserts.length && !delta.removedIds.length) return
+      void publish({ kind: 'grid-scene-delta', diagramId: current.diagramId, upserts: delta.upserts, removedIds: delta.removedIds })
+    }, 80)
+  }, [publish])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (!activeDiagram?.id) return
+    if (!canPresentRef.current) return
+
+    const tick = () => {
+      if (gridActiveDrawingRef.current) return
+      const api = excalidrawApiRef.current
+      const live = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+      if (!Array.isArray(live)) return
+      const snapshot = cloneGridElementsPayload(live)
+      gridSceneByDiagramRef.current.set(activeDiagram.id, snapshot)
+      queueGridScenePublish(activeDiagram.id, snapshot)
+    }
+
+    const id = window.setInterval(tick, 450)
+    return () => window.clearInterval(id)
+  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram, queueGridScenePublish])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridDrawingIdleTimerRef.current != null) {
+        window.clearTimeout(gridDrawingIdleTimerRef.current)
+        gridDrawingIdleTimerRef.current = null
+      }
+    }
+  }, [])
+
+  const getExcalidrawToolType = useCallback((value: DiagramTool): 'selection' | 'freedraw' | 'arrow' | 'eraser' => {
+    if (value === 'pen') return 'freedraw'
+    if (value === 'arrow') return 'arrow'
+    if (value === 'eraser') return 'eraser'
+    return 'selection'
+  }, [])
+
+  const triggerExcalidrawHistoryShortcut = useCallback((mode: 'undo' | 'redo') => {
+    if (typeof window === 'undefined') return
+    const key = mode === 'undo' ? 'z' : 'y'
+    const target = containerRef.current || window
+    const evt = new KeyboardEvent('keydown', {
+      key,
+      code: mode === 'undo' ? 'KeyZ' : 'KeyY',
+      ctrlKey: true,
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    target.dispatchEvent(evt)
+  }, [])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (tool !== 'pen') {
+      setTool('pen')
+      return
+    }
+
+    const api = excalidrawApiRef.current
+    if (!api?.setActiveTool || !api?.updateScene) return
+
+    api.setActiveTool({ type: getExcalidrawToolType('pen') })
+    api.updateScene({ appState: { activeTool: { type: 'freedraw' }, currentItemStrokeWidth: 1 } })
+
+    const settle = window.setTimeout(() => {
+      const latestApi = excalidrawApiRef.current
+      latestApi?.setActiveTool?.({ type: 'freedraw' })
+      latestApi?.updateScene?.({ appState: { activeTool: { type: 'freedraw' }, currentItemStrokeWidth: 1 } })
+    }, 0)
+
+    return () => window.clearTimeout(settle)
+  }, [activeDiagram?.id, diagramState.isOpen, getExcalidrawToolType, gridApiReadyVersion, isGridDiagram, tool])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    if (!diagramState.isOpen) return
+    if (!activeDiagram?.id) return
+    const cached = gridSceneByDiagramRef.current.get(activeDiagram.id)
+    if (!cached) return
+    setGridSceneToApi(cloneGridElementsPayload(cached))
+  }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, setGridSceneToApi])
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(undoRef.current.length > 0)
@@ -910,6 +2394,9 @@ export default function DiagramOverlayModule(props: {
   }, [activeDiagram?.id, syncHistoryFlags])
 
   const getContainRect = useCallback((containerW: number, containerH: number) => {
+    if (activeDiagram?.imageUrl === GRID_DIAGRAM_URL) {
+      return { x: 0, y: 0, w: Math.max(1, containerW), h: Math.max(1, containerH) }
+    }
     const img = imageRef.current
     const naturalW = img?.naturalWidth ?? 0
     const naturalH = img?.naturalHeight ?? 0
@@ -922,7 +2409,739 @@ export default function DiagramOverlayModule(props: {
     const x = (containerW - w) / 2
     const y = (containerH - h) / 2
     return { x, y, w, h }
+  }, [activeDiagram?.imageUrl])
+
+  const gridPanRef = useRef({
+    active: false,
+    pointers: new Map<number, { x: number; y: number }>(),
+    lastMid: null as null | { x: number; y: number },
+    suppressedPointers: new Set<number>(),
+    startDistance: 0,
+    startZoom: 1,
+    anchorX: 0,
+    anchorY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+    startLocalX: 0,
+    startLocalY: 0,
+    lastLocalX: 0,
+    lastLocalY: 0,
+    previewZoom: 1,
+  })
+
+  const gridPreviewRafRef = useRef<number | null>(null)
+  const gridPreviewRef = useRef({
+    scale: 1,
+    dx: 0,
+    dy: 0,
+    originX: 0,
+    originY: 0,
+  })
+
+  const imagePanRef = useRef({
+    active: false,
+    pointers: new Map<number, { x: number; y: number }>(),
+    suppressedPointers: new Set<number>(),
+    startDistance: 0,
+    startZoom: 1,
+    anchorX: 0,
+    anchorY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+    startLocalX: 0,
+    startLocalY: 0,
+    lastLocalX: 0,
+    lastLocalY: 0,
+    previewZoom: 1,
+  })
+
+  const imagePreviewRafRef = useRef<number | null>(null)
+  const imagePreviewRef = useRef({
+    scale: 1,
+    dx: 0,
+    dy: 0,
+    originX: 0,
+    originY: 0,
+  })
+
+  const [gridZoom, setGridZoom] = useState(1)
+  const gridZoomRef = useRef(1)
+  useEffect(() => {
+    gridZoomRef.current = gridZoom
+  }, [gridZoom])
+
+  const [imageZoom, setImageZoom] = useState(1)
+  const imageZoomRef = useRef(1)
+  useEffect(() => {
+    imageZoomRef.current = imageZoom
+  }, [imageZoom])
+
+  const gridCameraRef = useRef<DiagramCamera>({ x: 0.5, y: 0.5, zoom: 1 })
+  const imageCameraRef = useRef<DiagramCamera>({ x: 0.5, y: 0.5, zoom: 1 })
+
+  const getActiveCamera = useCallback((): DiagramCamera => {
+    return isGridDiagram ? gridCameraRef.current : imageCameraRef.current
+  }, [isGridDiagram])
+
+  const worldToScreenPoint = useCallback((world: DiagramWorldPoint, camera: DiagramCamera, frame: DiagramFrame): DiagramScreenPoint => {
+    const zoom = Math.max(1e-6, camera.zoom)
+    return {
+      x: (world.x - camera.x) * frame.width * zoom + frame.width / 2,
+      y: (world.y - camera.y) * frame.height * zoom + frame.height / 2,
+    }
   }, [])
+
+  const screenToWorldPoint = useCallback((screen: DiagramScreenPoint, camera: DiagramCamera, frame: DiagramFrame): DiagramWorldPoint => {
+    const zoom = Math.max(1e-6, camera.zoom)
+    return {
+      x: (screen.x - frame.width / 2) / (frame.width * zoom) + camera.x,
+      y: (screen.y - frame.height / 2) / (frame.height * zoom) + camera.y,
+    }
+  }, [])
+
+  const lastGridOpenIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!diagramState.isOpen || !isGridDiagram || !activeDiagram?.id) return
+    if (lastGridOpenIdRef.current === activeDiagram.id) return
+    lastGridOpenIdRef.current = activeDiagram.id
+
+    setGridZoom(GRID_MAX_ZOOM)
+    const viewport = gridViewportRef.current
+    if (!viewport) return
+
+    const centerViewport = () => {
+      const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      viewport.scrollLeft = maxLeft / 2
+      viewport.scrollTop = maxTop / 2
+    }
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(centerViewport)
+      })
+    } else {
+      centerViewport()
+    }
+  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram])
+
+  const gridBackgroundStyle = useMemo(() => {
+    const size = Math.max(6, 24 * gridZoom)
+    return { ...GRID_BACKGROUND_STYLE, backgroundSize: `${size}px ${size}px`, backgroundPosition: 'center center' }
+  }, [gridZoom])
+
+  const gridContainerStyle = useMemo(() => {
+    if (!isGridDiagram) return { width: '100%', height: '100%' }
+    return { width: '100%', height: '100%' }
+  }, [isGridDiagram])
+
+  const imageContainerStyle = useMemo(() => {
+    if (isGridDiagram) return { width: '100%', height: '100%' }
+    const scaledPct = Math.max(100, imageZoom * 100)
+    return { width: `${scaledPct}%`, height: `${scaledPct}%` }
+  }, [imageZoom, isGridDiagram])
+
+  const canvasContainerStyle = useMemo(() => {
+    return isGridDiagram ? gridContainerStyle : imageContainerStyle
+  }, [gridContainerStyle, imageContainerStyle, isGridDiagram])
+
+  const getImageMidpoint = useCallback((state: typeof imagePanRef.current) => {
+    if (state.pointers.size < 2) return null
+    const values = Array.from(state.pointers.values())
+    const a = values[0]
+    const b = values[1]
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  }, [])
+
+  const beginImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
+    if (state.active) return
+    if (state.pointers.size < 2) return
+    const mid = getImageMidpoint(state)
+    if (!mid) return
+    state.active = true
+    state.suppressedPointers = new Set(state.pointers.keys())
+    const values = Array.from(state.pointers.values())
+    const dx = values[0].x - values[1].x
+    const dy = values[0].y - values[1].y
+    state.startDistance = Math.max(1, Math.hypot(dx, dy))
+    state.startZoom = imageZoomRef.current
+    const rect = viewport.getBoundingClientRect()
+    const localX = mid.x - rect.left
+    const localY = mid.y - rect.top
+    state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
+    state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
+    state.startScrollLeft = viewport.scrollLeft
+    state.startScrollTop = viewport.scrollTop
+    state.startLocalX = localX
+    state.startLocalY = localY
+    state.lastLocalX = localX
+    state.lastLocalY = localY
+    state.previewZoom = state.startZoom
+  }, [getImageMidpoint])
+
+  const scheduleImagePreview = useCallback((scale: number, dx: number, dy: number, originX: number, originY: number) => {
+    const preview = imagePreviewRef.current
+    preview.scale = scale
+    preview.dx = dx
+    preview.dy = dy
+    preview.originX = originX
+    preview.originY = originY
+
+    const applyPreview = () => {
+      const host = containerRef.current
+      if (!host) return
+      const live = imagePreviewRef.current
+      host.style.willChange = 'transform'
+      host.style.transformOrigin = `${live.originX}px ${live.originY}px`
+      host.style.transform = `translate(${live.dx}px, ${live.dy}px) scale(${live.scale})`
+    }
+
+    if (typeof window === 'undefined') {
+      applyPreview()
+      return
+    }
+
+    if (imagePreviewRafRef.current != null) return
+    imagePreviewRafRef.current = window.requestAnimationFrame(() => {
+      imagePreviewRafRef.current = null
+      applyPreview()
+    })
+  }, [])
+
+  const clearImagePreview = useCallback(() => {
+    if (typeof window !== 'undefined' && imagePreviewRafRef.current != null) {
+      window.cancelAnimationFrame(imagePreviewRafRef.current)
+      imagePreviewRafRef.current = null
+    }
+    const host = containerRef.current
+    if (!host) return
+    host.style.transform = ''
+    host.style.transformOrigin = ''
+    host.style.willChange = ''
+  }, [])
+
+  const commitImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
+    const committedZoom = Math.max(IMAGE_MIN_ZOOM, Math.min(IMAGE_MAX_ZOOM, state.previewZoom || state.startZoom))
+    const scale = committedZoom / Math.max(0.01, state.startZoom)
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
+    const previewDx = state.lastLocalX - state.startLocalX
+    const previewDy = state.lastLocalY - state.startLocalY
+
+    const targetLeftUnclamped = state.startScrollLeft + originX * (scale - 1) - previewDx
+    const targetTopUnclamped = state.startScrollTop + originY * (scale - 1) - previewDy
+
+    const placeViewport = () => {
+      viewport.scrollLeft = targetLeftUnclamped
+      viewport.scrollTop = targetTopUnclamped
+    }
+
+    clearImagePreview()
+
+    if (Math.abs(committedZoom - imageZoomRef.current) <= 0.001) {
+      placeViewport()
+      return
+    }
+
+    setImageZoom(committedZoom)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(placeViewport)
+      })
+    } else {
+      placeViewport()
+    }
+  }, [clearImagePreview])
+
+  const updateImageGesture = useCallback((state: typeof imagePanRef.current, viewport: HTMLDivElement) => {
+    if (!state.active || state.pointers.size < 2) return
+    const mid = getImageMidpoint(state)
+    if (!mid) return
+    const values = Array.from(state.pointers.values())
+    const dx = values[0].x - values[1].x
+    const dy = values[0].y - values[1].y
+    const dist = Math.max(1, Math.hypot(dx, dy))
+    const nextZoom = Math.max(IMAGE_MIN_ZOOM, Math.min(IMAGE_MAX_ZOOM, (state.startZoom * dist) / state.startDistance))
+
+    const rect = viewport.getBoundingClientRect()
+    const localX = mid.x - rect.left
+    const localY = mid.y - rect.top
+
+    const previewScale = nextZoom / Math.max(0.01, state.startZoom)
+    const previewDx = localX - state.startLocalX
+    const previewDy = localY - state.startLocalY
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
+
+    state.lastLocalX = localX
+    state.lastLocalY = localY
+    state.previewZoom = nextZoom
+
+    scheduleImagePreview(previewScale, previewDx, previewDy, originX, originY)
+  }, [getImageMidpoint, scheduleImagePreview])
+
+  const endImageGestureIfNeeded = useCallback((state: typeof imagePanRef.current, viewport?: HTMLDivElement | null) => {
+    if (state.active && state.pointers.size < 2) {
+      if (viewport) {
+        commitImageGesture(state, viewport)
+      } else {
+        clearImagePreview()
+      }
+      state.active = false
+    }
+    if (state.pointers.size === 0) {
+      state.suppressedPointers.clear()
+    }
+  }, [clearImagePreview, commitImageGesture])
+
+  useEffect(() => {
+    if (!isGridDiagram) return
+    clearImagePreview()
+  }, [clearImagePreview, isGridDiagram])
+
+  const applyAnnotationsRef = useRef((diagramId: string, annotations: DiagramAnnotations) => {
+    void diagramId
+    void annotations
+  })
+
+  const beginToolGesture = useCallback((diagramId: string, pointerId: number, snapshot: DiagramAnnotations | null) => {
+    toolGestureDiagramIdRef.current = diagramId
+    toolGesturePointerIdRef.current = pointerId
+    toolGestureSnapshotRef.current = snapshot
+    toolGestureMutatedRef.current = false
+  }, [])
+
+  const clearToolGesture = useCallback((pointerId?: number | null) => {
+    if (pointerId != null && toolGesturePointerIdRef.current !== pointerId) return
+    toolGestureDiagramIdRef.current = null
+    toolGesturePointerIdRef.current = null
+    toolGestureSnapshotRef.current = null
+    toolGestureMutatedRef.current = false
+  }, [])
+
+  const cancelActiveToolGesture = useCallback(() => {
+    const diagramId = toolGestureDiagramIdRef.current
+    const snapshot = toolGestureSnapshotRef.current
+    if (diagramId && snapshot && toolGestureMutatedRef.current) {
+      applyAnnotationsRef.current(diagramId, snapshot)
+    }
+    drawingRef.current = false
+    currentStrokeRef.current = null
+    currentArrowRef.current = null
+    previewRef.current = null
+    dragRef.current = null
+    clearToolGesture()
+  }, [clearToolGesture])
+
+  const clearPendingTouch = useCallback((pointerId?: number | null) => {
+    if (pointerId != null && pendingTouchRef.current?.pointerId !== pointerId) return
+    pendingTouchRef.current = null
+  }, [])
+
+  const isTouchLikePointer = useCallback((pointerType: string) => pointerType === 'touch' || pointerType === 'pen', [])
+
+  const smoothScrollGridViewportBy = useCallback((dx: number) => {
+    const viewport = gridViewportRef.current
+    if (!viewport || !Number.isFinite(dx)) return
+    if (Math.abs(dx) < 0.5) return
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (maxScroll <= 0) return
+    const targetLeft = Math.max(0, Math.min(viewport.scrollLeft + dx, maxScroll))
+    if (Math.abs(targetLeft - viewport.scrollLeft) < 0.5) return
+
+    if (typeof window === 'undefined') {
+      viewport.scrollLeft = targetLeft
+      return
+    }
+
+    if (gridEdgeAutoPanAnimRef.current) {
+      window.cancelAnimationFrame(gridEdgeAutoPanAnimRef.current)
+      gridEdgeAutoPanAnimRef.current = null
+    }
+
+    const startLeft = viewport.scrollLeft
+    const total = targetLeft - startLeft
+    const durationMs = 360
+    const startTs = performance.now()
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+
+    const step = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - startTs) / durationMs))
+      viewport.scrollLeft = startLeft + total * ease(t)
+      if (t < 1) {
+        gridEdgeAutoPanAnimRef.current = window.requestAnimationFrame(step)
+      } else {
+        gridEdgeAutoPanAnimRef.current = null
+      }
+    }
+
+    gridEdgeAutoPanAnimRef.current = window.requestAnimationFrame(step)
+  }, [])
+
+  const scheduleGridStrokeAutoPan = useCallback((dx: number) => {
+    if (!Number.isFinite(dx) || Math.abs(dx) < 1) return
+    smoothScrollGridViewportBy(dx)
+  }, [smoothScrollGridViewportBy])
+
+  const stopGridStrokeTracking = useCallback(() => {
+    const track = gridStrokeTrackRef.current
+    if (!track.active) return
+    track.active = false
+    track.pointerId = null
+
+    const pending = gridEdgePanPendingDxRef.current
+    gridEdgePanPendingDxRef.current = 0
+    if (pending) {
+      const viewport = gridViewportRef.current
+      if (viewport) {
+        const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+        if (maxScroll > 0) {
+          viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined' && gridEdgePanRafRef.current) {
+      window.cancelAnimationFrame(gridEdgePanRafRef.current)
+      gridEdgePanRafRef.current = null
+    }
+  }, [])
+
+  const finalizeGridStrokeAutoPan = useCallback(() => {
+    const viewport = gridViewportRef.current
+    const track = gridStrokeTrackRef.current
+    if (!viewport) {
+      stopGridStrokeTracking()
+      return
+    }
+
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (maxScroll <= 0) {
+      stopGridStrokeTracking()
+      return
+    }
+
+    const rect = viewport.getBoundingClientRect()
+    const midX = rect.left + rect.width * 0.5
+
+    if (track.leftPanArmed || track.rightPanArmed) {
+      const delta = track.lastX - midX
+      if (Math.abs(delta) > 1) scheduleGridStrokeAutoPan(delta)
+      stopGridStrokeTracking()
+      return
+    }
+
+    const gain = 0.9
+    const excessRight = track.maxX - midX
+    if (excessRight > 0) {
+      scheduleGridStrokeAutoPan(excessRight * gain)
+      stopGridStrokeTracking()
+      return
+    }
+
+    const excessLeft = track.minX - midX
+    if (excessLeft < 0) {
+      scheduleGridStrokeAutoPan(excessLeft * gain)
+      stopGridStrokeTracking()
+      return
+    }
+
+    stopGridStrokeTracking()
+  }, [scheduleGridStrokeAutoPan, stopGridStrokeTracking])
+
+  const updateGridStrokeAutoPan = useCallback((clientX: number) => {
+    if (!isGridDiagram) return
+    const viewport = gridViewportRef.current
+    const track = gridStrokeTrackRef.current
+    if (!viewport || !track.active) return
+
+    const prevX = track.lastX
+    const dx = clientX - prevX
+    track.lastX = clientX
+    track.minX = Math.min(track.minX, clientX)
+    track.maxX = Math.max(track.maxX, clientX)
+
+    const rect = viewport.getBoundingClientRect()
+    const leftEdgeTrigger = rect.left + rect.width * 0.1
+    const rightEdgeTrigger = rect.right - rect.width * 0.1
+    if (clientX <= leftEdgeTrigger) track.leftPanArmed = true
+    if (clientX >= rightEdgeTrigger) track.rightPanArmed = true
+
+    let pendingDx = 0
+    if (track.leftPanArmed && dx < 0) pendingDx += dx
+    if (track.rightPanArmed && dx > 0) pendingDx += dx
+    if (!pendingDx) return
+
+    gridEdgePanPendingDxRef.current += pendingDx
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+    if (maxScroll <= 0) {
+      gridEdgePanPendingDxRef.current = 0
+      return
+    }
+
+    if (typeof window === 'undefined') {
+      viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + gridEdgePanPendingDxRef.current, maxScroll))
+      gridEdgePanPendingDxRef.current = 0
+      return
+    }
+
+    if (gridEdgePanRafRef.current) return
+    gridEdgePanRafRef.current = window.requestAnimationFrame(() => {
+      gridEdgePanRafRef.current = null
+      const pending = gridEdgePanPendingDxRef.current
+      gridEdgePanPendingDxRef.current = 0
+      if (!pending) return
+      viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
+    })
+  }, [isGridDiagram])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && gridEdgePanRafRef.current) {
+        window.cancelAnimationFrame(gridEdgePanRafRef.current)
+        gridEdgePanRafRef.current = null
+      }
+      if (typeof window !== 'undefined' && gridEdgeAutoPanAnimRef.current) {
+        window.cancelAnimationFrame(gridEdgeAutoPanAnimRef.current)
+        gridEdgeAutoPanAnimRef.current = null
+      }
+    }
+  }, [])
+
+  const getGridMidpoint = useCallback((state: typeof gridPanRef.current) => {
+    if (state.pointers.size < 2) return null
+    const values = Array.from(state.pointers.values())
+    const a = values[0]
+    const b = values[1]
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  }, [])
+
+  const scheduleGridPreview = useCallback((scale: number, dx: number, dy: number, originX: number, originY: number) => {
+    const preview = gridPreviewRef.current
+    preview.scale = scale
+    preview.dx = dx
+    preview.dy = dy
+    preview.originX = originX
+    preview.originY = originY
+
+    const applyPreview = () => {
+      const host = containerRef.current
+      if (!host) return
+      const live = gridPreviewRef.current
+      host.style.willChange = 'transform'
+      host.style.transformOrigin = `${live.originX}px ${live.originY}px`
+      host.style.transform = `translate(${live.dx}px, ${live.dy}px) scale(${live.scale})`
+    }
+
+    if (typeof window === 'undefined') {
+      applyPreview()
+      return
+    }
+
+    if (gridPreviewRafRef.current != null) return
+    gridPreviewRafRef.current = window.requestAnimationFrame(() => {
+      gridPreviewRafRef.current = null
+      applyPreview()
+    })
+  }, [])
+
+  const clearGridPreview = useCallback(() => {
+    if (typeof window !== 'undefined' && gridPreviewRafRef.current != null) {
+      window.cancelAnimationFrame(gridPreviewRafRef.current)
+      gridPreviewRafRef.current = null
+    }
+    const host = containerRef.current
+    if (!host) return
+    host.style.transform = ''
+    host.style.transformOrigin = ''
+    host.style.willChange = ''
+  }, [])
+
+  const commitGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
+    const committedZoom = Math.max(GRID_MIN_ZOOM, Math.min(GRID_MAX_ZOOM, state.previewZoom || state.startZoom))
+    const scale = committedZoom / Math.max(0.01, state.startZoom)
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
+    const previewDx = state.lastLocalX - state.startLocalX
+    const previewDy = state.lastLocalY - state.startLocalY
+
+    const targetLeftUnclamped = state.startScrollLeft + originX * (scale - 1) - previewDx
+    const targetTopUnclamped = state.startScrollTop + originY * (scale - 1) - previewDy
+
+    const placeViewport = () => {
+      viewport.scrollLeft = targetLeftUnclamped
+      viewport.scrollTop = targetTopUnclamped
+    }
+
+    clearGridPreview()
+
+    if (Math.abs(committedZoom - gridZoomRef.current) <= 0.001) {
+      placeViewport()
+      return
+    }
+
+    setGridZoom(committedZoom)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(placeViewport)
+      })
+    } else {
+      placeViewport()
+    }
+  }, [clearGridPreview])
+
+  const beginGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
+    if (state.active) return
+    if (state.pointers.size < 2) return
+    cancelActiveToolGesture()
+    clearPendingTouch()
+    const mid = getGridMidpoint(state)
+    if (!mid) return
+    state.active = true
+    state.lastMid = mid
+    state.suppressedPointers = new Set(state.pointers.keys())
+    const values = Array.from(state.pointers.values())
+    const dx = values[0].x - values[1].x
+    const dy = values[0].y - values[1].y
+    state.startDistance = Math.max(1, Math.hypot(dx, dy))
+    state.startZoom = gridZoomRef.current
+    const rect = viewport.getBoundingClientRect()
+    const localX = mid.x - rect.left
+    const localY = mid.y - rect.top
+    state.anchorX = (viewport.scrollLeft + localX) / Math.max(0.01, state.startZoom)
+    state.anchorY = (viewport.scrollTop + localY) / Math.max(0.01, state.startZoom)
+    state.startScrollLeft = viewport.scrollLeft
+    state.startScrollTop = viewport.scrollTop
+    state.startLocalX = localX
+    state.startLocalY = localY
+    state.lastLocalX = localX
+    state.lastLocalY = localY
+    state.previewZoom = state.startZoom
+  }, [cancelActiveToolGesture, clearPendingTouch, getGridMidpoint])
+
+  const updateGridGesture = useCallback((state: typeof gridPanRef.current, viewport: HTMLDivElement) => {
+    if (!state.active || state.pointers.size < 2) return
+    const mid = getGridMidpoint(state)
+    if (!mid || !state.lastMid) return
+    const values = Array.from(state.pointers.values())
+    const dx = values[0].x - values[1].x
+    const dy = values[0].y - values[1].y
+    const dist = Math.max(1, Math.hypot(dx, dy))
+    const nextZoom = Math.max(GRID_MIN_ZOOM, Math.min(GRID_MAX_ZOOM, (state.startZoom * dist) / state.startDistance))
+
+    const rect = viewport.getBoundingClientRect()
+    const localX = mid.x - rect.left
+    const localY = mid.y - rect.top
+
+    const previewScale = nextZoom / Math.max(0.01, state.startZoom)
+    const previewDx = localX - state.startLocalX
+    const previewDy = localY - state.startLocalY
+    const originX = state.anchorX * state.startZoom
+    const originY = state.anchorY * state.startZoom
+
+    state.lastLocalX = localX
+    state.lastLocalY = localY
+    state.previewZoom = nextZoom
+
+    scheduleGridPreview(previewScale, previewDx, previewDy, originX, originY)
+    state.lastMid = mid
+  }, [getGridMidpoint, scheduleGridPreview])
+
+  const endGridGestureIfNeeded = useCallback((state: typeof gridPanRef.current, viewport?: HTMLDivElement | null) => {
+    if (state.active && state.pointers.size < 2) {
+      if (viewport) {
+        commitGridGesture(state, viewport)
+      } else {
+        clearGridPreview()
+      }
+      state.active = false
+      state.lastMid = null
+    }
+    if (state.pointers.size === 0) {
+      state.suppressedPointers.clear()
+    }
+  }, [clearGridPreview, commitGridGesture])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isGridDiagram) return
+
+    const viewport = gridViewportRef.current
+    if (!viewport) return
+
+    const state = gridPanRef.current
+    const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
+
+    const updatePointer = (evt: PointerEvent) => {
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    }
+
+    const suppressEvent = (evt: PointerEvent) => {
+      if (evt.cancelable) evt.preventDefault()
+      evt.stopImmediatePropagation()
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      updatePointer(evt)
+      if (state.pointers.size >= 2) {
+        beginGridGesture(state, viewport)
+        state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+      } else if (state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      updatePointer(evt)
+
+      if (state.active && state.pointers.size >= 2) {
+        updateGridGesture(state, viewport)
+        suppressEvent(evt)
+        return
+      }
+
+      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerUp = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      state.pointers.delete(evt.pointerId)
+      state.suppressedPointers.delete(evt.pointerId)
+      endGridGestureIfNeeded(state, viewport)
+
+      if (state.active || wasSuppressed) {
+        suppressEvent(evt)
+      }
+    }
+
+    viewport.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    viewport.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
+    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
+
+    return () => {
+      viewport.removeEventListener('pointerdown', handlePointerDown as any, true)
+      viewport.removeEventListener('pointermove', handlePointerMove as any, true)
+      window.removeEventListener('pointerup', handlePointerUp as any, true)
+      window.removeEventListener('pointercancel', handlePointerUp as any, true)
+      clearGridPreview()
+      state.active = false
+      state.pointers.clear()
+      state.suppressedPointers.clear()
+      state.lastMid = null
+    }
+  }, [beginGridGesture, clearGridPreview, endGridGestureIfNeeded, isGridDiagram, updateGridGesture])
+
+  useEffect(() => {
+    if (isGridDiagram) return
+    clearGridPreview()
+  }, [clearGridPreview, isGridDiagram])
 
   const mapClientToImageSpace = useCallback((clientX: number, clientY: number) => {
     const host = containerRef.current
@@ -939,18 +3158,21 @@ export default function DiagramOverlayModule(props: {
       return null
     }
 
-    const x = (px - imgRect.x) / Math.max(1e-6, imgRect.w)
-    const y = (py - imgRect.y) / Math.max(1e-6, imgRect.h)
-    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
-  }, [getContainRect])
+    const frame = { width: Math.max(1e-6, imgRect.w), height: Math.max(1e-6, imgRect.h) }
+    const local = { x: px - imgRect.x, y: py - imgRect.y }
+    const world = screenToWorldPoint(local, getActiveCamera(), frame)
+    return { x: Math.min(1, Math.max(0, world.x)), y: Math.min(1, Math.max(0, world.y)) }
+  }, [getActiveCamera, getContainRect, screenToWorldPoint])
 
   const mapImageToCanvasPx = useCallback((p: DiagramStrokePoint, canvasW: number, canvasH: number) => {
     const imgRect = getContainRect(canvasW, canvasH)
+    const frame = { width: Math.max(1e-6, imgRect.w), height: Math.max(1e-6, imgRect.h) }
+    const screen = worldToScreenPoint({ x: p.x, y: p.y }, getActiveCamera(), frame)
     return {
-      x: imgRect.x + p.x * imgRect.w,
-      y: imgRect.y + p.y * imgRect.h,
+      x: imgRect.x + screen.x,
+      y: imgRect.y + screen.y,
     }
-  }, [getContainRect])
+  }, [getActiveCamera, getContainRect, worldToScreenPoint])
 
   const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
 
@@ -1359,7 +3581,7 @@ export default function DiagramOverlayModule(props: {
     return next
   }
 
-  const redraw = useCallback(() => {
+  const performRedraw = useCallback(() => {
     const canvas = canvasRef.current
     const host = containerRef.current
     if (!canvas || !host) return
@@ -1376,6 +3598,15 @@ export default function DiagramOverlayModule(props: {
 
     const diag = activeDiagram
     if (!diag) return
+    if (!isGridDiagram) {
+      const img = imageRef.current
+      if (img?.naturalWidth && img?.naturalHeight) {
+        diagramWorldFrameRef.current.set(diag.id, {
+          width: Math.max(1, img.naturalWidth),
+          height: Math.max(1, img.naturalHeight),
+        })
+      }
+    }
 
     const annotations = annotationsForRender(diag.id)
     const strokes = annotations.strokes || []
@@ -1423,6 +3654,27 @@ export default function DiagramOverlayModule(props: {
       ctx.fill()
     }
 
+    const drawStrokePath = (pts: DiagramStrokePoint[]) => {
+      if (!pts.length) return
+      const p0 = mapImageToCanvasPx(pts[0], w, h)
+      ctx.moveTo(p0.x, p0.y)
+      if (pts.length === 1) return
+      if (pts.length === 2) {
+        const p1 = mapImageToCanvasPx(pts[1], w, h)
+        ctx.lineTo(p1.x, p1.y)
+        return
+      }
+      for (let i = 1; i < pts.length - 1; i++) {
+        const pi = mapImageToCanvasPx(pts[i], w, h)
+        const pj = mapImageToCanvasPx(pts[i + 1], w, h)
+        const midX = (pi.x + pj.x) / 2
+        const midY = (pi.y + pj.y) / 2
+        ctx.quadraticCurveTo(pi.x, pi.y, midX, midY)
+      }
+      const last = mapImageToCanvasPx(pts[pts.length - 1], w, h)
+      ctx.lineTo(last.x, last.y)
+    }
+
     const items: Array<
       | { kind: 'arrow'; z: number; arrow: DiagramArrow }
       | { kind: 'stroke'; z: number; stroke: DiagramStroke }
@@ -1449,12 +3701,7 @@ export default function DiagramOverlayModule(props: {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
-      const p0 = mapImageToCanvasPx(pts[0], w, h)
-      ctx.moveTo(p0.x, p0.y)
-      for (let i = 1; i < pts.length; i++) {
-        const pi = mapImageToCanvasPx(pts[i], w, h)
-        ctx.lineTo(pi.x, pi.y)
-      }
+      drawStrokePath(pts)
       ctx.stroke()
     }
 
@@ -1466,12 +3713,7 @@ export default function DiagramOverlayModule(props: {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
-      const p0 = mapImageToCanvasPx(pts[0], w, h)
-      ctx.moveTo(p0.x, p0.y)
-      for (let i = 1; i < pts.length; i++) {
-        const pi = mapImageToCanvasPx(pts[i], w, h)
-        ctx.lineTo(pi.x, pi.y)
-      }
+      drawStrokePath(pts)
       ctx.stroke()
     }
 
@@ -1570,6 +3812,10 @@ export default function DiagramOverlayModule(props: {
       }
     }
   }, [activeDiagram, annotationsForRender, cropMode, getContainRect, mapImageToCanvasPx, normalizeAnnotations, normalizeCropRect])
+
+  const redraw = useCallback(() => {
+    performRedraw()
+  }, [performRedraw])
 
   useEffect(() => {
     redraw()
@@ -1674,7 +3920,7 @@ export default function DiagramOverlayModule(props: {
     previewRef.current = null
     setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations } : d)))
     void persistAnnotations(diagramId, annotations)
-    void publish({ kind: 'annotations-set', diagramId, annotations })
+    void publish({ kind: 'annotations-set', diagramId, annotations: toTransportAnnotations(diagramId, annotations) })
     try {
       const strokes = Array.isArray(annotations?.strokes) ? annotations.strokes.length : 0
       const arrows = Array.isArray((annotations as any)?.arrows) ? (annotations as any).arrows.length : 0
@@ -1684,7 +3930,15 @@ export default function DiagramOverlayModule(props: {
       // ignore
     }
     redraw()
-  }, [persistAnnotations, publish, pushDiagramTimeline, redraw])
+  }, [persistAnnotations, publish, pushDiagramTimeline, redraw, toTransportAnnotations])
+
+  applyAnnotationsRef.current = applyAnnotations
+
+  const shouldGateTouchStroke = useCallback((pointerType: string, activeTool: DiagramTool) => {
+    if (!isGridDiagram) return false
+    if (pointerType !== 'touch') return false
+    return activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'arrow'
+  }, [isGridDiagram])
 
   const pushUndoSnapshot = useCallback((diagramId: string) => {
     try {
@@ -1749,6 +4003,53 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
     if (!diagramState.isOpen) return
+    if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = gridPanRef.current
+      if (viewport) {
+        panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        if (panState.pointers.size >= 2) {
+          beginGridGesture(panState, viewport)
+          panState.suppressedPointers.add(e.pointerId)
+          if (e.cancelable) e.preventDefault()
+        }
+      }
+    }
+    if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = imagePanRef.current
+      if (viewport) {
+        panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        if (panState.pointers.size >= 2) {
+          beginImageGesture(panState, viewport)
+          panState.suppressedPointers.add(e.pointerId)
+          if (e.cancelable) e.preventDefault()
+        }
+      }
+    }
+    if (isGridDiagram) {
+      const panState = gridPanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (!isGridDiagram) {
+      const panState = imagePanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+    }
+
+    if (isGridDiagram && (tool === 'pen' || tool === 'arrow' || tool === 'eraser')) {
+      const track = gridStrokeTrackRef.current
+      track.active = true
+      track.pointerId = e.pointerId
+      track.lastX = e.clientX
+      track.minX = e.clientX
+      track.maxX = e.clientX
+      track.leftPanArmed = false
+      track.rightPanArmed = false
+    }
+
     setContextMenu(null)
 
     const diagramId = activeDiagram.id
@@ -1756,6 +4057,7 @@ export default function DiagramOverlayModule(props: {
     if (!p) return
 
     if (cropMode) {
+      if (isTouchLikePointer(e.pointerType)) peekCropControls()
       setSelection(null)
       previewRef.current = null
       dragRef.current = null
@@ -1843,6 +4145,7 @@ export default function DiagramOverlayModule(props: {
     // Eraser tool
     if (tool === 'eraser') {
       drawingRef.current = true
+      beginToolGesture(diagramId, e.pointerId, cloneAnnotations(diagramsRef.current.find(d => d.id === diagramId)?.annotations ?? null))
       await eraseAt(diagramId, p)
       try {
         ;(e.target as any).setPointerCapture?.(e.pointerId)
@@ -1853,6 +4156,7 @@ export default function DiagramOverlayModule(props: {
     // Arrow tool
     if (tool === 'arrow') {
       drawingRef.current = true
+      beginToolGesture(diagramId, e.pointerId, null)
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       currentArrowRef.current = { id, color: '#ef4444', width: 4, headSize: 12, start: p, end: p }
       redraw()
@@ -1864,6 +4168,7 @@ export default function DiagramOverlayModule(props: {
 
     // Pen tool
     drawingRef.current = true
+    beginToolGesture(diagramId, e.pointerId, null)
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     currentStrokeRef.current = { id, color: '#ef4444', width: 4, points: [p] }
     redraw()
@@ -1876,11 +4181,110 @@ export default function DiagramOverlayModule(props: {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+    if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = gridPanRef.current
+      if (viewport) {
+        if (panState.pointers.has(e.pointerId)) {
+          panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        }
+        if (panState.active && panState.pointers.size >= 2) {
+          updateGridGesture(panState, viewport)
+          if (e.cancelable) e.preventDefault()
+          return
+        }
+      }
+      if (panState.pointers.size >= 2 || panState.suppressedPointers.has(e.pointerId)) {
+        if (e.cancelable) e.preventDefault()
+        return
+      }
+    }
+    if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = imagePanRef.current
+      if (viewport) {
+        if (panState.pointers.has(e.pointerId)) {
+          panState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        }
+        if (panState.active && panState.pointers.size >= 2) {
+          updateImageGesture(panState, viewport)
+          if (e.cancelable) e.preventDefault()
+          return
+        }
+      }
+      if (panState.pointers.size >= 2 || panState.suppressedPointers.has(e.pointerId)) {
+        if (e.cancelable) e.preventDefault()
+        return
+      }
+    }
+    if (isGridDiagram) {
+      const panState = gridPanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (!isGridDiagram) {
+      const panState = imagePanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+
+    const track = gridStrokeTrackRef.current
+    if (track.active && track.pointerId === e.pointerId) {
+      updateGridStrokeAutoPan(e.clientX)
+    }
+
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+    }
 
     const p = toPoint(e)
     if (!p) return
 
+    const pending = pendingTouchRef.current
+    if (pending && pending.pointerId === e.pointerId) {
+      const panState = gridPanRef.current
+      if (panState.pointers.size >= 2 || panState.active) {
+        clearPendingTouch(e.pointerId)
+        return
+      }
+      const dt = Date.now() - pending.startTs
+      const dx = p.x - pending.startPoint.x
+      const dy = p.y - pending.startPoint.y
+      const distSq = dx * dx + dy * dy
+      const minMoveSq = 0.003 * 0.003
+      if (dt < 90 && distSq < minMoveSq) {
+        return
+      }
+
+      clearPendingTouch(e.pointerId)
+      if (pending.tool === 'eraser') {
+        drawingRef.current = true
+        beginToolGesture(diagramId, e.pointerId, pending.snapshot)
+        toolGestureMutatedRef.current = true
+        void eraseAt(diagramId, pending.startPoint)
+        void eraseAt(diagramId, p)
+        return
+      }
+
+      if (pending.tool === 'arrow') {
+        drawingRef.current = true
+        beginToolGesture(diagramId, e.pointerId, null)
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        currentArrowRef.current = { id, color: '#ef4444', width: 4, headSize: 12, start: pending.startPoint, end: p }
+        redraw()
+        return
+      }
+
+      if (pending.tool === 'pen') {
+        drawingRef.current = true
+        beginToolGesture(diagramId, e.pointerId, null)
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        currentStrokeRef.current = { id, color: '#ef4444', width: 4, points: [pending.startPoint, p] }
+        redraw()
+        return
+      }
+    }
+
     if (cropMode) {
+      if (isTouchLikePointer(e.pointerType)) peekCropControls()
       const drag = cropDragRef.current
       if (!drag) return
       if (drag.mode === 'new') {
@@ -1961,6 +4365,7 @@ export default function DiagramOverlayModule(props: {
       const last = eraseThrottleRef.current
       if (last && now - last.lastTs < 40 && last.lastKey === key) return
       eraseThrottleRef.current = { lastTs: now, lastKey: key }
+      toolGestureMutatedRef.current = true
       void eraseAt(diagramId, p)
       return
     }
@@ -1976,15 +4381,55 @@ export default function DiagramOverlayModule(props: {
     const stroke = currentStrokeRef.current
     if (!stroke) return
     stroke.points.push(p)
+    if (tool === 'pen') {
+      redraw()
+      return
+    }
     redraw()
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canPresentRef.current) return
     const diagramId = activeDiagram?.id
     if (!diagramId) return
+    const track = gridStrokeTrackRef.current
+    if (track.active && track.pointerId === e.pointerId) {
+      finalizeGridStrokeAutoPan()
+    }
+    if (pendingTouchRef.current?.pointerId === e.pointerId) {
+      clearPendingTouch(e.pointerId)
+      return
+    }
+    clearToolGesture(e.pointerId)
+    if (isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = gridPanRef.current
+      const wasSuppressed = panState.suppressedPointers.has(e.pointerId)
+      panState.pointers.delete(e.pointerId)
+      panState.suppressedPointers.delete(e.pointerId)
+      endGridGestureIfNeeded(panState, viewport)
+      if (panState.active || wasSuppressed) return
+    }
+    if (!isGridDiagram && isTouchLikePointer(e.pointerType)) {
+      const viewport = gridViewportRef.current
+      const panState = imagePanRef.current
+      const wasSuppressed = panState.suppressedPointers.has(e.pointerId)
+      panState.pointers.delete(e.pointerId)
+      panState.suppressedPointers.delete(e.pointerId)
+      endImageGestureIfNeeded(panState, viewport)
+      if (panState.active || wasSuppressed) return
+    }
+    if (isGridDiagram) {
+      const panState = gridPanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
+    if (!isGridDiagram) {
+      const panState = imagePanRef.current
+      if (panState.active || panState.suppressedPointers.has(e.pointerId)) return
+    }
 
     if (cropMode) {
+      if (isTouchLikePointer(e.pointerType)) peekCropControls()
       cropDragRef.current = null
       const normalized = normalizeCropRect(cropRectRef.current)
       if (!normalized || normalized.w < 0.002 || normalized.h < 0.002) {
@@ -2025,7 +4470,7 @@ export default function DiagramOverlayModule(props: {
       setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations: next } : d)))
       redraw()
       void persistAnnotations(diagramId, next)
-      void publish({ kind: 'annotations-set', diagramId, annotations: next })
+      void publish({ kind: 'annotations-set', diagramId, annotations: toTransportAnnotations(diagramId, next) })
       try {
         const strokes = Array.isArray(next?.strokes) ? next.strokes.length : 0
         const arrows = Array.isArray(next?.arrows) ? next.arrows.length : 0
@@ -2056,7 +4501,7 @@ export default function DiagramOverlayModule(props: {
       setDiagrams(prev => prev.map(d => (d.id === diagramId ? { ...d, annotations: next } : d)))
       redraw()
       void persistAnnotations(diagramId, next)
-      void publish({ kind: 'annotations-set', diagramId, annotations: next })
+      void publish({ kind: 'annotations-set', diagramId, annotations: toTransportAnnotations(diagramId, next) })
       try {
         const strokes = Array.isArray(next?.strokes) ? next.strokes.length : 0
         const arrows = Array.isArray(next?.arrows) ? next.arrows.length : 0
@@ -2075,6 +4520,10 @@ export default function DiagramOverlayModule(props: {
   const handleUndo = useCallback(() => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
+    if (isGridDiagram) {
+      triggerExcalidrawHistoryShortcut('undo')
+      return
+    }
     const diagramId = activeDiagram.id
     const prev = undoRef.current.pop() || null
     if (!prev) {
@@ -2086,11 +4535,15 @@ export default function DiagramOverlayModule(props: {
     redoRef.current.push(current)
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: prev.strokes || [], arrows: prev.arrows || [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isGridDiagram, syncHistoryFlags, triggerExcalidrawHistoryShortcut])
 
   const handleRedo = useCallback(() => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
+    if (isGridDiagram) {
+      triggerExcalidrawHistoryShortcut('redo')
+      return
+    }
     const diagramId = activeDiagram.id
     const next = redoRef.current.pop() || null
     if (!next) {
@@ -2102,11 +4555,17 @@ export default function DiagramOverlayModule(props: {
     undoRef.current.push(current)
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: next.strokes || [], arrows: next.arrows || [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isGridDiagram, syncHistoryFlags, triggerExcalidrawHistoryShortcut])
 
   const handleClearInk = useCallback(() => {
     if (!canPresentRef.current) return
     if (!activeDiagram?.id) return
+    if (isGridDiagram) {
+      const api = excalidrawApiRef.current
+      if (!api?.updateScene) return
+      api.updateScene({ elements: [] })
+      return
+    }
     const diagramId = activeDiagram.id
     const diag = diagramsRef.current.find(d => d.id === diagramId)
     const before = cloneAnnotations(diag?.annotations ?? null)
@@ -2114,7 +4573,7 @@ export default function DiagramOverlayModule(props: {
     redoRef.current = []
     syncHistoryFlags()
     applyAnnotations(diagramId, { space: IMAGE_SPACE, strokes: [], arrows: [] })
-  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, syncHistoryFlags])
+  }, [activeDiagram?.id, applyAnnotations, cloneAnnotations, isGridDiagram, syncHistoryFlags])
 
   useEffect(() => {
     if (!cropMode) {
@@ -2151,7 +4610,7 @@ export default function DiagramOverlayModule(props: {
       migratedDiagramIdsRef.current.add(diag.id)
       return
     }
-    if (normalized.space === 'image') {
+    if (normalized.space === 'image' || normalized.space === 'world') {
       migratedDiagramIdsRef.current.add(diag.id)
       return
     }
@@ -2185,8 +4644,8 @@ export default function DiagramOverlayModule(props: {
     migratedDiagramIdsRef.current.add(diag.id)
     setDiagrams(prev => prev.map(d => (d.id === diag.id ? { ...d, annotations: migrated } : d)))
     void persistAnnotations(diag.id, migrated)
-    void publish({ kind: 'annotations-set', diagramId: diag.id, annotations: migrated })
-  }, [activeDiagram, diagramState.isOpen, getContainRect, isAdmin, normalizeAnnotations, persistAnnotations, publish])
+    void publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, migrated) })
+  }, [activeDiagram, diagramState.isOpen, getContainRect, isAdmin, normalizeAnnotations, persistAnnotations, publish, toTransportAnnotations])
 
   const handlePasteAtPoint = useCallback((diagramId: string, point: DiagramStrokePoint) => {
     const clip = clipboardRef.current
@@ -2381,6 +4840,83 @@ export default function DiagramOverlayModule(props: {
     return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
   })()
 
+  const gridToolbarDragThresholdPx = 4
+
+  const startGridToolbarDrag = useCallback((target: 'top' | 'bottom', e: React.PointerEvent<HTMLElement>) => {
+    if (!canPresentRef.current) return
+    const node = e.currentTarget
+    node.setPointerCapture?.(e.pointerId)
+    const origin = gridToolbarOffsets[target]
+    gridToolbarDragRef.current = {
+      target,
+      pointerId: e.pointerId,
+      isDragging: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: origin.x,
+      originY: origin.y,
+    }
+  }, [gridToolbarOffsets])
+
+  const moveGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (!canPresentRef.current) return
+    const drag = gridToolbarDragRef.current
+    if (!drag.target || drag.pointerId !== e.pointerId) return
+    const dy = e.clientY - drag.startY
+    if (!drag.isDragging && Math.abs(dy) < gridToolbarDragThresholdPx) return
+    if (!drag.isDragging) drag.isDragging = true
+    e.preventDefault()
+    e.stopPropagation()
+    const nextY = Math.round(drag.originY + dy)
+    setGridToolbarOffsets((prev) => ({
+      ...prev,
+      [drag.target as 'top' | 'bottom']: { x: 0, y: nextY },
+    }))
+  }, [gridToolbarDragThresholdPx])
+
+  const endGridToolbarDrag = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    const drag = gridToolbarDragRef.current
+    if (!drag.target || drag.pointerId !== e.pointerId) return
+    if (drag.isDragging) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+    gridToolbarDragRef.current = {
+      target: null,
+      pointerId: null,
+      isDragging: false,
+      startX: 0,
+      startY: 0,
+      originX: 0,
+      originY: 0,
+    }
+  }, [])
+
+  const detectGridToolbarDragTarget = useCallback((eventTarget: EventTarget | null): 'top' | 'bottom' | null => {
+    const node = eventTarget as HTMLElement | null
+    if (!node) return null
+
+    if (node.closest('.App-top-bar')) return 'top'
+    if (node.closest('.App-bottom-bar')) return 'bottom'
+    return null
+  }, [])
+
+  const onGridToolbarPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canPresentRef.current) return
+    const target = detectGridToolbarDragTarget(e.target)
+    if (!target) return
+    startGridToolbarDrag(target, e)
+  }, [detectGridToolbarDragTarget, startGridToolbarDrag])
+
+  const onGridToolbarPointerMoveCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    moveGridToolbarDrag(e)
+  }, [moveGridToolbarDrag])
+
+  const onGridToolbarPointerUpCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    endGridToolbarDrag(e)
+  }, [endGridToolbarDrag])
+
   return (
     <>
       {mobileDiagramTray}
@@ -2391,6 +4927,7 @@ export default function DiagramOverlayModule(props: {
           variant="light"
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
+          panelSize="full"
           onClose={() => {
             if (!(canPresent || isAdmin)) return
             void handleClose()
@@ -2401,12 +4938,17 @@ export default function DiagramOverlayModule(props: {
           }}
           closeDisabled={!(canPresent || isAdmin)}
           showCloseButton={Boolean(canPresent || isAdmin)}
-          frameClassName="absolute inset-0 p-3 sm:p-6"
-          panelClassName="rounded-xl"
+          frameClassName="absolute inset-0 flex items-end justify-center p-0"
+          panelClassName="!rounded-none"
           rightActions={
             <>
               {isAdmin && (
-                <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={uploading}
+                  onClick={requestUpload}
+                >
                   {uploading ? 'Uploading…' : 'Upload'}
                 </button>
               )}
@@ -2421,10 +4963,11 @@ export default function DiagramOverlayModule(props: {
       {diagramState.isOpen && activeDiagram ? (
         <FullScreenGlassOverlay
           title="Diagram"
-          subtitle={activeDiagram.title || 'Untitled diagram'}
+          subtitle={toDisplayFileName(activeDiagram.title) || activeDiagram.title || 'Untitled diagram'}
           variant="light"
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
+          panelSize="full"
           onClose={() => {
             if (!isAdmin) return
             void handleClose()
@@ -2435,41 +4978,205 @@ export default function DiagramOverlayModule(props: {
           }}
           closeDisabled={!isAdmin}
           showCloseButton={isAdmin}
-          frameClassName="absolute inset-0 p-3 sm:p-6"
-          panelClassName="rounded-xl"
+          frameClassName="absolute inset-0 flex items-end justify-center p-0"
+          panelClassName="!rounded-none"
           rightActions={
-            <>
-              {isAdmin && (
-                <button type="button" className="btn" disabled={uploading} onClick={requestUpload}>
-                  {uploading ? 'Uploading…' : 'Upload'}
-                </button>
-              )}
-              {isAdmin && (
-                <select
-                  className="input"
-                  value={diagramState.activeDiagramId ?? ''}
-                  onChange={async (e) => {
-                    const nextId = e.target.value || null
-                    await setOverlayState({ activeDiagramId: nextId, isOpen: true })
-                  }}
-                >
-                  {diagrams.map(d => (
-                    <option key={d.id} value={d.id}>{d.title || 'Untitled diagram'}</option>
-                  ))}
-                </select>
-              )}
-            </>
+            isAdmin && !isGridDiagram ? (
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                disabled={uploading}
+                onClick={requestUpload}
+              >
+                {uploading ? 'Uploading…' : 'Upload'}
+              </button>
+            ) : null
           }
-          contentClassName="p-0 flex flex-col"
+          contentClassName="relative p-0 flex flex-col overflow-hidden"
         >
+          {isGridDiagram && isAdmin ? (
+            <div
+              className={`absolute z-50 transition-opacity duration-200 ${gridCloseVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+              style={{
+                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+                right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
+              }}
+              aria-hidden={!gridCloseVisible}
+            >
+              <button
+                type="button"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm hover:bg-white"
+                onTouchStart={peekGridCloseButton}
+                onClick={() => void handleClose()}
+                aria-label="Close diagram"
+                title="Close"
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
+
+          {isGridDiagram && isAdmin ? (
+            <div
+              className="absolute"
+              style={{
+                top: '50%',
+                left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                transform: 'translateY(-50%)',
+                zIndex: 2147483647,
+              }}
+            >
+              <div className="relative w-6">
+                {rosterAvatarLayout.top.length > 0 ? (
+                  <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
+                    {rosterAvatarLayout.top.map((avatar) => (
+                      avatar.kind === 'presenter' ? (
+                        <div
+                          key={avatar.userKey}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={`${avatar.name} (presenter)`}
+                          aria-label={`${avatar.name} is a presenter`}
+                        >
+                          {avatar.initials}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          key={avatar.userKey}
+                          data-client-id={avatar.clientId || ''}
+                          data-user-id={avatar.userId || ''}
+                          data-user-key={avatar.userKey}
+                          data-display-name={avatar.name}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={avatar.name}
+                          aria-label={`Make ${avatar.name} the presenter`}
+                          onClick={handleRosterAttendeeAvatarClick}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          {avatar.initials}
+                        </button>
+                      )
+                    ))}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (overlayRosterVisible) {
+                      if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
+                        handOverPresentation(null)
+                        return
+                      }
+                      setOverlayRosterVisible(false)
+                      return
+                    }
+                    setOverlayRosterVisible(true)
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                  }}
+                  aria-label="Toggle diagram avatars"
+                  title={teacherBadge.name}
+                >
+                  {teacherBadge.initials}
+                </button>
+
+                {showSwitchingToast ? (
+                  <div
+                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
+                    style={{ zIndex: 2147483647 }}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {switchingStatusLabel}
+                  </div>
+                ) : null}
+
+                {!showSwitchingToast && handoffMessage ? (
+                  <div
+                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
+                    style={{ zIndex: 2147483647 }}
+                    role="alert"
+                  >
+                    {handoffMessage}
+                  </div>
+                ) : null}
+
+                {rosterAvatarLayout.bottom.length > 0 ? (
+                  <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
+                    {rosterAvatarLayout.bottom.map((avatar) => (
+                      avatar.kind === 'presenter' ? (
+                        <div
+                          key={avatar.userKey}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={`${avatar.name} (presenter)`}
+                          aria-label={`${avatar.name} is a presenter`}
+                        >
+                          {avatar.initials}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          key={avatar.userKey}
+                          data-client-id={avatar.clientId || ''}
+                          data-user-id={avatar.userId || ''}
+                          data-user-key={avatar.userKey}
+                          data-display-name={avatar.name}
+                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
+                          title={avatar.name}
+                          aria-label={`Make ${avatar.name} the presenter`}
+                          onClick={handleRosterAttendeeAvatarClick}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          {avatar.initials}
+                        </button>
+                      )
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div
+            ref={gridViewportRef}
+            className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-hidden' : 'overflow-auto'}`}
+            onMouseDown={() => setContextMenu(null)}
+            onTouchStart={() => {
+              if (isGridDiagram && isAdmin) peekGridCloseButton()
+              if (cropMode && canPresent) peekCropControls()
+            }}
+            onTouchMove={() => {
+              if (isGridDiagram && isAdmin) peekGridCloseButton()
+              if (cropMode && canPresent) peekCropControls()
+            }}
+          >
           <div
             ref={containerRef}
-            className="relative w-full flex-1 min-h-0"
-            onMouseDown={() => setContextMenu(null)}
+            className="relative"
+            style={canvasContainerStyle}
           >
-          {canPresent && (
-            <div className="absolute bottom-2 left-2 z-40 pointer-events-none">
-              <div className="pointer-events-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm">
+          {canPresent && !isGridDiagram && (
+            <div
+              className={`${isGridDiagram ? 'fixed bottom-0' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
+              style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 2px)' }}
+              onTouchStart={() => {
+                if (isGridDiagram && isAdmin) peekGridCloseButton()
+                if (cropMode && canPresent) peekCropControls()
+              }}
+            >
+              <div className="pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
+                <div className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-1 shadow-sm whitespace-nowrap transition-opacity duration-200 ${cropMode ? (cropControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'}`}>
                 <button
                   type="button"
                   className={tool === 'select'
@@ -2484,6 +5191,61 @@ export default function DiagramOverlayModule(props: {
                     <path d="M3 3l7 18 2-8 8-2L3 3z" />
                   </svg>
                 </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={handleUndo}
+                  disabled={isGridDiagram ? false : !canUndo}
+                  aria-label="Undo"
+                  title="Undo"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 14l-4-4 4-4" />
+                    <path d="M20 20a8 8 0 0 0-8-8H5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={handleRedo}
+                  disabled={isGridDiagram ? false : !canRedo}
+                  aria-label="Redo"
+                  title="Redo"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M15 6l4 4-4 4" />
+                    <path d="M4 20a8 8 0 0 1 8-8h7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  onClick={handleClearInk}
+                  aria-label="Clear ink"
+                  title="Clear ink"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => selection && void applyContextAction('rotate', activeDiagram.id, selection)}
+                  disabled={!selection || selectionIsLocked}
+                  aria-label="Rotate"
+                  title="Rotate 90°"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-3-6.7" />
+                    <path d="M21 3v6h-6" />
+                  </svg>
+                </button>
+                <div className="w-px h-6 bg-slate-200 mx-1" aria-hidden="true" />
                 <button
                   type="button"
                   className={cropMode
@@ -2605,58 +5367,7 @@ export default function DiagramOverlayModule(props: {
                     <path d="M7 19l5-6 5 6H7z" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  onClick={() => selection && void applyContextAction('rotate', activeDiagram.id, selection)}
-                  disabled={!selection || selectionIsLocked}
-                  aria-label="Rotate"
-                  title="Rotate 90°"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M21 12a9 9 0 1 1-3-6.7" />
-                    <path d="M21 3v6h-6" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  onClick={handleUndo}
-                  disabled={!canUndo}
-                  aria-label="Undo"
-                  title="Undo"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M9 14l-4-4 4-4" />
-                    <path d="M20 20a8 8 0 0 0-8-8H5" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  onClick={handleRedo}
-                  disabled={!canRedo}
-                  aria-label="Redo"
-                  title="Redo"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M15 6l4 4-4 4" />
-                    <path d="M4 20a8 8 0 0 1 8-8h7" />
-                  </svg>
-                </button>
-                <div className="w-px h-6 bg-slate-200 mx-1" aria-hidden="true" />
-                <button
-                  type="button"
-                  className="p-2 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  onClick={handleClearInk}
-                  aria-label="Clear ink"
-                  title="Clear ink"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M20 20H9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L10 16l-4 0-2-2 0-4L16.5 3.5z" />
-                  </svg>
-                </button>
+                </div>
               </div>
             </div>
           )}
@@ -2865,46 +5576,138 @@ export default function DiagramOverlayModule(props: {
               </div>
             </div>
           )}
-          <img
-            ref={imageRef}
-            src={activeDiagram.imageUrl}
-            alt={activeDiagram.title || 'Diagram'}
-            className="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
-            onLoad={() => redraw()}
-          />
-          <canvas
-            ref={canvasRef}
-            className={canPresent
-              ? cropMode
-                ? 'absolute inset-0 cursor-crosshair'
-                : tool === 'select'
-                  ? 'absolute inset-0 cursor-default'
-                  : tool === 'eraser'
-                    ? 'absolute inset-0 cursor-cell'
-                    : 'absolute inset-0 cursor-crosshair'
-              : 'absolute inset-0 pointer-events-none'
-            }
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onContextMenu={(e) => {
-              if (!canPresentRef.current) return
-              if (cropMode) return
-              if (!activeDiagram?.id) return
-              e.preventDefault()
-              e.stopPropagation()
-              const host = containerRef.current
-              if (!host) return
-              const rect = host.getBoundingClientRect()
-              const x = e.clientX - rect.left
-              const y = e.clientY - rect.top
-              const pt = mapClientToImageSpace(e.clientX, e.clientY)
-              const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null
-              setSelection(hit)
-              setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
-            }}
-          />
+          {isGridDiagram ? (
+            <div
+              className="absolute inset-0 philani-excalidraw-bottom-toolbar"
+              onPointerDownCapture={onGridToolbarPointerDownCapture}
+              onPointerMoveCapture={onGridToolbarPointerMoveCapture}
+              onPointerUpCapture={onGridToolbarPointerUpCapture}
+              onPointerCancelCapture={onGridToolbarPointerUpCapture}
+              style={{
+                ['--philani-exc-top-y' as any]: `${gridToolbarOffsets.top.y}px`,
+                ['--philani-exc-bottom-y' as any]: `${gridToolbarOffsets.bottom.y}px`,
+              }}
+            >
+              <Excalidraw
+                excalidrawAPI={(api) => {
+                  excalidrawApiRef.current = api
+                  setGridApiReadyVersion((prev) => prev + 1)
+                }}
+                onChange={(elements: any[]) => {
+                  const diagramId = activeDiagram?.id
+                  if (!diagramId) return
+                  const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
+                  gridSceneByDiagramRef.current.set(diagramId, nextElements)
+                  gridLastDrawingDiagramIdRef.current = diagramId
+                  gridLastDrawingElementsRef.current = nextElements
+                  gridActiveDrawingRef.current = true
+
+                  if (typeof window !== 'undefined') {
+                    if (gridDrawingIdleTimerRef.current != null) {
+                      window.clearTimeout(gridDrawingIdleTimerRef.current)
+                    }
+                    gridDrawingIdleTimerRef.current = window.setTimeout(() => {
+                      gridDrawingIdleTimerRef.current = null
+                      gridActiveDrawingRef.current = false
+                      const flushDiagramId = gridLastDrawingDiagramIdRef.current
+                      const flushElements = gridLastDrawingElementsRef.current
+                      if (!flushDiagramId || !Array.isArray(flushElements)) return
+                      if (suppressGridScenePublishRef.current) return
+                      if (!canPresentRef.current) return
+                      const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(flushDiagramId) || []
+                      queueGridSceneDeltaPublish(flushDiagramId, prevForDelta, flushElements)
+                      gridLastDeltaBaseByDiagramRef.current.set(flushDiagramId, cloneGridElementsPayload(flushElements))
+                    }, 280)
+                  }
+
+                  if (suppressGridScenePublishRef.current) return
+                  if (!canPresentRef.current) return
+                  const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(diagramId) || []
+                  queueGridSceneDeltaPublish(diagramId, prevForDelta, nextElements)
+                  gridLastDeltaBaseByDiagramRef.current.set(diagramId, cloneGridElementsPayload(nextElements))
+                }}
+                zenModeEnabled={false}
+                viewModeEnabled={!canPresent}
+                initialData={{
+                  appState: {
+                    currentItemStrokeWidth: 1,
+                  },
+                }}
+                renderTopRightUI={() => (
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                    onClick={handleClearInk}
+                    disabled={!canPresent}
+                    aria-label="Clear canvas"
+                    title="Clear canvas"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M7 6l1 14h8l1-14" />
+                    </svg>
+                  </button>
+                )}
+              />
+            </div>
+          ) : (
+            <>
+              <img
+                ref={imageRef}
+                src={activeDiagram.imageUrl}
+                alt={activeDiagram.title || 'Diagram'}
+                className={`absolute inset-0 w-full h-full object-contain select-none pointer-events-none${activeDiagram.imageUrl === GRID_DIAGRAM_URL ? ' opacity-0' : ''}`}
+                onLoad={() => {
+                  if (activeDiagram.imageUrl !== GRID_DIAGRAM_URL) {
+                    const img = imageRef.current
+                    if (img?.naturalWidth && img?.naturalHeight) {
+                      diagramWorldFrameRef.current.set(activeDiagram.id, {
+                        width: Math.max(1, img.naturalWidth),
+                        height: Math.max(1, img.naturalHeight),
+                      })
+                    }
+                  }
+                  redraw()
+                }}
+              />
+              <canvas
+                ref={canvasRef}
+                className={canPresent
+                  ? cropMode
+                    ? 'absolute inset-0 cursor-crosshair'
+                    : tool === 'select'
+                      ? 'absolute inset-0 cursor-default'
+                      : tool === 'eraser'
+                        ? 'absolute inset-0 cursor-cell'
+                        : 'absolute inset-0 cursor-crosshair'
+                  : 'absolute inset-0 pointer-events-none'
+                }
+                style={{ touchAction: 'none' }}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onContextMenu={(e) => {
+                  if (!canPresentRef.current) return
+                  if (cropMode) return
+                  if (!activeDiagram?.id) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const host = containerRef.current
+                  if (!host) return
+                  const rect = host.getBoundingClientRect()
+                  const x = e.clientX - rect.left
+                  const y = e.clientY - rect.top
+                  const pt = mapClientToImageSpace(e.clientX, e.clientY)
+                  const hit = pt ? hitTestAnnotation(activeDiagram.id, pt) : null
+                  setSelection(hit)
+                  setContextMenu({ x, y, diagramId: activeDiagram.id, selection: hit, point: pt })
+                }}
+              />
+            </>
+          )}
+        </div>
         </div>
         </FullScreenGlassOverlay>
       ) : null}

@@ -13,3 +13,6 @@ backups/
 # Local build artifacts/logs
 build*.log
 *.tsbuildinfo
+
+# Keep independent repo out of Philani index
+Bhanoyi-Secondary-School-Website/

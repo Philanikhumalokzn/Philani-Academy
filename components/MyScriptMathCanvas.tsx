@@ -10792,6 +10792,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
       resolvedTouchInkPointerIdsRef.current.add(pending.pointerId)
+      state.suppressedPointers.delete(pending.pointerId)
       state.pendingTouch = null
       dispatchReplay('pointerdown', pending.downEvent)
       pending.moveQueue.forEach((moveEvt) => {

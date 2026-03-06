@@ -118,7 +118,6 @@ function renderTextWithInlineKatex(inputRaw: string) {
 }
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
-const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 80
 
 function normalizeIinkPointerInfo(info: any, scale: number): any {
   if (!info || typeof info !== 'object') return info
@@ -159,47 +158,6 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
     const originalDown = candidate.onPointerDown.bind(candidate)
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
-    const activeTouchPointerIds = new Set<number>()
-    const pendingTouchGateById = new Map<number, {
-      committed: boolean
-      downInfo: any
-      moveQueue: any[]
-      timer: ReturnType<typeof setTimeout> | null
-    }>()
-
-    const getPointerId = (info: any): number | null => {
-      if (!info || typeof info !== 'object') return null
-      const raw = (info as any).pointerId ?? (info as any).id ?? (info as any).identifier
-      if (typeof raw !== 'number') return null
-      if (!Number.isFinite(raw)) return null
-      return Math.trunc(raw)
-    }
-
-    const isTouchPointer = (info: any) => {
-      const pointerType = String((info as any)?.pointerType || '').toLowerCase()
-      return pointerType === 'touch'
-    }
-
-    const clearPendingGate = (pointerId: number) => {
-      const pending = pendingTouchGateById.get(pointerId)
-      if (!pending) return
-      if (pending.timer) {
-        clearTimeout(pending.timer)
-        pending.timer = null
-      }
-      pendingTouchGateById.delete(pointerId)
-    }
-
-    const cancelAllUncommittedTouchGates = () => {
-      pendingTouchGateById.forEach((pending, id) => {
-        if (pending.committed) return
-        if (pending.timer) {
-          clearTimeout(pending.timer)
-          pending.timer = null
-        }
-        pendingTouchGateById.delete(id)
-      })
-    }
 
     const getSafeScale = () => {
       const scaleRaw = typeof getInputScale === 'function' ? Number(getInputScale()) : 1
@@ -222,99 +180,13 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
       return normalizeIinkPointerInfo(next, safeScale)
     }
 
-    candidate.onPointerDown = (info: any) => {
-      const next = buildNext(info)
-      if (!isTouchPointer(next)) {
-        return originalDown(next)
-      }
-
-      const pointerId = getPointerId(next)
-      if (pointerId == null) {
-        return originalDown(next)
-      }
-
-      activeTouchPointerIds.add(pointerId)
-      if (activeTouchPointerIds.size >= 2) {
-        cancelAllUncommittedTouchGates()
-        return
-      }
-
-      const pending = {
-        committed: false,
-        downInfo: next,
-        moveQueue: [] as any[],
-        timer: null as ReturnType<typeof setTimeout> | null,
-      }
-
-      pending.timer = setTimeout(() => {
-        const current = pendingTouchGateById.get(pointerId)
-        if (!current) return
-        current.timer = null
-        // Only commit ink if this is still a single-touch interaction.
-        if (!activeTouchPointerIds.has(pointerId) || activeTouchPointerIds.size !== 1) {
-          pendingTouchGateById.delete(pointerId)
-          return
-        }
-        current.committed = true
-        originalDown(current.downInfo)
-        if (current.moveQueue.length) {
-          current.moveQueue.forEach((queuedMove) => {
-            originalMove(queuedMove)
-          })
-          current.moveQueue = []
-        }
-      }, TOUCH_INK_DISAMBIGUATION_DELAY_MS)
-
-      pendingTouchGateById.set(pointerId, pending)
-      return
-    }
-
-    candidate.onPointerMove = (info: any) => {
-      const next = buildNext(info)
-      if (!isTouchPointer(next)) {
-        return originalMove(next)
-      }
-
-      const pointerId = getPointerId(next)
-      if (pointerId == null) {
-        return originalMove(next)
-      }
-
-      const pending = pendingTouchGateById.get(pointerId)
-      if (pending && !pending.committed) {
-        pending.moveQueue.push(next)
-        if (pending.moveQueue.length > 24) {
-          pending.moveQueue.shift()
-        }
-        return
-      }
-
-      if (activeTouchPointerIds.size >= 2) {
-        return
-      }
-
-      return originalMove(next)
-    }
-
+    candidate.onPointerDown = (info: any) => originalDown(buildNext(info))
+    candidate.onPointerMove = (info: any) => originalMove(buildNext(info))
     candidate.onPointerUp = (info: any) => {
-      const next = buildNext(info)
-      const pointerId = getPointerId(next)
-      const isTouch = isTouchPointer(next)
-
-      if (isTouch && pointerId != null) {
-        activeTouchPointerIds.delete(pointerId)
-        const pending = pendingTouchGateById.get(pointerId)
-        if (pending && !pending.committed) {
-          clearPendingGate(pointerId)
-          return
-        }
-        clearPendingGate(pointerId)
-      }
-
       const safeScale = getSafeScale()
       // Commit path: force editor geometry to be current right at pen-up.
       maybeSyncGeometryForCommit(safeScale)
-      const result = originalUp(next)
+      const result = originalUp(buildNext(info))
       if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
         window.requestAnimationFrame(() => {
           maybeSyncGeometryForCommit(getSafeScale())

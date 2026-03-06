@@ -159,19 +159,41 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
 
+    const getSafeScale = () => {
+      const scaleRaw = typeof getInputScale === 'function' ? Number(getInputScale()) : 1
+      return Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1
+    }
+
+    const maybeSyncGeometryForCommit = (scale: number) => {
+      if (Math.abs(scale - 1) < 0.0001) return
+      try {
+        editor.resize?.()
+      } catch {}
+    }
+
     const buildNext = (info: any) => {
       let next = info
       if (isEraserActive() && info && typeof info === 'object') {
         next = { ...next, pointerType: PHILANI_ERASER_POINTER_TYPE }
       }
-      const scaleRaw = typeof getInputScale === 'function' ? Number(getInputScale()) : 1
-      const safeScale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1
+      const safeScale = getSafeScale()
       return normalizeIinkPointerInfo(next, safeScale)
     }
 
     candidate.onPointerDown = (info: any) => originalDown(buildNext(info))
     candidate.onPointerMove = (info: any) => originalMove(buildNext(info))
-    candidate.onPointerUp = (info: any) => originalUp(buildNext(info))
+    candidate.onPointerUp = (info: any) => {
+      const safeScale = getSafeScale()
+      // Commit path: force editor geometry to be current right at pen-up.
+      maybeSyncGeometryForCommit(safeScale)
+      const result = originalUp(buildNext(info))
+      if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          maybeSyncGeometryForCommit(getSafeScale())
+        })
+      }
+      return result
+    }
 
     try {
       ;(candidate as any).__philaniEraserShimInstalled = true

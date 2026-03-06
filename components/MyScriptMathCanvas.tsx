@@ -119,7 +119,31 @@ function renderTextWithInlineKatex(inputRaw: string) {
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
 
-function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean): boolean {
+function normalizeIinkPointerInfo(info: any, scale: number): any {
+  if (!info || typeof info !== 'object') return info
+  if (!Number.isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 0.0001) return info
+
+  const next = { ...info }
+
+  const normalizeXY = (target: any) => {
+    if (!target || typeof target !== 'object') return
+    if (typeof target.x === 'number') target.x = target.x / scale
+    if (typeof target.y === 'number') target.y = target.y / scale
+  }
+
+  // iink pointer payloads are not consistently typed across runtime builds.
+  // Normalize the common relative coordinate shapes that may appear.
+  normalizeXY(next)
+  if (typeof next.offsetX === 'number') next.offsetX = next.offsetX / scale
+  if (typeof next.offsetY === 'number') next.offsetY = next.offsetY / scale
+  normalizeXY(next.position)
+  normalizeXY(next.point)
+  normalizeXY(next.pointer)
+
+  return next
+}
+
+function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean, getInputScale?: () => number): boolean {
   if (!editor || typeof editor !== 'object') return false
 
   const tryInstallOn = (candidate: any): boolean => {
@@ -135,24 +159,19 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
 
-    candidate.onPointerDown = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalDown(next)
+    const buildNext = (info: any) => {
+      let next = info
+      if (isEraserActive() && info && typeof info === 'object') {
+        next = { ...next, pointerType: PHILANI_ERASER_POINTER_TYPE }
+      }
+      const scaleRaw = typeof getInputScale === 'function' ? Number(getInputScale()) : 1
+      const safeScale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1
+      return normalizeIinkPointerInfo(next, safeScale)
     }
-    candidate.onPointerMove = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalMove(next)
-    }
-    candidate.onPointerUp = (info: any) => {
-      const next = (isEraserActive() && info && typeof info === 'object')
-        ? { ...info, pointerType: PHILANI_ERASER_POINTER_TYPE }
-        : info
-      return originalUp(next)
-    }
+
+    candidate.onPointerDown = (info: any) => originalDown(buildNext(info))
+    candidate.onPointerMove = (info: any) => originalMove(buildNext(info))
+    candidate.onPointerUp = (info: any) => originalUp(buildNext(info))
 
     try {
       ;(candidate as any).__philaniEraserShimInstalled = true
@@ -5630,7 +5649,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         editorInstanceRef.current = editor
         setMyScriptEditorReady(true)
-        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current))
+        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current, () => stackedInputScaleRef.current))
         setStatus('ready')
         setMyScriptLastError(null)
 
@@ -7711,6 +7730,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastMidpointY: number
   }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
   const [stackedZoom, setStackedZoom] = useState(110)
+  const stackedInputScaleRef = useRef(1)
   const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
@@ -7719,6 +7739,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     stackedZoomRef.current = stackedEffectiveZoom
   }, [stackedEffectiveZoom])
+
+  useEffect(() => {
+    stackedInputScaleRef.current = useStackedStudentLayout ? stackedLiveScale : 1
+  }, [stackedLiveScale, useStackedStudentLayout])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    requestEditorResize()
+  }, [requestEditorResize, stackedEffectiveZoom, useStackedStudentLayout])
 
   const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
     const contentEl = stackedZoomContentRef.current

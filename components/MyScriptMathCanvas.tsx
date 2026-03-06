@@ -10703,11 +10703,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       evt.stopPropagation()
     }
 
-    const buildReplayInfo = (evt: PointerEvent) => {
+    const buildReplayInfo = (type: 'pointerdown' | 'pointermove' | 'pointerup', evt: PointerEvent) => {
       const hostRect = host.getBoundingClientRect()
       const localX = evt.clientX - hostRect.left
       const localY = evt.clientY - hostRect.top
+      const resolvedButtons = typeof evt.buttons === 'number'
+        ? evt.buttons
+        : (type === 'pointerdown' ? 1 : 0)
+      const resolvedPressure = typeof evt.pressure === 'number' && Number.isFinite(evt.pressure)
+        ? evt.pressure
+        : (type === 'pointerup' ? 0 : 0.5)
       return {
+        type,
+        eventType: type,
+        isStart: type === 'pointerdown',
+        isFirst: type === 'pointerdown',
+        isEnd: type === 'pointerup',
+        isLast: type === 'pointerup',
         pointerId: evt.pointerId,
         pointerType: evt.pointerType,
         clientX: evt.clientX,
@@ -10720,8 +10732,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         point: { x: localX, y: localY },
         pointer: { x: localX, y: localY },
         button: evt.button,
-        buttons: evt.buttons || 1,
-        pressure: evt.pressure > 0 ? evt.pressure : 0.5,
+        buttons: resolvedButtons,
+        pressure: resolvedPressure,
         width: evt.width,
         height: evt.height,
         tiltX: evt.tiltX,
@@ -10748,8 +10760,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
 
-    const dispatchReplay = (type: 'pointerdown' | 'pointermove', evt: PointerEvent) => {
-      const replayInfo = buildReplayInfo(evt)
+    const dispatchReplay = (type: 'pointerdown' | 'pointermove' | 'pointerup', evt: PointerEvent) => {
+      const replayInfo = buildReplayInfo(type, evt)
       const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
       if (editor?.__philaniReplayPointerEvent) {
         editor.__philaniReplayPointerEvent(type, replayInfo)

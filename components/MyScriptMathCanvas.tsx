@@ -2254,8 +2254,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     pendingTouch: null | {
       pointerId: number
       timer: ReturnType<typeof setTimeout> | null
-      downEvent: PointerEventInit
-      moveQueue: PointerEventInit[]
+      downEvent: PointerEvent
+      moveQueue: PointerEvent[]
     }
   }>({
     pointers: new Map(),
@@ -10694,36 +10694,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       evt.stopPropagation()
     }
 
-    const buildReplayInit = (evt: PointerEvent): PointerEventInit => ({
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      pointerId: evt.pointerId,
-      pointerType: evt.pointerType,
-      clientX: evt.clientX,
-      clientY: evt.clientY,
-      button: evt.button,
-      buttons: evt.buttons || 1,
-      pressure: evt.pressure > 0 ? evt.pressure : 0.5,
-      width: evt.width,
-      height: evt.height,
-      tiltX: evt.tiltX,
-      tiltY: evt.tiltY,
-      isPrimary: evt.isPrimary,
-      ctrlKey: evt.ctrlKey,
-      shiftKey: evt.shiftKey,
-      altKey: evt.altKey,
-      metaKey: evt.metaKey,
-    })
+    const buildReplayInfo = (evt: PointerEvent) => {
+      const hostRect = host.getBoundingClientRect()
+      const localX = evt.clientX - hostRect.left
+      const localY = evt.clientY - hostRect.top
+      return {
+        pointerId: evt.pointerId,
+        pointerType: evt.pointerType,
+        clientX: evt.clientX,
+        clientY: evt.clientY,
+        x: localX,
+        y: localY,
+        offsetX: localX,
+        offsetY: localY,
+        position: { x: localX, y: localY },
+        point: { x: localX, y: localY },
+        pointer: { x: localX, y: localY },
+        button: evt.button,
+        buttons: evt.buttons || 1,
+        pressure: evt.pressure > 0 ? evt.pressure : 0.5,
+        width: evt.width,
+        height: evt.height,
+        tiltX: evt.tiltX,
+        tiltY: evt.tiltY,
+        isPrimary: evt.isPrimary,
+        timeStamp: evt.timeStamp,
+        target: evt.target,
+        currentTarget: host,
+        preventDefault: () => {
+          try {
+            evt.preventDefault()
+          } catch {}
+        },
+        stopPropagation: () => {
+          try {
+            evt.stopPropagation()
+          } catch {}
+        },
+        stopImmediatePropagation: () => {
+          try {
+            evt.stopImmediatePropagation()
+          } catch {}
+        },
+      }
+    }
 
-    const dispatchReplay = (type: 'pointerdown' | 'pointermove', init: PointerEventInit) => {
+    const dispatchReplay = (type: 'pointerdown' | 'pointermove', evt: PointerEvent) => {
+      const replayInfo = buildReplayInfo(evt)
       const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
       if (editor?.__philaniReplayPointerEvent) {
-        editor.__philaniReplayPointerEvent(type, init)
+        editor.__philaniReplayPointerEvent(type, replayInfo)
         return
       }
       try {
-        host.dispatchEvent(new PointerEvent(type, init))
+        host.dispatchEvent(new PointerEvent(type, replayInfo))
       } catch {}
     }
 
@@ -10797,7 +10821,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           timer: setTimeout(() => {
             commitPendingTouch()
           }, TOUCH_INK_DISAMBIGUATION_DELAY_MS),
-          downEvent: buildReplayInit(evt),
+          downEvent: evt,
           moveQueue: [],
         }
         state.suppressedPointers.add(evt.pointerId)
@@ -10817,7 +10841,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       const pending = state.pendingTouch
       if (pending && pending.pointerId === evt.pointerId) {
-        pending.moveQueue.push(buildReplayInit(evt))
+        pending.moveQueue.push(evt)
         if (pending.moveQueue.length > TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT) {
           pending.moveQueue.shift()
         }

@@ -917,6 +917,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [recognitionEngine, clearMathpixLocalStrokes])
 
   useEffect(() => {
+    if (!isEraserMode) return
+    clearMathpixLocalStrokes()
+  }, [clearMathpixLocalStrokes, isEraserMode])
+
+  useEffect(() => {
     const host = editorHostRef.current
     if (!host) return
 
@@ -931,6 +936,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerDown = (evt: PointerEvent) => {
       if (recognitionEngineRef.current !== 'mathpix') return
+      if (isEraserModeRef.current) return
       const stroke = { x: [], y: [] }
       mathpixActivePointerRef.current.set(evt.pointerId, stroke)
       mathpixLocalStrokesRef.current.push(stroke)
@@ -940,6 +946,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerMove = (evt: PointerEvent) => {
       if (recognitionEngineRef.current !== 'mathpix') return
+      if (isEraserModeRef.current) return
       const stroke = mathpixActivePointerRef.current.get(evt.pointerId)
       if (!stroke) return
       addPoint(evt, stroke)

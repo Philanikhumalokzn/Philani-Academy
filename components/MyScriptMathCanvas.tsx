@@ -10539,6 +10539,101 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   )
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!useStackedStudentLayout) return
+
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+
+    const state = multiTouchPanRef.current
+
+    const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch'
+
+    const updatePointer = (evt: PointerEvent) => {
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    }
+
+    const suppressEvent = (evt: PointerEvent) => {
+      if (evt.cancelable) evt.preventDefault()
+      evt.stopImmediatePropagation()
+      evt.stopPropagation()
+    }
+
+    const beginGestureSuppressionIfReady = () => {
+      if (state.active) return
+      if (state.pointers.size < 2) return
+      state.active = true
+      state.lastMid = null
+      state.pendingTouch = null
+      state.suppressedPointers = new Set(state.pointers.keys())
+    }
+
+    const endGestureIfNeeded = () => {
+      if (state.active && state.pointers.size < 2) {
+        state.active = false
+        state.lastMid = null
+      }
+      if (state.pointers.size === 0) {
+        state.suppressedPointers.clear()
+        state.pendingTouch = null
+      }
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      updatePointer(evt)
+      if (state.pointers.size >= 2) {
+        beginGestureSuppressionIfReady()
+        state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      updatePointer(evt)
+
+      if (state.active && state.pointers.size >= 2) {
+        suppressEvent(evt)
+        return
+      }
+
+      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
+        suppressEvent(evt)
+      }
+    }
+
+    const handlePointerUpLike = (evt: PointerEvent) => {
+      if (!isTouchLike(evt)) return
+      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      state.pointers.delete(evt.pointerId)
+      state.suppressedPointers.delete(evt.pointerId)
+      endGestureIfNeeded()
+
+      if (state.active || wasSuppressed) {
+        suppressEvent(evt)
+      }
+    }
+
+    viewport.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
+    viewport.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
+    window.addEventListener('pointerup', handlePointerUpLike, { capture: true, passive: false })
+    window.addEventListener('pointercancel', handlePointerUpLike, { capture: true, passive: false })
+
+    return () => {
+      viewport.removeEventListener('pointerdown', handlePointerDown as any, true)
+      viewport.removeEventListener('pointermove', handlePointerMove as any, true)
+      window.removeEventListener('pointerup', handlePointerUpLike as any, true)
+      window.removeEventListener('pointercancel', handlePointerUpLike as any, true)
+      state.pointers.clear()
+      state.active = false
+      state.lastMid = null
+      state.suppressedPointers.clear()
+      state.pendingTouch = null
+    }
+  }, [multiTouchPanRef, studentViewportRef, useStackedStudentLayout])
+
+  useEffect(() => {
     if (!useStackedStudentLayout) return
 
     const viewport = studentViewportRef.current

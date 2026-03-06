@@ -145,7 +145,12 @@ function normalizeIinkPointerInfo(info: any, scale: number): any {
   return next
 }
 
-function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boolean, getInputScale?: () => number): boolean {
+function installIinkEraserPointerTypeShim(
+  editor: any,
+  isEraserActive: () => boolean,
+  getInputScale?: () => number,
+  shouldBypassTouchDelay?: (pointerId: number) => boolean,
+): boolean {
   if (!editor || typeof editor !== 'object') return false
 
   const tryInstallOn = (candidate: any): boolean => {
@@ -236,6 +241,11 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
       }
 
       activeTouchPointerIds.add(pointerId)
+      const bypassTouchDelay = typeof shouldBypassTouchDelay === 'function' && shouldBypassTouchDelay(pointerId)
+      if (bypassTouchDelay && activeTouchPointerIds.size === 1) {
+        clearPendingGate(pointerId)
+        return originalDown(next)
+      }
       if (touchGestureLocked) {
         cancelAllUncommittedTouchGates()
         return
@@ -2223,7 +2233,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     active: boolean
     lastMid: { x: number; y: number } | null
     suppressedPointers: Set<number>
-    pendingTouch: null | { pointerId: number; startTs: number; startX: number; startY: number }
+    pendingTouch: null | {
+      pointerId: number
+      timer: ReturnType<typeof setTimeout> | null
+      downEvent: PointerEventInit
+      moveQueue: PointerEventInit[]
+    }
   }>({
     pointers: new Map(),
     active: false,
@@ -2231,6 +2246,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     suppressedPointers: new Set(),
     pendingTouch: null,
   })
+  const resolvedTouchInkPointerIdsRef = useRef<Set<number>>(new Set())
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
@@ -5887,7 +5903,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         editorInstanceRef.current = editor
         setMyScriptEditorReady(true)
-        setEraserShimReady(installIinkEraserPointerTypeShim(editor, () => isEraserModeRef.current, () => stackedInputScaleRef.current))
+        setEraserShimReady(
+          installIinkEraserPointerTypeShim(
+            editor,
+            () => isEraserModeRef.current,
+            () => stackedInputScaleRef.current,
+            (pointerId) => resolvedTouchInkPointerIdsRef.current.has(pointerId),
+          )
+        )
         setStatus('ready')
         setMyScriptLastError(null)
 
@@ -10636,6 +10659,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const viewport = studentViewportRef.current
     if (!viewport) return
+    const host = editorHostRef.current
+    if (!host) return
 
     const state = multiTouchPanRef.current
 
@@ -10651,12 +10676,68 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       evt.stopPropagation()
     }
 
+    const buildReplayInit = (evt: PointerEvent): PointerEventInit => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      pointerId: evt.pointerId,
+      pointerType: evt.pointerType,
+      clientX: evt.clientX,
+      clientY: evt.clientY,
+      button: evt.button,
+      buttons: evt.buttons || 1,
+      pressure: evt.pressure > 0 ? evt.pressure : 0.5,
+      width: evt.width,
+      height: evt.height,
+      tiltX: evt.tiltX,
+      tiltY: evt.tiltY,
+      isPrimary: evt.isPrimary,
+      ctrlKey: evt.ctrlKey,
+      shiftKey: evt.shiftKey,
+      altKey: evt.altKey,
+      metaKey: evt.metaKey,
+    })
+
+    const dispatchReplay = (type: 'pointerdown' | 'pointermove', init: PointerEventInit) => {
+      try {
+        host.dispatchEvent(new PointerEvent(type, init))
+      } catch {}
+    }
+
+    const clearPendingTouch = () => {
+      const pending = state.pendingTouch
+      if (!pending) return
+      if (pending.timer) {
+        clearTimeout(pending.timer)
+        pending.timer = null
+      }
+      resolvedTouchInkPointerIdsRef.current.delete(pending.pointerId)
+      state.pendingTouch = null
+    }
+
+    const commitPendingTouch = () => {
+      const pending = state.pendingTouch
+      if (!pending) return
+      pending.timer = null
+      if (state.active || state.pointers.size !== 1 || !state.pointers.has(pending.pointerId)) {
+        clearPendingTouch()
+        return
+      }
+      resolvedTouchInkPointerIdsRef.current.add(pending.pointerId)
+      state.suppressedPointers.delete(pending.pointerId)
+      state.pendingTouch = null
+      dispatchReplay('pointerdown', pending.downEvent)
+      pending.moveQueue.forEach((moveEvt) => {
+        dispatchReplay('pointermove', moveEvt)
+      })
+    }
+
     const beginGestureSuppressionIfReady = () => {
       if (state.active) return
       if (state.pointers.size < 2) return
       state.active = true
       state.lastMid = null
-      state.pendingTouch = null
+      clearPendingTouch()
       state.suppressedPointers = new Set(state.pointers.keys())
     }
 
@@ -10667,23 +10748,59 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       if (state.pointers.size === 0) {
         state.suppressedPointers.clear()
-        state.pendingTouch = null
+        clearPendingTouch()
       }
     }
 
     const handlePointerDown = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
+      if (!evt.isTrusted) return
       updatePointer(evt)
+
+      if (state.pendingTouch && state.pendingTouch.pointerId !== evt.pointerId) {
+        clearPendingTouch()
+      }
+
       if (state.pointers.size >= 2) {
         beginGestureSuppressionIfReady()
         state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+        return
+      }
+
+      if (!state.active && state.pointers.size === 1 && !state.pendingTouch) {
+        state.pendingTouch = {
+          pointerId: evt.pointerId,
+          timer: setTimeout(() => {
+            commitPendingTouch()
+          }, TOUCH_INK_DISAMBIGUATION_DELAY_MS),
+          downEvent: buildReplayInit(evt),
+          moveQueue: [],
+        }
+        state.suppressedPointers.add(evt.pointerId)
+        suppressEvent(evt)
+        return
+      }
+
+      if (state.suppressedPointers.has(evt.pointerId)) {
         suppressEvent(evt)
       }
     }
 
     const handlePointerMove = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
+      if (!evt.isTrusted) return
       updatePointer(evt)
+
+      const pending = state.pendingTouch
+      if (pending && pending.pointerId === evt.pointerId) {
+        pending.moveQueue.push(buildReplayInit(evt))
+        if (pending.moveQueue.length > TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT) {
+          pending.moveQueue.shift()
+        }
+        suppressEvent(evt)
+        return
+      }
 
       if (state.active && state.pointers.size >= 2) {
         suppressEvent(evt)
@@ -10697,8 +10814,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerUpLike = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
+      if (!evt.isTrusted) return
       const hadPan = state.active || state.suppressedPointers.size > 0
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      const pending = state.pendingTouch
+      if (pending && pending.pointerId === evt.pointerId) {
+        clearPendingTouch()
+      }
+      resolvedTouchInkPointerIdsRef.current.delete(evt.pointerId)
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
       endGestureIfNeeded()
@@ -10743,7 +10866,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.active = false
       state.lastMid = null
       state.suppressedPointers.clear()
-      state.pendingTouch = null
+      clearPendingTouch()
+      resolvedTouchInkPointerIdsRef.current.clear()
       if (debugPanUndoTimeoutRef.current) {
         clearTimeout(debugPanUndoTimeoutRef.current)
         debugPanUndoTimeoutRef.current = null

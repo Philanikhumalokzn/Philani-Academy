@@ -160,6 +160,7 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
     const activeTouchPointerIds = new Set<number>()
+    let touchGestureLocked = false
     const pendingTouchGateById = new Map<number, {
       committed: boolean
       downInfo: any
@@ -234,7 +235,12 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
       }
 
       activeTouchPointerIds.add(pointerId)
+      if (touchGestureLocked) {
+        cancelAllUncommittedTouchGates()
+        return
+      }
       if (activeTouchPointerIds.size >= 2) {
+        touchGestureLocked = true
         cancelAllUncommittedTouchGates()
         return
       }
@@ -280,6 +286,10 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
         return originalMove(next)
       }
 
+      if (touchGestureLocked) {
+        return
+      }
+
       const pending = pendingTouchGateById.get(pointerId)
       if (pending && !pending.committed) {
         pending.moveQueue.push(next)
@@ -303,6 +313,13 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
 
       if (isTouch && pointerId != null) {
         activeTouchPointerIds.delete(pointerId)
+        if (touchGestureLocked) {
+          clearPendingGate(pointerId)
+          if (activeTouchPointerIds.size === 0) {
+            touchGestureLocked = false
+          }
+          return
+        }
         const pending = pendingTouchGateById.get(pointerId)
         if (pending && !pending.committed) {
           clearPendingGate(pointerId)

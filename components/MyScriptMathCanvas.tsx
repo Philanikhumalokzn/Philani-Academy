@@ -10605,10 +10605,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const handlePointerUpLike = (evt: PointerEvent) => {
       if (!isTouchLike(evt)) return
+      const hadPan = state.active || state.suppressedPointers.size > 0
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
       endGestureIfNeeded()
+      const gestureEnded = hadPan && !state.active && state.pointers.size === 0
+
+      if (gestureEnded) {
+        const UNDO_DELAY_MS = 250
+        if (debugPanUndoTimeoutRef.current) {
+          clearTimeout(debugPanUndoTimeoutRef.current)
+          debugPanUndoTimeoutRef.current = null
+        }
+        const shouldUndo = !lockedOutRef.current
+        if (shouldUndo && editorInstanceRef.current) {
+          try {
+            debugPanUndoTimeoutRef.current = setTimeout(() => {
+              try {
+                editorInstanceRef.current?.undo?.()
+              } catch {}
+              debugPanUndoTimeoutRef.current = null
+            }, UNDO_DELAY_MS)
+          } catch {}
+        }
+      }
 
       if (state.active || wasSuppressed) {
         suppressEvent(evt)
@@ -10630,6 +10651,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.lastMid = null
       state.suppressedPointers.clear()
       state.pendingTouch = null
+      if (debugPanUndoTimeoutRef.current) {
+        clearTimeout(debugPanUndoTimeoutRef.current)
+        debugPanUndoTimeoutRef.current = null
+      }
     }
   }, [multiTouchPanRef, studentViewportRef, useStackedStudentLayout])
 

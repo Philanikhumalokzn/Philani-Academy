@@ -836,6 +836,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const pendingExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const studentQuizPreviewExportInFlightRef = useRef(false)
+  const latexPreviewEpochRef = useRef(0)
   const isApplyingRemoteRef = useRef(false)
   const lastAppliedRemoteVersionRef = useRef(0)
   const suppressBroadcastUntilTsRef = useRef(0)
@@ -5598,6 +5599,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const scheduleMathpixPreview = useCallback(() => {
     if (recognitionEngineRef.current !== 'mathpix') return
+    const previewEpoch = latexPreviewEpochRef.current
     if (mathpixPreviewTimeoutRef.current) {
       clearTimeout(mathpixPreviewTimeoutRef.current)
       mathpixPreviewTimeoutRef.current = null
@@ -5615,6 +5617,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       requestMathpixLatex(symbols)
         .then(latex => {
+          if (previewEpoch !== latexPreviewEpochRef.current) return
           setLatexOutput(latex)
           if (useAdminStepComposerRef.current && hasControllerRights()) {
             setAdminDraftLatex(normalizeStepLatex(latex))
@@ -5637,6 +5640,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     return getLatexFromEditorModel()
   }, [getLatexFromEditorModel])
+
+  const invalidatePendingLatexPreviewWork = useCallback(() => {
+    latexPreviewEpochRef.current += 1
+    if (pendingExportRef.current) {
+      clearTimeout(pendingExportRef.current)
+      pendingExportRef.current = null
+    }
+    if (studentQuizPreviewExportRef.current) {
+      clearTimeout(studentQuizPreviewExportRef.current)
+      studentQuizPreviewExportRef.current = null
+    }
+    if (mathpixPreviewTimeoutRef.current) {
+      clearTimeout(mathpixPreviewTimeoutRef.current)
+      mathpixPreviewTimeoutRef.current = null
+    }
+  }, [])
+
+  const resyncLatexPreviewFromEditor = useCallback(async () => {
+    invalidatePendingLatexPreviewWork()
+
+    const editor = editorInstanceRef.current
+    if (!editor) {
+      setLatexOutput('')
+      if (useAdminStepComposerRef.current && hasControllerRights()) {
+        setAdminDraftLatex('')
+      }
+      return
+    }
+
+    try {
+      if (typeof editor.waitForIdle === 'function') {
+        await editor.waitForIdle()
+      }
+    } catch {}
+
+    const symbols = extractEditorSymbols()
+    const symbolCount = countSymbols(symbols)
+    lastSymbolCountRef.current = symbolCount
+
+    if (symbolCount === 0) {
+      setLatexOutput('')
+      if (useAdminStepComposerRef.current && hasControllerRights()) {
+        setAdminDraftLatex('')
+      }
+      return
+    }
+
+    let latexValue = getLatexFromEngineModel()
+    if (recognitionEngineRef.current === 'mathpix') {
+      latexValue = await requestMathpixLatex(symbols)
+    } else if (!latexValue || latexValue.trim().length === 0) {
+      const exported = await exportLatexFromEngine()
+      latexValue = typeof exported === 'string' ? exported : ''
+    }
+
+    setLatexOutput(latexValue)
+    if (useAdminStepComposerRef.current && hasControllerRights()) {
+      setAdminDraftLatex(normalizeStepLatex(latexValue))
+    }
+  }, [exportLatexFromEngine, extractEditorSymbols, getLatexFromEngineModel, hasControllerRights, invalidatePendingLatexPreviewWork, normalizeStepLatex, requestMathpixLatex])
 
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.
@@ -5846,6 +5909,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (pendingExportRef.current) {
               clearTimeout(pendingExportRef.current)
             }
+            const previewEpoch = latexPreviewEpochRef.current
             pendingExportRef.current = setTimeout(() => {
               pendingExportRef.current = null
               if (previewExportInFlightRef.current) return
@@ -5860,6 +5924,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
+                if (previewEpoch !== latexPreviewEpochRef.current) return
                 setLatexOutput(latexValue)
                 const normalized = normalizeStepLatex(latexValue)
                 // In edit mode, we want the draft to track the current ink, including scratch-to-erase.
@@ -5879,6 +5944,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             if (studentQuizPreviewExportRef.current) {
               clearTimeout(studentQuizPreviewExportRef.current)
             }
+            const previewEpoch = latexPreviewEpochRef.current
             studentQuizPreviewExportRef.current = setTimeout(() => {
               studentQuizPreviewExportRef.current = null
               if (studentQuizPreviewExportInFlightRef.current) return
@@ -5893,6 +5959,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
+                if (previewEpoch !== latexPreviewEpochRef.current) return
                 setLatexOutput(latexValue)
               })()
                 .finally(() => {
@@ -10625,6 +10692,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               try {
                 editorInstanceRef.current?.undo?.()
               } catch {}
+              void resyncLatexPreviewFromEditor()
               debugPanUndoTimeoutRef.current = null
             }, UNDO_DELAY_MS)
           } catch {}
@@ -10656,7 +10724,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         debugPanUndoTimeoutRef.current = null
       }
     }
-  }, [multiTouchPanRef, studentViewportRef, useStackedStudentLayout])
+  }, [multiTouchPanRef, resyncLatexPreviewFromEditor, studentViewportRef, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useStackedStudentLayout) return

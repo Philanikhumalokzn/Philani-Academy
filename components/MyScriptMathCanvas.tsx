@@ -352,6 +352,20 @@ function installIinkEraserPointerTypeShim(
     }
 
     try {
+      ;(editor as PhilaniReplayablePointerEditor).__philaniReplayPointerEvent = (type, info) => {
+        if (type === 'pointerdown') {
+          candidate.onPointerDown(info)
+          return
+        }
+        if (type === 'pointermove') {
+          candidate.onPointerMove(info)
+          return
+        }
+        candidate.onPointerUp(info)
+      }
+    } catch {}
+
+    try {
       ;(candidate as any).__philaniEraserShimInstalled = true
     } catch {}
     return true
@@ -530,6 +544,10 @@ type SnapshotPayload = {
   version: number
   snapshotId: string
   baseSymbolCount?: number
+}
+
+type PhilaniReplayablePointerEditor = {
+  __philaniReplayPointerEvent?: (type: 'pointerdown' | 'pointermove' | 'pointerup', info: any) => void
 }
 
 type SnapshotRecord = {
@@ -10699,6 +10717,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     })
 
     const dispatchReplay = (type: 'pointerdown' | 'pointermove', init: PointerEventInit) => {
+      const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
+      if (editor?.__philaniReplayPointerEvent) {
+        editor.__philaniReplayPointerEvent(type, init)
+        return
+      }
       try {
         host.dispatchEvent(new PointerEvent(type, init))
       } catch {}

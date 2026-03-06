@@ -10771,7 +10771,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
       resolvedTouchInkPointerIdsRef.current.add(pending.pointerId)
-      state.suppressedPointers.delete(pending.pointerId)
       state.pendingTouch = null
       dispatchReplay('pointerdown', pending.downEvent)
       pending.moveQueue.forEach((moveEvt) => {
@@ -10839,6 +10838,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!evt.isTrusted) return
       updatePointer(evt)
 
+      if (resolvedTouchInkPointerIdsRef.current.has(evt.pointerId)) {
+        dispatchReplay('pointermove', evt)
+        suppressEvent(evt)
+        return
+      }
+
       const pending = state.pendingTouch
       if (pending && pending.pointerId === evt.pointerId) {
         pending.moveQueue.push(evt)
@@ -10864,9 +10869,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!evt.isTrusted) return
       const hadPan = state.active || state.suppressedPointers.size > 0
       const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
+      const isResolvedInkPointer = resolvedTouchInkPointerIdsRef.current.has(evt.pointerId)
       const pending = state.pendingTouch
       if (pending && pending.pointerId === evt.pointerId) {
         clearPendingTouch()
+      }
+      if (isResolvedInkPointer) {
+        dispatchReplay('pointerup', evt as any)
       }
       resolvedTouchInkPointerIdsRef.current.delete(evt.pointerId)
       state.pointers.delete(evt.pointerId)
@@ -10894,7 +10903,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       }
 
-      if (state.active || wasSuppressed) {
+      if (state.active || wasSuppressed || isResolvedInkPointer) {
         suppressEvent(evt)
       }
     }

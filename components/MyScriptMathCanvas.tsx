@@ -7753,6 +7753,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
   const [stackedZoom, setStackedZoom] = useState(110)
   const stackedInputScaleRef = useRef(1)
+  const [stackedSurfaceBaseSize, setStackedSurfaceBaseSize] = useState({ width: 320, height: 640 })
   const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
@@ -7765,6 +7766,42 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     stackedInputScaleRef.current = useStackedStudentLayout ? stackedLiveScale : 1
   }, [stackedLiveScale, useStackedStudentLayout])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    if (typeof window === 'undefined') return
+
+    const viewport = studentViewportRef.current
+    if (!viewport) return
+
+    const updateBaseSize = () => {
+      const compactPadding = stackedIsZoomedForPan ? 0 : (window.matchMedia('(min-width: 640px)').matches ? 24 : 16)
+      const nextWidth = Math.max(320, Math.round(viewport.clientWidth - (compactPadding * 2)))
+      const nextHeight = Math.max(320, Math.round(viewport.clientHeight * 2))
+      setStackedSurfaceBaseSize((prev) => {
+        if (Math.abs(prev.width - nextWidth) < 1 && Math.abs(prev.height - nextHeight) < 1) return prev
+        return { width: nextWidth, height: nextHeight }
+      })
+    }
+
+    updateBaseSize()
+    window.addEventListener('resize', updateBaseSize)
+
+    let ro: ResizeObserver | null = null
+    try {
+      ro = new ResizeObserver(() => updateBaseSize())
+      ro.observe(viewport)
+    } catch {
+      // Ignore environments without ResizeObserver.
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateBaseSize)
+      try {
+        ro?.disconnect()
+      } catch {}
+    }
+  }, [stackedIsZoomedForPan, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
@@ -11995,7 +12032,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   ref={studentViewportRef}
                   className="relative flex-1 min-h-0 overflow-auto"
                   style={{
-                    touchAction: 'none',
+                    touchAction: 'pan-x pan-y',
+                    WebkitOverflowScrolling: 'touch',
                     paddingBottom: showBottomHorizontalScrollbar
                       ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
                       : undefined,
@@ -12003,30 +12041,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 >
                   <div
                     ref={stackedZoomContentRef}
-                    className={`${stackedIsZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col`}
+                    className={`${stackedIsZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
                     style={{
                       zoom: stackedLiveScale,
+                      paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
                       willChange: stackedPinchStateRef.current.active ? 'transform' : undefined,
                     }}
                   >
-                    <div
-                      style={{
-                      backgroundColor: '#ffffff',
-                      backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
-                      backgroundSize: '24px 24px',
-                      width: `${100 * inkSurfaceWidthFactor}%`,
-                      // Give extra vertical room so the viewport can scroll
-                      // vertically independent of zoom.
-                      height: '200%',
-                      }
-                    }
-                    >
+                    <div className="w-full flex items-start justify-center">
                       <div
-                        ref={editorHostRef}
-                        className={editorHostClass}
-                        style={{ ...editorHostStyle, height: '100%' }}
-                        data-orientation={canvasOrientation}
-                      />
+                        style={{
+                          backgroundColor: '#ffffff',
+                          backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
+                          backgroundSize: '24px 24px',
+                          width: `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
+                          height: `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
+                        }}
+                      >
+                        <div
+                          ref={editorHostRef}
+                          className={editorHostClass}
+                          style={{ ...editorHostStyle, height: '100%' }}
+                          data-orientation={canvasOrientation}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

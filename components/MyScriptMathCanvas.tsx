@@ -118,7 +118,8 @@ function renderTextWithInlineKatex(inputRaw: string) {
 }
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
-const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 80
+const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 500
+const TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT = 240
 
 function normalizeIinkPointerInfo(info: any, scale: number): any {
   if (!info || typeof info !== 'object') return info
@@ -293,7 +294,7 @@ function installIinkEraserPointerTypeShim(editor: any, isEraserActive: () => boo
       const pending = pendingTouchGateById.get(pointerId)
       if (pending && !pending.committed) {
         pending.moveQueue.push(next)
-        if (pending.moveQueue.length > 24) {
+        if (pending.moveQueue.length > TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT) {
           pending.moveQueue.shift()
         }
         return

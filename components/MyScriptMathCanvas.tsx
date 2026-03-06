@@ -10685,7 +10685,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null
         }
-        const shouldUndo = !lockedOutRef.current
+        const shouldUndo = !lockedOutRef.current && !isEraserModeRef.current
         if (shouldUndo && editorInstanceRef.current) {
           try {
             debugPanUndoTimeoutRef.current = setTimeout(() => {

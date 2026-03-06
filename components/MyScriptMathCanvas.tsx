@@ -7754,10 +7754,65 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [stackedZoom, setStackedZoom] = useState(110)
   const stackedInputScaleRef = useRef(1)
   const [stackedSurfaceBaseSize, setStackedSurfaceBaseSize] = useState({ width: 320, height: 640 })
+  const stackedTouchActiveRef = useRef(false)
+  const stackedInteractionMotionRafRef = useRef<number | null>(null)
+  const stackedInteractionStableFramesRef = useRef(0)
+  const stackedInteractionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
   const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
   const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
+
+  const stopStackedInteractionMotionMonitor = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (stackedInteractionMotionRafRef.current !== null) {
+      window.cancelAnimationFrame(stackedInteractionMotionRafRef.current)
+      stackedInteractionMotionRafRef.current = null
+    }
+    stackedInteractionStableFramesRef.current = 0
+    stackedInteractionLastSnapshotRef.current = null
+  }, [])
+
+  const startStackedInteractionMotionMonitor = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (stackedInteractionMotionRafRef.current !== null) return
+
+    const tick = () => {
+      const viewport = studentViewportRef.current
+      const nextSnapshot = {
+        left: viewport?.scrollLeft ?? 0,
+        top: viewport?.scrollTop ?? 0,
+        zoom: stackedZoomRef.current,
+      }
+      const prevSnapshot = stackedInteractionLastSnapshotRef.current
+      const moved = !prevSnapshot
+        || Math.abs(nextSnapshot.left - prevSnapshot.left) > 0.5
+        || Math.abs(nextSnapshot.top - prevSnapshot.top) > 0.5
+        || Math.abs(nextSnapshot.zoom - prevSnapshot.zoom) > 0.02
+      stackedInteractionLastSnapshotRef.current = nextSnapshot
+
+      const activeMotion = moved || stackedPinchActiveRef.current || stackedTouchActiveRef.current
+      if (activeMotion) {
+        stackedInteractionStableFramesRef.current = 0
+        stackedInteractionMotionRafRef.current = window.requestAnimationFrame(tick)
+        return
+      }
+
+      stackedInteractionStableFramesRef.current += 1
+      if (stackedInteractionStableFramesRef.current >= 2) {
+        stopStackedInteractionMotionMonitor()
+        return
+      }
+      stackedInteractionMotionRafRef.current = window.requestAnimationFrame(tick)
+    }
+
+    stackedInteractionMotionRafRef.current = window.requestAnimationFrame(tick)
+  }, [stopStackedInteractionMotionMonitor])
+
+  const markStackedUserInteracting = useCallback(() => {
+    stackedInteractionStableFramesRef.current = 0
+    startStackedInteractionMotionMonitor()
+  }, [startStackedInteractionMotionMonitor])
 
   useEffect(() => {
     stackedZoomRef.current = stackedEffectiveZoom
@@ -7802,6 +7857,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       } catch {}
     }
   }, [stackedIsZoomedForPan, useStackedStudentLayout])
+
+  useEffect(() => {
+    return () => {
+      stopStackedInteractionMotionMonitor()
+    }
+  }, [stopStackedInteractionMotionMonitor])
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
@@ -10365,6 +10426,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     const onTouchStart = (e: TouchEvent) => {
+      markStackedUserInteracting()
+      stackedTouchActiveRef.current = true
+
       if (e.touches.length === 2) {
         const rect = viewport.getBoundingClientRect()
         const a = e.touches[0]
@@ -10397,6 +10461,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     const onTouchMove = (e: TouchEvent) => {
+      markStackedUserInteracting()
+
       if (stackedPinchStateRef.current.active && e.touches.length === 2) {
         const PINCH_START_THRESHOLD = 0.025
         const PAN_START_THRESHOLD_PX = 1.5
@@ -10458,32 +10524,42 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       touchState.lastY = t.clientY
     }
 
-    const onTouchEnd = () => {
-      if (stackedPinchStateRef.current.active) {
+    const onTouchEnd = (e: TouchEvent) => {
+      if (stackedPinchStateRef.current.active && e.touches.length < 2) {
         stackedPinchActiveRef.current = false
         stackedPinchStateRef.current.active = false
         applyStackedLivePinchStyle(stackedZoomRef.current)
-        return
       }
 
-      if (!touchState.active) return
-      touchState.active = false
+      stackedTouchActiveRef.current = e.touches.length > 0
+      if (e.touches.length === 0) {
+        touchState.active = false
+      }
+      startStackedInteractionMotionMonitor()
+    }
+
+    const onScroll = () => {
+      markStackedUserInteracting()
     }
 
     viewport.addEventListener('touchstart', onTouchStart, { passive: true })
     viewport.addEventListener('touchmove', onTouchMove, { passive: false })
     viewport.addEventListener('touchend', onTouchEnd)
     viewport.addEventListener('touchcancel', onTouchEnd)
+    viewport.addEventListener('scroll', onScroll, { passive: true })
 
     return () => {
       viewport.removeEventListener('touchstart', onTouchStart)
       viewport.removeEventListener('touchmove', onTouchMove)
       viewport.removeEventListener('touchend', onTouchEnd)
       viewport.removeEventListener('touchcancel', onTouchEnd)
+      viewport.removeEventListener('scroll', onScroll)
       stackedPinchActiveRef.current = false
+      stackedTouchActiveRef.current = false
+      startStackedInteractionMotionMonitor()
       applyStackedLivePinchStyle(stackedZoomRef.current)
     }
-  }, [applyStackedLivePinchStyle, useStackedStudentLayout])
+  }, [applyStackedLivePinchStyle, markStackedUserInteracting, startStackedInteractionMotionMonitor, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

@@ -353,15 +353,24 @@ function installIinkEraserPointerTypeShim(
 
     try {
       ;(editor as PhilaniReplayablePointerEditor).__philaniReplayPointerEvent = (type, info) => {
+        const next = buildNext(info)
         if (type === 'pointerdown') {
-          candidate.onPointerDown(info)
+          originalDown(next)
           return
         }
         if (type === 'pointermove') {
-          candidate.onPointerMove(info)
+          originalMove(next)
           return
         }
-        candidate.onPointerUp(info)
+        const safeScale = getSafeScale()
+        maybeSyncGeometryForCommit(safeScale)
+        const result = originalUp(next)
+        if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => {
+            maybeSyncGeometryForCommit(getSafeScale())
+          })
+        }
+        return result
       }
     } catch {}
 

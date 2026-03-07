@@ -8467,7 +8467,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastMidpointY: number
   }>({ active: false, startDist: 0, startZoom: 1, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
   const [stackedZoom, setStackedZoom] = useState(1)
+  const [stackedZoomHudMounted, setStackedZoomHudMounted] = useState(false)
+  const [stackedZoomHudActive, setStackedZoomHudActive] = useState(false)
   const stackedInputScaleRef = useRef(1)
+  const stackedZoomHudFadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [stackedSurfaceBaseSize, setStackedSurfaceBaseSize] = useState({ width: 320, height: 640 })
   const stackedTouchActiveRef = useRef(false)
   const stackedInteractionMotionRafRef = useRef<number | null>(null)
@@ -8529,6 +8532,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     startStackedInteractionMotionMonitor()
   }, [startStackedInteractionMotionMonitor])
 
+  const showStackedZoomHud = useCallback(() => {
+    if (stackedZoomHudFadeTimeoutRef.current) {
+      clearTimeout(stackedZoomHudFadeTimeoutRef.current)
+      stackedZoomHudFadeTimeoutRef.current = null
+    }
+    setStackedZoomHudMounted(true)
+    setStackedZoomHudActive(true)
+  }, [])
+
+  const hideStackedZoomHudWithFade = useCallback(() => {
+    if (stackedZoomHudFadeTimeoutRef.current) {
+      clearTimeout(stackedZoomHudFadeTimeoutRef.current)
+    }
+    setStackedZoomHudActive(false)
+    stackedZoomHudFadeTimeoutRef.current = setTimeout(() => {
+      setStackedZoomHudMounted(false)
+      stackedZoomHudFadeTimeoutRef.current = null
+    }, 900)
+  }, [])
+
   useEffect(() => {
     stackedZoomRef.current = stackedEffectiveZoom
   }, [stackedEffectiveZoom])
@@ -8578,6 +8601,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       stopStackedInteractionMotionMonitor()
     }
   }, [stopStackedInteractionMotionMonitor])
+
+  useEffect(() => {
+    return () => {
+      if (stackedZoomHudFadeTimeoutRef.current) {
+        clearTimeout(stackedZoomHudFadeTimeoutRef.current)
+        stackedZoomHudFadeTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
@@ -11145,6 +11177,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         stackedPinchStateRef.current.lastMidpointX = midpointX
         stackedPinchStateRef.current.lastMidpointY = midpointY
         applyStackedLivePinchStyle(stackedZoomRef.current)
+        showStackedZoomHud()
         touchState.active = false
         return
       }
@@ -11235,6 +11268,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         stackedPinchActiveRef.current = false
         stackedPinchStateRef.current.active = false
         applyStackedLivePinchStyle(stackedZoomRef.current)
+        hideStackedZoomHudWithFade()
       }
 
       stackedTouchActiveRef.current = e.touches.length > 0
@@ -11262,10 +11296,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       viewport.removeEventListener('scroll', onScroll)
       stackedPinchActiveRef.current = false
       stackedTouchActiveRef.current = false
+      hideStackedZoomHudWithFade()
       startStackedInteractionMotionMonitor()
       applyStackedLivePinchStyle(stackedZoomRef.current)
     }
-  }, [applyStackedLivePinchStyle, markStackedUserInteracting, startStackedInteractionMotionMonitor, useStackedStudentLayout])
+  }, [applyStackedLivePinchStyle, hideStackedZoomHudWithFade, markStackedUserInteracting, showStackedZoomHud, startStackedInteractionMotionMonitor, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -12859,6 +12894,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 {isViewOnly && !forceEditableForAssignment && !(isSessionQuizMode && quizActive && !isAdmin) && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
+                  </div>
+                )}
+                {useStackedStudentLayout && stackedZoomHudMounted && (
+                  <div
+                    className={`absolute left-3 bottom-3 z-20 pointer-events-none rounded-full border border-slate-200/80 bg-white/88 px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-slate-700 shadow-sm backdrop-blur-sm transition-opacity duration-700 ease-out ${stackedZoomHudActive ? 'opacity-100' : 'opacity-0'}`}
+                    style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${showBottomHorizontalScrollbar ? (viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8) : 12}px)` }}
+                    aria-hidden="true"
+                  >
+                    {`${Math.round(stackedEffectiveZoom * 100)}%`}
                   </div>
                 )}
                 {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (

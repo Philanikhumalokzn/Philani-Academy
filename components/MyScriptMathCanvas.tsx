@@ -10150,6 +10150,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!hasWriteAccess) return
     const host = editorHostRef.current
     if (!host) return
+    const EDGE_TRIGGER_RATIO = 0.1
+    const EDGE_CLEARANCE_RATIO = 0.5
 
     const onDown = (event: PointerEvent) => {
       strokeTrackRef.current.active = true
@@ -10175,7 +10177,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!viewport) return
 
       const rect = viewport.getBoundingClientRect()
-      const leftEdgeTrigger = rect.left + rect.width * 0.1
+      const leftEdgeTrigger = rect.left + rect.width * EDGE_TRIGGER_RATIO
       if (nextX <= leftEdgeTrigger) {
         strokeTrackRef.current.leftPanArmed = true
       }
@@ -10217,16 +10219,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (maxScroll <= 0) return
 
       const rect = viewport.getBoundingClientRect()
-      // Threshold is the screen midpoint (50%). We keep the latest stroke footprint on the left side
-      // of this imaginary center line, so there is always at least ~50% free space to the right.
-      // Use the stroke's maxX so shapes that "finish" left but extend right (like a 3) still pan.
-      const midX = rect.left + rect.width * 0.5
-      const gain = 0.9
+      const leftEdgeTrigger = rect.left + rect.width * EDGE_TRIGGER_RATIO
+      const rightEdgeTrigger = rect.left + rect.width * (1 - EDGE_TRIGGER_RATIO)
+      const targetX = rect.left + rect.width * EDGE_CLEARANCE_RATIO
 
       // If the exclusive left-edge right-to-left mode was engaged, apply an extra pen-up scroll
       // so the stroke end point sits ~50% away from the left edge (clearance), then stop.
       if (strokeTrackRef.current.leftPanArmed) {
-        const targetX = rect.left + rect.width * 0.5
         const delta = strokeTrackRef.current.lastX - targetX
         if (delta < -1) {
           smoothScrollViewportBy(delta)
@@ -10234,9 +10233,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
 
-      const excessRight = strokeTrackRef.current.maxX - midX
-      if (excessRight > 0) {
-        smoothScrollViewportBy(excessRight * gain)
+      // Symmetric right-edge trigger: pan only when stroke reaches near the right edge.
+      if (strokeTrackRef.current.maxX >= rightEdgeTrigger || strokeTrackRef.current.lastX >= rightEdgeTrigger) {
+        const rightAnchor = Math.max(strokeTrackRef.current.maxX, strokeTrackRef.current.lastX)
+        const delta = rightAnchor - targetX
+        if (delta > 1) {
+          smoothScrollViewportBy(delta)
+        }
       }
     }
 

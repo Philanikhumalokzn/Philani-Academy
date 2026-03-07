@@ -6042,6 +6042,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   studentQuizPreviewExportInFlightRef.current = false
                 })
             }, 350)
+          } else if (useStackedStudentLayout && hasWriteAccess && !useAdminStepComposerRef.current) {
+            if (studentQuizPreviewExportRef.current) {
+              clearTimeout(studentQuizPreviewExportRef.current)
+            }
+            const previewEpoch = latexPreviewEpochRef.current
+            studentQuizPreviewExportRef.current = setTimeout(() => {
+              studentQuizPreviewExportRef.current = null
+              if (studentQuizPreviewExportInFlightRef.current) return
+              studentQuizPreviewExportInFlightRef.current = true
+              ;(async () => {
+                let latexValue = getLatexFromEngineModel()
+                if (!latexValue || latexValue.trim().length === 0) {
+                  const exported = await exportLatexFromEngine()
+                  latexValue = typeof exported === 'string' ? exported : ''
+                }
+                if (cancelled) return
+                if (previewEpoch !== latexPreviewEpochRef.current) return
+                setLatexOutput(latexValue)
+              })()
+                .finally(() => {
+                  studentQuizPreviewExportInFlightRef.current = false
+                })
+            }, 350)
           }
         }
         const handleExported = (evt: any) => {
@@ -6152,7 +6175,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit])
+  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, hasWriteAccess, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useAdminStepComposer) return

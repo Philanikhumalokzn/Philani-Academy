@@ -118,7 +118,7 @@ function renderTextWithInlineKatex(inputRaw: string) {
 }
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
-const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 500
+const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 3000
 const TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT = 240
 
 function normalizeIinkPointerInfo(info: any, scale: number): any {

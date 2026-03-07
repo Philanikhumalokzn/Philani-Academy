@@ -2330,6 +2330,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         { label: 'lastError', value: myscriptLastError || 'none' },
         { label: 'lastExtraction', value: formatDebugTime(myscriptLastSymbolExtract) },
         { label: 'lastLatex', value: myscriptLastExportedLatex || 'none' },
+        { label: 'latexOutput', value: latexOutput || 'none' },
+        { label: 'topPanelSource', value: topPanelPayload.latex || 'none' },
+        { label: 'topPanelMarkup', value: topPanelRenderPayload.markup ? 'yes' : 'no' },
         { label: 'modelSummary', value: renderDebugBlob('MyScript model summary', myscriptModelSummary) },
         { label: 'lastChangedDetail', value: renderDebugBlob('MyScript changed detail', myscriptLastChangedPayload) },
         { label: 'sentSymbols', value: renderDebugBlob('MyScript symbols', myscriptLastSymbolsPayload) },
@@ -7952,9 +7955,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         lines.push(adminDraftLatex)
       }
       const composed = lines.filter(Boolean).join(' \\\\ ').trim()
-      // In stacked (composer) mode, the teacher can still explicitly load a scripted LaTeX line.
-      // If there are no composed steps, fall back to the display-state LaTeX so the top panel updates.
-      return composed || (latexDisplayState.latex || '').trim()
+      // In stacked (composer) mode, live recognition lands in latexOutput before anything is
+      // explicitly promoted into the saved display state. Fall back through both sources so the
+      // top panel reflects recognized ink immediately.
+      return composed || (latexDisplayState.latex || latexOutput || '').trim()
     }
     if (useStudentStepComposer) {
       const lines = studentSteps.map(s => s.latex)

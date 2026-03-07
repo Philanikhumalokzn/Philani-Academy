@@ -8597,8 +8597,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // the viewport so users can scroll sideways for long expressions.
   const inkSurfaceWidthFactor = useMemo(() => {
     if (!useStackedStudentLayout) return 1
-    return 1
-  }, [useStackedStudentLayout])
+    if (!isCompactViewport) return 1
+    // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
+    // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
+    return 12
+  }, [isCompactViewport, useStackedStudentLayout])
 
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)

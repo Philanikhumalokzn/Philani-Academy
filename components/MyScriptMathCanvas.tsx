@@ -5818,6 +5818,74 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [buildMathpixStrokesPayload, getMathpixEventList])
 
+  const getLatexFromEditorModel = useCallback(() => {
+    const editor = editorInstanceRef.current
+    const exports = editor?.model?.exports ?? {}
+    const latex = exports?.['application/x-latex']
+    return typeof latex === 'string' ? latex : ''
+  }, [])
+
+  const convertLatexFromEditor = useCallback(async () => {
+    const editor = editorInstanceRef.current
+    if (!editor) return ''
+
+    const readLatestLatex = async () => {
+      const modelLatex = getLatexFromEditorModel()
+      if (modelLatex && modelLatex.trim()) return modelLatex
+      const exportedLatex = await exportLatexFromEditor()
+      return typeof exportedLatex === 'string' ? exportedLatex : ''
+    }
+
+    const initial = await readLatestLatex()
+    if (initial.trim()) return initial
+    if (typeof editor.convert !== 'function') return initial
+
+    return await new Promise<string>((resolve) => {
+      let done = false
+      const cleanup = () => {
+        try {
+          editor.event?.removeEventListener?.('exported', handleExported)
+        } catch {}
+        try {
+          editor.event?.removeEventListener?.('error', handleError)
+        } catch {}
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+      }
+      const finish = async () => {
+        if (done) return
+        done = true
+        cleanup()
+        const latest = await readLatestLatex()
+        setIsConverting(false)
+        resolve(latest)
+      }
+      const handleExported = () => {
+        void finish()
+      }
+      const handleError = () => {
+        void finish()
+      }
+      const timeoutId = setTimeout(() => {
+        void finish()
+      }, 1500)
+
+      try {
+        editor.event?.addEventListener?.('exported', handleExported)
+        editor.event?.addEventListener?.('error', handleError)
+      } catch {}
+
+      try {
+        forcedConvertDepthRef.current += 1
+        setIsConverting(true)
+        editor.convert()
+      } catch {
+        void finish()
+      }
+    })
+  }, [exportLatexFromEditor, getLatexFromEditorModel])
+
   const exportLatexFromEngine = useCallback(async () => {
     if (recognitionEngineRef.current === 'mathpix') {
       const symbols = extractEditorSymbols()
@@ -5828,7 +5896,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     try {
       const symbols = extractEditorSymbols()
       setMyScriptLastSymbolsPayload(toDebugJson(symbols))
-      const latex = await exportLatexFromEditor()
+      let latex = await exportLatexFromEditor()
+      if ((!latex || !latex.trim()) && countSymbols(symbols) > 0) {
+        latex = await convertLatexFromEditor()
+      }
       setMyScriptLastSymbolExtract(Date.now())
       setMyScriptLastExportedLatex(latex || null)
       return latex
@@ -5837,7 +5908,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setMyScriptLastError(err instanceof Error ? err.message : String(err))
       return ''
     }
-  }, [exportLatexFromEditor, extractEditorSymbols, requestMathpixLatex])
+  }, [convertLatexFromEditor, exportLatexFromEditor, extractEditorSymbols, requestMathpixLatex])
 
   const scheduleMathpixPreview = useCallback(() => {
     if (recognitionEngineRef.current !== 'mathpix') return
@@ -5868,13 +5939,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         .catch(() => {})
     }, 420)
   }, [extractEditorSymbols, hasControllerRights, normalizeStepLatex, requestMathpixLatex])
-
-  const getLatexFromEditorModel = useCallback(() => {
-    const editor = editorInstanceRef.current
-    const exports = editor?.model?.exports ?? {}
-    const latex = exports?.['application/x-latex']
-    return typeof latex === 'string' ? latex : ''
-  }, [])
 
   const getLatexFromEngineModel = useCallback(() => {
     if (recognitionEngineRef.current === 'mathpix') {

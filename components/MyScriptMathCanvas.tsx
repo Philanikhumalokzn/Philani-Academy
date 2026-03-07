@@ -149,7 +149,6 @@ function installIinkEraserPointerTypeShim(
   editor: any,
   isEraserActive: () => boolean,
   getInputScale?: () => number,
-  shouldBypassTouchDelay?: (pointerId: number) => boolean,
 ): boolean {
   if (!editor || typeof editor !== 'object') return false
 
@@ -165,48 +164,6 @@ function installIinkEraserPointerTypeShim(
     const originalDown = candidate.onPointerDown.bind(candidate)
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
-    const activeTouchPointerIds = new Set<number>()
-    let touchGestureLocked = false
-    const pendingTouchGateById = new Map<number, {
-      committed: boolean
-      downInfo: any
-      moveQueue: any[]
-      timer: ReturnType<typeof setTimeout> | null
-    }>()
-
-    const getPointerId = (info: any): number | null => {
-      if (!info || typeof info !== 'object') return null
-      const raw = (info as any).pointerId ?? (info as any).id ?? (info as any).identifier
-      if (typeof raw !== 'number') return null
-      if (!Number.isFinite(raw)) return null
-      return Math.trunc(raw)
-    }
-
-    const isTouchPointer = (info: any) => {
-      const pointerType = String((info as any)?.pointerType || '').toLowerCase()
-      return pointerType === 'touch'
-    }
-
-    const clearPendingGate = (pointerId: number) => {
-      const pending = pendingTouchGateById.get(pointerId)
-      if (!pending) return
-      if (pending.timer) {
-        clearTimeout(pending.timer)
-        pending.timer = null
-      }
-      pendingTouchGateById.delete(pointerId)
-    }
-
-    const cancelAllUncommittedTouchGates = () => {
-      pendingTouchGateById.forEach((pending, id) => {
-        if (pending.committed) return
-        if (pending.timer) {
-          clearTimeout(pending.timer)
-          pending.timer = null
-        }
-        pendingTouchGateById.delete(id)
-      })
-    }
 
     const getSafeScale = () => {
       const scaleRaw = typeof getInputScale === 'function' ? Number(getInputScale()) : 1
@@ -229,116 +186,12 @@ function installIinkEraserPointerTypeShim(
       return normalizeIinkPointerInfo(next, safeScale)
     }
 
-    candidate.onPointerDown = (info: any) => {
-      const next = buildNext(info)
-      if (!isTouchPointer(next)) {
-        return originalDown(next)
-      }
+    candidate.onPointerDown = (info: any) => originalDown(buildNext(info))
 
-      const pointerId = getPointerId(next)
-      if (pointerId == null) {
-        return originalDown(next)
-      }
-
-      activeTouchPointerIds.add(pointerId)
-      const bypassTouchDelay = typeof shouldBypassTouchDelay === 'function' && shouldBypassTouchDelay(pointerId)
-      if (bypassTouchDelay && activeTouchPointerIds.size === 1) {
-        clearPendingGate(pointerId)
-        return originalDown(next)
-      }
-      if (touchGestureLocked) {
-        cancelAllUncommittedTouchGates()
-        return
-      }
-      if (activeTouchPointerIds.size >= 2) {
-        touchGestureLocked = true
-        cancelAllUncommittedTouchGates()
-        return
-      }
-
-      const pending = {
-        committed: false,
-        downInfo: next,
-        moveQueue: [] as any[],
-        timer: null as ReturnType<typeof setTimeout> | null,
-      }
-
-      pending.timer = setTimeout(() => {
-        const current = pendingTouchGateById.get(pointerId)
-        if (!current) return
-        current.timer = null
-        // Only commit ink if this is still a single-touch interaction.
-        if (!activeTouchPointerIds.has(pointerId) || activeTouchPointerIds.size !== 1) {
-          pendingTouchGateById.delete(pointerId)
-          return
-        }
-        current.committed = true
-        originalDown(current.downInfo)
-        if (current.moveQueue.length) {
-          current.moveQueue.forEach((queuedMove) => {
-            originalMove(queuedMove)
-          })
-          current.moveQueue = []
-        }
-      }, TOUCH_INK_DISAMBIGUATION_DELAY_MS)
-
-      pendingTouchGateById.set(pointerId, pending)
-      return
-    }
-
-    candidate.onPointerMove = (info: any) => {
-      const next = buildNext(info)
-      if (!isTouchPointer(next)) {
-        return originalMove(next)
-      }
-
-      const pointerId = getPointerId(next)
-      if (pointerId == null) {
-        return originalMove(next)
-      }
-
-      if (touchGestureLocked) {
-        return
-      }
-
-      const pending = pendingTouchGateById.get(pointerId)
-      if (pending && !pending.committed) {
-        pending.moveQueue.push(next)
-        if (pending.moveQueue.length > TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT) {
-          pending.moveQueue.shift()
-        }
-        return
-      }
-
-      if (activeTouchPointerIds.size >= 2) {
-        return
-      }
-
-      return originalMove(next)
-    }
+    candidate.onPointerMove = (info: any) => originalMove(buildNext(info))
 
     candidate.onPointerUp = (info: any) => {
       const next = buildNext(info)
-      const pointerId = getPointerId(next)
-      const isTouch = isTouchPointer(next)
-
-      if (isTouch && pointerId != null) {
-        activeTouchPointerIds.delete(pointerId)
-        if (touchGestureLocked) {
-          clearPendingGate(pointerId)
-          if (activeTouchPointerIds.size === 0) {
-            touchGestureLocked = false
-          }
-          return
-        }
-        const pending = pendingTouchGateById.get(pointerId)
-        if (pending && !pending.committed) {
-          clearPendingGate(pointerId)
-          return
-        }
-        clearPendingGate(pointerId)
-      }
-
       const safeScale = getSafeScale()
       const result = originalUp(next)
       if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -6173,7 +6026,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             editor,
             () => isEraserModeRef.current,
             () => stackedInputScaleRef.current,
-            (pointerId) => resolvedTouchInkPointerIdsRef.current.has(pointerId),
           )
         )
         setStatus('ready')
@@ -10975,10 +10827,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const viewport = studentViewportRef.current
     if (!viewport) return
-    const host = editorHostRef.current
-    if (!host) return
 
     const state = multiTouchPanRef.current
+    resolvedTouchInkPointerIdsRef.current.clear()
+
+    return () => {
+      state.pointers.clear()
+      state.active = false
+      state.lastMid = null
+      state.suppressedPointers.clear()
+      if (state.pendingTouch?.timer) {
+        clearTimeout(state.pendingTouch.timer)
+      }
+      state.pendingTouch = null
+      resolvedTouchInkPointerIdsRef.current.clear()
+      if (debugPanUndoTimeoutRef.current) {
+        clearTimeout(debugPanUndoTimeoutRef.current)
+        debugPanUndoTimeoutRef.current = null
+      }
+    }
 
     const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch'
 

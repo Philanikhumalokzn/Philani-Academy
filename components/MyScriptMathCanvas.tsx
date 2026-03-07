@@ -6210,6 +6210,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             },
             recognition: {
               type: 'MATH',
+              gesture: {
+                enable: false,
+              },
               math: {
                 mimeTypes: ['application/x-latex', 'application/vnd.myscript.jiix'],
                 solver: {

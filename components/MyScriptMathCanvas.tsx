@@ -8475,7 +8475,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedInteractionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
   const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
-  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
+  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 5)
   const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
 
   const stopStackedInteractionMotionMonitor = useCallback(() => {
@@ -8587,7 +8587,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
     const contentEl = stackedZoomContentRef.current
     if (!contentEl) return
-    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 3)
+    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 5)
     contentEl.style.zoom = String(scale)
     contentEl.style.transform = ''
     contentEl.style.willChange = stackedPinchActiveRef.current ? 'transform' : ''
@@ -11207,6 +11207,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const PAN_START_THRESHOLD_PX = 1.5
         const ZOOM_UPDATE_THRESHOLD = 0.08
         const PAN_UPDATE_THRESHOLD_PX = 0.8
+        const TWO_FINGER_PAN_GAIN = 0.4
         e.preventDefault()
 
         const dist = getPinchDistance(e.touches)
@@ -11217,6 +11218,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const b = e.touches[1]
         const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : stackedPinchStateRef.current.anchorX
         const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : stackedPinchStateRef.current.anchorY
+        const midpointStepDx = midpointX - stackedPinchStateRef.current.lastMidpointX
+        const midpointStepDy = midpointY - stackedPinchStateRef.current.lastMidpointY
         const scale = dist / stackedPinchStateRef.current.startDist
         const midpointDx = midpointX - stackedPinchStateRef.current.anchorX
         const midpointDy = midpointY - stackedPinchStateRef.current.anchorY
@@ -11238,8 +11241,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
           const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
           const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-          const nextLeft = (ratioDelta * (currentLeft + midpointX)) - midpointX
-          const nextTop = (ratioDelta * (currentTop + midpointY)) - midpointY
+          const zoomLeft = (ratioDelta * (currentLeft + midpointX)) - midpointX
+          const zoomTop = (ratioDelta * (currentTop + midpointY)) - midpointY
+          const nextLeft = zoomLeft - (midpointStepDx * TWO_FINGER_PAN_GAIN)
+          const nextTop = zoomTop - (midpointStepDy * TWO_FINGER_PAN_GAIN)
 
           const clampedLeft = Math.min(Math.max(nextLeft, 0), maxLeft)
           const clampedTop = Math.min(Math.max(nextTop, 0), maxTop)
@@ -11252,6 +11257,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
         }
 
+        stackedPinchStateRef.current.lastDist = dist
+        stackedPinchStateRef.current.lastMidpointX = midpointX
+        stackedPinchStateRef.current.lastMidpointY = midpointY
         stackedZoomRef.current = nextZoom
         setStackedZoom(nextZoom)
         return

@@ -165,6 +165,8 @@ function installIinkEraserPointerTypeShim(
     const originalDown = candidate.onPointerDown.bind(candidate)
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
+    const activeTouchPointerIds = new Set<number>()
+    const suppressedTouchPointerIds = new Set<number>()
     const pendingTouchPointers = new Map<number, {
       timer: ReturnType<typeof setTimeout> | null
       downInfo: any
@@ -200,6 +202,26 @@ function installIinkEraserPointerTypeShim(
       if (!info || typeof info !== 'object') return false
       if (getTouchDelayMs() <= 0) return false
       return info.pointerType === 'touch'
+    }
+
+    const cancelAllPendingTouchPointers = () => {
+      if (!pendingTouchPointers.size) return
+      for (const [id, pending] of pendingTouchPointers.entries()) {
+        if (pending.timer) {
+          clearTimeout(pending.timer)
+          pending.timer = null
+        }
+        suppressedTouchPointerIds.add(id)
+        pendingTouchPointers.delete(id)
+      }
+    }
+
+    const hasLivePendingTouchForAnother = (pointerId: number) => {
+      for (const [id, pending] of pendingTouchPointers.entries()) {
+        if (id === pointerId) continue
+        if (pending.timer) return true
+      }
+      return false
     }
 
     const flushPendingTouchPointer = (pointerId: number) => {
@@ -245,11 +267,28 @@ function installIinkEraserPointerTypeShim(
 
     candidate.onPointerDown = (info: any) => {
       const next = buildNext(info)
+      const pointerId = getPointerId(next)
+
+      if (next?.pointerType === 'touch' && pointerId >= 0) {
+        activeTouchPointerIds.add(pointerId)
+      }
+
       if (!shouldDelayTouchInk(next)) {
         return originalDown(next)
       }
 
-      const pointerId = getPointerId(next)
+      if (suppressedTouchPointerIds.has(pointerId)) {
+        return undefined
+      }
+
+      // If a second touch arrives during another touch's delay window,
+      // cancel delayed replay and ignore those buffered touch strokes.
+      if (hasLivePendingTouchForAnother(pointerId)) {
+        suppressedTouchPointerIds.add(pointerId)
+        cancelAllPendingTouchPointers()
+        return undefined
+      }
+
       const existingPending = pendingTouchPointers.get(pointerId)
       if (existingPending?.timer) {
         clearTimeout(existingPending.timer)
@@ -272,6 +311,11 @@ function installIinkEraserPointerTypeShim(
     candidate.onPointerMove = (info: any) => {
       const next = buildNext(info)
       const pointerId = getPointerId(next)
+
+      if (next?.pointerType === 'touch' && suppressedTouchPointerIds.has(pointerId)) {
+        return undefined
+      }
+
       const pending = pendingTouchPointers.get(pointerId)
       if (!pending) {
         return originalMove(next)
@@ -287,6 +331,19 @@ function installIinkEraserPointerTypeShim(
     candidate.onPointerUp = (info: any) => {
       const next = buildNext(info)
       const pointerId = getPointerId(next)
+
+      if (next?.pointerType === 'touch' && pointerId >= 0) {
+        activeTouchPointerIds.delete(pointerId)
+      }
+
+      if (next?.pointerType === 'touch' && suppressedTouchPointerIds.has(pointerId)) {
+        suppressedTouchPointerIds.delete(pointerId)
+        if (!activeTouchPointerIds.size) {
+          suppressedTouchPointerIds.clear()
+        }
+        return undefined
+      }
+
       const pending = pendingTouchPointers.get(pointerId)
       if (pending) {
         pending.upInfo = next
@@ -311,7 +368,22 @@ function installIinkEraserPointerTypeShim(
       ;(editor as PhilaniReplayablePointerEditor).__philaniReplayPointerEvent = (type, info) => {
         const next = buildNext(info)
         const pointerId = getPointerId(next)
+
+        if (next?.pointerType === 'touch' && suppressedTouchPointerIds.has(pointerId)) {
+          if (type === 'pointerup') {
+            activeTouchPointerIds.delete(pointerId)
+            suppressedTouchPointerIds.delete(pointerId)
+            if (!activeTouchPointerIds.size) {
+              suppressedTouchPointerIds.clear()
+            }
+          }
+          return
+        }
+
         if (type === 'pointerdown') {
+          if (next?.pointerType === 'touch' && pointerId >= 0) {
+            activeTouchPointerIds.add(pointerId)
+          }
           const pending = pendingTouchPointers.get(pointerId)
           if (pending?.timer) {
             clearTimeout(pending.timer)
@@ -331,6 +403,10 @@ function installIinkEraserPointerTypeShim(
           }
           originalMove(next)
           return
+        }
+
+        if (next?.pointerType === 'touch' && pointerId >= 0) {
+          activeTouchPointerIds.delete(pointerId)
         }
 
         const pending = pendingTouchPointers.get(pointerId)

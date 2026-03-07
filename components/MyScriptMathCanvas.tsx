@@ -13920,6 +13920,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             storageKey={`${DEBUG_PANEL_STORAGE_KEY}:pos`}
           />
         )}
+        {canUseDebugPanel && !debugPanelVisible && (
+          <button
+            type="button"
+            onClick={() => setDebugPanelVisible(true)}
+            style={{
+              position: 'fixed',
+              right: 16,
+              bottom: 16,
+              zIndex: 10000,
+              borderRadius: 999,
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'rgba(15,23,42,0.88)',
+              color: '#fff',
+              padding: '10px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              boxShadow: '0 12px 30px rgba(15,23,42,0.35)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+            }}
+          >
+            Open recognition debug
+          </button>
+        )}
         {!isOverlayMode && (
           <div className="canvas-admin-controls">
           {hasWriteAccess && (

@@ -80,6 +80,28 @@ export default function RecognitionDebugPanel({
     }
   }, [dragging, rel, visible])
 
+  useEffect(() => {
+    if (!visible || typeof window === 'undefined') return
+    const clampToViewport = () => {
+      setPos(current => {
+        const panel = panelRef.current
+        const panelWidth = panel?.offsetWidth || 320
+        const panelHeight = panel?.offsetHeight || 220
+        const maxX = Math.max(8, window.innerWidth - panelWidth - 8)
+        const maxY = Math.max(8, window.innerHeight - panelHeight - 8)
+        const next = {
+          x: clamp(current.x, 8, maxX),
+          y: clamp(current.y, 8, maxY),
+        }
+        if (next.x === current.x && next.y === current.y) return current
+        return next
+      })
+    }
+    clampToViewport()
+    window.addEventListener('resize', clampToViewport)
+    return () => window.removeEventListener('resize', clampToViewport)
+  }, [visible, minimized])
+
   if (!visible) return null
 
   const onMouseDown = (e: React.MouseEvent) => {

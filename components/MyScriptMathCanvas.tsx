@@ -774,6 +774,18 @@ const DEFAULT_RECOGNITION_ENGINE: RecognitionEngine = 'myscript'
 const RECOGNITION_ENGINE_STORAGE_KEY = 'philani.math.recognition-engine'
 const DEBUG_PANEL_STORAGE_KEY = 'philani.math.debug-panel-visible'
 
+const toDebugJson = (value: unknown, maxChars = 12000) => {
+  if (value == null) return null
+  try {
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+    if (!text) return null
+    if (text.length <= maxChars) return text
+    return `${text.slice(0, maxChars)}\n...truncated...`
+  } catch {
+    return String(value)
+  }
+}
+
 // Reserve a small strip above the bottom of the viewport in stacked mobile mode so
 // fixed overlays (like the custom scrollbar and quick trays) never cover ink.
 const STACKED_BOTTOM_OVERLAY_RESERVE_PX = 28
@@ -838,7 +850,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
   const [myscriptLastError, setMyScriptLastError] = useState<string | null>(null)
   const [myscriptLastSymbolExtract, setMyScriptLastSymbolExtract] = useState<number | null>(null)
-  const [debugPanelVisible, setDebugPanelVisible] = useState(false)
+  const [myscriptLastSymbolsPayload, setMyScriptLastSymbolsPayload] = useState<string | null>(null)
+  const [myscriptLastExportPayload, setMyScriptLastExportPayload] = useState<string | null>(null)
+  const [myscriptLastExportedLatex, setMyScriptLastExportedLatex] = useState<string | null>(null)
+  const [debugPanelVisible, setDebugPanelVisible] = useState(true)
 
   // Track MyScript script load
   useEffect(() => {
@@ -852,7 +867,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     // If you want to update when the ref changes, trigger this effect manually elsewhere.
   }, [])
   useEffect(() => {
-    if (!isAdmin) return
     if (typeof window === 'undefined') return
     try {
       const saved = window.localStorage.getItem(DEBUG_PANEL_STORAGE_KEY)
@@ -862,15 +876,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setDebugPanelVisible(false)
       }
     } catch {}
-  }, [isAdmin])
+  }, [])
 
   useEffect(() => {
-    if (!isAdmin) return
     if (typeof window === 'undefined') return
     try {
       window.localStorage.setItem(DEBUG_PANEL_STORAGE_KEY, debugPanelVisible ? '1' : '0')
     } catch {}
-  }, [debugPanelVisible, isAdmin])
+  }, [debugPanelVisible])
 
   const isAssignmentSolutionAuthoring = assignmentSubmission?.kind === 'solution'
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
@@ -1053,7 +1066,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
-  const canUseDebugPanel = isAdmin
+  const canUseDebugPanel = true
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -2185,6 +2198,43 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const formatDebugTime = (ts: number | null) => (ts ? new Date(ts).toLocaleTimeString() : 'never')
   const mathpixResponseSize = mathpixRawResponse ? `${mathpixRawResponse.length} chars` : '—'
 
+  const renderDebugBlob = useCallback((label: string, value: string | null) => {
+    if (!value) return 'none'
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+        <button
+          type="button"
+          onClick={() => { void copyMathpixPayload(value, label) }}
+          style={{
+            alignSelf: 'flex-start',
+            border: '1px solid rgba(255,255,255,0.18)',
+            borderRadius: 8,
+            background: 'rgba(255,255,255,0.08)',
+            color: '#fff',
+            padding: '2px 8px',
+            fontSize: 11,
+            cursor: 'pointer',
+          }}
+        >
+          Copy
+        </button>
+        <pre style={{
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          background: 'rgba(15,23,42,0.52)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 10,
+          padding: 10,
+          maxHeight: 220,
+          overflow: 'auto',
+          fontSize: 11,
+          lineHeight: 1.35,
+        }}>{value}</pre>
+      </div>
+    )
+  }, [copyMathpixPayload])
+
   const debugSections: DebugSection[] = [
     {
       title: 'Realtime',
@@ -2215,6 +2265,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         { label: 'editorReady', value: myscriptEditorReady ? 'yes' : 'no' },
         { label: 'lastError', value: myscriptLastError || 'none' },
         { label: 'lastExtraction', value: formatDebugTime(myscriptLastSymbolExtract) },
+        { label: 'lastLatex', value: myscriptLastExportedLatex || 'none' },
+        { label: 'sentSymbols', value: renderDebugBlob('MyScript symbols', myscriptLastSymbolsPayload) },
+        { label: 'returnedExports', value: renderDebugBlob('MyScript exports', myscriptLastExportPayload) },
       ],
     },
     {
@@ -2231,6 +2284,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         { label: 'localPoints', value: mathpixLocalPointCount ?? '—' },
         { label: 'lastError', value: mathpixError || 'none' },
         { label: 'lastResponseSize', value: mathpixResponseSize },
+        { label: 'sentPayload', value: renderDebugBlob('Mathpix sent payload', mathpixLastProxyPayload) },
+        { label: 'returnedPayload', value: renderDebugBlob('Mathpix returned payload', mathpixRawResponse) },
       ],
     },
   ]
@@ -5652,12 +5707,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const exportLatexFromEngine = useCallback(async () => {
     if (recognitionEngineRef.current === 'mathpix') {
       const symbols = extractEditorSymbols()
+      setMyScriptLastSymbolsPayload(toDebugJson(symbols))
       return requestMathpixLatex(symbols)
     }
     // Only MyScript: if MyScript fails, do not fallback to MathPix, just return empty string
     try {
+      const symbols = extractEditorSymbols()
+      setMyScriptLastSymbolsPayload(toDebugJson(symbols))
       const latex = await exportLatexFromEditor()
       setMyScriptLastSymbolExtract(Date.now())
+      setMyScriptLastExportedLatex(latex || null)
       return latex
     } catch (err) {
       setLatexOutput('')
@@ -5969,6 +6028,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
 
           const symbolCount = countSymbols(snapshot.symbols)
+          setMyScriptLastSymbolsPayload(toDebugJson(snapshot.symbols))
 
           // Update local symbol count tracking for accurate delta math for remote peers.
           lastSymbolCountRef.current = symbolCount
@@ -6071,8 +6131,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (recognitionEngineRef.current === 'mathpix') return
           setMyScriptLastSymbolExtract(Date.now())
           const exports = evt.detail || {}
+          setMyScriptLastExportPayload(toDebugJson(exports))
           const latex = exports['application/x-latex'] || ''
           const latexValue = typeof latex === 'string' ? latex : ''
+          setMyScriptLastExportedLatex(latexValue || null)
           setLatexOutput(latexValue)
           setIsConverting(false)
 

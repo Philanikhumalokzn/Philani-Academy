@@ -8475,7 +8475,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedInteractionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
   const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
-  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 100)
+  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
   const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
 
   const stopStackedInteractionMotionMonitor = useCallback(() => {
@@ -8587,7 +8587,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
     const contentEl = stackedZoomContentRef.current
     if (!contentEl) return
-    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 100)
+    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
     contentEl.style.zoom = String(scale)
     contentEl.style.transform = ''
     contentEl.style.willChange = stackedPinchActiveRef.current ? 'transform' : ''
@@ -9994,12 +9994,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setMobileLatexTrayOpen(false)
     }
   }, [hasControllerRights, isCompactViewport])
-  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number; leftPanArmed: boolean }>(
-    { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0, leftPanArmed: false }
+  const strokeTrackRef = useRef<{ active: boolean; startX: number; lastX: number; minX: number; maxX: number }>(
+    { active: false, startX: 0, lastX: 0, minX: 0, maxX: 0 }
   )
   const autoPanAnimRef = useRef<number | null>(null)
-  const leftPanPendingDxRef = useRef(0)
-  const leftPanRafRef = useRef<number | null>(null)
   useEffect(() => {
     if (!useStackedStudentLayout) return
     const viewport = studentViewportRef.current
@@ -10160,57 +10158,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       strokeTrackRef.current.lastX = event.clientX
       strokeTrackRef.current.minX = event.clientX
       strokeTrackRef.current.maxX = event.clientX
-      strokeTrackRef.current.leftPanArmed = false
     }
     const onMove = (event: PointerEvent) => {
       if (!strokeTrackRef.current.active) return
-      const viewport = studentViewportRef.current
       const nextX = event.clientX
-      const prevX = strokeTrackRef.current.lastX
-      const dx = nextX - prevX
       strokeTrackRef.current.lastX = nextX
       strokeTrackRef.current.minX = Math.min(strokeTrackRef.current.minX, nextX)
       strokeTrackRef.current.maxX = Math.max(strokeTrackRef.current.maxX, nextX)
-
-      // Exclusive special-case: only when a single pen-down stroke is moving right->left AND
-      // the pointer has reached near the left edge (<10% from the left of the viewport).
-      // This supports drawing long fraction bars from right to left without losing canvas.
-      if (!viewport) return
-
-      const rect = viewport.getBoundingClientRect()
-      const leftEdgeTrigger = rect.left + rect.width * EDGE_TRIGGER_RATIO
-      if (nextX <= leftEdgeTrigger) {
-        strokeTrackRef.current.leftPanArmed = true
-      }
-
-      if (!strokeTrackRef.current.leftPanArmed) return
-      if (dx >= 0) return
-
-      const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-      if (maxScroll <= 0) return
-
-      // Keep in-stroke left pan gentle (1:1). Extra clearance is applied on pen-up.
-      leftPanPendingDxRef.current += dx
-      if (typeof window === 'undefined') {
-        viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + leftPanPendingDxRef.current, maxScroll))
-        leftPanPendingDxRef.current = 0
-        return
-      }
-
-      if (leftPanRafRef.current) return
-      leftPanRafRef.current = window.requestAnimationFrame(() => {
-        leftPanRafRef.current = null
-        const pending = leftPanPendingDxRef.current
-        leftPanPendingDxRef.current = 0
-        if (!pending) return
-        viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + pending, maxScroll))
-      })
     }
     const onUpLike = () => {
       if (!strokeTrackRef.current.active) return
       strokeTrackRef.current.active = false
-
-      leftPanPendingDxRef.current = 0
 
       // Only auto-pan between strokes (after pen lifts), to avoid disturbing handwriting.
       if (horizontalPanDragRef.current.active) return
@@ -10224,10 +10182,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const rightEdgeTrigger = rect.left + rect.width * (1 - EDGE_TRIGGER_RATIO)
       const targetX = rect.left + rect.width * EDGE_CLEARANCE_RATIO
 
-      // If the exclusive left-edge right-to-left mode was engaged, apply an extra pen-up scroll
-      // so the stroke end point sits ~50% away from the left edge (clearance), then stop.
-      if (strokeTrackRef.current.leftPanArmed) {
-        const delta = strokeTrackRef.current.lastX - targetX
+      // Left-edge trigger on pointer-up (symmetric with right-edge behavior).
+      if (strokeTrackRef.current.minX <= leftEdgeTrigger || strokeTrackRef.current.lastX <= leftEdgeTrigger) {
+        const leftAnchor = Math.min(strokeTrackRef.current.minX, strokeTrackRef.current.lastX)
+        const delta = leftAnchor - targetX
         if (delta < -1) {
           smoothScrollViewportBy(delta * AUTOPAN_DISTANCE_GAIN)
         }
@@ -10259,12 +10217,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           window.cancelAnimationFrame(autoPanAnimRef.current)
         } catch {}
         autoPanAnimRef.current = null
-      }
-      if (leftPanRafRef.current && typeof window !== 'undefined') {
-        try {
-          window.cancelAnimationFrame(leftPanRafRef.current)
-        } catch {}
-        leftPanRafRef.current = null
       }
     }
   }, [hasWriteAccess, isCompactViewport, smoothScrollViewportBy, useStackedStudentLayout])

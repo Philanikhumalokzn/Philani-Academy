@@ -8450,9 +8450,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
 
+  const DEFAULT_STACKED_ZOOM = 3.7
   // Normalized zoom model: 1 = 1x, making min/max values intuitive.
   const stackedRenderZoomRef = useRef(1)
-  const stackedZoomRef = useRef(1)
+  const stackedZoomRef = useRef(DEFAULT_STACKED_ZOOM)
   const stackedPinchActiveRef = useRef(false)
   const stackedPinchStateRef = useRef<{
     active: boolean
@@ -8465,8 +8466,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastDist: number
     lastMidpointX: number
     lastMidpointY: number
-  }>({ active: false, startDist: 0, startZoom: 1, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
-  const [stackedZoom, setStackedZoom] = useState(1)
+  }>({ active: false, startDist: 0, startZoom: DEFAULT_STACKED_ZOOM, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
+  const [stackedZoom, setStackedZoom] = useState(DEFAULT_STACKED_ZOOM)
   const [stackedZoomHudMounted, setStackedZoomHudMounted] = useState(false)
   const [stackedZoomHudActive, setStackedZoomHudActive] = useState(false)
   const stackedInputScaleRef = useRef(1)
@@ -8555,6 +8556,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     stackedZoomRef.current = stackedEffectiveZoom
   }, [stackedEffectiveZoom])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    stackedZoomRef.current = DEFAULT_STACKED_ZOOM
+    setStackedZoom(DEFAULT_STACKED_ZOOM)
+  }, [useStackedStudentLayout])
 
   useEffect(() => {
     stackedInputScaleRef.current = useStackedStudentLayout ? stackedLiveScale : 1

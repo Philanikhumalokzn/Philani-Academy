@@ -340,8 +340,6 @@ function installIinkEraserPointerTypeShim(
       }
 
       const safeScale = getSafeScale()
-      // Commit path: force editor geometry to be current right at pen-up.
-      maybeSyncGeometryForCommit(safeScale)
       const result = originalUp(next)
       if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
         window.requestAnimationFrame(() => {
@@ -363,7 +361,6 @@ function installIinkEraserPointerTypeShim(
           return
         }
         const safeScale = getSafeScale()
-        maybeSyncGeometryForCommit(safeScale)
         const result = originalUp(next)
         if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
           window.requestAnimationFrame(() => {
@@ -777,7 +774,23 @@ const DEBUG_PANEL_STORAGE_KEY = 'philani.math.debug-panel-visible'
 const toDebugJson = (value: unknown, maxChars = 12000) => {
   if (value == null) return null
   try {
-    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+    const seen = new WeakSet<object>()
+    const text = typeof value === 'string'
+      ? value
+      : JSON.stringify(value, (_key, current) => {
+          if (typeof current === 'function') return '[function]'
+          if (current && typeof current === 'object') {
+            if (typeof Element !== 'undefined' && current instanceof Element) {
+              return `[element ${current.tagName.toLowerCase()}]`
+            }
+            if (typeof Window !== 'undefined' && current instanceof Window) {
+              return '[window]'
+            }
+            if (seen.has(current)) return '[circular]'
+            seen.add(current)
+          }
+          return current
+        }, 2)
     if (!text) return null
     if (text.length <= maxChars) return text
     return `${text.slice(0, maxChars)}\n...truncated...`

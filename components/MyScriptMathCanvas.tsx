@@ -150,6 +150,7 @@ function installIinkEraserPointerTypeShim(
   isEraserActive: () => boolean,
   getInputScale?: () => number,
   getTouchInkDelayMs?: () => number,
+  isExternalTouchSuppressionActive?: () => boolean,
 ): boolean {
   if (!editor || typeof editor !== 'object') return false
 
@@ -197,6 +198,11 @@ function installIinkEraserPointerTypeShim(
       const raw = typeof getTouchInkDelayMs === 'function' ? Number(getTouchInkDelayMs()) : 0
       if (!Number.isFinite(raw) || raw <= 0) return 0
       return Math.round(raw)
+    }
+
+    const isSuppressedByExternalTouchPolicy = () => {
+      if (typeof isExternalTouchSuppressionActive !== 'function') return false
+      return Boolean(isExternalTouchSuppressionActive())
     }
 
     const shouldDelayTouchInk = (info: any) => {
@@ -286,6 +292,13 @@ function installIinkEraserPointerTypeShim(
 
       if (!shouldDelayTouchInk(next)) {
         return originalDown(next)
+      }
+
+      if (isSuppressedByExternalTouchPolicy()) {
+        suppressTouchGestureActive = true
+        suppressedTouchPointerIds.add(pointerId)
+        cancelAllPendingTouchPointers()
+        return undefined
       }
 
       if (suppressedTouchPointerIds.has(pointerId)) {
@@ -2500,6 +2513,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   })
   const resolvedTouchInkPointerIdsRef = useRef<Set<number>>(new Set())
   const resolvedTouchKeepaliveAtRef = useRef(0)
+  const externalTouchSuppressionActiveRef = useRef(false)
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
@@ -6260,6 +6274,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             () => isEraserModeRef.current,
             () => stackedInputScaleRef.current,
             () => (useStackedStudentLayout ? TOUCH_INK_DISAMBIGUATION_DELAY_MS : 0),
+            () => externalTouchSuppressionActiveRef.current,
           )
         )
         setStatus('ready')
@@ -11061,6 +11076,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const state = multiTouchPanRef.current
     resolvedTouchInkPointerIdsRef.current.clear()
+    externalTouchSuppressionActiveRef.current = false
 
     return () => {
       state.pointers.clear()
@@ -11072,6 +11088,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       state.pendingTouch = null
       resolvedTouchInkPointerIdsRef.current.clear()
+      externalTouchSuppressionActiveRef.current = false
       if (debugPanUndoTimeoutRef.current) {
         clearTimeout(debugPanUndoTimeoutRef.current)
         debugPanUndoTimeoutRef.current = null
@@ -11116,6 +11133,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!mid) return
 
       state.active = true
+      externalTouchSuppressionActiveRef.current = true
       state.lastMid = mid
       state.suppressedPointers = new Set(state.pointers.keys())
     }
@@ -11127,6 +11145,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       if (state.pointers.size === 0) {
         state.suppressedPointers.clear()
+        externalTouchSuppressionActiveRef.current = false
       }
     }
 
@@ -11196,6 +11215,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       viewport.removeEventListener('pointermove', handlePointerMove as any, true)
       window.removeEventListener('pointerup', handlePointerUp as any, true)
       window.removeEventListener('pointercancel', handlePointerUp as any, true)
+      externalTouchSuppressionActiveRef.current = false
     }
   }, [multiTouchPanRef, useStackedStudentLayout])
 

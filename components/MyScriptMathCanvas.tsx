@@ -855,6 +855,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptLastExportedLatex, setMyScriptLastExportedLatex] = useState<string | null>(null)
   const [myscriptReplayCounts, setMyScriptReplayCounts] = useState({ down: 0, move: 0, up: 0 })
   const [myscriptLastReplayAt, setMyScriptLastReplayAt] = useState<number | null>(null)
+  const [myscriptLastReplayDownPayload, setMyScriptLastReplayDownPayload] = useState<string | null>(null)
+  const [myscriptLastReplayMovePayload, setMyScriptLastReplayMovePayload] = useState<string | null>(null)
+  const [myscriptLastReplayUpPayload, setMyScriptLastReplayUpPayload] = useState<string | null>(null)
   const [myscriptChangedCount, setMyScriptChangedCount] = useState(0)
   const [myscriptLastChangedAt, setMyScriptLastChangedAt] = useState<number | null>(null)
   const [myscriptLastChangedPayload, setMyScriptLastChangedPayload] = useState<string | null>(null)
@@ -2298,6 +2301,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         { label: 'editorReady', value: myscriptEditorReady ? 'yes' : 'no' },
         { label: 'replayedInput', value: `down ${myscriptReplayCounts.down}, move ${myscriptReplayCounts.move}, up ${myscriptReplayCounts.up}` },
         { label: 'lastReplay', value: formatDebugTime(myscriptLastReplayAt) },
+        { label: 'replayDownPayload', value: renderDebugBlob('MyScript replay down', myscriptLastReplayDownPayload) },
+        { label: 'replayMovePayload', value: renderDebugBlob('MyScript replay move', myscriptLastReplayMovePayload) },
+        { label: 'replayUpPayload', value: renderDebugBlob('MyScript replay up', myscriptLastReplayUpPayload) },
         { label: 'changedEvents', value: `${myscriptChangedCount} @ ${formatDebugTime(myscriptLastChangedAt)}` },
         { label: 'exportedEvents', value: `${myscriptExportedCount} @ ${formatDebugTime(myscriptLastExportedAt)}` },
         {
@@ -10944,12 +10950,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const dispatchReplay = (type: 'pointerdown' | 'pointermove' | 'pointerup', evt: PointerEvent) => {
       const replayInfo = buildReplayInfo(type, evt)
+      const replayJson = toDebugJson(replayInfo)
       setMyScriptLastReplayAt(Date.now())
       setMyScriptReplayCounts((prev) => ({
         down: prev.down + (type === 'pointerdown' ? 1 : 0),
         move: prev.move + (type === 'pointermove' ? 1 : 0),
         up: prev.up + (type === 'pointerup' ? 1 : 0),
       }))
+      if (type === 'pointerdown') {
+        setMyScriptLastReplayDownPayload(replayJson)
+      } else if (type === 'pointermove') {
+        setMyScriptLastReplayMovePayload(replayJson)
+      } else {
+        setMyScriptLastReplayUpPayload(replayJson)
+      }
       const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
       if (editor?.__philaniReplayPointerEvent) {
         editor.__philaniReplayPointerEvent(type, replayInfo)

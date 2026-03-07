@@ -165,6 +165,9 @@ function installIinkEraserPointerTypeShim(
     const originalDown = candidate.onPointerDown.bind(candidate)
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
+    const originalCancel = typeof candidate.onPointerCancel === 'function'
+      ? candidate.onPointerCancel.bind(candidate)
+      : null
     let touchActiveCount = 0
     let touchQuarantine = false
     const pendingTouchPointers = new Map<number, {
@@ -218,6 +221,17 @@ function installIinkEraserPointerTypeShim(
     const enterTouchQuarantine = () => {
       touchQuarantine = true
       cancelAllPendingTouchPointers()
+    }
+
+    const handleTouchBufferedEnd = (isBufferedTouch: boolean) => {
+      if (!isBufferedTouch) return false
+      touchActiveCount = Math.max(0, touchActiveCount - 1)
+      if (!touchQuarantine) return false
+      if (touchActiveCount === 0) {
+        touchQuarantine = false
+        cancelAllPendingTouchPointers()
+      }
+      return true
     }
 
     const flushPendingTouchPointer = (pointerId: number) => {
@@ -327,15 +341,8 @@ function installIinkEraserPointerTypeShim(
       const pointerId = getPointerId(next)
       const isBufferedTouch = shouldDelayTouchInk(next)
 
-      if (isBufferedTouch) {
-        touchActiveCount = Math.max(0, touchActiveCount - 1)
-        if (touchQuarantine) {
-          if (touchActiveCount === 0) {
-            touchQuarantine = false
-            cancelAllPendingTouchPointers()
-          }
-          return undefined
-        }
+      if (handleTouchBufferedEnd(isBufferedTouch)) {
+        return undefined
       }
 
       const pending = pendingTouchPointers.get(pointerId)
@@ -358,6 +365,31 @@ function installIinkEraserPointerTypeShim(
       return result
     }
 
+    candidate.onPointerCancel = (info: any) => {
+      const next = buildNext(info)
+      const pointerId = getPointerId(next)
+      const isBufferedTouch = shouldDelayTouchInk(next)
+
+      if (handleTouchBufferedEnd(isBufferedTouch)) {
+        return undefined
+      }
+
+      const pending = pendingTouchPointers.get(pointerId)
+      if (pending) {
+        if (pending.timer) {
+          clearTimeout(pending.timer)
+          pending.timer = null
+        }
+        pendingTouchPointers.delete(pointerId)
+        return undefined
+      }
+
+      if (originalCancel) {
+        return originalCancel(next)
+      }
+      return originalUp(next)
+    }
+
     try {
       ;(editor as PhilaniReplayablePointerEditor).__philaniReplayPointerEvent = (type, info) => {
         const next = buildNext(info)
@@ -373,12 +405,8 @@ function installIinkEraserPointerTypeShim(
         }
 
         if (isBufferedTouch && touchQuarantine) {
-          if (type === 'pointerup') {
-            touchActiveCount = Math.max(0, touchActiveCount - 1)
-            if (touchActiveCount === 0) {
-              touchQuarantine = false
-              cancelAllPendingTouchPointers()
-            }
+          if (type === 'pointerup' || type === 'pointercancel') {
+            handleTouchBufferedEnd(true)
           }
           return
         }
@@ -405,8 +433,29 @@ function installIinkEraserPointerTypeShim(
           return
         }
 
+        if (type === 'pointercancel') {
+          handleTouchBufferedEnd(isBufferedTouch)
+
+          const pending = pendingTouchPointers.get(pointerId)
+          if (pending) {
+            if (pending.timer) {
+              clearTimeout(pending.timer)
+              pending.timer = null
+            }
+            pendingTouchPointers.delete(pointerId)
+            return
+          }
+
+          if (originalCancel) {
+            originalCancel(next)
+          } else {
+            originalUp(next)
+          }
+          return
+        }
+
         if (type === 'pointerup' && isBufferedTouch) {
-          touchActiveCount = Math.max(0, touchActiveCount - 1)
+          handleTouchBufferedEnd(true)
         }
 
         const pending = pendingTouchPointers.get(pointerId)
@@ -613,7 +662,7 @@ type SnapshotPayload = {
 }
 
 type PhilaniReplayablePointerEditor = {
-  __philaniReplayPointerEvent?: (type: 'pointerdown' | 'pointermove' | 'pointerup', info: any) => void
+  __philaniReplayPointerEvent?: (type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel', info: any) => void
 }
 
 type SnapshotRecord = {

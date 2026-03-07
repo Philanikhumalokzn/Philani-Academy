@@ -6066,7 +6066,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
           setMyScriptLastError(raw)
           const lower = String(raw).toLowerCase()
-          const isSessionTooLong = /(session too long|max session duration|session is too old)/.test(lower)
+          const isSessionTooLong = /(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session)/.test(lower)
           const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
           const isSymbolsUndefined = /cannot read properties of undefined.*symbols/i.test(raw)
           const shouldAutoReconnect = isSessionTooLong
@@ -10798,6 +10798,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       pending.moveQueue.forEach((moveEvt) => {
         dispatchReplay('pointermove', moveEvt)
       })
+      void resyncLatexPreviewFromEditor()
     }
 
     const beginGestureSuppressionIfReady = () => {
@@ -10903,23 +10904,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const gestureEnded = hadPan && !state.active && state.pointers.size === 0
 
       if (gestureEnded) {
-        const UNDO_DELAY_MS = 250
         if (debugPanUndoTimeoutRef.current) {
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null
         }
-        const shouldUndo = !lockedOutRef.current && !isEraserModeRef.current
-        if (shouldUndo && editorInstanceRef.current) {
-          try {
-            debugPanUndoTimeoutRef.current = setTimeout(() => {
-              try {
-                editorInstanceRef.current?.undo?.()
-              } catch {}
-              void resyncLatexPreviewFromEditor()
-              debugPanUndoTimeoutRef.current = null
-            }, UNDO_DELAY_MS)
-          } catch {}
-        }
+        void resyncLatexPreviewFromEditor()
       }
 
       if (state.active || wasSuppressed) {

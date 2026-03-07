@@ -150,7 +150,6 @@ function installIinkEraserPointerTypeShim(
   isEraserActive: () => boolean,
   getInputScale?: () => number,
   getTouchInkDelayMs?: () => number,
-  isExternalTouchSuppressionActive?: () => boolean,
 ): boolean {
   if (!editor || typeof editor !== 'object') return false
 
@@ -168,7 +167,6 @@ function installIinkEraserPointerTypeShim(
     const originalUp = candidate.onPointerUp.bind(candidate)
     const activeTouchPointerIds = new Set<number>()
     const suppressedTouchPointerIds = new Set<number>()
-    let suppressTouchGestureActive = false
     const pendingTouchPointers = new Map<number, {
       timer: ReturnType<typeof setTimeout> | null
       downInfo: any
@@ -200,11 +198,6 @@ function installIinkEraserPointerTypeShim(
       return Math.round(raw)
     }
 
-    const isSuppressedByExternalTouchPolicy = () => {
-      if (typeof isExternalTouchSuppressionActive !== 'function') return false
-      return Boolean(isExternalTouchSuppressionActive())
-    }
-
     const shouldDelayTouchInk = (info: any) => {
       if (!info || typeof info !== 'object') return false
       if (getTouchDelayMs() <= 0) return false
@@ -221,12 +214,6 @@ function installIinkEraserPointerTypeShim(
         suppressedTouchPointerIds.add(id)
         pendingTouchPointers.delete(id)
       }
-    }
-
-    const clearTouchSuppressionIfIdle = () => {
-      if (activeTouchPointerIds.size > 0) return
-      suppressedTouchPointerIds.clear()
-      suppressTouchGestureActive = false
     }
 
     const hasLivePendingTouchForAnother = (pointerId: number) => {
@@ -286,19 +273,8 @@ function installIinkEraserPointerTypeShim(
         activeTouchPointerIds.add(pointerId)
       }
 
-      if (next?.pointerType === 'touch' && suppressTouchGestureActive) {
-        return undefined
-      }
-
       if (!shouldDelayTouchInk(next)) {
         return originalDown(next)
-      }
-
-      if (isSuppressedByExternalTouchPolicy()) {
-        suppressTouchGestureActive = true
-        suppressedTouchPointerIds.add(pointerId)
-        cancelAllPendingTouchPointers()
-        return undefined
       }
 
       if (suppressedTouchPointerIds.has(pointerId)) {
@@ -308,7 +284,6 @@ function installIinkEraserPointerTypeShim(
       // If a second touch arrives during another touch's delay window,
       // cancel delayed replay and ignore those buffered touch strokes.
       if (hasLivePendingTouchForAnother(pointerId)) {
-        suppressTouchGestureActive = true
         suppressedTouchPointerIds.add(pointerId)
         cancelAllPendingTouchPointers()
         return undefined
@@ -361,15 +336,11 @@ function installIinkEraserPointerTypeShim(
         activeTouchPointerIds.delete(pointerId)
       }
 
-      if (next?.pointerType === 'touch' && suppressTouchGestureActive) {
-        suppressedTouchPointerIds.delete(pointerId)
-        clearTouchSuppressionIfIdle()
-        return undefined
-      }
-
       if (next?.pointerType === 'touch' && suppressedTouchPointerIds.has(pointerId)) {
         suppressedTouchPointerIds.delete(pointerId)
-        clearTouchSuppressionIfIdle()
+        if (!activeTouchPointerIds.size) {
+          suppressedTouchPointerIds.clear()
+        }
         return undefined
       }
 
@@ -398,23 +369,13 @@ function installIinkEraserPointerTypeShim(
         const next = buildNext(info)
         const pointerId = getPointerId(next)
 
-        if (next?.pointerType === 'touch' && suppressTouchGestureActive) {
-          if (type === 'pointerdown' && pointerId >= 0) {
-            activeTouchPointerIds.add(pointerId)
-          }
-          if (type === 'pointerup' && pointerId >= 0) {
-            activeTouchPointerIds.delete(pointerId)
-          }
-          suppressedTouchPointerIds.delete(pointerId)
-          clearTouchSuppressionIfIdle()
-          return
-        }
-
         if (next?.pointerType === 'touch' && suppressedTouchPointerIds.has(pointerId)) {
           if (type === 'pointerup') {
             activeTouchPointerIds.delete(pointerId)
             suppressedTouchPointerIds.delete(pointerId)
-            clearTouchSuppressionIfIdle()
+            if (!activeTouchPointerIds.size) {
+              suppressedTouchPointerIds.clear()
+            }
           }
           return
         }
@@ -2513,7 +2474,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   })
   const resolvedTouchInkPointerIdsRef = useRef<Set<number>>(new Set())
   const resolvedTouchKeepaliveAtRef = useRef(0)
-  const externalTouchSuppressionActiveRef = useRef(false)
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
@@ -6274,7 +6234,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             () => isEraserModeRef.current,
             () => stackedInputScaleRef.current,
             () => (useStackedStudentLayout ? TOUCH_INK_DISAMBIGUATION_DELAY_MS : 0),
-            () => externalTouchSuppressionActiveRef.current,
           )
         )
         setStatus('ready')
@@ -11076,7 +11035,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const state = multiTouchPanRef.current
     resolvedTouchInkPointerIdsRef.current.clear()
-    externalTouchSuppressionActiveRef.current = false
 
     return () => {
       state.pointers.clear()
@@ -11088,134 +11046,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       state.pendingTouch = null
       resolvedTouchInkPointerIdsRef.current.clear()
-      externalTouchSuppressionActiveRef.current = false
       if (debugPanUndoTimeoutRef.current) {
         clearTimeout(debugPanUndoTimeoutRef.current)
         debugPanUndoTimeoutRef.current = null
       }
-    }
-  }, [multiTouchPanRef, useStackedStudentLayout])
-
-  // Prevent MyScript from seeing second-touch pointer events directly.
-  // This avoids immediate synthesized connector lines on multi-touch start.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!useStackedStudentLayout) return
-
-    const viewport = studentViewportRef.current
-    if (!viewport) return
-
-    const state = multiTouchPanRef.current
-
-    const isTouchLike = (evt: PointerEvent) => evt.pointerType === 'touch' || evt.pointerType === 'pen'
-
-    const updatePointer = (evt: PointerEvent) => {
-      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
-    }
-
-    const getMid = () => {
-      if (state.pointers.size < 2) return null
-      const values = Array.from(state.pointers.values())
-      const a = values[0]
-      const b = values[1]
-      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-    }
-
-    const suppressEvent = (evt: PointerEvent) => {
-      if (evt.cancelable) evt.preventDefault()
-      evt.stopImmediatePropagation()
-    }
-
-    const beginGestureIfReady = () => {
-      if (state.active) return
-      if (state.pointers.size < 2) return
-      const mid = getMid()
-      if (!mid) return
-
-      state.active = true
-      externalTouchSuppressionActiveRef.current = true
-      state.lastMid = mid
-      state.suppressedPointers = new Set(state.pointers.keys())
-    }
-
-    const endGestureIfNeeded = () => {
-      if (state.active && state.pointers.size < 2) {
-        state.active = false
-        state.lastMid = null
-      }
-      if (state.pointers.size === 0) {
-        state.suppressedPointers.clear()
-        externalTouchSuppressionActiveRef.current = false
-      }
-    }
-
-    const handlePointerDown = (evt: PointerEvent) => {
-      if (!isTouchLike(evt)) return
-      updatePointer(evt)
-      if (state.pointers.size >= 2) {
-        beginGestureIfReady()
-        state.suppressedPointers.add(evt.pointerId)
-        suppressEvent(evt)
-      } else if (state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerMove = (evt: PointerEvent) => {
-      if (!isTouchLike(evt)) return
-      updatePointer(evt)
-
-      if (state.active && state.pointers.size >= 2) {
-        const mid = getMid()
-        if (mid && state.lastMid) {
-          const dx = mid.x - state.lastMid.x
-          const dy = mid.y - state.lastMid.y
-
-          const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
-          const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-
-          let nextLeft = viewport.scrollLeft - dx
-          let nextTop = viewport.scrollTop - dy
-
-          nextLeft = Math.max(0, Math.min(nextLeft, maxScrollLeft))
-          nextTop = Math.max(0, Math.min(nextTop, maxScrollTop))
-
-          viewport.scrollLeft = nextLeft
-          viewport.scrollTop = nextTop
-        }
-        state.lastMid = getMid()
-        suppressEvent(evt)
-        return
-      }
-
-      if (state.pointers.size >= 2 || state.suppressedPointers.has(evt.pointerId)) {
-        suppressEvent(evt)
-      }
-    }
-
-    const handlePointerUp = (evt: PointerEvent) => {
-      if (!isTouchLike(evt)) return
-      const wasSuppressed = state.suppressedPointers.has(evt.pointerId)
-      state.pointers.delete(evt.pointerId)
-      state.suppressedPointers.delete(evt.pointerId)
-      endGestureIfNeeded()
-
-      if (state.active || wasSuppressed) {
-        suppressEvent(evt)
-      }
-    }
-
-    viewport.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false })
-    viewport.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false })
-    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false })
-    window.addEventListener('pointercancel', handlePointerUp, { capture: true, passive: false })
-
-    return () => {
-      viewport.removeEventListener('pointerdown', handlePointerDown as any, true)
-      viewport.removeEventListener('pointermove', handlePointerMove as any, true)
-      window.removeEventListener('pointerup', handlePointerUp as any, true)
-      window.removeEventListener('pointercancel', handlePointerUp as any, true)
-      externalTouchSuppressionActiveRef.current = false
     }
   }, [multiTouchPanRef, useStackedStudentLayout])
 

@@ -2198,13 +2198,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const formatDebugTime = (ts: number | null) => (ts ? new Date(ts).toLocaleTimeString() : 'never')
   const mathpixResponseSize = mathpixRawResponse ? `${mathpixRawResponse.length} chars` : '—'
 
+  const copyDebugPayload = useCallback(async (value: string | null, label: string) => {
+    if (!value) return
+    try {
+      await navigator.clipboard?.writeText(value)
+      return
+    } catch (err) {
+      console.warn('Failed to copy debug payload', err)
+    }
+    try {
+      if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
+        window.prompt(`Copy ${label} payload`, value)
+      }
+    } catch (err) {
+      console.warn('Failed to open copy prompt', err)
+    }
+  }, [])
+
   const renderDebugBlob = useCallback((label: string, value: string | null) => {
     if (!value) return 'none'
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
         <button
           type="button"
-          onClick={() => { void copyMathpixPayload(value, label) }}
+          onClick={() => { void copyDebugPayload(value, label) }}
           style={{
             alignSelf: 'flex-start',
             border: '1px solid rgba(255,255,255,0.18)',
@@ -2233,7 +2250,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }}>{value}</pre>
       </div>
     )
-  }, [copyMathpixPayload])
+  }, [copyDebugPayload])
 
   const debugSections: DebugSection[] = [
     {
@@ -5686,23 +5703,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return ''
     }
   }, [buildMathpixStrokesPayload, getMathpixEventList])
-
-  const copyMathpixPayload = useCallback(async (value: string | null, label: string) => {
-    if (!value) return
-    try {
-      await navigator.clipboard?.writeText(value)
-      return
-    } catch (err) {
-      console.warn('Failed to copy Mathpix payload', err)
-    }
-    try {
-      if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
-        window.prompt(`Copy ${label} payload`, value)
-      }
-    } catch (err) {
-      console.warn('Failed to open copy prompt', err)
-    }
-  }, [])
 
   const exportLatexFromEngine = useCallback(async () => {
     if (recognitionEngineRef.current === 'mathpix') {

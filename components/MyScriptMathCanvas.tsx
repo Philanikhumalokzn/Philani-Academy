@@ -5570,6 +5570,42 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!editor) return ''
 
     const extract = (payload: any) => {
+      if (!payload) return ''
+      if (typeof payload === 'string') return payload
+      if (typeof payload === 'object') {
+        const direct = payload['application/x-latex']
+        if (typeof direct === 'string') return direct
+        const first = (payload as any)[0]
+        if (typeof first === 'string') return first
+        if (first && typeof first === 'object' && typeof first['application/x-latex'] === 'string') return first['application/x-latex']
+      }
+      return ''
+    }
+
+    try {
+      if (typeof editor.export_ === 'function') {
+        let res = await editor.export_()
+        let latex = extract(res)
+        if (!latex) {
+          res = await editor.export_(['application/x-latex'])
+          latex = extract(res)
+        }
+        if (!latex) {
+          res = await editor.export_('application/x-latex')
+          latex = extract(res)
+        }
+        return typeof latex === 'string' ? latex : ''
+      }
+      if (typeof editor.export === 'function') {
+        const res = await editor.export()
+        const latex = extract(res)
+        return typeof latex === 'string' ? latex : ''
+      }
+    } catch (err) {
+      console.warn('Failed to export LaTeX', err)
+    }
+    return ''
+  }, [])
 
   const probeMyScriptRecognitionState = useCallback(async () => {
     const editor = editorInstanceRef.current
@@ -5618,43 +5654,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   probeMyScriptRecognitionStateRef.current = probeMyScriptRecognitionState
   scheduleMyScriptProbeRef.current = scheduleMyScriptProbe
-      if (!payload) return ''
-      if (typeof payload === 'string') return payload
-      if (typeof payload === 'object') {
-        const direct = payload['application/x-latex']
-        if (typeof direct === 'string') return direct
-        // Some SDKs return arrays or nested objects; best-effort extract.
-        const first = (payload as any)[0]
-        if (typeof first === 'string') return first
-        if (first && typeof first === 'object' && typeof first['application/x-latex'] === 'string') return first['application/x-latex']
-      }
-      return ''
-    }
-
-    try {
-      if (typeof editor.export_ === 'function') {
-        let res = await editor.export_()
-        let latex = extract(res)
-        if (!latex) {
-          res = await editor.export_(['application/x-latex'])
-          latex = extract(res)
-        }
-        if (!latex) {
-          res = await editor.export_('application/x-latex')
-          latex = extract(res)
-        }
-        return typeof latex === 'string' ? latex : ''
-      }
-      if (typeof editor.export === 'function') {
-        const res = await editor.export()
-        const latex = extract(res)
-        return typeof latex === 'string' ? latex : ''
-      }
-    } catch (err) {
-      console.warn('Failed to export LaTeX', err)
-    }
-    return ''
-  }, [])
 
   const getMathpixEventList = useCallback((symbols: any[] | null) => {
     return Array.isArray(symbols)
@@ -6250,23 +6249,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           setMyScriptExportedCount((count) => count + 1)
           setMyScriptLastExportedAt(Date.now())
           setMyScriptLastSymbolExtract(Date.now())
+
           const exports = evt.detail || {}
           setMyScriptLastExportPayload(toDebugJson(exports))
+
+          const publishExportResult = (latexValue: string) => {
+            setMyScriptLastExportedLatex(latexValue || null)
+            setLatexOutput(latexValue)
+            setIsConverting(false)
+
+            const isSharedPage = pageIndex === sharedPageIndexRef.current
+            const canSend = canPublishSnapshotsRef.current() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+            if (forcedConvertDepthRef.current > 0) {
+              forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+              return
+            }
+            if (canSend) {
+              broadcastSnapshot(true)
+            }
+          }
+
           const latex = exports['application/x-latex'] || ''
           const latexValue = typeof latex === 'string' ? latex : ''
-          setMyScriptLastExportedLatex(latexValue || null)
-          setLatexOutput(latexValue)
-          setIsConverting(false)
-
-          const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = canPublishSnapshotsRef.current() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
-          if (forcedConvertDepthRef.current > 0) {
-            forcedConvertDepthRef.current = Math.max(0, forcedConvertDepthRef.current - 1)
+          if (latexValue.trim()) {
+            publishExportResult(latexValue)
             return
           }
-          if (canSend) {
-            broadcastSnapshot(true)
-          }
+
+          void (async () => {
+            const fallbackLatex = await exportLatexFromEditor()
+            publishExportResult(typeof fallbackLatex === 'string' ? fallbackLatex : '')
+          })()
         }
         const handleError = (evt: any) => {
           const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'

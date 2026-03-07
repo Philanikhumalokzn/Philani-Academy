@@ -120,6 +120,7 @@ function renderTextWithInlineKatex(inputRaw: string) {
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
 const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 500
 const TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT = 240
+const TOUCH_QUARANTINE_STALE_RESET_MS = 1200
 
 function normalizeIinkPointerInfo(info: any, scale: number): any {
   if (!info || typeof info !== 'object') return info
@@ -170,6 +171,7 @@ function installIinkEraserPointerTypeShim(
       : null
     let touchActiveCount = 0
     let touchQuarantine = false
+    let lastTouchSignalTs = 0
     const pendingTouchPointers = new Map<number, {
       timer: ReturnType<typeof setTimeout> | null
       downInfo: any
@@ -221,6 +223,28 @@ function installIinkEraserPointerTypeShim(
     const enterTouchQuarantine = () => {
       touchQuarantine = true
       cancelAllPendingTouchPointers()
+    }
+
+    const noteTouchSignal = () => {
+      lastTouchSignalTs = Date.now()
+    }
+
+    const resetTouchQuarantineState = () => {
+      touchActiveCount = 0
+      touchQuarantine = false
+      cancelAllPendingTouchPointers()
+    }
+
+    const maybeResetStaleTouchQuarantine = () => {
+      if (!touchQuarantine) return
+      const now = Date.now()
+      if (!lastTouchSignalTs) {
+        resetTouchQuarantineState()
+        return
+      }
+      if ((now - lastTouchSignalTs) > TOUCH_QUARANTINE_STALE_RESET_MS) {
+        resetTouchQuarantineState()
+      }
     }
 
     const handleTouchBufferedEnd = (isBufferedTouch: boolean) => {
@@ -281,6 +305,8 @@ function installIinkEraserPointerTypeShim(
       const isBufferedTouch = shouldDelayTouchInk(next)
 
       if (isBufferedTouch) {
+        maybeResetStaleTouchQuarantine()
+        noteTouchSignal()
         touchActiveCount += 1
         if (touchActiveCount >= 2) {
           enterTouchQuarantine()
@@ -320,6 +346,10 @@ function installIinkEraserPointerTypeShim(
       const pointerId = getPointerId(next)
       const isBufferedTouch = shouldDelayTouchInk(next)
 
+      if (isBufferedTouch) {
+        noteTouchSignal()
+      }
+
       if (isBufferedTouch && touchQuarantine) {
         return undefined
       }
@@ -340,6 +370,10 @@ function installIinkEraserPointerTypeShim(
       const next = buildNext(info)
       const pointerId = getPointerId(next)
       const isBufferedTouch = shouldDelayTouchInk(next)
+
+      if (isBufferedTouch) {
+        noteTouchSignal()
+      }
 
       if (handleTouchBufferedEnd(isBufferedTouch)) {
         return undefined
@@ -370,6 +404,10 @@ function installIinkEraserPointerTypeShim(
       const pointerId = getPointerId(next)
       const isBufferedTouch = shouldDelayTouchInk(next)
 
+      if (isBufferedTouch) {
+        noteTouchSignal()
+      }
+
       if (handleTouchBufferedEnd(isBufferedTouch)) {
         return undefined
       }
@@ -397,11 +435,17 @@ function installIinkEraserPointerTypeShim(
         const isBufferedTouch = shouldDelayTouchInk(next)
 
         if (type === 'pointerdown' && isBufferedTouch) {
+          maybeResetStaleTouchQuarantine()
+          noteTouchSignal()
           touchActiveCount += 1
           if (touchActiveCount >= 2) {
             enterTouchQuarantine()
             return
           }
+        }
+
+        if ((type === 'pointermove' || type === 'pointerup' || type === 'pointercancel') && isBufferedTouch) {
+          noteTouchSignal()
         }
 
         if (isBufferedTouch && touchQuarantine) {

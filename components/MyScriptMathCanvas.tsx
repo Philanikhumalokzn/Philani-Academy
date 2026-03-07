@@ -8450,9 +8450,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
 
-  // Keep stacked-canvas zoom behavior aligned with the PDF viewer gesture model.
-  const stackedRenderZoomRef = useRef(110)
-  const stackedZoomRef = useRef(110)
+  // Normalized zoom model: 1 = 1x, making min/max values intuitive.
+  const stackedRenderZoomRef = useRef(1)
+  const stackedZoomRef = useRef(1)
   const stackedPinchActiveRef = useRef(false)
   const stackedPinchStateRef = useRef<{
     active: boolean
@@ -8465,15 +8465,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     lastDist: number
     lastMidpointX: number
     lastMidpointY: number
-  }>({ active: false, startDist: 0, startZoom: 110, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
-  const [stackedZoom, setStackedZoom] = useState(110)
+  }>({ active: false, startDist: 0, startZoom: 1, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
+  const [stackedZoom, setStackedZoom] = useState(1)
   const stackedInputScaleRef = useRef(1)
   const [stackedSurfaceBaseSize, setStackedSurfaceBaseSize] = useState({ width: 320, height: 640 })
   const stackedTouchActiveRef = useRef(false)
   const stackedInteractionMotionRafRef = useRef<number | null>(null)
   const stackedInteractionStableFramesRef = useRef(0)
   const stackedInteractionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
-  const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
+  const stackedMinZoom = Math.max(0.5, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
   const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
@@ -11186,7 +11186,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         if (Math.abs(scale - 1) < PINCH_START_THRESHOLD && panDistance < PAN_START_THRESHOLD_PX) return
 
-        const gestureMinZoom = Math.max(50, stackedRenderZoomRef.current)
+        const gestureMinZoom = Math.max(0.5, stackedRenderZoomRef.current)
         const nextZoom = Math.min(Math.max(stackedPinchStateRef.current.startZoom * scale, gestureMinZoom), 220)
         if (Math.abs(nextZoom - stackedZoomRef.current) < ZOOM_UPDATE_THRESHOLD && panDistance < PAN_UPDATE_THRESHOLD_PX) return
 

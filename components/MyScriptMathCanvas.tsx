@@ -2274,6 +2274,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     pendingTouch: null,
   })
   const resolvedTouchInkPointerIdsRef = useRef<Set<number>>(new Set())
+  const resolvedTouchKeepaliveAtRef = useRef(0)
   // Debug-only: used to schedule a single undo after a pan ends.
   const debugPanUndoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
@@ -10863,6 +10864,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
       if (resolvedTouchInkPointerIdsRef.current.has(evt.pointerId)) {
         dispatchReplay('pointermove', evt)
+        const now = Date.now()
+        if (now - resolvedTouchKeepaliveAtRef.current >= 4000) {
+          resolvedTouchKeepaliveAtRef.current = now
+          void resyncLatexPreviewFromEditor()
+        }
         suppressEvent(evt)
         return
       }
@@ -10897,13 +10903,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (pending && pending.pointerId === evt.pointerId) {
         clearPendingTouch()
       }
+      if (isResolvedInkPointer) {
+        resolvedTouchKeepaliveAtRef.current = Date.now()
+      }
       resolvedTouchInkPointerIdsRef.current.delete(evt.pointerId)
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
       endGestureIfNeeded()
       const gestureEnded = hadPan && !state.active && state.pointers.size === 0
 
-      if (gestureEnded) {
+      if (gestureEnded || isResolvedInkPointer) {
         if (debugPanUndoTimeoutRef.current) {
           clearTimeout(debugPanUndoTimeoutRef.current)
           debugPanUndoTimeoutRef.current = null
@@ -10932,6 +10941,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.suppressedPointers.clear()
       clearPendingTouch()
       resolvedTouchInkPointerIdsRef.current.clear()
+      resolvedTouchKeepaliveAtRef.current = 0
       if (debugPanUndoTimeoutRef.current) {
         clearTimeout(debugPanUndoTimeoutRef.current)
         debugPanUndoTimeoutRef.current = null

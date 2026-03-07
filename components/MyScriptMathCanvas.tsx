@@ -8475,7 +8475,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedInteractionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
   const stackedMinZoom = Math.max(50, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
-  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 20)
+  const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 100)
   const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
 
   const stopStackedInteractionMotionMonitor = useCallback(() => {
@@ -8587,7 +8587,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
     const contentEl = stackedZoomContentRef.current
     if (!contentEl) return
-    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 20)
+    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 100)
     contentEl.style.zoom = String(scale)
     contentEl.style.transform = ''
     contentEl.style.willChange = stackedPinchActiveRef.current ? 'transform' : ''

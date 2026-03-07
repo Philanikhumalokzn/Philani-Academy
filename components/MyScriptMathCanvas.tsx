@@ -10127,9 +10127,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       autoPanAnimRef.current = null
     }
 
-    const durationMs = 440
+    const durationMs = 720
     const startTs = window.performance?.now?.() ?? Date.now()
-    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+    const ease = (t: number) => 0.5 - (Math.cos(Math.PI * t) / 2)
 
     const step = (now: number) => {
       const t = Math.min(1, Math.max(0, (now - startTs) / durationMs))
@@ -10152,6 +10152,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!host) return
     const EDGE_TRIGGER_RATIO = 0.1
     const EDGE_CLEARANCE_RATIO = 0.5
+    const AUTOPAN_DISTANCE_GAIN = 0.72
 
     const onDown = (event: PointerEvent) => {
       strokeTrackRef.current.active = true
@@ -10228,7 +10229,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (strokeTrackRef.current.leftPanArmed) {
         const delta = strokeTrackRef.current.lastX - targetX
         if (delta < -1) {
-          smoothScrollViewportBy(delta)
+          smoothScrollViewportBy(delta * AUTOPAN_DISTANCE_GAIN)
         }
         return
       }
@@ -10238,7 +10239,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const rightAnchor = Math.max(strokeTrackRef.current.maxX, strokeTrackRef.current.lastX)
         const delta = rightAnchor - targetX
         if (delta > 1) {
-          smoothScrollViewportBy(delta)
+          smoothScrollViewportBy(delta * AUTOPAN_DISTANCE_GAIN)
         }
       }
     }

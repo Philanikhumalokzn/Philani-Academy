@@ -865,6 +865,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptLastExportedAt, setMyScriptLastExportedAt] = useState<number | null>(null)
   const [myscriptModelSummary, setMyScriptModelSummary] = useState<string | null>(null)
   const [myscriptLastProbeAt, setMyScriptLastProbeAt] = useState<number | null>(null)
+  const [debugTopPanelSource, setDebugTopPanelSource] = useState<string | null>(null)
+  const [debugTopPanelHasMarkup, setDebugTopPanelHasMarkup] = useState(false)
   const [debugPanelVisible, setDebugPanelVisible] = useState(true)
   const probeMyScriptRecognitionStateRef = useRef<() => Promise<void>>(async () => {})
   const scheduleMyScriptProbeRef = useRef<() => void>(() => {})
@@ -2331,8 +2333,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         { label: 'lastExtraction', value: formatDebugTime(myscriptLastSymbolExtract) },
         { label: 'lastLatex', value: myscriptLastExportedLatex || 'none' },
         { label: 'latexOutput', value: latexOutput || 'none' },
-        { label: 'topPanelSource', value: topPanelPayload.latex || 'none' },
-        { label: 'topPanelMarkup', value: topPanelRenderPayload.markup ? 'yes' : 'no' },
+        { label: 'topPanelSource', value: debugTopPanelSource || 'none' },
+        { label: 'topPanelMarkup', value: debugTopPanelHasMarkup ? 'yes' : 'no' },
         { label: 'modelSummary', value: renderDebugBlob('MyScript model summary', myscriptModelSummary) },
         { label: 'lastChangedDetail', value: renderDebugBlob('MyScript changed detail', myscriptLastChangedPayload) },
         { label: 'sentSymbols', value: renderDebugBlob('MyScript symbols', myscriptLastSymbolsPayload) },
@@ -8090,6 +8092,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     topPanelPayload.options.fontScale,
     topPanelPayload.options.textAlign,
   ])
+
+  useEffect(() => {
+    setDebugTopPanelSource((topPanelPayload.latex || '').trim() || null)
+    setDebugTopPanelHasMarkup(Boolean(topPanelRenderPayload.markup))
+  }, [topPanelPayload.latex, topPanelRenderPayload.markup])
 
   const adminTopPanelStepItems = useMemo(() => {
     if (!useAdminStepComposer) return [] as Array<{ index: number; latex: string }>

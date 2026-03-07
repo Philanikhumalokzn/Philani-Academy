@@ -11097,6 +11097,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         clearPendingTouch()
       }
       if (isResolvedInkPointer) {
+        dispatchReplay('pointerup', evt)
+      }
+      if (isResolvedInkPointer) {
         resolvedTouchKeepaliveAtRef.current = Date.now()
       }
       resolvedTouchInkPointerIdsRef.current.delete(evt.pointerId)

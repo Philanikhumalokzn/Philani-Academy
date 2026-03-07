@@ -118,7 +118,7 @@ function renderTextWithInlineKatex(inputRaw: string) {
 }
 
 const PHILANI_ERASER_POINTER_TYPE = 'eraser'
-const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 0
+const TOUCH_INK_DISAMBIGUATION_DELAY_MS = 500
 const TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT = 240
 
 function normalizeIinkPointerInfo(info: any, scale: number): any {
@@ -149,6 +149,7 @@ function installIinkEraserPointerTypeShim(
   editor: any,
   isEraserActive: () => boolean,
   getInputScale?: () => number,
+  getTouchInkDelayMs?: () => number,
 ): boolean {
   if (!editor || typeof editor !== 'object') return false
 
@@ -164,6 +165,12 @@ function installIinkEraserPointerTypeShim(
     const originalDown = candidate.onPointerDown.bind(candidate)
     const originalMove = candidate.onPointerMove.bind(candidate)
     const originalUp = candidate.onPointerUp.bind(candidate)
+    const pendingTouchPointers = new Map<number, {
+      timer: ReturnType<typeof setTimeout> | null
+      downInfo: any
+      moveQueue: any[]
+      upInfo: any | null
+    }>()
 
     const getSafeScale = () => {
       const scaleRaw = typeof getInputScale === 'function' ? Number(getInputScale()) : 1
@@ -177,6 +184,56 @@ function installIinkEraserPointerTypeShim(
       } catch {}
     }
 
+    const getPointerId = (info: any): number => {
+      const raw = (info as any)?.pointerId
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+      return -1
+    }
+
+    const getTouchDelayMs = () => {
+      const raw = typeof getTouchInkDelayMs === 'function' ? Number(getTouchInkDelayMs()) : 0
+      if (!Number.isFinite(raw) || raw <= 0) return 0
+      return Math.round(raw)
+    }
+
+    const shouldDelayTouchInk = (info: any) => {
+      if (!info || typeof info !== 'object') return false
+      if (getTouchDelayMs() <= 0) return false
+      return info.pointerType === 'touch'
+    }
+
+    const flushPendingTouchPointer = (pointerId: number) => {
+      const pending = pendingTouchPointers.get(pointerId)
+      if (!pending) return
+
+      if (pending.timer) {
+        clearTimeout(pending.timer)
+        pending.timer = null
+      }
+
+      pendingTouchPointers.delete(pointerId)
+
+      originalDown(pending.downInfo)
+      if (pending.moveQueue.length) {
+        for (const queuedMove of pending.moveQueue) {
+          originalMove(queuedMove)
+        }
+      }
+
+      if (pending.upInfo) {
+        const safeScale = getSafeScale()
+        const result = originalUp(pending.upInfo)
+        if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => {
+            maybeSyncGeometryForCommit(getSafeScale())
+          })
+        }
+        return result
+      }
+
+      return undefined
+    }
+
     const buildNext = (info: any) => {
       let next = info
       if (isEraserActive() && info && typeof info === 'object') {
@@ -186,12 +243,60 @@ function installIinkEraserPointerTypeShim(
       return normalizeIinkPointerInfo(next, safeScale)
     }
 
-    candidate.onPointerDown = (info: any) => originalDown(buildNext(info))
+    candidate.onPointerDown = (info: any) => {
+      const next = buildNext(info)
+      if (!shouldDelayTouchInk(next)) {
+        return originalDown(next)
+      }
 
-    candidate.onPointerMove = (info: any) => originalMove(buildNext(info))
+      const pointerId = getPointerId(next)
+      const existingPending = pendingTouchPointers.get(pointerId)
+      if (existingPending?.timer) {
+        clearTimeout(existingPending.timer)
+      }
+
+      const pending = {
+        timer: null as ReturnType<typeof setTimeout> | null,
+        downInfo: next,
+        moveQueue: [] as any[],
+        upInfo: null as any | null,
+      }
+      pending.timer = setTimeout(() => {
+        flushPendingTouchPointer(pointerId)
+      }, getTouchDelayMs())
+
+      pendingTouchPointers.set(pointerId, pending)
+      return undefined
+    }
+
+    candidate.onPointerMove = (info: any) => {
+      const next = buildNext(info)
+      const pointerId = getPointerId(next)
+      const pending = pendingTouchPointers.get(pointerId)
+      if (!pending) {
+        return originalMove(next)
+      }
+
+      pending.moveQueue.push(next)
+      if (pending.moveQueue.length > TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT) {
+        pending.moveQueue.splice(0, pending.moveQueue.length - TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT)
+      }
+      return undefined
+    }
 
     candidate.onPointerUp = (info: any) => {
       const next = buildNext(info)
+      const pointerId = getPointerId(next)
+      const pending = pendingTouchPointers.get(pointerId)
+      if (pending) {
+        pending.upInfo = next
+        // If the delay window already elapsed, flush immediately.
+        if (!pending.timer) {
+          return flushPendingTouchPointer(pointerId)
+        }
+        return undefined
+      }
+
       const safeScale = getSafeScale()
       const result = originalUp(next)
       if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -205,14 +310,40 @@ function installIinkEraserPointerTypeShim(
     try {
       ;(editor as PhilaniReplayablePointerEditor).__philaniReplayPointerEvent = (type, info) => {
         const next = buildNext(info)
+        const pointerId = getPointerId(next)
         if (type === 'pointerdown') {
+          const pending = pendingTouchPointers.get(pointerId)
+          if (pending?.timer) {
+            clearTimeout(pending.timer)
+          }
+          pendingTouchPointers.delete(pointerId)
           originalDown(next)
           return
         }
         if (type === 'pointermove') {
+          const pending = pendingTouchPointers.get(pointerId)
+          if (pending) {
+            pending.moveQueue.push(next)
+            if (pending.moveQueue.length > TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT) {
+              pending.moveQueue.splice(0, pending.moveQueue.length - TOUCH_INK_PENDING_MOVE_QUEUE_LIMIT)
+            }
+            return
+          }
           originalMove(next)
           return
         }
+
+        const pending = pendingTouchPointers.get(pointerId)
+        if (pending) {
+          pending.upInfo = next
+          if (pending.timer) {
+            clearTimeout(pending.timer)
+            pending.timer = null
+          }
+          flushPendingTouchPointer(pointerId)
+          return
+        }
+
         const safeScale = getSafeScale()
         const result = originalUp(next)
         if (Math.abs(safeScale - 1) >= 0.0001 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -6026,6 +6157,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             editor,
             () => isEraserModeRef.current,
             () => stackedInputScaleRef.current,
+            () => (useStackedStudentLayout ? TOUCH_INK_DISAMBIGUATION_DELAY_MS : 0),
           )
         )
         setStatus('ready')

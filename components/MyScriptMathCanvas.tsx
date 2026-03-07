@@ -11049,11 +11049,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const dispatchLateStart = (evt: PointerEvent) => {
       const lateStartInfo = buildLateStartInfo(evt)
-      const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
-      if (editor?.__philaniReplayPointerEvent) {
-        editor.__philaniReplayPointerEvent('pointerdown', lateStartInfo)
-        return
-      }
       try {
         host.dispatchEvent(new PointerEvent('pointerdown', lateStartInfo))
       } catch {}

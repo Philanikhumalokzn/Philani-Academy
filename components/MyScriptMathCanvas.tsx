@@ -10992,23 +10992,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       evt.stopPropagation()
     }
 
-    const buildReplayInfo = (type: 'pointerdown' | 'pointermove' | 'pointerup', evt: PointerEvent) => {
+    const buildLateStartInfo = (evt: PointerEvent) => {
       const hostRect = host.getBoundingClientRect()
       const localX = evt.clientX - hostRect.left
       const localY = evt.clientY - hostRect.top
-      const resolvedButtons = type === 'pointerup'
-        ? 0
-        : (typeof evt.buttons === 'number' ? evt.buttons : 1)
-      const resolvedPressure = type === 'pointerup'
-        ? 0
-        : ((typeof evt.pressure === 'number' && Number.isFinite(evt.pressure) && evt.pressure > 0) ? evt.pressure : 0.5)
+      const resolvedButtons = typeof evt.buttons === 'number' && evt.buttons > 0 ? evt.buttons : 1
+      const resolvedPressure = (typeof evt.pressure === 'number' && Number.isFinite(evt.pressure) && evt.pressure > 0)
+        ? evt.pressure
+        : 0.5
       return {
-        type,
-        eventType: type,
-        isStart: type === 'pointerdown',
-        isFirst: type === 'pointerdown',
-        isEnd: type === 'pointerup',
-        isLast: type === 'pointerup',
+        type: 'pointerdown',
+        eventType: 'pointerdown',
+        isStart: true,
+        isFirst: true,
+        isEnd: false,
+        isLast: false,
         pointerId: evt.pointerId,
         pointerType: evt.pointerType,
         clientX: evt.clientX,
@@ -11049,36 +11047,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
 
-    const dispatchReplay = (type: 'pointerdown' | 'pointermove' | 'pointerup', evt: PointerEvent) => {
-      const replayInfo = buildReplayInfo(type, evt)
-      const replayJson = toDebugJson(replayInfo)
-      setMyScriptLastReplayAt(Date.now())
-      setMyScriptReplayCounts((prev) => ({
-        down: prev.down + (type === 'pointerdown' ? 1 : 0),
-        move: prev.move + (type === 'pointermove' ? 1 : 0),
-        up: prev.up + (type === 'pointerup' ? 1 : 0),
-      }))
-      if (type === 'pointerdown') {
-        setMyScriptLastReplayDownPayload(replayJson)
-      } else if (type === 'pointermove') {
-        setMyScriptLastReplayMovePayload(replayJson)
-      } else {
-        setMyScriptLastReplayUpPayload(replayJson)
-      }
+    const dispatchLateStart = (evt: PointerEvent) => {
+      const lateStartInfo = buildLateStartInfo(evt)
       const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
       if (editor?.__philaniReplayPointerEvent) {
-        editor.__philaniReplayPointerEvent(type, replayInfo)
-        if (type === 'pointerup') {
-          scheduleMyScriptProbeRef.current()
-        }
+        editor.__philaniReplayPointerEvent('pointerdown', lateStartInfo)
         return
       }
       try {
-        host.dispatchEvent(new PointerEvent(type, replayInfo))
+        host.dispatchEvent(new PointerEvent('pointerdown', lateStartInfo))
       } catch {}
-      if (type === 'pointerup') {
-        scheduleMyScriptProbeRef.current()
-      }
     }
 
     const clearPendingTouch = () => {
@@ -11100,13 +11078,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         clearPendingTouch()
         return
       }
+      const anchorEvent = pending.moveQueue[pending.moveQueue.length - 1] ?? pending.downEvent
       resolvedTouchInkPointerIdsRef.current.add(pending.pointerId)
       state.suppressedPointers.delete(pending.pointerId)
       state.pendingTouch = null
-      dispatchReplay('pointerdown', pending.downEvent)
-      pending.moveQueue.forEach((moveEvt) => {
-        dispatchReplay('pointermove', moveEvt)
-      })
+      dispatchLateStart(anchorEvent)
       void resyncLatexPreviewFromEditor()
     }
 
@@ -11171,13 +11147,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       updatePointer(evt)
 
       if (resolvedTouchInkPointerIdsRef.current.has(evt.pointerId)) {
-        dispatchReplay('pointermove', evt)
-        const now = Date.now()
-        if (now - resolvedTouchKeepaliveAtRef.current >= 4000) {
-          resolvedTouchKeepaliveAtRef.current = now
-          void resyncLatexPreviewFromEditor()
-        }
-        suppressEvent(evt)
         return
       }
 
@@ -11210,12 +11179,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const pending = state.pendingTouch
       if (pending && pending.pointerId === evt.pointerId) {
         clearPendingTouch()
-      }
-      if (isResolvedInkPointer) {
-        dispatchReplay('pointerup', evt)
-      }
-      if (isResolvedInkPointer) {
-        resolvedTouchKeepaliveAtRef.current = Date.now()
       }
       resolvedTouchInkPointerIdsRef.current.delete(evt.pointerId)
       state.pointers.delete(evt.pointerId)
@@ -11253,7 +11216,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       state.suppressedPointers.clear()
       clearPendingTouch()
       resolvedTouchInkPointerIdsRef.current.clear()
-      resolvedTouchKeepaliveAtRef.current = 0
       if (debugPanUndoTimeoutRef.current) {
         clearTimeout(debugPanUndoTimeoutRef.current)
         debugPanUndoTimeoutRef.current = null

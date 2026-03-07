@@ -10707,12 +10707,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const hostRect = host.getBoundingClientRect()
       const localX = evt.clientX - hostRect.left
       const localY = evt.clientY - hostRect.top
-      const resolvedButtons = typeof evt.buttons === 'number'
-        ? evt.buttons
-        : (type === 'pointerdown' ? 1 : 0)
-      const resolvedPressure = typeof evt.pressure === 'number' && Number.isFinite(evt.pressure)
-        ? evt.pressure
-        : (type === 'pointerup' ? 0 : 0.5)
+      const resolvedButtons = type === 'pointerup'
+        ? 0
+        : (typeof evt.buttons === 'number' ? evt.buttons : 1)
+      const resolvedPressure = type === 'pointerup'
+        ? 0
+        : ((typeof evt.pressure === 'number' && Number.isFinite(evt.pressure) && evt.pressure > 0) ? evt.pressure : 0.5)
       return {
         type,
         eventType: type,
@@ -10860,6 +10860,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!evt.isTrusted) return
       updatePointer(evt)
 
+      if (resolvedTouchInkPointerIdsRef.current.has(evt.pointerId)) {
+        dispatchReplay('pointermove', evt)
+        suppressEvent(evt)
+        return
+      }
+
       const pending = state.pendingTouch
       if (pending && pending.pointerId === evt.pointerId) {
         pending.moveQueue.push(evt)
@@ -10890,6 +10896,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (pending && pending.pointerId === evt.pointerId) {
         clearPendingTouch()
       }
+      if (isResolvedInkPointer) {
+        dispatchReplay('pointerup', evt)
+      }
       resolvedTouchInkPointerIdsRef.current.delete(evt.pointerId)
       state.pointers.delete(evt.pointerId)
       state.suppressedPointers.delete(evt.pointerId)
@@ -10916,7 +10925,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       }
 
-      if (state.active || wasSuppressed) {
+      if (state.active || wasSuppressed || isResolvedInkPointer) {
         suppressEvent(evt)
       }
     }

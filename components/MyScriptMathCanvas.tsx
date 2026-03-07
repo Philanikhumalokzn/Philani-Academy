@@ -853,7 +853,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptLastSymbolsPayload, setMyScriptLastSymbolsPayload] = useState<string | null>(null)
   const [myscriptLastExportPayload, setMyScriptLastExportPayload] = useState<string | null>(null)
   const [myscriptLastExportedLatex, setMyScriptLastExportedLatex] = useState<string | null>(null)
+  const [myscriptReplayCounts, setMyScriptReplayCounts] = useState({ down: 0, move: 0, up: 0 })
+  const [myscriptLastReplayAt, setMyScriptLastReplayAt] = useState<number | null>(null)
+  const [myscriptChangedCount, setMyScriptChangedCount] = useState(0)
+  const [myscriptLastChangedAt, setMyScriptLastChangedAt] = useState<number | null>(null)
+  const [myscriptLastChangedPayload, setMyScriptLastChangedPayload] = useState<string | null>(null)
+  const [myscriptExportedCount, setMyScriptExportedCount] = useState(0)
+  const [myscriptLastExportedAt, setMyScriptLastExportedAt] = useState<number | null>(null)
+  const [myscriptModelSummary, setMyScriptModelSummary] = useState<string | null>(null)
+  const [myscriptLastProbeAt, setMyScriptLastProbeAt] = useState<number | null>(null)
   const [debugPanelVisible, setDebugPanelVisible] = useState(true)
+  const probeMyScriptRecognitionStateRef = useRef<() => Promise<void>>(async () => {})
+  const scheduleMyScriptProbeRef = useRef<() => void>(() => {})
+  const myscriptProbeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Track MyScript script load
   useEffect(() => {
@@ -2215,6 +2227,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }, [])
 
+  const triggerMyScriptProbe = useCallback(() => {
+    void probeMyScriptRecognitionStateRef.current()
+  }, [])
+
   const renderDebugBlob = useCallback((label: string, value: string | null) => {
     if (!value) return 'none'
     return (
@@ -2280,9 +2296,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         { label: 'scriptLoaded', value: myscriptScriptLoaded ? 'yes' : 'no' },
         { label: 'editorInstance', value: editorInstanceRef.current ? 'yes' : 'no' },
         { label: 'editorReady', value: myscriptEditorReady ? 'yes' : 'no' },
+        { label: 'replayedInput', value: `down ${myscriptReplayCounts.down}, move ${myscriptReplayCounts.move}, up ${myscriptReplayCounts.up}` },
+        { label: 'lastReplay', value: formatDebugTime(myscriptLastReplayAt) },
+        { label: 'changedEvents', value: `${myscriptChangedCount} @ ${formatDebugTime(myscriptLastChangedAt)}` },
+        { label: 'exportedEvents', value: `${myscriptExportedCount} @ ${formatDebugTime(myscriptLastExportedAt)}` },
+        {
+          label: 'probe',
+          value: (
+            <button
+              type="button"
+              onClick={triggerMyScriptProbe}
+              style={{
+                border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: 8,
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                padding: '4px 10px',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              Probe now
+            </button>
+          ),
+        },
+        { label: 'lastProbe', value: formatDebugTime(myscriptLastProbeAt) },
         { label: 'lastError', value: myscriptLastError || 'none' },
         { label: 'lastExtraction', value: formatDebugTime(myscriptLastSymbolExtract) },
         { label: 'lastLatex', value: myscriptLastExportedLatex || 'none' },
+        { label: 'modelSummary', value: renderDebugBlob('MyScript model summary', myscriptModelSummary) },
+        { label: 'lastChangedDetail', value: renderDebugBlob('MyScript changed detail', myscriptLastChangedPayload) },
         { label: 'sentSymbols', value: renderDebugBlob('MyScript symbols', myscriptLastSymbolsPayload) },
         { label: 'returnedExports', value: renderDebugBlob('MyScript exports', myscriptLastExportPayload) },
       ],
@@ -5503,6 +5546,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!editor) return ''
 
     const extract = (payload: any) => {
+
+  const probeMyScriptRecognitionState = useCallback(async () => {
+    const editor = editorInstanceRef.current
+    setMyScriptLastProbeAt(Date.now())
+    if (!editor) {
+      setMyScriptModelSummary(toDebugJson({ hasEditor: false }))
+      return
+    }
+
+    const model = editor.model ?? {}
+    const rawSymbols = (model as any).symbols
+    const exportsPayload = model.exports ?? null
+    const symbols = extractEditorSymbols()
+    const summary = {
+      hasEditor: true,
+      hasModel: Boolean(editor.model),
+      modelKeys: Object.keys(model || {}).slice(0, 24),
+      symbolContainerType: Array.isArray(rawSymbols) ? 'array' : rawSymbols ? typeof rawSymbols : 'none',
+      symbolCount: countSymbols(symbols),
+      exportKeys: exportsPayload && typeof exportsPayload === 'object' ? Object.keys(exportsPayload).slice(0, 24) : [],
+    }
+
+    setMyScriptModelSummary(toDebugJson(summary))
+    setMyScriptLastSymbolsPayload(toDebugJson(symbols))
+    setMyScriptLastExportPayload(toDebugJson(exportsPayload))
+
+    try {
+      const latex = await exportLatexFromEditor()
+      setMyScriptLastSymbolExtract(Date.now())
+      setMyScriptLastExportedLatex(latex || null)
+    } catch (err) {
+      setMyScriptLastError(err instanceof Error ? err.message : String(err))
+    }
+  }, [exportLatexFromEditor, extractEditorSymbols])
+
+  const scheduleMyScriptProbe = useCallback(() => {
+    if (myscriptProbeTimeoutRef.current) {
+      clearTimeout(myscriptProbeTimeoutRef.current)
+      myscriptProbeTimeoutRef.current = null
+    }
+    myscriptProbeTimeoutRef.current = setTimeout(() => {
+      myscriptProbeTimeoutRef.current = null
+      void probeMyScriptRecognitionState()
+    }, 180)
+  }, [probeMyScriptRecognitionState])
+
+  probeMyScriptRecognitionStateRef.current = probeMyScriptRecognitionState
+  scheduleMyScriptProbeRef.current = scheduleMyScriptProbe
       if (!payload) return ''
       if (typeof payload === 'string') return payload
       if (typeof payload === 'object') {
@@ -6007,6 +6098,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         } catch {}
 
         const handleChanged = (evt: any) => {
+          setMyScriptChangedCount((count) => count + 1)
+          setMyScriptLastChangedAt(Date.now())
+          setMyScriptLastChangedPayload(toDebugJson(evt?.detail ?? null))
           setCanUndo(Boolean(evt.detail?.canUndo))
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
@@ -6129,6 +6223,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
         const handleExported = (evt: any) => {
           if (recognitionEngineRef.current === 'mathpix') return
+          setMyScriptExportedCount((count) => count + 1)
+          setMyScriptLastExportedAt(Date.now())
           setMyScriptLastSymbolExtract(Date.now())
           const exports = evt.detail || {}
           setMyScriptLastExportPayload(toDebugJson(exports))
@@ -10848,14 +10944,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
     const dispatchReplay = (type: 'pointerdown' | 'pointermove' | 'pointerup', evt: PointerEvent) => {
       const replayInfo = buildReplayInfo(type, evt)
+      setMyScriptLastReplayAt(Date.now())
+      setMyScriptReplayCounts((prev) => ({
+        down: prev.down + (type === 'pointerdown' ? 1 : 0),
+        move: prev.move + (type === 'pointermove' ? 1 : 0),
+        up: prev.up + (type === 'pointerup' ? 1 : 0),
+      }))
       const editor = editorInstanceRef.current as PhilaniReplayablePointerEditor | null
       if (editor?.__philaniReplayPointerEvent) {
         editor.__philaniReplayPointerEvent(type, replayInfo)
+        if (type === 'pointerup') {
+          scheduleMyScriptProbeRef.current()
+        }
         return
       }
       try {
         host.dispatchEvent(new PointerEvent(type, replayInfo))
       } catch {}
+      if (type === 'pointerup') {
+        scheduleMyScriptProbeRef.current()
+      }
     }
 
     const clearPendingTouch = () => {
@@ -11003,6 +11111,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           debugPanUndoTimeoutRef.current = null
         }
         void resyncLatexPreviewFromEditor()
+        scheduleMyScriptProbeRef.current()
       }
 
       if (state.active || wasSuppressed) {

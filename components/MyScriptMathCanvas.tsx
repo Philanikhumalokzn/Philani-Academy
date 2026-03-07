@@ -6175,7 +6175,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, getLatexFromEngineModel, hasWriteAccess, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
+  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, isAdmin, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useAdminStepComposer) return

@@ -694,10 +694,30 @@ function loadIinkRuntime(): Promise<void> {
 
 type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+type CanvasMode = 'math' | 'raw-ink'
+
 type RecognitionEngine = 'myscript' | 'mathpix'
 
+type RawInkPoint = {
+  x: number
+  y: number
+}
+
+type RawInkStroke = {
+  id: string
+  color: string
+  width: number
+  points: RawInkPoint[]
+}
+
+type RawInkPayload = {
+  strokes: RawInkStroke[]
+}
+
 type SnapshotPayload = {
+  mode?: CanvasMode
   symbols: any[] | null
+  rawInk?: RawInkPayload | null
   latex?: string
   jiix?: string | null
   version: number
@@ -921,8 +941,13 @@ const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
 const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
 const DEFAULT_RECOGNITION_ENGINE: RecognitionEngine = 'myscript'
+const DEFAULT_CANVAS_MODE: CanvasMode = 'math'
 const RECOGNITION_ENGINE_STORAGE_KEY = 'philani.math.recognition-engine'
 const DEBUG_PANEL_STORAGE_KEY = 'philani.math.debug-panel-visible'
+const RAW_INK_STROKE_COLOR = '#0f172a'
+const RAW_INK_STROKE_WIDTH = 2.6
+const RAW_INK_VIEWBOX_SIZE = 1000
+const RAW_INK_ERASER_RADIUS = 0.018
 
 const toDebugJson = (value: unknown, maxChars = 12000) => {
   if (value == null) return null
@@ -977,6 +1002,84 @@ const countSymbols = (source: any): number => {
   return 0
 }
 
+const getSnapshotMode = (snapshot: SnapshotPayload | null | undefined): CanvasMode => {
+  return snapshot?.mode === 'raw-ink' ? 'raw-ink' : 'math'
+}
+
+const cloneRawInkStrokes = (strokes: RawInkStroke[] | null | undefined): RawInkStroke[] => {
+  if (!Array.isArray(strokes) || strokes.length === 0) return []
+  return strokes.map((stroke) => ({
+    id: String(stroke?.id || ''),
+    color: typeof stroke?.color === 'string' && stroke.color ? stroke.color : RAW_INK_STROKE_COLOR,
+    width: Number.isFinite(stroke?.width) ? Number(stroke.width) : RAW_INK_STROKE_WIDTH,
+    points: Array.isArray(stroke?.points)
+      ? stroke.points
+          .map((point) => ({
+            x: Number.isFinite(point?.x) ? Math.min(1, Math.max(0, Number(point.x))) : 0,
+            y: Number.isFinite(point?.y) ? Math.min(1, Math.max(0, Number(point.y))) : 0,
+          }))
+          .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+      : [],
+  }))
+}
+
+const countRawInkStrokes = (snapshot: SnapshotPayload | null | undefined): number => {
+  const strokes = snapshot?.rawInk?.strokes
+  return Array.isArray(strokes) ? strokes.length : 0
+}
+
+const makeRawInkSnapshot = (strokes: RawInkStroke[], version: number, snapshotId: string): SnapshotPayload => ({
+  mode: 'raw-ink',
+  symbols: null,
+  rawInk: { strokes: cloneRawInkStrokes(strokes) },
+  latex: '',
+  jiix: null,
+  version,
+  snapshotId,
+  baseSymbolCount: -1,
+})
+
+const rawInkStrokeToSvgPoints = (stroke: RawInkStroke) => {
+  return (Array.isArray(stroke.points) ? stroke.points : [])
+    .map((point) => `${Math.round(point.x * RAW_INK_VIEWBOX_SIZE)},${Math.round(point.y * RAW_INK_VIEWBOX_SIZE)}`)
+    .join(' ')
+}
+
+const pointToSegmentDistanceSquared = (point: RawInkPoint, start: RawInkPoint, end: RawInkPoint) => {
+  const abx = end.x - start.x
+  const aby = end.y - start.y
+  const apx = point.x - start.x
+  const apy = point.y - start.y
+  const denom = abx * abx + aby * aby
+  if (denom <= 0) {
+    const dx = point.x - start.x
+    const dy = point.y - start.y
+    return dx * dx + dy * dy
+  }
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / denom))
+  const cx = start.x + abx * t
+  const cy = start.y + aby * t
+  const dx = point.x - cx
+  const dy = point.y - cy
+  return dx * dx + dy * dy
+}
+
+const cloneSnapshotPayload = (snapshot: SnapshotPayload | null | undefined): SnapshotPayload | null => {
+  if (!snapshot) return null
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(snapshot)
+    }
+    return JSON.parse(JSON.stringify(snapshot))
+  } catch {
+    return {
+      ...snapshot,
+      symbols: snapshot.symbols ? JSON.parse(JSON.stringify(snapshot.symbols)) : null,
+      rawInk: snapshot.rawInk ? { strokes: cloneRawInkStrokes(snapshot.rawInk.strokes) } : null,
+    }
+  }
+}
+
 const nextAnimationFrame = () =>
   typeof window === 'undefined'
     ? new Promise<void>(resolve => setTimeout(resolve, 16))
@@ -984,6 +1087,9 @@ const nextAnimationFrame = () =>
 
 const isSnapshotEmpty = (snapshot: SnapshotPayload | null) => {
   if (!snapshot) return true
+  if (getSnapshotMode(snapshot) === 'raw-ink') {
+    return countRawInkStrokes(snapshot) <= 0
+  }
   const symCount = countSymbols(snapshot.symbols)
   const hasSymbols = symCount > 0
   const hasLatex = Boolean(snapshot.latex)
@@ -1010,7 +1116,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
   // --- Debug Panel State (must be inside component) ---
   const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
@@ -1106,6 +1212,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
   const [isConverting, setIsConverting] = useState(false)
+  const [canvasMode, setCanvasMode] = useState<CanvasMode>(DEFAULT_CANVAS_MODE)
+  const canvasModeRef = useRef<CanvasMode>(DEFAULT_CANVAS_MODE)
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
@@ -1125,6 +1233,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const mathpixPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mathpixLocalStrokesRef = useRef<Array<{ x: number[]; y: number[] }>>([])
   const mathpixActivePointerRef = useRef<Map<number, { x: number[]; y: number[] }>>(new Map())
+  const [rawInkStrokes, setRawInkStrokes] = useState<RawInkStroke[]>([])
+  const rawInkStrokesRef = useRef<RawInkStroke[]>([])
+  const [rawInkActivePreview, setRawInkActivePreview] = useState<RawInkStroke[]>([])
+  const rawInkActiveStrokesRef = useRef<Map<number, RawInkStroke>>(new Map())
+  const rawInkTouchPointerIdsRef = useRef<Set<number>>(new Set())
+  const rawInkEraserPointerIdsRef = useRef<Set<number>>(new Set())
+  const rawInkRedoStackRef = useRef<RawInkStroke[][]>([])
+  const rawInkBroadcastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rawInkModePageSnapshotsRef = useRef<Array<SnapshotPayload | null>>([{ mode: 'raw-ink', symbols: null, rawInk: { strokes: [] }, latex: '', jiix: null, version: 0, snapshotId: 'raw-initial', baseSymbolCount: -1 }])
+  const mathModePageSnapshotsRef = useRef<Array<SnapshotPayload | null>>([null])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const [viewportBottomOffsetPx, setViewportBottomOffsetPx] = useState(0)
@@ -1140,8 +1258,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [latexOutput])
 
   useEffect(() => {
+    canvasModeRef.current = canvasMode
+  }, [canvasMode])
+
+  useEffect(() => {
     recognitionEngineRef.current = recognitionEngine
   }, [recognitionEngine])
+
+  useEffect(() => {
+    rawInkStrokesRef.current = rawInkStrokes
+  }, [rawInkStrokes])
+
+  useEffect(() => {
+    if (canvasMode !== 'raw-ink') return
+    setStatus('ready')
+    setFatalError(null)
+    setTransientError(null)
+    setIsConverting(false)
+    setMyScriptEditorReady(false)
+    setMyScriptLastError(null)
+    setLatexOutput('')
+  }, [canvasMode])
 
   const updateMathpixLocalCounts = useCallback(() => {
     const strokes = mathpixLocalStrokesRef.current
@@ -1173,6 +1310,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [clearMathpixLocalStrokes, isEraserMode])
 
   useEffect(() => {
+    if (canvasModeRef.current === 'raw-ink') return
     const host = editorHostRef.current
     if (!host) return
 
@@ -2014,6 +2152,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const diagramLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const diagramLongPressTriggeredRef = useRef(false)
+  const diagramIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const diagramIconLastTapRef = useRef<number | null>(null)
 
   const textIconLastTapRef = useRef<number | null>(null)
   const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2526,6 +2666,66 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       ],
     },
   ]
+
+  const cacheModeSnapshotForPage = useCallback((page: number, snapshot: SnapshotPayload | null) => {
+    while (pageRecordsRef.current.length <= page) {
+      pageRecordsRef.current.push({ snapshot: null })
+    }
+    while (mathModePageSnapshotsRef.current.length <= page) {
+      mathModePageSnapshotsRef.current.push(null)
+    }
+    while (rawInkModePageSnapshotsRef.current.length <= page) {
+      rawInkModePageSnapshotsRef.current.push(null)
+    }
+
+    const cloned = cloneSnapshotPayload(snapshot)
+    pageRecordsRef.current[page] = { snapshot: cloned }
+    if (!cloned) return
+
+    if (getSnapshotMode(cloned) === 'raw-ink') {
+      rawInkModePageSnapshotsRef.current[page] = cloned
+    } else {
+      mathModePageSnapshotsRef.current[page] = cloned
+    }
+  }, [])
+
+  const getCachedModeSnapshotForPage = useCallback((page: number, mode: CanvasMode) => {
+    const store = mode === 'raw-ink' ? rawInkModePageSnapshotsRef.current : mathModePageSnapshotsRef.current
+    while (store.length <= page) {
+      store.push(null)
+    }
+    return cloneSnapshotPayload(store[page])
+  }, [])
+
+  const replaceRawInkState = useCallback((strokes: RawInkStroke[], options?: { clearRedo?: boolean }) => {
+    rawInkActiveStrokesRef.current.clear()
+    rawInkTouchPointerIdsRef.current.clear()
+    rawInkEraserPointerIdsRef.current.clear()
+    setRawInkActivePreview([])
+    setRawInkStrokes(cloneRawInkStrokes(strokes))
+    if (options?.clearRedo !== false) {
+      rawInkRedoStackRef.current = []
+    }
+  }, [])
+
+  const getRawInkSnapshotStrokes = useCallback((includeActive = true) => {
+    const committed = cloneRawInkStrokes(rawInkStrokesRef.current)
+    if (!includeActive) return committed
+    const active = Array.from(rawInkActiveStrokesRef.current.values())
+      .map((stroke) => ({ ...stroke, points: cloneRawInkStrokes([stroke])[0]?.points || [] }))
+      .filter((stroke) => stroke.points.length > 0)
+    return [...committed, ...active]
+  }, [])
+
+  const buildRawInkSnapshot = useCallback((incrementVersion: boolean, includeActive = true): SnapshotPayload => {
+    const strokes = getRawInkSnapshotStrokes(includeActive)
+    const version = incrementVersion ? ++localVersionRef.current : localVersionRef.current
+    return makeRawInkSnapshot(
+      strokes,
+      version,
+      `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    )
+  }, [getRawInkSnapshotStrokes])
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null) // (Unused now; kept for potential future periodic sync)
   const realtimeRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -4763,6 +4963,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const collectEditorSnapshot = useCallback((incrementVersion: boolean): SnapshotPayload | null => {
+    if (canvasModeRef.current === 'raw-ink') {
+      return buildRawInkSnapshot(incrementVersion)
+    }
+
     const editor = editorInstanceRef.current
     if (!editor) return null
 
@@ -4777,7 +4981,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       : fallbackLatex
 
     const snapshot: SnapshotPayload = {
+      mode: 'math',
       symbols,
+      rawInk: null,
       latex: engineLatex || fallbackLatex || '',
       jiix: typeof jiixRaw === 'string' ? jiixRaw : jiixRaw ? JSON.stringify(jiixRaw) : null,
       version: incrementVersion ? ++localVersionRef.current : localVersionRef.current,
@@ -4785,7 +4991,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
 
     return snapshot
-  }, [extractEditorSymbols])
+  }, [buildRawInkSnapshot, extractEditorSymbols])
 
   const captureFullSnapshot = useCallback((): SnapshotPayload | null => {
     const snapshot = collectEditorSnapshot(false)
@@ -4795,6 +5001,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const applyPageSnapshot = useCallback(
     async (snapshot: SnapshotPayload | null) => {
+      const mode = getSnapshotMode(snapshot)
+      setCanvasMode(mode)
+      cacheModeSnapshotForPage(pageIndexRef.current, snapshot)
+
+      if (mode === 'raw-ink') {
+        replaceRawInkState(snapshot?.rawInk?.strokes || [], { clearRedo: true })
+        setLatexOutput('')
+        lastSymbolCountRef.current = countRawInkStrokes(snapshot)
+        lastBroadcastBaseCountRef.current = lastSymbolCountRef.current
+        return
+      }
+
       const editor = editorInstanceRef.current
       if (!editor) return
       suppressBroadcastUntilTsRef.current = Date.now() + 800
@@ -4823,15 +5041,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       lastSymbolCountRef.current = count
       lastBroadcastBaseCountRef.current = count
     },
-    []
+    [cacheModeSnapshotForPage, replaceRawInkState]
   )
 
   const persistCurrentPageSnapshot = useCallback(() => {
     const currentSnapshot = captureFullSnapshot()
-    pageRecordsRef.current[pageIndex] = {
-      snapshot: currentSnapshot && !isSnapshotEmpty(currentSnapshot) ? currentSnapshot : null,
-    }
-  }, [captureFullSnapshot, pageIndex])
+    cacheModeSnapshotForPage(pageIndex, currentSnapshot && !isSnapshotEmpty(currentSnapshot) ? currentSnapshot : null)
+  }, [cacheModeSnapshotForPage, captureFullSnapshot, pageIndex])
 
   const broadcastSnapshot = useCallback(
     (immediate = false, options?: BroadcastOptions) => {
@@ -4857,9 +5073,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         const queuedSnapshot = collectEditorSnapshot(true)
         if (queuedSnapshot) {
           const previousCount = lastSymbolCountRef.current
-          const currentCount = countSymbols(queuedSnapshot.symbols)
+          const queuedMode = getSnapshotMode(queuedSnapshot)
+          const currentCount = queuedMode === 'raw-ink' ? countRawInkStrokes(queuedSnapshot) : countSymbols(queuedSnapshot.symbols)
           lastSymbolCountRef.current = currentCount
-          const baseCount = reason === 'clear' ? previousCount : lastBroadcastBaseCountRef.current
+          const baseCount = queuedMode === 'raw-ink'
+            ? -1
+            : (reason === 'clear' ? previousCount : lastBroadcastBaseCountRef.current)
           const snapshotForQueue: SnapshotPayload = { ...queuedSnapshot, baseSymbolCount: baseCount }
           const isErase = previousCount > 0 && currentCount === 0
           if (reason === 'clear' || isErase || !isSnapshotEmpty(snapshotForQueue)) {
@@ -4875,10 +5094,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!snapshot) return
       // Allow broadcasting empty snapshot if it represents an actual erase (previous symbol count > 0)
       const previousCount = lastSymbolCountRef.current
-      const currentCount = countSymbols(snapshot.symbols)
+      const snapshotMode = getSnapshotMode(snapshot)
+      const currentCount = snapshotMode === 'raw-ink' ? countRawInkStrokes(snapshot) : countSymbols(snapshot.symbols)
       lastSymbolCountRef.current = currentCount
       const isErase = previousCount > 0 && currentCount === 0
-      const baseCount = reason === 'clear' ? previousCount : lastBroadcastBaseCountRef.current
+      const baseCount = snapshotMode === 'raw-ink'
+        ? -1
+        : (reason === 'clear' ? previousCount : lastBroadcastBaseCountRef.current)
       const snapshotForPublish: SnapshotPayload = { ...snapshot, baseSymbolCount: baseCount }
       if (isSnapshotEmpty(snapshotForPublish) && !options?.force && !isErase) {
         return
@@ -5211,11 +5433,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const snapshot = message?.snapshot ?? null
     const reason = message?.reason ?? 'update'
     if (!snapshot) return
+    const snapshotMode = getSnapshotMode(snapshot)
     const targetClientId = message?.targetClientId
     if (targetClientId && targetClientId !== clientIdRef.current) {
       return
     }
     const msgTs = typeof receivedTs === 'number' ? receivedTs : typeof message?.ts === 'number' ? (message.ts as number) : Date.now()
+    if (snapshotMode === 'raw-ink') {
+      const incomingStrokeCount = countRawInkStrokes(snapshot)
+      const isNewer = msgTs >= lastGlobalUpdateTsRef.current
+      if (!isNewer && reason !== 'clear') {
+        return
+      }
+      if (snapshot.snapshotId && appliedSnapshotIdsRef.current.has(snapshot.snapshotId)) return
+      if (message.originClientId && message.originClientId === clientIdRef.current && !targetClientId) return
+      if (!hasControllerRights() && quizActiveRef.current) {
+        return
+      }
+
+      isApplyingRemoteRef.current = true
+      try {
+        setCanvasMode('raw-ink')
+        replaceRawInkState(snapshot.rawInk?.strokes || [], { clearRedo: true })
+        setLatexOutput('')
+        appliedVersionRef.current = snapshot.version
+        lastAppliedRemoteVersionRef.current = snapshot.version
+        lastSymbolCountRef.current = incomingStrokeCount
+        lastBroadcastBaseCountRef.current = incomingStrokeCount
+        suppressBroadcastUntilTsRef.current = Date.now() + 500
+        if (snapshot.snapshotId) {
+          appliedSnapshotIdsRef.current.add(snapshot.snapshotId)
+          if (appliedSnapshotIdsRef.current.size > 200) {
+            const iter = appliedSnapshotIdsRef.current.values()
+            appliedSnapshotIdsRef.current.delete(iter.next().value as string)
+          }
+        }
+        const canonical = cloneSnapshotPayload({ ...snapshot, baseSymbolCount: -1 })
+        if (canonical) {
+          latestSnapshotRef.current = { snapshot: canonical, ts: msgTs, reason }
+          cacheModeSnapshotForPage(pageIndexRef.current, canonical)
+        }
+        if (isNewer || reason === 'clear') {
+          lastGlobalUpdateTsRef.current = Math.max(lastGlobalUpdateTsRef.current, msgTs)
+        }
+      } catch (err) {
+        console.error('Failed to apply remote raw ink snapshot', err)
+      } finally {
+        isApplyingRemoteRef.current = false
+        setIsConverting(false)
+      }
+      return
+    }
+
     const symbolsArray: any[] = Array.isArray(snapshot.symbols)
       ? snapshot.symbols
       : Array.isArray((snapshot.symbols as any)?.events)
@@ -5328,6 +5597,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const canonical = captureFullSnapshot()
       if (canonical) {
         latestSnapshotRef.current = { snapshot: canonical, ts: msgTs, reason }
+        cacheModeSnapshotForPage(pageIndexRef.current, canonical)
       }
       if (isNewer || reason === 'clear') {
         lastGlobalUpdateTsRef.current = Math.max(lastGlobalUpdateTsRef.current, msgTs)
@@ -5338,7 +5608,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       isApplyingRemoteRef.current = false
       setIsConverting(false)
     }
-  }, [captureFullSnapshot])
+  }, [cacheModeSnapshotForPage, captureFullSnapshot, replaceRawInkState])
 
   const scheduleRemoteProcessing = useCallback(() => {
     if (remoteProcessingRef.current) {
@@ -5391,6 +5661,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     const record = latestSnapshotRef.current
     if (!record || !record.snapshot) {
+      replaceRawInkState([], { clearRedo: true })
+      setCanvasMode('math')
+      setLatexOutput('')
       const editor = editorInstanceRef.current
       editor?.clear?.()
       return
@@ -5406,7 +5679,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     ).catch(err => {
       console.warn('Failed to enforce authoritative snapshot', err)
     })
-  }, [applySnapshotCore, hasControllerRights])
+  }, [applySnapshotCore, hasControllerRights, replaceRawInkState])
 
   const normalizeStepLatex = useCallback((value: string) => {
     const raw = String(value || '').trim()
@@ -6202,6 +6475,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return
     }
 
+    if (canvasMode === 'raw-ink') {
+      setStatus('ready')
+      setFatalError(null)
+      setMyScriptEditorReady(false)
+      setMyScriptLastError(null)
+      return
+    }
+
     const appKey = process.env.NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY
     const hmacKey = process.env.NEXT_PUBLIC_MYSCRIPT_HMAC_KEY
     const scheme = process.env.NEXT_PUBLIC_MYSCRIPT_SERVER_SCHEME || 'https'
@@ -6596,7 +6877,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, isAdmin, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
+  }, [broadcastSnapshot, canvasMode, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, isAdmin, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useAdminStepComposer) return
@@ -6751,15 +7032,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           const existingRecord = (() => {
             if (latestSnapshotRef.current) {
               const current = latestSnapshotRef.current
-              if (current?.snapshot && !isSnapshotEmpty(current.snapshot)) {
+              if (current?.snapshot) {
                 return current
               }
             }
             const freshSnapshot = captureFullSnapshot()
             if (!freshSnapshot) {
-              return null
-            }
-            if (isSnapshotEmpty(freshSnapshot)) {
               return null
             }
             const record: SnapshotRecord = {
@@ -7309,6 +7587,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           }
           if (data?.action === 'wipe') {
             if (data.targetClientId && data.targetClientId !== clientIdRef.current) return
+            if (canvasModeRef.current === 'raw-ink') {
+              replaceRawInkState([], { clearRedo: true })
+            }
             editor.clear()
             lastSymbolCountRef.current = 0
             lastBroadcastBaseCountRef.current = 0
@@ -7747,8 +8028,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const clearEverything = () => {
-    if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
+
+    if (canvasModeRef.current === 'raw-ink') {
+      const nextSnapshot = makeRawInkSnapshot([], localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-clear`)
+      replaceRawInkState([], { clearRedo: true })
+      invalidatePendingLatexPreviewWork()
+      setLatexOutput('')
+      lastSymbolCountRef.current = 0
+      lastBroadcastBaseCountRef.current = 0
+      cacheModeSnapshotForPage(pageIndexRef.current, nextSnapshot)
+      if (pageIndex === sharedPageIndexRef.current) {
+        broadcastSnapshot(true, { force: true, reason: 'clear' })
+      }
+      return
+    }
+
+    if (!editorInstanceRef.current) return
     invalidatePendingLatexPreviewWork()
 
     try {
@@ -7774,8 +8070,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const clearCurrentOnly = () => {
-    if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
+
+    if (canvasModeRef.current === 'raw-ink') {
+      const nextSnapshot = makeRawInkSnapshot([], localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-clear`)
+      replaceRawInkState([], { clearRedo: true })
+      invalidatePendingLatexPreviewWork()
+      setLatexOutput('')
+      lastSymbolCountRef.current = 0
+      lastBroadcastBaseCountRef.current = 0
+      cacheModeSnapshotForPage(pageIndexRef.current, nextSnapshot)
+      if (pageIndex === sharedPageIndexRef.current) {
+        broadcastSnapshot(true, { force: true, reason: 'clear' })
+      }
+      return
+    }
+
+    if (!editorInstanceRef.current) return
     invalidatePendingLatexPreviewWork()
     editorInstanceRef.current.clear()
     setLatexOutput('')
@@ -7812,6 +8123,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const handleUndo = async () => {
+    if (canvasModeRef.current === 'raw-ink') {
+      if (lockedOutRef.current) return
+      const current = rawInkStrokesRef.current
+      if (!current.length) return
+      rawInkRedoStackRef.current.push(cloneRawInkStrokes(current))
+      const next = current.slice(0, -1)
+      const nextSnapshot = makeRawInkSnapshot(next, localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-undo`)
+      setRawInkActivePreview([])
+      setRawInkStrokes(cloneRawInkStrokes(next))
+      lastSymbolCountRef.current = next.length
+      lastBroadcastBaseCountRef.current = next.length
+      cacheModeSnapshotForPage(pageIndexRef.current, nextSnapshot)
+      broadcastSnapshot(false, { force: true, reason: next.length ? 'update' : 'clear' })
+      return
+    }
+
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
 
@@ -7837,6 +8164,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const handleRedo = async () => {
+    if (canvasModeRef.current === 'raw-ink') {
+      if (lockedOutRef.current) return
+      const next = rawInkRedoStackRef.current.pop()
+      if (!next) return
+      const nextSnapshot = makeRawInkSnapshot(next, localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-redo`)
+      setRawInkActivePreview([])
+      setRawInkStrokes(cloneRawInkStrokes(next))
+      lastSymbolCountRef.current = next.length
+      lastBroadcastBaseCountRef.current = next.length
+      cacheModeSnapshotForPage(pageIndexRef.current, nextSnapshot)
+      broadcastSnapshot(false, { force: true, reason: next.length ? 'update' : 'clear' })
+      return
+    }
+
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
 
@@ -7867,6 +8208,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }
 
   const handleConvert = () => {
+    if (canvasModeRef.current === 'raw-ink') return
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
     if (recognitionEngineRef.current === 'mathpix') {
@@ -7901,6 +8243,194 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
   }
+
+  const syncRawInkUiState = useCallback((strokes: RawInkStroke[], activeCount: number) => {
+    setCanUndo(strokes.length > 0)
+    setCanRedo(rawInkRedoStackRef.current.length > 0)
+    setCanClear(strokes.length > 0 || activeCount > 0)
+  }, [])
+
+  useEffect(() => {
+    if (canvasMode !== 'raw-ink') return
+    syncRawInkUiState(rawInkStrokes, rawInkActivePreview.length)
+  }, [canvasMode, rawInkActivePreview.length, rawInkStrokes, syncRawInkUiState])
+
+  const eraseRawInkAtPoint = useCallback((point: RawInkPoint) => {
+    const radiusSq = RAW_INK_ERASER_RADIUS * RAW_INK_ERASER_RADIUS
+    const current = rawInkStrokesRef.current
+    if (!current.length) return false
+
+    const next = current.filter((stroke) => {
+      const points = Array.isArray(stroke.points) ? stroke.points : []
+      if (!points.length) return false
+      if (points.length === 1) {
+        const dx = point.x - points[0].x
+        const dy = point.y - points[0].y
+        return (dx * dx + dy * dy) > radiusSq
+      }
+      for (let index = 1; index < points.length; index += 1) {
+        if (pointToSegmentDistanceSquared(point, points[index - 1], points[index]) <= radiusSq) {
+          return false
+        }
+      }
+      return true
+    })
+
+    if (next.length === current.length) return false
+    rawInkRedoStackRef.current = []
+    setRawInkStrokes(cloneRawInkStrokes(next))
+    lastSymbolCountRef.current = next.length
+    lastBroadcastBaseCountRef.current = next.length
+    syncRawInkUiState(next, rawInkActiveStrokesRef.current.size)
+    return true
+  }, [syncRawInkUiState])
+
+  useEffect(() => {
+    if (canvasMode !== 'raw-ink') return
+
+    const host = editorHostRef.current
+    if (!host) return
+
+    const normalizePoint = (evt: PointerEvent): RawInkPoint | null => {
+      const rect = host.getBoundingClientRect()
+      if (!rect.width || !rect.height) return null
+      const x = (evt.clientX - rect.left) / rect.width
+      const y = (evt.clientY - rect.top) / rect.height
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+      return {
+        x: Math.min(1, Math.max(0, x)),
+        y: Math.min(1, Math.max(0, y)),
+      }
+    }
+
+    const publishRawInkSnapshot = (immediate = false) => {
+      if (pageIndexRef.current !== sharedPageIndexRef.current) return
+      broadcastSnapshot(immediate, { force: true, reason: rawInkStrokesRef.current.length ? 'update' : 'clear' })
+    }
+
+    const queueRawInkPublish = () => {
+      if (rawInkBroadcastTimerRef.current) return
+      rawInkBroadcastTimerRef.current = setTimeout(() => {
+        rawInkBroadcastTimerRef.current = null
+        publishRawInkSnapshot(false)
+      }, getBroadcastDebounce())
+    }
+
+    const cancelActiveRawStroke = () => {
+      rawInkActiveStrokesRef.current.clear()
+      rawInkTouchPointerIdsRef.current.clear()
+      setRawInkActivePreview([])
+      syncRawInkUiState(rawInkStrokesRef.current, 0)
+    }
+
+    const handlePointerDown = (evt: PointerEvent) => {
+      if (!hasBoardWriteRights()) return
+      if (lockedOutRef.current) return
+      if (uiMode === 'overlay' && overlayControlsVisible) return
+
+      const point = normalizePoint(evt)
+      if (!point) return
+
+      if (evt.pointerType === 'touch') {
+        if (rawInkTouchPointerIdsRef.current.size > 0) {
+          cancelActiveRawStroke()
+          return
+        }
+        rawInkTouchPointerIdsRef.current.add(evt.pointerId)
+      }
+
+      if (isEraserModeRef.current) {
+        rawInkEraserPointerIdsRef.current.add(evt.pointerId)
+        if (eraseRawInkAtPoint(point)) {
+          cacheModeSnapshotForPage(pageIndexRef.current, makeRawInkSnapshot(rawInkStrokesRef.current, localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-erase`))
+          publishRawInkSnapshot(false)
+        }
+        return
+      }
+
+      rawInkRedoStackRef.current = []
+      const stroke: RawInkStroke = {
+        id: `${clientIdRef.current}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        color: RAW_INK_STROKE_COLOR,
+        width: RAW_INK_STROKE_WIDTH,
+        points: [point],
+      }
+      rawInkActiveStrokesRef.current.set(evt.pointerId, stroke)
+      setRawInkActivePreview(Array.from(rawInkActiveStrokesRef.current.values()).map((item) => ({ ...item, points: [...item.points] })))
+      syncRawInkUiState(rawInkStrokesRef.current, rawInkActiveStrokesRef.current.size)
+      try {
+        host.setPointerCapture(evt.pointerId)
+      } catch {}
+    }
+
+    const handlePointerMove = (evt: PointerEvent) => {
+      if (rawInkEraserPointerIdsRef.current.has(evt.pointerId)) {
+        const point = normalizePoint(evt)
+        if (!point) return
+        if (eraseRawInkAtPoint(point)) {
+          cacheModeSnapshotForPage(pageIndexRef.current, makeRawInkSnapshot(rawInkStrokesRef.current, localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-erase`))
+          queueRawInkPublish()
+        }
+        return
+      }
+
+      const stroke = rawInkActiveStrokesRef.current.get(evt.pointerId)
+      if (!stroke) return
+      const point = normalizePoint(evt)
+      if (!point) return
+      const lastPoint = stroke.points[stroke.points.length - 1]
+      if (lastPoint && Math.abs(lastPoint.x - point.x) < 0.0008 && Math.abs(lastPoint.y - point.y) < 0.0008) return
+      stroke.points = [...stroke.points, point]
+      rawInkActiveStrokesRef.current.set(evt.pointerId, stroke)
+      setRawInkActivePreview(Array.from(rawInkActiveStrokesRef.current.values()).map((item) => ({ ...item, points: [...item.points] })))
+      syncRawInkUiState(rawInkStrokesRef.current, rawInkActiveStrokesRef.current.size)
+      queueRawInkPublish()
+    }
+
+    const handlePointerDone = (evt: PointerEvent) => {
+      if (evt.pointerType === 'touch') {
+        rawInkTouchPointerIdsRef.current.delete(evt.pointerId)
+      }
+
+      if (rawInkEraserPointerIdsRef.current.delete(evt.pointerId)) {
+        syncRawInkUiState(rawInkStrokesRef.current, rawInkActiveStrokesRef.current.size)
+        return
+      }
+
+      const stroke = rawInkActiveStrokesRef.current.get(evt.pointerId)
+      if (!stroke) return
+      rawInkActiveStrokesRef.current.delete(evt.pointerId)
+      if (stroke.points.length > 0) {
+        const next = [...rawInkStrokesRef.current, { ...stroke, points: [...stroke.points] }]
+        setRawInkStrokes(cloneRawInkStrokes(next))
+        lastSymbolCountRef.current = next.length
+        lastBroadcastBaseCountRef.current = next.length
+        cacheModeSnapshotForPage(pageIndexRef.current, buildRawInkSnapshot(false, false))
+        syncRawInkUiState(next, rawInkActiveStrokesRef.current.size)
+      }
+      setRawInkActivePreview(Array.from(rawInkActiveStrokesRef.current.values()).map((item) => ({ ...item, points: [...item.points] })))
+      publishRawInkSnapshot(true)
+      try {
+        host.releasePointerCapture(evt.pointerId)
+      } catch {}
+    }
+
+    host.addEventListener('pointerdown', handlePointerDown)
+    host.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerDone)
+    window.addEventListener('pointercancel', handlePointerDone)
+
+    return () => {
+      host.removeEventListener('pointerdown', handlePointerDown)
+      host.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerDone)
+      window.removeEventListener('pointercancel', handlePointerDone)
+      if (rawInkBroadcastTimerRef.current) {
+        clearTimeout(rawInkBroadcastTimerRef.current)
+        rawInkBroadcastTimerRef.current = null
+      }
+    }
+  }, [broadcastSnapshot, buildRawInkSnapshot, cacheModeSnapshotForPage, canvasMode, eraseRawInkAtPoint, hasBoardWriteRights, lockedOutRef, overlayControlsVisible, syncRawInkUiState, uiMode])
 
   // Removed broadcaster handlers and state.
 
@@ -7956,13 +8486,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     [publishLatexDisplayState]
   )
 
-  const forcePublishCanvas = async (targetClientId?: string, opts?: { shareIndex?: number }) => {
+  const forcePublishCanvas = async (targetClientId?: string, opts?: { shareIndex?: number; snapshot?: SnapshotPayload | null; allowEmpty?: boolean }) => {
     if (!canPublishSnapshots()) return
     const channel = channelRef.current
     if (!channel) return
     const shareIndex = (typeof opts?.shareIndex === 'number' && Number.isFinite(opts.shareIndex)) ? Math.max(0, Math.trunc(opts.shareIndex)) : pageIndex
-    const snapshot = captureFullSnapshot()
-    if (!snapshot || isSnapshotEmpty(snapshot)) {
+    const snapshot = cloneSnapshotPayload(opts?.snapshot ?? captureFullSnapshot())
+    if (!snapshot || (isSnapshotEmpty(snapshot) && !opts?.allowEmpty)) {
       // Still broadcast shared-page updates even if the page is empty.
       if (!targetClientId) {
         setSharedPageIndex(shareIndex)
@@ -7982,6 +8512,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         targetClientId,
       })
       latestSnapshotRef.current = { snapshot, ts, reason: 'update' }
+      cacheModeSnapshotForPage(shareIndex, snapshot)
       lastGlobalUpdateTsRef.current = ts
       if (!targetClientId) {
         setSharedPageIndex(shareIndex)
@@ -7999,6 +8530,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to publish canvas snapshot', err)
     }
   }
+
+  const applyCanvasModeForCurrentPage = useCallback(async (nextMode: CanvasMode) => {
+    const currentPage = pageIndexRef.current
+    const currentSnapshot = captureFullSnapshot()
+    cacheModeSnapshotForPage(currentPage, currentSnapshot && !isSnapshotEmpty(currentSnapshot) ? currentSnapshot : null)
+    setMobileLatexTrayOpen(false)
+    setMobileModulePicker(null)
+    setTopPanelEditingMode(false)
+    clearTopPanelSelection()
+
+    const cached = getCachedModeSnapshotForPage(currentPage, nextMode)
+    const targetSnapshot = cached || (nextMode === 'raw-ink'
+      ? makeRawInkSnapshot([], localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-mode`)
+      : {
+          mode: 'math',
+          symbols: null,
+          rawInk: null,
+          latex: '',
+          jiix: null,
+          version: localVersionRef.current,
+          snapshotId: `${clientIdRef.current}-${Date.now()}-math-mode`,
+          baseSymbolCount: -1,
+        })
+
+    await applyPageSnapshot(targetSnapshot)
+    latestSnapshotRef.current = { snapshot: cloneSnapshotPayload(targetSnapshot)!, ts: Date.now(), reason: 'update' }
+
+    if (pageIndexRef.current === sharedPageIndexRef.current && canPublishSnapshots()) {
+      await forcePublishCanvas(undefined, { shareIndex: currentPage, snapshot: targetSnapshot, allowEmpty: true })
+    }
+  }, [applyPageSnapshot, cacheModeSnapshotForPage, canPublishSnapshots, captureFullSnapshot, clearTopPanelSelection, forcePublishCanvas, getCachedModeSnapshotForPage])
 
   const publishAdminCanvasToAll = useCallback(async () => {
     if (!canPublishSnapshots()) return
@@ -8153,9 +8715,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const hasWriteAccess = hasBoardWriteRights()
   const isViewOnly = !hasWriteAccess
+  const isRawInkMode = canvasMode === 'raw-ink'
+  const rawInkModeAvailable = Boolean(useStackedStudentLayout && !quizActive && !isAssignmentView && !(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId))
 
   const isStudentSendContext = (!isAdmin || isAssignmentSolutionAuthoring) && (quizActive || isAssignmentView)
   const canUseAdminSend = isAdmin || hasWriteAccess
+
+  useEffect(() => {
+    if (rawInkModeAvailable) return
+    if (canvasMode !== 'raw-ink') return
+    setCanvasMode('math')
+  }, [canvasMode, rawInkModeAvailable])
 
   useEffect(() => {
     if (isViewOnly) {
@@ -11809,6 +12379,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               overflow: 'hidden',
             }}
           >
+            {!isRawInkMode && (
             <div
               className="flex flex-col"
               style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
@@ -12180,6 +12751,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
               </div>
             </div>
+            )}
+            {!isRawInkMode && (
             <div
               role="separator"
               aria-orientation="horizontal"
@@ -12208,9 +12781,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             >
               <div className="w-10 h-1.5 bg-slate-400 rounded-full" />
             </div>
-            <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
+            )}
+            <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
-                {canPersistLatex ? (
+                {!isRawInkMode && canPersistLatex ? (
                   (() => {
                     const simplified = Boolean(isOverlayMode || isCompactViewport)
                     return (
@@ -12489,6 +13063,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   })()
                 ) : null}
 
+                {!isRawInkMode && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -12525,6 +13100,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </svg>
                   </button>
                 </div>
+                )}
 
                 {(isAdmin || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
                   <div className="flex items-center gap-2">
@@ -12532,14 +13108,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <button
                         type="button"
                         className="px-2 py-1"
-                        title="Diagrams"
+                        title={isRawInkMode ? 'Diagrams / Raw Ink' : 'Diagrams'}
                         onClick={() => {
                           if (diagramLongPressTriggeredRef.current) {
                             diagramLongPressTriggeredRef.current = false
                             return
                           }
-                          toggleMobileDiagramTray()
-                          openPickerOrApplySingle('diagram')
+                          const now = Date.now()
+                          const lastTap = diagramIconLastTapRef.current
+
+                          if (diagramIconTapTimeoutRef.current) {
+                            clearTimeout(diagramIconTapTimeoutRef.current)
+                            diagramIconTapTimeoutRef.current = null
+                          }
+
+                          if (rawInkModeAvailable && lastTap && (now - lastTap) < 320) {
+                            diagramIconLastTapRef.current = null
+                            void applyCanvasModeForCurrentPage(isRawInkMode ? 'math' : 'raw-ink')
+                            return
+                          }
+
+                          diagramIconLastTapRef.current = now
+                          diagramIconTapTimeoutRef.current = setTimeout(() => {
+                            diagramIconTapTimeoutRef.current = null
+                            diagramIconLastTapRef.current = null
+                            toggleMobileDiagramTray()
+                            openPickerOrApplySingle('diagram')
+                          }, 260)
                         }}
                         onPointerDown={(e) => {
                           if (!hasWriteAccess) return
@@ -12551,6 +13146,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           diagramLongPressTimeoutRef.current = setTimeout(() => {
                             diagramLongPressTimeoutRef.current = null
                             diagramLongPressTriggeredRef.current = true
+                            diagramIconLastTapRef.current = null
+                            if (diagramIconTapTimeoutRef.current) {
+                              clearTimeout(diagramIconTapTimeoutRef.current)
+                              diagramIconTapTimeoutRef.current = null
+                            }
                             try {
                               window.dispatchEvent(new CustomEvent('philani-diagrams:open-grid'))
                             } catch {}
@@ -12591,7 +13191,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       </button>
                     )}
 
-                    {showTextIcon && (
+                    {!isRawInkMode && showTextIcon && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -12716,6 +13316,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
 
 
+                    {!isRawInkMode && (
                     <button
                       type="button"
                       className="px-2 py-1"
@@ -12746,6 +13347,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
                       </svg>
                     </button>
+                    )}
 
                     {isCompactViewport && mobileLatexTrayOpen && (
                       <BottomSheet
@@ -12958,13 +13560,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           className={editorHostClass}
                           style={{ ...editorHostStyle, height: '100%' }}
                           data-orientation={canvasOrientation}
-                        />
+                        >
+                          {isRawInkMode && (
+                            <svg
+                              className="absolute inset-0 w-full h-full"
+                              viewBox={`0 0 ${RAW_INK_VIEWBOX_SIZE} ${RAW_INK_VIEWBOX_SIZE}`}
+                              preserveAspectRatio="none"
+                              aria-label="Raw ink canvas"
+                            >
+                              {[...rawInkStrokes, ...rawInkActivePreview].map((stroke) => (
+                                <polyline
+                                  key={stroke.id}
+                                  points={rawInkStrokeToSvgPoints(stroke)}
+                                  fill="none"
+                                  stroke={stroke.color}
+                                  strokeWidth={Math.max(1, stroke.width * 10)}
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  vectorEffect="non-scaling-stroke"
+                                />
+                              ))}
+                            </svg>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {(status === 'loading' || status === 'idle') && (
+                {!isRawInkMode && (status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
                     Preparing collaborative canvas…
                   </div>

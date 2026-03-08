@@ -5646,7 +5646,13 @@ export default function DiagramOverlayModule(props: {
                 ) : (
                   <div className="flex flex-col gap-2">
                     {sceneSnapshots.map((snapshot) => (
-                      <div key={snapshot.id} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                      <button
+                        key={snapshot.id}
+                        type="button"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition-colors hover:bg-slate-50"
+                        disabled={sceneActionBusyId === snapshot.id}
+                        onClick={() => void loadGridSceneSnapshot(snapshot)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-900">{snapshot.name}</p>
@@ -5655,17 +5661,12 @@ export default function DiagramOverlayModule(props: {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                              disabled={sceneActionBusyId === snapshot.id}
-                              onClick={() => void loadGridSceneSnapshot(snapshot)}
-                            >
-                              Load
-                            </button>
-                            <button
-                              type="button"
                               className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                               disabled={sceneActionBusyId === snapshot.id}
-                              onClick={() => void renameGridSceneSnapshot(snapshot)}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void renameGridSceneSnapshot(snapshot)
+                              }}
                             >
                               Rename
                             </button>
@@ -5673,13 +5674,16 @@ export default function DiagramOverlayModule(props: {
                               type="button"
                               className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
                               disabled={sceneActionBusyId === snapshot.id}
-                              onClick={() => void deleteGridSceneSnapshot(snapshot)}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void deleteGridSceneSnapshot(snapshot)
+                              }}
                             >
                               Delete
                             </button>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}

@@ -2373,11 +2373,6 @@ export default function DiagramOverlayModule(props: {
     })
 
     gridSceneByDiagramRef.current.set(activeDiagram?.id || '', cloneGridElementsPayload(normalized.elements))
-    try {
-      api.history?.clear?.()
-    } catch {
-      // ignore
-    }
   }, [activeDiagram?.id, setGridSceneToApi])
 
   const updateDiagramGridSceneRecord = useCallback((diagramId: string, scene: GridSceneState | null, updatedAt?: string | null) => {

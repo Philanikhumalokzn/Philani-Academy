@@ -8482,6 +8482,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedMinZoom = Math.max(0.5, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
+  const getDefaultStackedScrollLeft = useCallback((viewport: HTMLDivElement | null) => {
+    if (!viewport) return 0
+    return Math.max(0, viewport.scrollWidth - viewport.clientWidth) / 2
+  }, [])
 
   const stopStackedInteractionMotionMonitor = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -8672,9 +8676,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         return
       }
 
-      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
       const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-      viewport.scrollLeft = maxScrollLeft / 2
+      viewport.scrollLeft = getDefaultStackedScrollLeft(viewport)
       viewport.scrollTop = maxScrollTop / 2
       stackedInitialViewportCenterAppliedRef.current = true
     }
@@ -8687,7 +8690,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         stackedInitialViewportCenterRafRef.current = null
       }
     }
-  }, [inkSurfaceWidthFactor, stackedEffectiveZoom, stackedSurfaceBaseSize.height, stackedSurfaceBaseSize.width, useStackedStudentLayout])
+  }, [getDefaultStackedScrollLeft, inkSurfaceWidthFactor, stackedEffectiveZoom, stackedSurfaceBaseSize.height, stackedSurfaceBaseSize.width, useStackedStudentLayout])
 
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)
@@ -9871,14 +9874,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
 
-    // Reset the manual horizontal scrollbar to the start whenever a step is sent.
-    // (Keeps the next step starting from the left.)
+    // Reset the manual horizontal scrollbar to the default centered position whenever a step is sent.
     try {
       const viewport = studentViewportRef.current
       if (viewport) {
-        viewport.scrollLeft = 0
+        viewport.scrollLeft = getDefaultStackedScrollLeft(viewport)
+        setHorizontalPanValue(viewport.scrollLeft)
+      } else {
+        setHorizontalPanValue(horizontalPanMax / 2)
       }
-      setHorizontalPanValue(0)
     } catch {}
 
     setAdminSendingStep(true)
@@ -9959,6 +9963,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     isCurrentLineEmptyNow,
     isEditorEmptyNow,
     normalizeStepLatex,
+    getDefaultStackedScrollLeft,
+    horizontalPanMax,
     studentQuizCommitOrSubmit,
   ])
 

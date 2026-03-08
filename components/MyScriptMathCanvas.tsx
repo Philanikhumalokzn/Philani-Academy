@@ -8736,6 +8736,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isRawInkMode = canvasMode === 'raw-ink'
   const shouldCollapseStackedView = Boolean(
     useStackedStudentLayout
+    && !isAdmin
     && isViewOnly
     && !isRawInkMode
     && !forceEditableForAssignment

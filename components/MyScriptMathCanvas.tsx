@@ -8711,10 +8711,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [verticalScrollbarActive, setVerticalScrollbarActive] = useState(false)
 
   // Master scroll speed/rate that affects both custom scrollbars.
-  const [manualScrollGain, setManualScrollGain] = useState(3.5)
+  const [manualScrollGain, setManualScrollGain] = useState(1)
   const masterGainTrackRef = useRef<HTMLDivElement | null>(null)
   const masterGainDragRef = useRef<{ active: boolean; pointerId: number | null; startY: number; startValue: number; trackHeight: number }>(
-    { active: false, pointerId: null, startY: 0, startValue: 3.5, trackHeight: 1 }
+    { active: false, pointerId: null, startY: 0, startValue: 1, trackHeight: 1 }
   )
 
   const canShowSliders = Boolean(useStackedStudentLayout && isCompactViewport)

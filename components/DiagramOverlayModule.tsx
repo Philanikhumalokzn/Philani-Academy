@@ -1065,6 +1065,10 @@ export default function DiagramOverlayModule(props: {
     return `Grade ${normalized}`
   }, [gradeLabel])
 
+  const stopAvatarRailGesture = useCallback((event: React.SyntheticEvent) => {
+    event.stopPropagation()
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -5004,7 +5008,16 @@ export default function DiagramOverlayModule(props: {
             >
               <div className="relative w-6">
                 {rosterAvatarLayout.top.length > 0 ? (
-                  <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
+                  <div
+                    className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5"
+                    style={{ padding: '0.75rem', margin: '-0.75rem' }}
+                    onPointerDownCapture={stopAvatarRailGesture}
+                    onPointerMoveCapture={stopAvatarRailGesture}
+                    onPointerUpCapture={stopAvatarRailGesture}
+                    onTouchStartCapture={stopAvatarRailGesture}
+                    onTouchMoveCapture={stopAvatarRailGesture}
+                    onTouchEndCapture={stopAvatarRailGesture}
+                  >
                     {rosterAvatarLayout.top.map((avatar) => (
                       avatar.kind === 'presenter' ? (
                         <div
@@ -5038,30 +5051,40 @@ export default function DiagramOverlayModule(props: {
                   </div>
                 ) : null}
 
-                <button
-                  type="button"
-                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (overlayRosterVisible) {
-                      if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
-                        handOverPresentation(null)
+                <div
+                  style={{ padding: '0.75rem', margin: '-0.75rem' }}
+                  onPointerDownCapture={stopAvatarRailGesture}
+                  onPointerMoveCapture={stopAvatarRailGesture}
+                  onPointerUpCapture={stopAvatarRailGesture}
+                  onTouchStartCapture={stopAvatarRailGesture}
+                  onTouchMoveCapture={stopAvatarRailGesture}
+                  onTouchEndCapture={stopAvatarRailGesture}
+                >
+                  <button
+                    type="button"
+                    className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (overlayRosterVisible) {
+                        if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
+                          handOverPresentation(null)
+                          return
+                        }
+                        setOverlayRosterVisible(false)
                         return
                       }
-                      setOverlayRosterVisible(false)
-                      return
-                    }
-                    setOverlayRosterVisible(true)
-                  }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                  }}
-                  aria-label="Toggle diagram avatars"
-                  title={teacherBadge.name}
-                >
-                  {teacherBadge.initials}
-                </button>
+                      setOverlayRosterVisible(true)
+                    }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                    }}
+                    aria-label="Toggle diagram avatars"
+                    title={teacherBadge.name}
+                  >
+                    {teacherBadge.initials}
+                  </button>
+                </div>
 
                 {showSwitchingToast ? (
                   <div
@@ -5085,7 +5108,16 @@ export default function DiagramOverlayModule(props: {
                 ) : null}
 
                 {rosterAvatarLayout.bottom.length > 0 ? (
-                  <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
+                  <div
+                    className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5"
+                    style={{ padding: '0.75rem', margin: '-0.75rem' }}
+                    onPointerDownCapture={stopAvatarRailGesture}
+                    onPointerMoveCapture={stopAvatarRailGesture}
+                    onPointerUpCapture={stopAvatarRailGesture}
+                    onTouchStartCapture={stopAvatarRailGesture}
+                    onTouchMoveCapture={stopAvatarRailGesture}
+                    onTouchEndCapture={stopAvatarRailGesture}
+                  >
                     {rosterAvatarLayout.bottom.map((avatar) => (
                       avatar.kind === 'presenter' ? (
                         <div

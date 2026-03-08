@@ -8474,6 +8474,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedZoomHudFadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [stackedSurfaceBaseSize, setStackedSurfaceBaseSize] = useState({ width: 320, height: 640 })
   const stackedTouchActiveRef = useRef(false)
+  const stackedInitialViewportCenterAppliedRef = useRef(false)
+  const stackedInitialViewportCenterRafRef = useRef<number | null>(null)
   const stackedInteractionMotionRafRef = useRef<number | null>(null)
   const stackedInteractionStableFramesRef = useRef(0)
   const stackedInteractionLastSnapshotRef = useRef<{ left: number; top: number; zoom: number } | null>(null)
@@ -8560,6 +8562,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!useStackedStudentLayout) return
     stackedZoomRef.current = DEFAULT_STACKED_ZOOM
     setStackedZoom(DEFAULT_STACKED_ZOOM)
+    stackedInitialViewportCenterAppliedRef.current = false
   }, [useStackedStudentLayout])
 
   useEffect(() => {
@@ -8601,6 +8604,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       } catch {}
     }
   }, [useStackedStudentLayout])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!useStackedStudentLayout) {
+      stackedInitialViewportCenterAppliedRef.current = false
+      if (stackedInitialViewportCenterRafRef.current !== null) {
+        window.cancelAnimationFrame(stackedInitialViewportCenterRafRef.current)
+        stackedInitialViewportCenterRafRef.current = null
+      }
+      return
+    }
+    if (stackedInitialViewportCenterAppliedRef.current) return
+
+    let attempts = 0
+    const maxAttempts = 12
+
+    const centerViewport = () => {
+      stackedInitialViewportCenterRafRef.current = null
+      const viewport = studentViewportRef.current
+      if (!viewport) return
+
+      const hasMeasuredViewport = viewport.clientWidth > 0 && viewport.clientHeight > 0
+      const hasMeasuredContent = viewport.scrollWidth > 0 && viewport.scrollHeight > 0
+      if ((!hasMeasuredViewport || !hasMeasuredContent) && attempts < maxAttempts) {
+        attempts += 1
+        stackedInitialViewportCenterRafRef.current = window.requestAnimationFrame(centerViewport)
+        return
+      }
+
+      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      viewport.scrollLeft = maxScrollLeft / 2
+      viewport.scrollTop = maxScrollTop / 2
+      stackedInitialViewportCenterAppliedRef.current = true
+    }
+
+    stackedInitialViewportCenterRafRef.current = window.requestAnimationFrame(centerViewport)
+
+    return () => {
+      if (stackedInitialViewportCenterRafRef.current !== null) {
+        window.cancelAnimationFrame(stackedInitialViewportCenterRafRef.current)
+        stackedInitialViewportCenterRafRef.current = null
+      }
+    }
+  }, [inkSurfaceWidthFactor, stackedEffectiveZoom, stackedSurfaceBaseSize.height, stackedSurfaceBaseSize.width, useStackedStudentLayout])
 
   useEffect(() => {
     return () => {

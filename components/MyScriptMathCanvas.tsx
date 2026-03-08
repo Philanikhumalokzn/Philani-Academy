@@ -7890,6 +7890,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     console.warn('Failed to rebroadcast latex display state', err)
                   }
                 }
+                if (canPublishSnapshots()) {
+                  const stackedLatex = topPanelLatexSourceRef.current || ''
+                  const stackedOptions = topPanelLatexOptionsRef.current
+                  const presenterHasNotes = Boolean(stackedLatex) || lastSymbolCountRef.current > 0
+                  if (presenterHasNotes) {
+                    try {
+                      await channel.publish('control', {
+                        clientId: clientIdRef.current,
+                        author: userDisplayName,
+                        action: 'stacked-notes',
+                        latex: stackedLatex,
+                        options: stackedOptions,
+                        ts: Date.now(),
+                      })
+                    } catch (err) {
+                      console.warn('Failed to rebroadcast stacked notes preview', err)
+                    }
+                  }
+                }
                 // Ensure late-joining students receive the current quiz state (so the timer appears).
                 if (isAdmin && quizActiveRef.current) {
                   try {
@@ -8879,15 +8898,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [adminSteps.length, latexRenderSource, useAdminStepComposer, useStackedStudentLayout])
 
   const topPanelLatexSource = (useAdminStepComposer && useStackedStudentLayout)
-    ? stableAdminStackedLatexRenderSource
+    ? (stableAdminStackedLatexRenderSource || latexRenderSource)
     : latexRenderSource
+  const topPanelLatexSourceRef = useRef('')
+  const topPanelLatexOptionsRef = useRef<LatexDisplayOptions>(latexRenderOptions)
+
+  useEffect(() => {
+    topPanelLatexSourceRef.current = (topPanelLatexSource || '').trim()
+    topPanelLatexOptionsRef.current = latexRenderOptions
+  }, [latexRenderOptions, topPanelLatexSource])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!useStackedStudentLayout) return
+    if (!hasWriteAccess) return
+
+    const nextLatex = (topPanelLatexSource || '').trim()
+    setStackedNotesState(prev => {
+      const sameLatex = (prev.latex || '').trim() === nextLatex
+      const sameOptions = prev.options.fontScale === latexRenderOptions.fontScale
+        && prev.options.textAlign === latexRenderOptions.textAlign
+        && prev.options.alignAtEquals === latexRenderOptions.alignAtEquals
+
+      if (sameLatex && sameOptions) return prev
+
+      return {
+        ...prev,
+        latex: nextLatex,
+        options: latexRenderOptions,
+        ts: nextLatex ? Date.now() : prev.ts,
+      }
+    })
+  }, [hasWriteAccess, isAdmin, latexRenderOptions, topPanelLatexSource, useStackedStudentLayout])
 
   useEffect(() => {
     if (!hasBoardWriteRights()) return
     if (!useAdminStepComposer) return
     if (Date.now() < suppressStackedNotesPreviewUntilTsRef.current) return
-    publishStackedNotesPreview(latexRenderSource, latexRenderOptions)
-  }, [hasBoardWriteRights, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
+    publishStackedNotesPreview(topPanelLatexSource, latexRenderOptions)
+  }, [hasBoardWriteRights, latexRenderOptions, publishStackedNotesPreview, topPanelLatexSource, useAdminStepComposer])
 
   // Canonical payloads consumed by the top panel UI.
   const topPanelPayload: TopPanelPayload = useMemo(

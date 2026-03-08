@@ -1051,21 +1051,17 @@ export default function DiagramOverlayModule(props: {
     return diagrams.find(d => d.id === diagramState.activeDiagramId) || null
   }, [diagramState.activeDiagramId, diagrams])
   const isGridDiagram = activeDiagram?.imageUrl === GRID_DIAGRAM_URL
-  const { visible: gridCloseVisible, peek: peekGridCloseButton, clearTimer: clearGridCloseTimer } = useTapToPeek({
-    autoHideMs: 1800,
-    defaultVisible: false,
-    disabled: !diagramState.isOpen || !isGridDiagram || !isAdmin,
-  })
-
-  useEffect(() => {
-    if (diagramState.isOpen && isGridDiagram && isAdmin) return
-    clearGridCloseTimer()
-  }, [clearGridCloseTimer, diagramState.isOpen, isAdmin, isGridDiagram])
 
   useEffect(() => {
     if (diagramState.isOpen && isGridDiagram && isAdmin) return
     setOverlayRosterVisible(false)
   }, [diagramState.isOpen, isAdmin, isGridDiagram])
+
+  const gridHeaderTitle = useMemo(() => {
+    const raw = String(gradeLabel || '').trim()
+    if (!raw) return 'Diagram'
+    return /\bgrade\b/i.test(raw) ? raw : `Grade ${raw}`
+  }, [gradeLabel])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -4962,8 +4958,8 @@ export default function DiagramOverlayModule(props: {
 
       {diagramState.isOpen && activeDiagram ? (
         <FullScreenGlassOverlay
-          title="Diagram"
-          subtitle={toDisplayFileName(activeDiagram.title) || activeDiagram.title || 'Untitled diagram'}
+          title={isGridDiagram ? gridHeaderTitle : 'Diagram'}
+          subtitle={isGridDiagram ? undefined : (toDisplayFileName(activeDiagram.title) || activeDiagram.title || 'Untitled diagram')}
           variant="light"
           position={isAdmin ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
@@ -4996,34 +4992,10 @@ export default function DiagramOverlayModule(props: {
         >
           {isGridDiagram && isAdmin ? (
             <div
-              className={`absolute z-50 transition-opacity duration-200 ${gridCloseVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-              style={{
-                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
-                right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
-              }}
-              aria-hidden={!gridCloseVisible}
-            >
-              <button
-                type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm hover:bg-white"
-                onTouchStart={peekGridCloseButton}
-                onClick={() => void handleClose()}
-                aria-label="Close diagram"
-                title="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          ) : null}
-
-          {isGridDiagram && isAdmin ? (
-            <div
               className="absolute"
               style={{
                 top: '50%',
-                left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                left: 'calc(env(safe-area-inset-left, 0px) + 8px + 1rem)',
                 transform: 'translateY(-50%)',
                 zIndex: 2147483647,
               }}
@@ -5153,11 +5125,9 @@ export default function DiagramOverlayModule(props: {
             className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-hidden' : 'overflow-auto'}`}
             onMouseDown={() => setContextMenu(null)}
             onTouchStart={() => {
-              if (isGridDiagram && isAdmin) peekGridCloseButton()
               if (cropMode && canPresent) peekCropControls()
             }}
             onTouchMove={() => {
-              if (isGridDiagram && isAdmin) peekGridCloseButton()
               if (cropMode && canPresent) peekCropControls()
             }}
           >
@@ -5171,7 +5141,6 @@ export default function DiagramOverlayModule(props: {
               className={`${isGridDiagram ? 'fixed bottom-0' : 'absolute'} left-2 right-2 z-40 pointer-events-none`}
               style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 2px)' }}
               onTouchStart={() => {
-                if (isGridDiagram && isAdmin) peekGridCloseButton()
                 if (cropMode && canPresent) peekCropControls()
               }}
             >

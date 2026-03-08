@@ -10702,11 +10702,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         onRequestVideoOverlay={() => {
                           setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
                         }}
-                        onRequestCloseOverlay={
-                          win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                            ? closeLiveOverlay
-                            : undefined
-                        }
                         onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
                       />
                     )}

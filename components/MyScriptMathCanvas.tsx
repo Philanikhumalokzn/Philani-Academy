@@ -2197,7 +2197,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [lessonScriptPointIndex, setLessonScriptPointIndex] = useState(0)
   const [lessonScriptModuleIndex, setLessonScriptModuleIndex] = useState(-1)
   const VIEW_ONLY_SPLIT_RATIO = 0.8
-  const EDITABLE_SPLIT_RATIO = 0.55
+  const EDITABLE_SPLIT_RATIO = 0.2
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
 
@@ -2572,7 +2572,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const splitHandleRef = useRef<HTMLDivElement | null>(null)
   const splitDragActiveRef = useRef(false)
   const splitDragStartYRef = useRef(0)
-  const splitStartRatioRef = useRef(0.55)
+  const splitStartRatioRef = useRef(0.2)
   const splitDragPointerIdRef = useRef<number | null>(null)
   const splitWindowCleanupRef = useRef<null | (() => void)>(null)
 

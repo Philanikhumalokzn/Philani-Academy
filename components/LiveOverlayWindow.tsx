@@ -1,4 +1,5 @@
 import React, { ReactNode, useCallback, useEffect, useRef } from 'react'
+import SessionChromePill from './SessionChromePill'
 
 type Point = { x: number; y: number }
 
@@ -259,7 +260,7 @@ export default function LiveOverlayWindow({
         </div>
 
         {isCanvasWindow && (
-          <div className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
+          <SessionChromePill className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
             {typeof onToggleTeacherAudio === 'function' && (
               <button
                 type="button"
@@ -358,7 +359,7 @@ export default function LiveOverlayWindow({
             >
               ×
             </button>
-          </div>
+          </SessionChromePill>
         )}
       </div>
       <div

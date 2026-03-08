@@ -71,6 +71,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             userDisplayName={userDisplayName}
             isAdmin={isAdmin}
             overlayControlsHandleRef={controlsHandleRef}
+            onRequestCloseOverlay={onClose}
           />
         </div>
       </div>

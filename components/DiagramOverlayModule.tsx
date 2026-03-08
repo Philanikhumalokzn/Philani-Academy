@@ -1391,6 +1391,12 @@ export default function DiagramOverlayModule(props: {
 
   const setOverlayState = useCallback(async (next: DiagramState) => {
     setDiagramState(next)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('philani-diagrams:state-changed', { detail: next }))
+      if (next.isOpen) {
+        window.dispatchEvent(new CustomEvent('philani-session-chrome:peek'))
+      }
+    }
     if (!canPresentRef.current) return
 
     if (isAdmin) {
@@ -1654,6 +1660,16 @@ export default function DiagramOverlayModule(props: {
     window.addEventListener('philani-diagrams:open-grid', handler as any)
     return () => window.removeEventListener('philani-diagrams:open-grid', handler as any)
   }, [openGridDiagram])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => {
+      if (!diagramStateRef.current.isOpen) return
+      void handleClose()
+    }
+    window.addEventListener('philani-diagrams:close-active', handler as any)
+    return () => window.removeEventListener('philani-diagrams:close-active', handler as any)
+  }, [handleClose])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -4994,170 +5010,20 @@ export default function DiagramOverlayModule(props: {
           }
           contentClassName="relative p-0 flex flex-col overflow-hidden"
         >
-          {isGridDiagram && isAdmin ? (
-            <div
-              className={`absolute z-50 transition-opacity duration-200 ${gridCloseVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-              style={{
-                top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
-                right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
-              }}
-              aria-hidden={!gridCloseVisible}
-            >
-              <button
-                type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm hover:bg-white"
-                onTouchStart={peekGridCloseButton}
-                onClick={() => void handleClose()}
-                aria-label="Close diagram"
-                title="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          ) : null}
-
-          {isGridDiagram && isAdmin ? (
-            <div
-              className="absolute"
-              style={{
-                top: '50%',
-                left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
-                transform: 'translateY(-50%)',
-                zIndex: 2147483647,
-              }}
-            >
-              <div className="relative w-6">
-                {rosterAvatarLayout.top.length > 0 ? (
-                  <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
-                    {rosterAvatarLayout.top.map((avatar) => (
-                      avatar.kind === 'presenter' ? (
-                        <div
-                          key={avatar.userKey}
-                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                          title={`${avatar.name} (presenter)`}
-                          aria-label={`${avatar.name} is a presenter`}
-                        >
-                          {avatar.initials}
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          key={avatar.userKey}
-                          data-client-id={avatar.clientId || ''}
-                          data-user-id={avatar.userId || ''}
-                          data-user-key={avatar.userKey}
-                          data-display-name={avatar.name}
-                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                          title={avatar.name}
-                          aria-label={`Make ${avatar.name} the presenter`}
-                          onClick={handleRosterAttendeeAvatarClick}
-                          onPointerDown={(e) => {
-                            e.stopPropagation()
-                          }}
-                        >
-                          {avatar.initials}
-                        </button>
-                      )
-                    ))}
-                  </div>
-                ) : null}
-
-                <button
-                  type="button"
-                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (overlayRosterVisible) {
-                      if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
-                        handOverPresentation(null)
-                        return
-                      }
-                      setOverlayRosterVisible(false)
-                      return
-                    }
-                    setOverlayRosterVisible(true)
-                  }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                  }}
-                  aria-label="Toggle diagram avatars"
-                  title={teacherBadge.name}
-                >
-                  {teacherBadge.initials}
-                </button>
-
-                {showSwitchingToast ? (
-                  <div
-                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
-                    style={{ zIndex: 2147483647 }}
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {switchingStatusLabel}
-                  </div>
-                ) : null}
-
-                {!showSwitchingToast && handoffMessage ? (
-                  <div
-                    className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
-                    style={{ zIndex: 2147483647 }}
-                    role="alert"
-                  >
-                    {handoffMessage}
-                  </div>
-                ) : null}
-
-                {rosterAvatarLayout.bottom.length > 0 ? (
-                  <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
-                    {rosterAvatarLayout.bottom.map((avatar) => (
-                      avatar.kind === 'presenter' ? (
-                        <div
-                          key={avatar.userKey}
-                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                          title={`${avatar.name} (presenter)`}
-                          aria-label={`${avatar.name} is a presenter`}
-                        >
-                          {avatar.initials}
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          key={avatar.userKey}
-                          data-client-id={avatar.clientId || ''}
-                          data-user-id={avatar.userId || ''}
-                          data-user-key={avatar.userKey}
-                          data-display-name={avatar.name}
-                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                          title={avatar.name}
-                          aria-label={`Make ${avatar.name} the presenter`}
-                          onClick={handleRosterAttendeeAvatarClick}
-                          onPointerDown={(e) => {
-                            e.stopPropagation()
-                          }}
-                        >
-                          {avatar.initials}
-                        </button>
-                      )
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
           <div
             ref={gridViewportRef}
             className={`relative w-full flex-1 min-h-0 ${isGridDiagram ? 'overflow-hidden' : 'overflow-auto'}`}
             onMouseDown={() => setContextMenu(null)}
             onTouchStart={() => {
-              if (isGridDiagram && isAdmin) peekGridCloseButton()
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('philani-session-chrome:peek'))
+              }
               if (cropMode && canPresent) peekCropControls()
             }}
             onTouchMove={() => {
-              if (isGridDiagram && isAdmin) peekGridCloseButton()
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('philani-session-chrome:peek'))
+              }
               if (cropMode && canPresent) peekCropControls()
             }}
           >

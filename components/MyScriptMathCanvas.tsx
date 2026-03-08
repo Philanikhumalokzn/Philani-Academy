@@ -5,6 +5,8 @@ import { renderToString } from 'katex'
 import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import SessionChromePill from './SessionChromePill'
+import SessionPresenterStrip, { SessionPresenterAvatar } from './SessionPresenterStrip'
 import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 import {
@@ -900,6 +902,7 @@ type MyScriptMathCanvasProps = {
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
   onLatexOutputChange?: (latex: string) => void
   onRequestVideoOverlay?: () => void
+  onRequestCloseOverlay?: () => void
   lessonAuthoring?: { phaseKey: string; pointId: string }
 }
 
@@ -1128,7 +1131,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, onRequestCloseOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
   // --- Debug Panel State (must be inside component) ---
   const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
@@ -1755,6 +1758,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const overlayChromeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const overlayChromeInitialPeekDoneRef = useRef(false)
   const [overlayChromePeekVisible, setOverlayChromePeekVisible] = useState(false)
+  const [sharedDiagramToolState, setSharedDiagramToolState] = useState<{ isOpen: boolean; activeDiagramId: string | null }>({ isOpen: false, activeDiagramId: null })
   const OVERLAY_CHROME_PEEK_MS = 2500
   const clearOverlayChromeAutoHide = useCallback(() => {
     if (overlayChromeHideTimeoutRef.current) {
@@ -1804,6 +1808,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       clearOverlayChromeAutoHide()
     }
   }, [clearOverlayChromeAutoHide])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handlePeek = () => {
+      revealOverlayChrome()
+    }
+
+    const handleDiagramStateChanged = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail as { isOpen?: boolean; activeDiagramId?: string | null } | undefined
+      setSharedDiagramToolState({
+        isOpen: Boolean(detail?.isOpen),
+        activeDiagramId: typeof detail?.activeDiagramId === 'string' ? detail.activeDiagramId : null,
+      })
+      if (detail?.isOpen) {
+        revealOverlayChrome()
+      }
+    }
+
+    window.addEventListener('philani-session-chrome:peek', handlePeek as EventListener)
+    window.addEventListener('philani-diagrams:state-changed', handleDiagramStateChanged as EventListener)
+    return () => {
+      window.removeEventListener('philani-session-chrome:peek', handlePeek as EventListener)
+      window.removeEventListener('philani-diagrams:state-changed', handleDiagramStateChanged as EventListener)
+    }
+  }, [revealOverlayChrome])
   // Broadcaster role removed: all clients can publish.
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const connectedClientsRef = useRef<Array<PresenceClient>>([])
@@ -2116,9 +2146,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     overlayRosterVisible,
     attendeeInitialFallback: 'U',
   }), [activePresenterBadge, availableRosterAttendees, overlayRosterVisible])
+  const sessionPresenterTopAvatars = useMemo<SessionPresenterAvatar[]>(() => {
+    return rosterAvatarLayout.top.map((avatar) => ({
+      kind: avatar.kind === 'presenter' ? 'presenter' : 'attendee',
+      userKey: avatar.userKey,
+      initials: avatar.initials,
+      name: avatar.name,
+      clientId: avatar.clientId,
+      userId: avatar.userId,
+    }))
+  }, [rosterAvatarLayout.top])
+  const sessionPresenterBottomAvatars = useMemo<SessionPresenterAvatar[]>(() => {
+    return rosterAvatarLayout.bottom.map((avatar) => ({
+      kind: avatar.kind === 'presenter' ? 'presenter' : 'attendee',
+      userKey: avatar.userKey,
+      initials: avatar.initials,
+      name: avatar.name,
+      clientId: avatar.clientId,
+      userId: avatar.userId,
+    }))
+  }, [rosterAvatarLayout.bottom])
   const showSwitchingToast = handoffSwitching || switchConflictActive
   const switchingStatusLabel = switchConflictActive ? 'Switching... conflict detected' : 'Switching...'
   const teacherAvatarGold = isAvatarEditingAuthority(selfUserKey)
+  const showSessionPresenterStrip = overlayChromePeekVisible && isOverlayMode && isCompactViewport && Boolean(teacherBadge)
+  const showSessionPeekPill = overlayChromePeekVisible && isOverlayMode && isCompactViewport && (typeof onRequestVideoOverlay === 'function' || typeof onRequestCloseOverlay === 'function' || sharedDiagramToolState.isOpen)
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -8345,6 +8397,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       if (!hasBoardWriteRights()) return
       if (lockedOutRef.current) return
       if (uiMode === 'overlay' && overlayControlsVisible) return
+      revealOverlayChrome()
 
       const point = normalizePoint(evt)
       if (!point) return
@@ -8448,7 +8501,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         rawInkBroadcastTimerRef.current = null
       }
     }
-  }, [broadcastSnapshot, buildRawInkSnapshot, cacheModeSnapshotForPage, canvasMode, eraseRawInkAtPoint, hasBoardWriteRights, lockedOutRef, overlayControlsVisible, syncRawInkUiState, uiMode])
+  }, [broadcastSnapshot, buildRawInkSnapshot, cacheModeSnapshotForPage, canvasMode, eraseRawInkAtPoint, hasBoardWriteRights, lockedOutRef, overlayControlsVisible, revealOverlayChrome, syncRawInkUiState, uiMode])
 
   // Removed broadcaster handlers and state.
 
@@ -12397,6 +12450,86 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               overflow: 'hidden',
             }}
           >
+            {showSessionPeekPill && (
+              <div
+                className="fixed left-1/2 -translate-x-1/2"
+                style={{
+                  top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
+                  zIndex: 2147483647,
+                }}
+              >
+                <SessionChromePill onPointerDown={(e) => e.stopPropagation()}>
+                  {typeof onRequestVideoOverlay === 'function' && (
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100"
+                      title="Video"
+                      aria-label="Open live video"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onRequestVideoOverlay()
+                      }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
+                        <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
+                      </svg>
+                    </button>
+                  )}
+                  {(sharedDiagramToolState.isOpen || typeof onRequestCloseOverlay === 'function') && (
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100"
+                      title={sharedDiagramToolState.isOpen ? 'Close diagram' : 'Close canvas'}
+                      aria-label={sharedDiagramToolState.isOpen ? 'Close diagram' : 'Close canvas'}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (sharedDiagramToolState.isOpen && typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('philani-diagrams:close-active'))
+                          return
+                        }
+                        onRequestCloseOverlay?.()
+                      }}
+                    >
+                      <span aria-hidden="true" className="text-lg leading-none">×</span>
+                    </button>
+                  )}
+                </SessionChromePill>
+              </div>
+            )}
+
+            <SessionPresenterStrip
+              visible={showSessionPresenterStrip}
+              teacherBadge={teacherBadge}
+              topAvatars={sessionPresenterTopAvatars}
+              bottomAvatars={sessionPresenterBottomAvatars}
+              teacherAvatarGold={teacherAvatarGold}
+              showSwitchingToast={showSwitchingToast}
+              switchingStatusLabel={switchingStatusLabel}
+              handoffMessage={handoffMessage}
+              isAdmin={Boolean(isAdmin)}
+              isAvatarEditingAuthority={isAvatarEditingAuthority}
+              onAvatarClick={handleRosterAttendeeAvatarClick}
+              onTeacherClick={(e) => {
+                if (!isAdmin) return
+                e.preventDefault()
+                e.stopPropagation()
+                if (overlayRosterVisible) {
+                  if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
+                    handOverPresentation(null)
+                    return
+                  }
+                  setOverlayRosterVisible(false)
+                  return
+                }
+                setOverlayRosterVisible(true)
+              }}
+            />
+
             {!isRawInkMode && (
             <div
               className="flex flex-col"
@@ -12534,138 +12667,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     </button>
                   )}
 
-                  {overlayChromePeekVisible && isOverlayMode && isCompactViewport && teacherBadge && (
-                    <div
-                      className="fixed"
-                      style={{
-                        top: '50%',
-                        left: 'calc(env(safe-area-inset-left, 0px) + 1rem)',
-                        transform: 'translateY(-50%)',
-                        zIndex: 2147483647,
-                      }}
-                    >
-                      <div className="relative w-6">
-                        {rosterAvatarLayout.top.length > 0 ? (
-                          <div className="absolute left-0 bottom-[calc(100%+6px)] flex flex-col-reverse items-start gap-1.5">
-                            {rosterAvatarLayout.top.map((avatar) => (
-                              avatar.kind === 'presenter' ? (
-                                <div
-                                  key={avatar.userKey}
-                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                                  title={`${avatar.name} (presenter)`}
-                                  aria-label={`${avatar.name} is a presenter`}
-                                >
-                                  {avatar.initials}
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  key={avatar.userKey}
-                                  data-client-id={avatar.clientId || ''}
-                                  data-user-id={avatar.userId || ''}
-                                  data-user-key={avatar.userKey}
-                                  data-display-name={avatar.name}
-                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                                  title={avatar.name}
-                                  aria-label={`Make ${avatar.name} the presenter`}
-                                  onClick={handleRosterAttendeeAvatarClick}
-                                  onPointerDown={(e) => {
-                                    e.stopPropagation()
-                                  }}
-                                >
-                                  {avatar.initials}
-                                </button>
-                              )
-                            ))}
-                          </div>
-                        ) : null}
-
-                        <button
-                          type="button"
-                          className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
-                          onClick={(e) => {
-                            if (!isAdmin) return
-                            e.preventDefault()
-                            e.stopPropagation()
-                            if (overlayRosterVisible) {
-                              if (activePresenterUserKeyRef.current || activePresenterClientIdsRef.current.size) {
-                                handOverPresentation(null)
-                                return
-                              }
-                              setOverlayRosterVisible(false)
-                              return
-                            }
-                            setOverlayRosterVisible(true)
-                          }}
-                          onPointerDown={(e) => {
-                            if (!isAdmin) return
-                            e.stopPropagation()
-                          }}
-                          aria-label={isAdmin ? 'Toggle session avatars' : undefined}
-                          title={teacherBadge.name}
-                          style={{ pointerEvents: isAdmin ? 'auto' : 'none' }}
-                        >
-                          {teacherBadge.initials}
-                        </button>
-
-                        {showSwitchingToast ? (
-                          <div
-                            className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm"
-                            style={{ zIndex: 2147483647 }}
-                            role="status"
-                            aria-live="polite"
-                          >
-                            {switchingStatusLabel}
-                          </div>
-                        ) : null}
-
-                        {!showSwitchingToast && handoffMessage ? (
-                          <div
-                            className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 max-w-[170px] rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 shadow-sm"
-                            style={{ zIndex: 2147483647 }}
-                            role="alert"
-                          >
-                            {handoffMessage}
-                          </div>
-                        ) : null}
-
-                        {rosterAvatarLayout.bottom.length > 0 ? (
-                          <div className="absolute left-0 top-[calc(100%+6px)] flex flex-col items-start gap-1.5">
-                            {rosterAvatarLayout.bottom.map((avatar) => (
-                              avatar.kind === 'presenter' ? (
-                                <div
-                                  key={avatar.userKey}
-                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                                  title={`${avatar.name} (presenter)`}
-                                  aria-label={`${avatar.name} is a presenter`}
-                                >
-                                  {avatar.initials}
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  key={avatar.userKey}
-                                  data-client-id={avatar.clientId || ''}
-                                  data-user-id={avatar.userId || ''}
-                                  data-user-key={avatar.userKey}
-                                  data-display-name={avatar.name}
-                                  className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${isAvatarEditingAuthority(avatar.userKey) ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-700 border-white/60'}`}
-                                  title={avatar.name}
-                                  aria-label={`Make ${avatar.name} the presenter`}
-                                  onClick={handleRosterAttendeeAvatarClick}
-                                  onPointerDown={(e) => {
-                                    e.stopPropagation()
-                                  }}
-                                >
-                                  {avatar.initials}
-                                </button>
-                              )
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
                   {hasWriteAccess ? (
                     topPanelStepsPayload ? (
                       topPanelStepsPayload.steps.length ? (

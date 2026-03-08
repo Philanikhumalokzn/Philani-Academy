@@ -6114,6 +6114,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       clearTimeout(mathpixPreviewTimeoutRef.current)
       mathpixPreviewTimeoutRef.current = null
     }
+    previewExportInFlightRef.current = false
+    studentQuizPreviewExportInFlightRef.current = false
   }, [])
 
   const resyncLatexPreviewFromEditor = useCallback(async () => {
@@ -7743,6 +7745,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const clearEverything = () => {
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
+    invalidatePendingLatexPreviewWork()
 
     try {
       editorInstanceRef.current.clear()
@@ -7769,6 +7772,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const clearCurrentOnly = () => {
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
+    invalidatePendingLatexPreviewWork()
     editorInstanceRef.current.clear()
     setLatexOutput('')
     clearMathpixLocalStrokes()
@@ -9601,6 +9605,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (!step) return
         applyStudentStepCommit(step, snap?.symbols ?? null, snap)
 
+        invalidatePendingLatexPreviewWork()
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
         try {
           editor.clear?.()
@@ -9847,7 +9852,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
@@ -9940,6 +9945,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       setLatexOutput('')
 
       // Clear handwriting for next step without broadcasting a global clear.
+      invalidatePendingLatexPreviewWork()
       suppressBroadcastUntilTsRef.current = Date.now() + 1200
       try {
         editor.clear?.()
@@ -9962,6 +9968,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     isAssignmentSolutionAuthoring,
     isCurrentLineEmptyNow,
     isEditorEmptyNow,
+    invalidatePendingLatexPreviewWork,
     normalizeStepLatex,
     getDefaultStackedScrollLeft,
     horizontalPanMax,

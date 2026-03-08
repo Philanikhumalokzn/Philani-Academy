@@ -1060,7 +1060,9 @@ export default function DiagramOverlayModule(props: {
   const gridHeaderTitle = useMemo(() => {
     const raw = String(gradeLabel || '').trim()
     if (!raw) return 'Diagram'
-    return /\bgrade\b/i.test(raw) ? raw : `Grade ${raw}`
+    const normalized = raw.replace(/^grade\s*/i, '').trim()
+    if (!normalized) return 'Diagram'
+    return `Grade ${normalized}`
   }, [gradeLabel])
 
   useEffect(() => {

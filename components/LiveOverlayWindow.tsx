@@ -64,6 +64,7 @@ export default function LiveOverlayWindow({
   children
 }: LiveOverlayWindowProps) {
   const isCanvasWindow = Boolean(className?.includes('live-window--canvas'))
+  const isCompactCanvasPeekMode = Boolean(isCanvasWindow && className?.includes('live-window--chrome-visible'))
   const dragStateRef = useRef<{ offsetX: number; offsetY: number } | null>(null)
   const resizeStateRef = useRef<{
     direction: ResizeDirection
@@ -259,7 +260,7 @@ export default function LiveOverlayWindow({
           <p className="live-window__title">{title}</p>
         </div>
 
-        {isCanvasWindow && (
+        {isCanvasWindow && !isCompactCanvasPeekMode && (
           <SessionChromePill className="live-window__header-controls" onPointerDown={e => e.stopPropagation()}>
             {typeof onToggleTeacherAudio === 'function' && (
               <button

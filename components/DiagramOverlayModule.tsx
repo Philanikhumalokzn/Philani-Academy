@@ -44,12 +44,32 @@ type DiagramSelection = { kind: 'stroke' | 'arrow'; id: string } | null
 
 type CropRect = { x0: number; y0: number; x1: number; y1: number }
 
+type GridSceneState = {
+  elements: any[]
+  appState?: Record<string, any>
+  files?: Record<string, any>
+  updatedAt?: string | null
+}
+
 type DiagramRecord = {
   id: string
   title: string
   imageUrl: string
   order: number
   annotations: DiagramAnnotations | null
+  gridScene: GridSceneState | null
+  gridSceneUpdatedAt: string | null
+}
+
+type DiagramSceneSnapshotRecord = {
+  id: string
+  diagramId: string
+  sessionKey: string
+  name: string
+  scene: GridSceneState | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 type DiagramState = {
@@ -109,6 +129,68 @@ const cloneGridElementsPayload = (elements: any[]) => {
   } catch {
     return Array.isArray(elements) ? elements.map((el: any) => ({ ...el })) : []
   }
+}
+
+const cloneJsonPayload = <T,>(value: T): T => {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(value)
+    }
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+const GRID_PERSISTED_APP_STATE_KEYS = [
+  'scrollX',
+  'scrollY',
+  'zoom',
+  'viewBackgroundColor',
+  'currentItemStrokeColor',
+  'currentItemBackgroundColor',
+  'currentItemStrokeWidth',
+  'currentItemStrokeStyle',
+  'currentItemFillStyle',
+  'currentItemRoughness',
+  'currentItemOpacity',
+  'currentItemRoundness',
+  'currentItemFontFamily',
+  'currentItemFontSize',
+  'currentItemTextAlign',
+  'currentItemStartArrowhead',
+  'currentItemEndArrowhead',
+  'activeTool',
+] as const
+
+const pickPersistedGridAppState = (appState: any) => {
+  if (!appState || typeof appState !== 'object') return undefined
+  const next: Record<string, any> = {}
+  for (const key of GRID_PERSISTED_APP_STATE_KEYS) {
+    if (typeof appState[key] === 'undefined') continue
+    next[key] = cloneJsonPayload(appState[key])
+  }
+  return Object.keys(next).length ? next : undefined
+}
+
+const normalizeGridSceneState = (value: any): GridSceneState | null => {
+  if (!value || typeof value !== 'object') return null
+  const elements = cloneGridElementsPayload(Array.isArray(value.elements) ? value.elements : [])
+  const appState = value.appState && typeof value.appState === 'object'
+    ? cloneJsonPayload(value.appState)
+    : undefined
+  const files = value.files && typeof value.files === 'object'
+    ? cloneJsonPayload(value.files)
+    : undefined
+  const updatedAt = typeof value.updatedAt === 'string' ? value.updatedAt : null
+  return { elements, appState, files, updatedAt }
+}
+
+const getGridScenePersistenceSignature = (scene: GridSceneState | null | undefined) => {
+  if (!scene) return 'empty'
+  const appStateSig = scene.appState ? JSON.stringify(scene.appState) : 'null'
+  const fileSig = scene.files ? Object.keys(scene.files).sort().join('|') : 'none'
+  return `${getGridSceneSignature(scene.elements)}::${appStateSig}::${fileSig}`
 }
 
 const getGridSceneSignature = (elements: any[]) => {
@@ -532,6 +614,18 @@ export default function DiagramOverlayModule(props: {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [sceneManagerOpen, setSceneManagerOpen] = useState(false)
+  const [sceneSnapshots, setSceneSnapshots] = useState<DiagramSceneSnapshotRecord[]>([])
+  const [sceneSnapshotsLoading, setSceneSnapshotsLoading] = useState(false)
+  const [sceneSnapshotsError, setSceneSnapshotsError] = useState<string | null>(null)
+  const [sceneDraftName, setSceneDraftName] = useState('')
+  const [sceneSaveBusy, setSceneSaveBusy] = useState(false)
+  const [sceneActionBusyId, setSceneActionBusyId] = useState<string | null>(null)
+
+  const gridPersistedSceneByDiagramRef = useRef<Map<string, GridSceneState>>(new Map())
+  const lastPersistedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
+  const gridAutosaveTimerRef = useRef<number | null>(null)
+  const gridPendingAutosaveRef = useRef<{ diagramId: string; scene: GridSceneState } | null>(null)
 
   const mobileTrayBottomCss = useMemo(
     () => `calc(env(safe-area-inset-bottom) + ${mobileTrayBottomOffsetPx}px + ${mobileTrayReservePx}px)`,
@@ -1020,7 +1114,7 @@ export default function DiagramOverlayModule(props: {
     if (!localOnly) return
     const url = imageUrl!.trim()
     const id = 'local'
-    setDiagrams([{ id, title: 'Screenshot', imageUrl: url, order: 0, annotations: { space: IMAGE_SPACE, strokes: [], arrows: [] } }])
+    setDiagrams([{ id, title: 'Screenshot', imageUrl: url, order: 0, annotations: { space: IMAGE_SPACE, strokes: [], arrows: [] }, gridScene: null, gridSceneUpdatedAt: null }])
     setDiagramState({ activeDiagramId: id, isOpen: true })
   }, [imageUrl, localOnly])
 
@@ -1229,14 +1323,33 @@ export default function DiagramOverlayModule(props: {
       if (!payload) return
 
       const rawDiagrams = Array.isArray(payload.diagrams) ? payload.diagrams : []
+      const nextPersistedScenes = new Map<string, GridSceneState>()
+      const nextGridElements = new Map<string, any[]>()
       const nextDiagrams: DiagramRecord[] = rawDiagrams.map((d: any) => ({
         id: String(d.id),
         title: typeof d.title === 'string' ? d.title : '',
         imageUrl: typeof d.imageUrl === 'string' ? d.imageUrl : '',
         order: typeof d.order === 'number' ? d.order : 0,
         annotations: d.annotations ? normalizeAnnotations(d.annotations) : null,
-      }))
+        gridScene: normalizeGridSceneState(d.gridScene),
+        gridSceneUpdatedAt: typeof d.gridSceneUpdatedAt === 'string' ? d.gridSceneUpdatedAt : null,
+      })).map((diagram) => {
+        if (diagram.gridScene) {
+          const normalizedScene: GridSceneState = {
+            ...diagram.gridScene,
+            updatedAt: diagram.gridSceneUpdatedAt,
+          }
+          nextPersistedScenes.set(diagram.id, normalizedScene)
+          nextGridElements.set(diagram.id, cloneGridElementsPayload(normalizedScene.elements))
+          lastPersistedGridSceneSignatureRef.current.set(diagram.id, getGridScenePersistenceSignature(normalizedScene))
+          return { ...diagram, gridScene: normalizedScene }
+        }
+        lastPersistedGridSceneSignatureRef.current.delete(diagram.id)
+        return diagram
+      })
       nextDiagrams.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))
+      gridPersistedSceneByDiagramRef.current = nextPersistedScenes
+      gridSceneByDiagramRef.current = nextGridElements
       setDiagrams(nextDiagrams)
 
       const serverState = payload.state
@@ -1497,6 +1610,19 @@ export default function DiagramOverlayModule(props: {
             imageUrl: typeof diagram.imageUrl === 'string' && diagram.imageUrl ? diagram.imageUrl : GRID_DIAGRAM_URL,
             order: typeof diagram.order === 'number' ? diagram.order : 0,
             annotations: diagram.annotations ? normalizeAnnotations(diagram.annotations) : null,
+            gridScene: normalizeGridSceneState(diagram.gridScene),
+            gridSceneUpdatedAt: typeof diagram.gridSceneUpdatedAt === 'string' ? diagram.gridSceneUpdatedAt : null,
+          }
+
+          if (record.gridScene) {
+            const normalizedScene: GridSceneState = {
+              ...record.gridScene,
+              updatedAt: record.gridSceneUpdatedAt,
+            }
+            record.gridScene = normalizedScene
+            gridPersistedSceneByDiagramRef.current.set(record.id, normalizedScene)
+            gridSceneByDiagramRef.current.set(record.id, cloneGridElementsPayload(normalizedScene.elements))
+            lastPersistedGridSceneSignatureRef.current.set(record.id, getGridScenePersistenceSignature(normalizedScene))
           }
 
           const current = diagramsRef.current
@@ -1517,25 +1643,6 @@ export default function DiagramOverlayModule(props: {
 
     await setOverlayState({ ...diagramStateRef.current, isOpen: true })
   }, [channelName, clearDiagramAnnotations, isAdmin, normalizeAnnotations, setOverlayState])
-
-  const handleClose = useCallback(async () => {
-    // Ensure lesson-authoring snapshots are persisted before closing.
-    const saved = saveDiagramIntoLessonDraft()
-    await setOverlayState({ activeDiagramId: diagramStateRef.current.activeDiagramId, isOpen: false })
-    if (saved && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'diagram', phaseKey: lessonAuthoring?.phaseKey, pointId: lessonAuthoring?.pointId } }))
-    }
-    onRequestClose?.()
-  }, [onRequestClose, saveDiagramIntoLessonDraft, setOverlayState])
-
-  const closeSignalRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (typeof closeSignal !== 'number') return
-    if (closeSignal <= 0) return
-    if (closeSignalRef.current === closeSignal) return
-    closeSignalRef.current = closeSignal
-    void handleClose()
-  }, [closeSignal, handleClose])
 
   const didAutoOpenExplicitRef = useRef(false)
   useEffect(() => {
@@ -2228,6 +2335,206 @@ export default function DiagramOverlayModule(props: {
     api.updateScene({ elements })
   }, [])
 
+  const restoreGridSceneToApi = useCallback((scene: GridSceneState | null) => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return
+
+    const normalized = normalizeGridSceneState(scene)
+    if (!normalized) {
+      setGridSceneToApi([])
+      return
+    }
+
+    suppressGridScenePublishRef.current = true
+    if (typeof window !== 'undefined') {
+      if (gridSceneSuppressTimerRef.current != null) {
+        window.clearTimeout(gridSceneSuppressTimerRef.current)
+      }
+      gridSceneSuppressTimerRef.current = window.setTimeout(() => {
+        suppressGridScenePublishRef.current = false
+        gridSceneSuppressTimerRef.current = null
+      }, 0)
+    }
+
+    if (normalized.files && api.addFiles) {
+      try {
+        api.addFiles(normalized.files)
+      } catch {
+        // ignore
+      }
+    }
+
+    api.updateScene({
+      elements: normalized.elements,
+      appState: {
+        ...(normalized.appState || {}),
+        currentItemStrokeWidth: normalized.appState?.currentItemStrokeWidth ?? 1,
+      },
+    })
+
+    gridSceneByDiagramRef.current.set(activeDiagram?.id || '', cloneGridElementsPayload(normalized.elements))
+    try {
+      api.history?.clear?.()
+    } catch {
+      // ignore
+    }
+  }, [activeDiagram?.id, setGridSceneToApi])
+
+  const updateDiagramGridSceneRecord = useCallback((diagramId: string, scene: GridSceneState | null, updatedAt?: string | null) => {
+    const normalizedScene = scene ? { ...scene, updatedAt: updatedAt ?? scene.updatedAt ?? null } : null
+    if (normalizedScene) {
+      gridPersistedSceneByDiagramRef.current.set(diagramId, normalizedScene)
+      gridSceneByDiagramRef.current.set(diagramId, cloneGridElementsPayload(normalizedScene.elements))
+      lastPersistedGridSceneSignatureRef.current.set(diagramId, getGridScenePersistenceSignature(normalizedScene))
+    } else {
+      gridPersistedSceneByDiagramRef.current.delete(diagramId)
+      lastPersistedGridSceneSignatureRef.current.delete(diagramId)
+    }
+
+    setDiagrams((prev) => {
+      const next = prev.map((diagram) => diagram.id === diagramId
+        ? { ...diagram, gridScene: normalizedScene, gridSceneUpdatedAt: updatedAt ?? normalizedScene?.updatedAt ?? null }
+        : diagram)
+      diagramsRef.current = next
+      return next
+    })
+  }, [])
+
+  const getLiveGridSceneState = useCallback((diagramId?: string | null) => {
+    const targetDiagramId = String(diagramId || activeDiagram?.id || '').trim()
+    if (!targetDiagramId) return null
+
+    const api = excalidrawApiRef.current
+    const liveElements = api?.getSceneElementsIncludingDeleted?.() || api?.getSceneElements?.()
+    const cachedScene = gridPersistedSceneByDiagramRef.current.get(targetDiagramId)
+    const cachedElements = gridSceneByDiagramRef.current.get(targetDiagramId)
+
+    return {
+      elements: Array.isArray(liveElements)
+        ? cloneGridElementsPayload(liveElements)
+        : cloneGridElementsPayload(cachedElements || cachedScene?.elements || []),
+      appState: pickPersistedGridAppState(api?.getAppState?.()) || cachedScene?.appState,
+      files: api?.getFiles?.() ? cloneJsonPayload(api.getFiles()) : cachedScene?.files,
+      updatedAt: cachedScene?.updatedAt ?? null,
+    } satisfies GridSceneState
+  }, [activeDiagram?.id])
+
+  const persistGridSceneNow = useCallback(async (diagramId: string, scene: GridSceneState) => {
+    if (!isAdmin || localOnly) return null
+    const nextSignature = getGridScenePersistenceSignature(scene)
+    const prevSignature = lastPersistedGridSceneSignatureRef.current.get(diagramId)
+    if (nextSignature === prevSignature) return null
+
+    try {
+      const res = await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gridScene: scene }),
+      })
+      if (!res.ok) return null
+      const payload = await res.json().catch(() => null)
+      const persistedScene = normalizeGridSceneState(payload?.gridScene) || scene
+      const updatedAt = typeof payload?.gridSceneUpdatedAt === 'string' ? payload.gridSceneUpdatedAt : new Date().toISOString()
+      updateDiagramGridSceneRecord(diagramId, persistedScene, updatedAt)
+      return { scene: persistedScene, updatedAt }
+    } catch {
+      return null
+    }
+  }, [isAdmin, localOnly, updateDiagramGridSceneRecord])
+
+  const flushGridSceneAutosave = useCallback(async () => {
+    if (typeof window !== 'undefined' && gridAutosaveTimerRef.current != null) {
+      window.clearTimeout(gridAutosaveTimerRef.current)
+      gridAutosaveTimerRef.current = null
+    }
+    const pending = gridPendingAutosaveRef.current
+    gridPendingAutosaveRef.current = null
+    if (!pending) return null
+    return persistGridSceneNow(pending.diagramId, pending.scene)
+  }, [persistGridSceneNow])
+
+  const queueGridSceneAutosave = useCallback((diagramId: string, scene: GridSceneState) => {
+    if (!isAdmin || localOnly) return
+    const nextSignature = getGridScenePersistenceSignature(scene)
+    const prevSignature = lastPersistedGridSceneSignatureRef.current.get(diagramId)
+    if (nextSignature === prevSignature) return
+
+    gridPendingAutosaveRef.current = { diagramId, scene }
+    if (typeof window === 'undefined') {
+      void flushGridSceneAutosave()
+      return
+    }
+    if (gridAutosaveTimerRef.current != null) {
+      window.clearTimeout(gridAutosaveTimerRef.current)
+    }
+    gridAutosaveTimerRef.current = window.setTimeout(() => {
+      gridAutosaveTimerRef.current = null
+      void flushGridSceneAutosave()
+    }, 900)
+  }, [flushGridSceneAutosave, isAdmin, localOnly])
+
+  const loadGridSceneSnapshots = useCallback(async (diagramId: string) => {
+    setSceneSnapshotsLoading(true)
+    setSceneSnapshotsError(null)
+    try {
+      const res = await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}/scenes`, { credentials: 'same-origin' })
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '')
+        throw new Error(msg || `Failed to load scenes (${res.status})`)
+      }
+      const payload = await res.json().catch(() => null)
+      const nextSnapshots: DiagramSceneSnapshotRecord[] = Array.isArray(payload?.snapshots)
+        ? payload.snapshots.map((snapshot: any) => ({
+            id: String(snapshot.id),
+            diagramId: String(snapshot.diagramId),
+            sessionKey: String(snapshot.sessionKey || ''),
+            name: typeof snapshot.name === 'string' ? snapshot.name : 'Untitled scene',
+            scene: normalizeGridSceneState(snapshot.scene),
+            createdBy: typeof snapshot.createdBy === 'string' ? snapshot.createdBy : null,
+            createdAt: typeof snapshot.createdAt === 'string' ? snapshot.createdAt : new Date().toISOString(),
+            updatedAt: typeof snapshot.updatedAt === 'string' ? snapshot.updatedAt : new Date().toISOString(),
+          }))
+        : []
+      setSceneSnapshots(nextSnapshots)
+      return nextSnapshots
+    } catch (err) {
+      setSceneSnapshotsError(err instanceof Error ? err.message : 'Failed to load saved scenes')
+      return []
+    } finally {
+      setSceneSnapshotsLoading(false)
+    }
+  }, [])
+
+  const saveCurrentGridSceneSnapshot = useCallback(async (diagramId: string, name: string) => {
+    const scene = getLiveGridSceneState(diagramId)
+    if (!scene) throw new Error('No Excalidraw scene available to save')
+    const trimmedName = name.trim() || `Scene ${new Date().toLocaleString()}`
+
+    const res = await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}/scenes`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmedName, scene }),
+    })
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '')
+      throw new Error(msg || `Failed to save scene (${res.status})`)
+    }
+    await persistGridSceneNow(diagramId, scene)
+    await loadGridSceneSnapshots(diagramId)
+  }, [getLiveGridSceneState, loadGridSceneSnapshots, persistGridSceneNow])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (gridAutosaveTimerRef.current != null) {
+        window.clearTimeout(gridAutosaveTimerRef.current)
+        gridAutosaveTimerRef.current = null
+      }
+    }
+  }, [])
+
   const queueGridScenePublish = useCallback((diagramId: string, elements: any[]) => {
     const snapshot = cloneGridElementsPayload(elements)
     const signature = getGridSceneSignature(snapshot)
@@ -2375,10 +2682,105 @@ export default function DiagramOverlayModule(props: {
     if (!isGridDiagram) return
     if (!diagramState.isOpen) return
     if (!activeDiagram?.id) return
+    const persisted = gridPersistedSceneByDiagramRef.current.get(activeDiagram.id)
+    if (persisted) {
+      restoreGridSceneToApi(persisted)
+      return
+    }
     const cached = gridSceneByDiagramRef.current.get(activeDiagram.id)
     if (!cached) return
     setGridSceneToApi(cloneGridElementsPayload(cached))
-  }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, setGridSceneToApi])
+  }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, restoreGridSceneToApi, setGridSceneToApi])
+
+  useEffect(() => {
+    if (!sceneManagerOpen) return
+    if (!isGridDiagram) return
+    if (!activeDiagram?.id) return
+    void loadGridSceneSnapshots(activeDiagram.id)
+  }, [activeDiagram?.id, isGridDiagram, loadGridSceneSnapshots, sceneManagerOpen])
+
+  useEffect(() => {
+    if (isGridDiagram) return
+    setSceneManagerOpen(false)
+  }, [isGridDiagram])
+
+  const loadGridSceneSnapshot = useCallback(async (snapshot: DiagramSceneSnapshotRecord) => {
+    if (!activeDiagram?.id) return
+    const normalizedScene = normalizeGridSceneState(snapshot.scene)
+    if (!normalizedScene) return
+    restoreGridSceneToApi(normalizedScene)
+    updateDiagramGridSceneRecord(activeDiagram.id, normalizedScene, new Date().toISOString())
+    await persistGridSceneNow(activeDiagram.id, normalizedScene)
+    setSceneManagerOpen(false)
+  }, [activeDiagram?.id, persistGridSceneNow, restoreGridSceneToApi, updateDiagramGridSceneRecord])
+
+  const renameGridSceneSnapshot = useCallback(async (snapshot: DiagramSceneSnapshotRecord) => {
+    if (typeof window === 'undefined') return
+    const nextName = window.prompt('Rename saved scene', snapshot.name)?.trim()
+    if (!nextName || nextName === snapshot.name) return
+    setSceneActionBusyId(snapshot.id)
+    setSceneSnapshotsError(null)
+    try {
+      const res = await fetch(`/api/diagrams/scenes/${encodeURIComponent(snapshot.id)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nextName }),
+      })
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '')
+        throw new Error(msg || `Failed to rename scene (${res.status})`)
+      }
+      setSceneSnapshots((prev) => prev.map((item) => item.id === snapshot.id ? { ...item, name: nextName, updatedAt: new Date().toISOString() } : item))
+    } catch (err) {
+      setSceneSnapshotsError(err instanceof Error ? err.message : 'Failed to rename saved scene')
+    } finally {
+      setSceneActionBusyId(null)
+    }
+  }, [])
+
+  const deleteGridSceneSnapshot = useCallback(async (snapshot: DiagramSceneSnapshotRecord) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Delete saved scene "${snapshot.name}"?`)
+      if (!confirmed) return
+    }
+    setSceneActionBusyId(snapshot.id)
+    setSceneSnapshotsError(null)
+    try {
+      const res = await fetch(`/api/diagrams/scenes/${encodeURIComponent(snapshot.id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '')
+        throw new Error(msg || `Failed to delete scene (${res.status})`)
+      }
+      setSceneSnapshots((prev) => prev.filter((item) => item.id !== snapshot.id))
+    } catch (err) {
+      setSceneSnapshotsError(err instanceof Error ? err.message : 'Failed to delete saved scene')
+    } finally {
+      setSceneActionBusyId(null)
+    }
+  }, [])
+
+  const handleClose = useCallback(async () => {
+    const saved = saveDiagramIntoLessonDraft()
+    await flushGridSceneAutosave()
+    await setOverlayState({ activeDiagramId: diagramStateRef.current.activeDiagramId, isOpen: false })
+    if (saved && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'diagram', phaseKey: lessonAuthoring?.phaseKey, pointId: lessonAuthoring?.pointId } }))
+    }
+    onRequestClose?.()
+  }, [flushGridSceneAutosave, lessonAuthoring?.phaseKey, lessonAuthoring?.pointId, onRequestClose, saveDiagramIntoLessonDraft, setOverlayState])
+
+  const closeSignalRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (typeof closeSignal !== 'number') return
+    if (closeSignal <= 0) return
+    if (closeSignalRef.current === closeSignal) return
+    closeSignalRef.current = closeSignal
+    void handleClose()
+  }, [closeSignal, handleClose])
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(undoRef.current.length > 0)
@@ -4983,15 +5385,27 @@ export default function DiagramOverlayModule(props: {
           frameClassName="absolute inset-0 flex items-end justify-center p-0"
           panelClassName="!rounded-none"
           rightActions={
-            isAdmin && !isGridDiagram ? (
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                disabled={uploading}
-                onClick={requestUpload}
-              >
-                {uploading ? 'Uploading…' : 'Upload'}
-              </button>
+            isAdmin ? (
+              <>
+                {isGridDiagram ? (
+                  <button
+                    type="button"
+                    className={`inline-flex items-center justify-center rounded-full border px-3 py-2 text-sm font-semibold transition-colors ${sceneManagerOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                    onClick={() => setSceneManagerOpen((prev) => !prev)}
+                  >
+                    Scenes
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    disabled={uploading}
+                    onClick={requestUpload}
+                  >
+                    {uploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                )}
+              </>
             ) : null
           }
           contentClassName="relative p-0 flex flex-col overflow-hidden"
@@ -5150,6 +5564,125 @@ export default function DiagramOverlayModule(props: {
                     ))}
                   </div>
                 ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {isGridDiagram && isAdmin && sceneManagerOpen ? (
+            <div
+              className="absolute right-4 top-4 z-[2147483646] w-[min(92vw,24rem)] rounded-2xl border border-slate-200 bg-white/96 p-4 shadow-2xl backdrop-blur-sm"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Saved scenes</p>
+                  <p className="text-xs text-slate-500">
+                    Live Excalidraw work auto-saves{activeDiagram?.gridSceneUpdatedAt ? `, last saved ${new Date(activeDiagram.gridSceneUpdatedAt).toLocaleString()}` : ''}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  onClick={() => setSceneManagerOpen(false)}
+                  aria-label="Close scene manager"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={sceneDraftName}
+                  onChange={(event) => setSceneDraftName(event.target.value)}
+                  placeholder="Name this scene"
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
+                />
+                <button
+                  type="button"
+                  className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  disabled={sceneSaveBusy || !activeDiagram?.id}
+                  onClick={async () => {
+                    if (!activeDiagram?.id) return
+                    setSceneSaveBusy(true)
+                    setSceneSnapshotsError(null)
+                    try {
+                      await saveCurrentGridSceneSnapshot(activeDiagram.id, sceneDraftName)
+                      setSceneDraftName('')
+                    } catch (err) {
+                      setSceneSnapshotsError(err instanceof Error ? err.message : 'Failed to save scene')
+                    } finally {
+                      setSceneSaveBusy(false)
+                    }
+                  }}
+                >
+                  {sceneSaveBusy ? 'Saving…' : 'Save current'}
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
+                <span>{sceneSnapshots.length} saved scene{sceneSnapshots.length === 1 ? '' : 's'}</span>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={sceneSnapshotsLoading || !activeDiagram?.id}
+                  onClick={() => {
+                    if (!activeDiagram?.id) return
+                    void loadGridSceneSnapshots(activeDiagram.id)
+                  }}
+                >
+                  {sceneSnapshotsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+
+              {sceneSnapshotsError ? <p className="mt-2 text-xs text-red-600">{sceneSnapshotsError}</p> : null}
+
+              <div className="mt-3 max-h-[50vh] overflow-auto pr-1">
+                {sceneSnapshots.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-sm text-slate-500">
+                    No named scenes yet. Use Save current to bookmark a lesson state you want to load later.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {sceneSnapshots.map((snapshot) => (
+                      <div key={snapshot.id} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{snapshot.name}</p>
+                            <p className="text-xs text-slate-500">Updated {new Date(snapshot.updatedAt).toLocaleString()}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                              disabled={sceneActionBusyId === snapshot.id}
+                              onClick={() => void loadGridSceneSnapshot(snapshot)}
+                            >
+                              Load
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              disabled={sceneActionBusyId === snapshot.id}
+                              onClick={() => void renameGridSceneSnapshot(snapshot)}
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                              disabled={sceneActionBusyId === snapshot.id}
+                              onClick={() => void deleteGridSceneSnapshot(snapshot)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ) : null}
@@ -5596,14 +6129,21 @@ export default function DiagramOverlayModule(props: {
                   excalidrawApiRef.current = api
                   setGridApiReadyVersion((prev) => prev + 1)
                 }}
-                onChange={(elements: any[]) => {
+                onChange={(elements: any[], appState: any, files: any) => {
                   const diagramId = activeDiagram?.id
                   if (!diagramId) return
                   const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
+                  const nextScene: GridSceneState = {
+                    elements: nextElements,
+                    appState: pickPersistedGridAppState(appState),
+                    files: files && typeof files === 'object' ? cloneJsonPayload(files) : undefined,
+                  }
                   gridSceneByDiagramRef.current.set(diagramId, nextElements)
+                  gridPersistedSceneByDiagramRef.current.set(diagramId, nextScene)
                   gridLastDrawingDiagramIdRef.current = diagramId
                   gridLastDrawingElementsRef.current = nextElements
                   gridActiveDrawingRef.current = true
+                  queueGridSceneAutosave(diagramId, nextScene)
 
                   if (typeof window !== 'undefined') {
                     if (gridDrawingIdleTimerRef.current != null) {

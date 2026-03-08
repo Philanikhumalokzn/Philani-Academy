@@ -19,6 +19,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       imageUrl: diagram.imageUrl,
       order: diagram.order,
       annotations: diagram.annotations ?? null,
+      gridScene: diagram.gridScene ?? null,
+      gridSceneUpdatedAt: diagram.gridSceneUpdatedAt ? diagram.gridSceneUpdatedAt.toISOString() : null,
       createdBy: diagram.createdBy ?? null,
       createdAt: diagram.createdAt.toISOString(),
       updatedAt: diagram.updatedAt.toISOString(),
@@ -34,6 +36,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (typeof req.body?.imageUrl === 'string') updates.imageUrl = req.body.imageUrl
     if (typeof req.body?.order === 'number' && Number.isFinite(req.body.order)) updates.order = req.body.order
     if (typeof req.body?.annotations !== 'undefined') updates.annotations = req.body.annotations
+    if (typeof req.body?.gridScene !== 'undefined') {
+      updates.gridScene = req.body.gridScene
+      updates.gridSceneUpdatedAt = req.body.gridScene ? new Date() : null
+    }
 
     const updated = await prisma.diagram.update({
       where: { id: diagramId },
@@ -47,6 +53,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       imageUrl: updated.imageUrl,
       order: updated.order,
       annotations: updated.annotations ?? null,
+      gridScene: updated.gridScene ?? null,
+      gridSceneUpdatedAt: updated.gridSceneUpdatedAt ? updated.gridSceneUpdatedAt.toISOString() : null,
       createdBy: updated.createdBy ?? null,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
@@ -59,6 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const diagram = await prisma.diagram.findUnique({ where: { id: diagramId } })
     if (!diagram) return res.status(404).json({ message: 'Not found' })
+
+  await prisma.diagramSceneSnapshot.deleteMany({ where: { diagramId } })
 
     await prisma.diagram.delete({ where: { id: diagramId } })
 

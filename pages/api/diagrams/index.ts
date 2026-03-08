@@ -10,6 +10,8 @@ type DiagramsResponse = {
     imageUrl: string
     order: number
     annotations: any
+    gridScene: any
+    gridSceneUpdatedAt: string | null
     createdBy: string | null
     createdAt: string
     updatedAt: string
@@ -54,6 +56,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         imageUrl: d.imageUrl,
         order: d.order,
         annotations: d.annotations ?? null,
+        gridScene: d.gridScene ?? null,
+        gridSceneUpdatedAt: d.gridSceneUpdatedAt ? d.gridSceneUpdatedAt.toISOString() : null,
         createdBy: d.createdBy ?? null,
         createdAt: d.createdAt.toISOString(),
         updatedAt: d.updatedAt.toISOString(),
@@ -118,6 +122,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         imageUrl: created.imageUrl,
         order: created.order,
         annotations: created.annotations ?? null,
+        gridScene: created.gridScene ?? null,
+        gridSceneUpdatedAt: created.gridSceneUpdatedAt ? created.gridSceneUpdatedAt.toISOString() : null,
         createdBy: created.createdBy ?? null,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),

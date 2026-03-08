@@ -10,7 +10,7 @@ type SessionChromePillProps = {
 export default function SessionChromePill({ children, className, style, onPointerDown }: SessionChromePillProps) {
 	return (
 		<div
-			className={`inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/92 px-2 py-1.5 text-slate-800 shadow-sm backdrop-blur-sm ${className || ''}`.trim()}
+			className={`inline-flex items-center gap-0.5 rounded-full border border-slate-200/80 bg-white/92 px-1.5 py-0.5 text-slate-800 shadow-sm backdrop-blur-sm ${className || ''}`.trim()}
 			style={style}
 			onPointerDown={onPointerDown}
 		>

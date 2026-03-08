@@ -2170,7 +2170,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const switchingStatusLabel = switchConflictActive ? 'Switching... conflict detected' : 'Switching...'
   const teacherAvatarGold = isAvatarEditingAuthority(selfUserKey)
   const showSessionPresenterStrip = overlayChromePeekVisible && isOverlayMode && isCompactViewport && Boolean(teacherBadge)
-  const showSessionPeekPill = overlayChromePeekVisible && isOverlayMode && isCompactViewport && (typeof onRequestVideoOverlay === 'function' || typeof onRequestCloseOverlay === 'function' || sharedDiagramToolState.isOpen)
+  const showSessionPeekPill = overlayChromePeekVisible && isOverlayMode && isCompactViewport && (sharedDiagramToolState.isOpen || canvasMode === 'raw-ink' || typeof onRequestCloseOverlay === 'function')
   const [latexDisplayState, setLatexDisplayState] = useState<LatexDisplayState>({ enabled: false, latex: '', options: DEFAULT_LATEX_OPTIONS })
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
@@ -12459,31 +12459,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 }}
               >
                 <SessionChromePill onPointerDown={(e) => e.stopPropagation()}>
-                  {typeof onRequestVideoOverlay === 'function' && (
+                  {(sharedDiagramToolState.isOpen || isRawInkMode || typeof onRequestCloseOverlay === 'function') && (
                     <button
                       type="button"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100"
-                      title="Video"
-                      aria-label="Open live video"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        onRequestVideoOverlay()
-                      }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                        <path d="M4 7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7z" />
-                        <path d="M16 10.5 21 7v10l-5-3.5v-3z" opacity="0.65" />
-                      </svg>
-                    </button>
-                  )}
-                  {(sharedDiagramToolState.isOpen || typeof onRequestCloseOverlay === 'function') && (
-                    <button
-                      type="button"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100"
-                      title={sharedDiagramToolState.isOpen ? 'Close diagram' : 'Close canvas'}
-                      aria-label={sharedDiagramToolState.isOpen ? 'Close diagram' : 'Close canvas'}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100"
+                      title={sharedDiagramToolState.isOpen ? 'Close diagram' : (isRawInkMode ? 'Return to stacked canvas' : 'Close canvas')}
+                      aria-label={sharedDiagramToolState.isOpen ? 'Close diagram' : (isRawInkMode ? 'Return to stacked canvas' : 'Close canvas')}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.preventDefault()
@@ -12492,10 +12473,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           window.dispatchEvent(new CustomEvent('philani-diagrams:close-active'))
                           return
                         }
+                        if (isRawInkMode) {
+                          void applyCanvasModeForCurrentPage('math')
+                          return
+                        }
                         onRequestCloseOverlay?.()
                       }}
                     >
-                      <span aria-hidden="true" className="text-lg leading-none">×</span>
+                      <span aria-hidden="true" className="text-base leading-none">×</span>
                     </button>
                   )}
                 </SessionChromePill>

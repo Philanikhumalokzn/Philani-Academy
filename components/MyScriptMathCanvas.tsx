@@ -8480,7 +8480,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedMinZoom = Math.max(0.5, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
-  const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current
 
   const stopStackedInteractionMotionMonitor = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -8575,7 +8574,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (!viewport) return
 
     const updateBaseSize = () => {
-      const compactPadding = stackedIsZoomedForPan ? 0 : (window.matchMedia('(min-width: 640px)').matches ? 24 : 16)
+      const compactPadding = window.matchMedia('(min-width: 640px)').matches ? 24 : 16
       const nextWidth = Math.max(320, Math.round(viewport.clientWidth - (compactPadding * 2)))
       const nextHeight = Math.max(320, Math.round(viewport.clientHeight * 2))
       setStackedSurfaceBaseSize((prev) => {
@@ -8601,7 +8600,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         ro?.disconnect()
       } catch {}
     }
-  }, [stackedIsZoomedForPan, useStackedStudentLayout])
+  }, [useStackedStudentLayout])
 
   useEffect(() => {
     return () => {
@@ -10381,6 +10380,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const usable = Math.max(0, 100 - verticalScrollbarThumbPct)
     return verticalPanMax > 0 ? (verticalPanValue / verticalPanMax) * usable : 0
   }, [verticalPanMax, verticalPanValue, verticalScrollbarThumbPct])
+  const stackedScrollDebugLabel = useMemo(() => {
+    const roundMetric = (value: number) => Math.round(Number.isFinite(value) ? value : 0)
+    return {
+      horizontal: `H ${roundMetric(horizontalPanValue)} / ${roundMetric(horizontalPanMax)} | thumb ${roundMetric(horizontalPanThumbRatio * 100)}% | pos ${roundMetric(horizontalScrollbarLeftPct)}%`,
+      vertical: `V ${roundMetric(verticalPanValue)} / ${roundMetric(verticalPanMax)} | thumb ${roundMetric(verticalPanThumbRatio * 100)}% | pos ${roundMetric(verticalScrollbarTopPct)}%`,
+    }
+  }, [horizontalPanMax, horizontalPanThumbRatio, horizontalPanValue, horizontalScrollbarLeftPct, verticalPanMax, verticalPanThumbRatio, verticalPanValue, verticalScrollbarTopPct])
 
   const beginVerticalScrollbarDrag = useCallback((event: React.PointerEvent) => {
     const track = verticalPanTrackRef.current
@@ -12865,7 +12871,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 >
                   <div
                     ref={stackedZoomContentRef}
-                    className={`${stackedIsZoomedForPan ? 'w-max min-w-full items-center px-0 sm:px-0' : 'w-full items-center px-4 sm:px-6'} flex flex-col gap-6 py-4 sm:py-6`}
+                    className="flex w-max min-w-full flex-col items-center gap-6 px-4 py-4 sm:px-6 sm:py-6"
                     style={{
                       zoom: stackedLiveScale,
                       paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
@@ -12910,6 +12916,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     aria-hidden="true"
                   >
                     {`${Math.round(stackedEffectiveZoom * 100)}%`}
+                  </div>
+                )}
+                {useStackedStudentLayout && (
+                  <div
+                    className="absolute right-3 bottom-3 z-20 pointer-events-none rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 font-mono text-[10px] leading-4 text-slate-700 shadow-sm backdrop-blur-sm"
+                    style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${showBottomHorizontalScrollbar ? (viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8) : 12}px)` }}
+                    aria-hidden="true"
+                  >
+                    <div>{stackedScrollDebugLabel.horizontal}</div>
+                    <div>{stackedScrollDebugLabel.vertical}</div>
                   </div>
                 )}
                 {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (

@@ -9015,6 +9015,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
       return {
+        position: 'relative',
         width: '100%',
         height: '100%',
         touchAction: 'none',
@@ -9024,6 +9025,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
     if (useStackedStudentLayout) {
       return {
+        position: 'relative',
         width: '100%',
         height: '100%',
         minHeight: '220px',
@@ -9038,6 +9040,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       ? { minHeight: '384px', maxHeight: '520px', aspectRatio: '16 / 9' }
       : { minHeight: '480px', maxHeight: '640px', aspectRatio: '3 / 4' }
     return {
+      position: 'relative',
       width: '100%',
       ...sizing,
       touchAction: 'none',
@@ -13585,6 +13588,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                               viewBox={`0 0 ${RAW_INK_VIEWBOX_SIZE} ${RAW_INK_VIEWBOX_SIZE}`}
                               preserveAspectRatio="none"
                               aria-label="Raw ink canvas"
+                              style={{ pointerEvents: 'none', zIndex: 1 }}
                             >
                               {[...rawInkStrokes, ...rawInkActivePreview].map((stroke) => (
                                 <polyline

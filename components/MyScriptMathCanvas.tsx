@@ -6039,7 +6039,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     })
   }, [exportLatexFromEditor, getLatexFromEditorModel])
 
-  const exportLatexFromEngine = useCallback(async () => {
+  const exportLatexFromEngine = useCallback(async (options?: { allowConvertFallback?: boolean }) => {
+    const allowConvertFallback = options?.allowConvertFallback !== false
     if (recognitionEngineRef.current === 'mathpix') {
       const symbols = extractEditorSymbols()
       setMyScriptLastSymbolsPayload(toDebugJson(symbols))
@@ -6050,7 +6051,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       const symbols = extractEditorSymbols()
       setMyScriptLastSymbolsPayload(toDebugJson(symbols))
       let latex = await exportLatexFromEditor()
-      if ((!latex || !latex.trim()) && countSymbols(symbols) > 0) {
+      if (allowConvertFallback && (!latex || !latex.trim()) && countSymbols(symbols) > 0) {
         latex = await convertLatexFromEditor()
       }
       setMyScriptLastSymbolExtract(Date.now())
@@ -6152,7 +6153,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (recognitionEngineRef.current === 'mathpix') {
       latexValue = await requestMathpixLatex(symbols)
     } else if (!latexValue || latexValue.trim().length === 0) {
-      const exported = await exportLatexFromEngine()
+      const exported = await exportLatexFromEngine({ allowConvertFallback: false })
       latexValue = typeof exported === 'string' ? exported : ''
     }
 
@@ -6303,6 +6304,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               applicationKey: appKey,
               hmacKey,
             },
+            convert: {
+              'convert-on-double-tap': false,
+            },
             recognition: {
               type: 'MATH',
               gesture: {
@@ -6392,10 +6396,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               ;(async () => {
                 let latexValue = getLatexFromEngineModel()
                 if (recognitionEngineRef.current === 'mathpix') {
-                  const exported = await exportLatexFromEngine()
+                  const exported = await exportLatexFromEngine({ allowConvertFallback: false })
                   latexValue = typeof exported === 'string' ? exported : ''
                 } else if (!latexValue || latexValue.trim().length === 0) {
-                  const exported = await exportLatexFromEngine()
+                  const exported = await exportLatexFromEngine({ allowConvertFallback: false })
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
@@ -6427,10 +6431,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               ;(async () => {
                 let latexValue = getLatexFromEngineModel()
                 if (recognitionEngineRef.current === 'mathpix') {
-                  const exported = await exportLatexFromEngine()
+                  const exported = await exportLatexFromEngine({ allowConvertFallback: false })
                   latexValue = typeof exported === 'string' ? exported : ''
                 } else if (!latexValue || latexValue.trim().length === 0) {
-                  const exported = await exportLatexFromEngine()
+                  const exported = await exportLatexFromEngine({ allowConvertFallback: false })
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return
@@ -6453,7 +6457,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               ;(async () => {
                 let latexValue = getLatexFromEngineModel()
                 if (!latexValue || latexValue.trim().length === 0) {
-                  const exported = await exportLatexFromEngine()
+                  const exported = await exportLatexFromEngine({ allowConvertFallback: false })
                   latexValue = typeof exported === 'string' ? exported : ''
                 }
                 if (cancelled) return

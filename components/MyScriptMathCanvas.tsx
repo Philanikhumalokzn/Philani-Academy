@@ -8606,6 +8606,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [useStackedStudentLayout])
 
   useEffect(() => {
+    return () => {
+      stopStackedInteractionMotionMonitor()
+    }
+  }, [stopStackedInteractionMotionMonitor])
+
+  useEffect(() => {
+    return () => {
+      if (stackedZoomHudFadeTimeoutRef.current) {
+        clearTimeout(stackedZoomHudFadeTimeoutRef.current)
+        stackedZoomHudFadeTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!useStackedStudentLayout) return
+    requestEditorResize()
+  }, [requestEditorResize, stackedEffectiveZoom, useStackedStudentLayout])
+
+  const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
+    const contentEl = stackedZoomContentRef.current
+    if (!contentEl) return
+    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
+    contentEl.style.zoom = String(scale)
+    contentEl.style.transform = ''
+    contentEl.style.willChange = stackedPinchActiveRef.current ? 'transform' : ''
+  }, [])
+
+  // Mobile stacked mode: provide extra horizontal writing room by making the ink surface wider than
+  // the viewport so users can scroll sideways for long expressions.
+  const inkSurfaceWidthFactor = useMemo(() => {
+    if (!useStackedStudentLayout) return 1
+    if (!isCompactViewport) return 1
+    // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
+    // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
+    return 12
+  }, [isCompactViewport, useStackedStudentLayout])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     if (!useStackedStudentLayout) {
       stackedInitialViewportCenterAppliedRef.current = false
@@ -8649,45 +8688,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
     }
   }, [inkSurfaceWidthFactor, stackedEffectiveZoom, stackedSurfaceBaseSize.height, stackedSurfaceBaseSize.width, useStackedStudentLayout])
-
-  useEffect(() => {
-    return () => {
-      stopStackedInteractionMotionMonitor()
-    }
-  }, [stopStackedInteractionMotionMonitor])
-
-  useEffect(() => {
-    return () => {
-      if (stackedZoomHudFadeTimeoutRef.current) {
-        clearTimeout(stackedZoomHudFadeTimeoutRef.current)
-        stackedZoomHudFadeTimeoutRef.current = null
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!useStackedStudentLayout) return
-    requestEditorResize()
-  }, [requestEditorResize, stackedEffectiveZoom, useStackedStudentLayout])
-
-  const applyStackedLivePinchStyle = useCallback((zoomValue: number) => {
-    const contentEl = stackedZoomContentRef.current
-    if (!contentEl) return
-    const scale = Math.min(Math.max(zoomValue / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
-    contentEl.style.zoom = String(scale)
-    contentEl.style.transform = ''
-    contentEl.style.willChange = stackedPinchActiveRef.current ? 'transform' : ''
-  }, [])
-
-  // Mobile stacked mode: provide extra horizontal writing room by making the ink surface wider than
-  // the viewport so users can scroll sideways for long expressions.
-  const inkSurfaceWidthFactor = useMemo(() => {
-    if (!useStackedStudentLayout) return 1
-    if (!isCompactViewport) return 1
-    // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
-    // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
-    return 12
-  }, [isCompactViewport, useStackedStudentLayout])
 
   const [horizontalPanMax, setHorizontalPanMax] = useState(0)
   const [horizontalPanValue, setHorizontalPanValue] = useState(0)

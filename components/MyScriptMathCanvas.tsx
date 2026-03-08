@@ -8480,7 +8480,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const stackedMinZoom = Math.max(0.5, stackedRenderZoomRef.current)
   const stackedEffectiveZoom = Math.min(Math.max(stackedZoom, stackedMinZoom), 220)
   const stackedLiveScale = Math.min(Math.max(stackedEffectiveZoom / Math.max(1, stackedRenderZoomRef.current), 0.5), 220)
-  const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current + 0.5
+  const stackedIsZoomedForPan = stackedEffectiveZoom > stackedRenderZoomRef.current
 
   const stopStackedInteractionMotionMonitor = useCallback(() => {
     if (typeof window === 'undefined') return

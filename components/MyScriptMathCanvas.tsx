@@ -8734,6 +8734,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const hasWriteAccess = hasBoardWriteRights()
   const isViewOnly = !hasWriteAccess
   const isRawInkMode = canvasMode === 'raw-ink'
+  const shouldCollapseStackedView = Boolean(
+    useStackedStudentLayout
+    && isViewOnly
+    && !isRawInkMode
+    && !forceEditableForAssignment
+    && !(isSessionQuizMode && quizActive && !isAdmin)
+  )
   const rawInkModeAvailable = Boolean(useStackedStudentLayout && !quizActive && !isAssignmentView && !(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId))
 
   const isStudentSendContext = (!isAdmin || isAssignmentSolutionAuthoring) && (quizActive || isAssignmentView)
@@ -9319,7 +9326,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     { active: false, pointerId: null, startY: 0, startValue: 1, trackHeight: 1 }
   )
 
-  const canShowSliders = Boolean(useStackedStudentLayout && isCompactViewport)
+  const canShowSliders = Boolean(useStackedStudentLayout && isCompactViewport && !shouldCollapseStackedView)
   const SLIDER_AUTO_HIDE_MS = 2500
   const [slidersVisible, setSlidersVisible] = useState(false)
   const sliderHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -12403,7 +12410,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             {!isRawInkMode && (
             <div
               className="flex flex-col"
-              style={{ flex: Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
+              style={{ flex: shouldCollapseStackedView ? 1 : Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
             >
               {!isOverlayMode && !isCompactViewport && canPersistLatex && (
                 <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
@@ -12773,7 +12780,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
             </div>
             )}
-            {!isRawInkMode && (
+            {!isRawInkMode && !shouldCollapseStackedView && (
             <div
               role="separator"
               aria-orientation="horizontal"
@@ -12803,7 +12810,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               <div className="w-10 h-1.5 bg-slate-400 rounded-full" />
             </div>
             )}
-            <div className="px-4 pb-3 flex flex-col min-h-0" style={{ flex: isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2), minHeight: '220px' }}>
+            <div
+              className="px-4 pb-3 flex flex-col min-h-0"
+              style={{
+                display: shouldCollapseStackedView && !isRawInkMode ? 'none' : undefined,
+                flex: isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2),
+                minHeight: '220px',
+              }}
+            >
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
                 {!isRawInkMode && canPersistLatex ? (
                   (() => {
@@ -13570,8 +13584,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <div
                         style={{
                           backgroundColor: '#ffffff',
-                          backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)',
-                          backgroundSize: '24px 24px',
                           width: `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
                           height: `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
                         }}
@@ -13620,7 +13632,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>
                 )}
-                {useStackedStudentLayout && stackedZoomHudMounted && (
+                {useStackedStudentLayout && !shouldCollapseStackedView && stackedZoomHudMounted && (
                   <div
                     className={`absolute left-3 bottom-3 z-20 pointer-events-none rounded-full border border-slate-200/80 bg-white/88 px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-slate-700 shadow-sm backdrop-blur-sm transition-opacity duration-700 ease-out ${stackedZoomHudActive ? 'opacity-100' : 'opacity-0'}`}
                     style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${showBottomHorizontalScrollbar ? (viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8) : 12}px)` }}
@@ -13629,7 +13641,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {`${Math.round(stackedEffectiveZoom * 100)}%`}
                   </div>
                 )}
-                {useStackedStudentLayout && canUseScrollDebugPanel && (
+                {useStackedStudentLayout && !shouldCollapseStackedView && canUseScrollDebugPanel && (
                   <div
                     className="absolute right-3 bottom-3 z-20 pointer-events-none rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 font-mono text-[10px] leading-4 text-slate-700 shadow-sm backdrop-blur-sm"
                     style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${showBottomHorizontalScrollbar ? (viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8) : 12}px)` }}
@@ -13687,7 +13699,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         )}

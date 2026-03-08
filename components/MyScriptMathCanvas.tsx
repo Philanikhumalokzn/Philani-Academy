@@ -995,6 +995,18 @@ const getBroadcastDebounce = () => {
   return DEFAULT_BROADCAST_DEBOUNCE_MS
 }
 
+const getEnvToggle = (value: string | undefined, defaultValue = true) => {
+  if (typeof value !== 'string') return defaultValue
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return defaultValue
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') return true
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false
+  return defaultValue
+}
+
+const ENABLE_RECOGNITION_DEBUG_PANEL = getEnvToggle(process.env.NEXT_PUBLIC_CANVAS_RECOGNITION_DEBUG_PANEL, true)
+const ENABLE_SCROLL_DEBUG_PANEL = getEnvToggle(process.env.NEXT_PUBLIC_CANVAS_SCROLL_DEBUG_PANEL, true)
+
 const countSymbols = (source: any): number => {
   if (!source) return 0
   if (Array.isArray(source)) return source.length
@@ -1139,7 +1151,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const [myscriptLastProbeAt, setMyScriptLastProbeAt] = useState<number | null>(null)
   const [debugTopPanelSource, setDebugTopPanelSource] = useState<string | null>(null)
   const [debugTopPanelHasMarkup, setDebugTopPanelHasMarkup] = useState(false)
-  const [debugPanelVisible, setDebugPanelVisible] = useState(true)
+  const [debugPanelVisible, setDebugPanelVisible] = useState(ENABLE_RECOGNITION_DEBUG_PANEL)
   const probeMyScriptRecognitionStateRef = useRef<() => Promise<void>>(async () => {})
   const scheduleMyScriptProbeRef = useRef<() => void>(() => {})
   const myscriptProbeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1157,6 +1169,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (!ENABLE_RECOGNITION_DEBUG_PANEL) {
+      setDebugPanelVisible(false)
+      return
+    }
     try {
       const saved = window.localStorage.getItem(DEBUG_PANEL_STORAGE_KEY)
       if (saved === '1') {
@@ -1169,6 +1185,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (!ENABLE_RECOGNITION_DEBUG_PANEL) return
     try {
       window.localStorage.setItem(DEBUG_PANEL_STORAGE_KEY, debugPanelVisible ? '1' : '0')
     } catch {}
@@ -1387,7 +1404,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
-  const canUseDebugPanel = true
+  const canUseDebugPanel = ENABLE_RECOGNITION_DEBUG_PANEL
+  const canUseScrollDebugPanel = ENABLE_SCROLL_DEBUG_PANEL
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -13607,7 +13625,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     {`${Math.round(stackedEffectiveZoom * 100)}%`}
                   </div>
                 )}
-                {useStackedStudentLayout && (
+                {useStackedStudentLayout && canUseScrollDebugPanel && (
                   <div
                     className="absolute right-3 bottom-3 z-20 pointer-events-none rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 font-mono text-[10px] leading-4 text-slate-700 shadow-sm backdrop-blur-sm"
                     style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${showBottomHorizontalScrollbar ? (viewportBottomOffsetPx + STACKED_BOTTOM_OVERLAY_RESERVE_PX + 8) : 12}px)` }}

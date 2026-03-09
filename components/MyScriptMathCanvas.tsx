@@ -1014,8 +1014,8 @@ const countSymbols = (source: any): number => {
   return 0
 }
 
-const getSnapshotMode = (snapshot: SnapshotPayload | null | undefined): CanvasMode => {
-  return snapshot?.mode === 'raw-ink' ? 'raw-ink' : 'math'
+const getSnapshotMode = (_snapshot: SnapshotPayload | null | undefined): CanvasMode => {
+  return 'math'
 }
 
 const cloneRawInkStrokes = (strokes: RawInkStroke[] | null | undefined): RawInkStroke[] => {
@@ -2168,8 +2168,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const binLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const binLongPressTriggeredRef = useRef(false)
 
-  const diagramLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const diagramLongPressTriggeredRef = useRef(false)
   const diagramIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const diagramIconLastTapRef = useRef<number | null>(null)
 
@@ -8549,7 +8547,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     }
   }
 
-  const applyCanvasModeForCurrentPage = useCallback(async (nextMode: CanvasMode) => {
+  const applyCanvasModeForCurrentPage = useCallback(async (_nextMode: CanvasMode) => {
     const currentPage = pageIndexRef.current
     const currentSnapshot = captureFullSnapshot()
     cacheModeSnapshotForPage(currentPage, currentSnapshot && !isSnapshotEmpty(currentSnapshot) ? currentSnapshot : null)
@@ -8558,19 +8556,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setTopPanelEditingMode(false)
     clearTopPanelSelection()
 
+    const nextMode: CanvasMode = 'math'
     const cached = getCachedModeSnapshotForPage(currentPage, nextMode)
-    const targetSnapshot = cached || (nextMode === 'raw-ink'
-      ? makeRawInkSnapshot([], localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-mode`)
-      : {
-          mode: 'math',
-          symbols: null,
-          rawInk: null,
-          latex: '',
-          jiix: null,
-          version: localVersionRef.current,
-          snapshotId: `${clientIdRef.current}-${Date.now()}-math-mode`,
-          baseSymbolCount: -1,
-        })
+    const targetSnapshot = cached || {
+      mode: 'math',
+      symbols: null,
+      rawInk: null,
+      latex: '',
+      jiix: null,
+      version: localVersionRef.current,
+      snapshotId: `${clientIdRef.current}-${Date.now()}-math-mode`,
+      baseSymbolCount: -1,
+    }
 
     await applyPageSnapshot(targetSnapshot)
     latestSnapshotRef.current = { snapshot: cloneSnapshotPayload(targetSnapshot)!, ts: Date.now(), reason: 'update' }
@@ -8733,7 +8730,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const hasWriteAccess = hasBoardWriteRights()
   const isViewOnly = !hasWriteAccess
-  const isRawInkMode = canvasMode === 'raw-ink'
+  const isRawInkMode = false
   const shouldCollapseStackedView = Boolean(
     useStackedStudentLayout
     && !isAdmin
@@ -8742,16 +8739,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     && !forceEditableForAssignment
     && !(isSessionQuizMode && quizActive && !isAdmin)
   )
-  const rawInkModeAvailable = Boolean(useStackedStudentLayout && !quizActive && !isAssignmentView && !(lessonAuthoring?.phaseKey && lessonAuthoring?.pointId))
-
   const isStudentSendContext = (!isAdmin || isAssignmentSolutionAuthoring) && (quizActive || isAssignmentView)
   const canUseAdminSend = isAdmin || hasWriteAccess
 
   useEffect(() => {
-    if (rawInkModeAvailable) return
     if (canvasMode !== 'raw-ink') return
     setCanvasMode('math')
-  }, [canvasMode, rawInkModeAvailable])
+  }, [canvasMode])
 
   useEffect(() => {
     if (isViewOnly) {
@@ -13160,12 +13154,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       <button
                         type="button"
                         className="px-2 py-1"
-                        title={isRawInkMode ? 'Diagrams / Raw Ink' : 'Diagrams'}
+                        title="Diagrams"
                         onClick={() => {
-                          if (diagramLongPressTriggeredRef.current) {
-                            diagramLongPressTriggeredRef.current = false
-                            return
-                          }
                           const now = Date.now()
                           const lastTap = diagramIconLastTapRef.current
 
@@ -13174,9 +13164,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             diagramIconTapTimeoutRef.current = null
                           }
 
-                          if (rawInkModeAvailable && lastTap && (now - lastTap) < 320) {
+                          if (lastTap && (now - lastTap) < 320) {
                             diagramIconLastTapRef.current = null
-                            void applyCanvasModeForCurrentPage(isRawInkMode ? 'math' : 'raw-ink')
+                            try {
+                              window.dispatchEvent(new CustomEvent('philani-diagrams:open-grid'))
+                            } catch {}
                             return
                           }
 
@@ -13187,41 +13179,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             toggleMobileDiagramTray()
                             openPickerOrApplySingle('diagram')
                           }, 260)
-                        }}
-                        onPointerDown={(e) => {
-                          if (!hasWriteAccess) return
-                          diagramLongPressTriggeredRef.current = false
-                          if (diagramLongPressTimeoutRef.current) {
-                            clearTimeout(diagramLongPressTimeoutRef.current)
-                            diagramLongPressTimeoutRef.current = null
-                          }
-                          diagramLongPressTimeoutRef.current = setTimeout(() => {
-                            diagramLongPressTimeoutRef.current = null
-                            diagramLongPressTriggeredRef.current = true
-                            diagramIconLastTapRef.current = null
-                            if (diagramIconTapTimeoutRef.current) {
-                              clearTimeout(diagramIconTapTimeoutRef.current)
-                              diagramIconTapTimeoutRef.current = null
-                            }
-                            try {
-                              window.dispatchEvent(new CustomEvent('philani-diagrams:open-grid'))
-                            } catch {}
-                          }, 520)
-                          try {
-                            e.currentTarget.setPointerCapture(e.pointerId)
-                          } catch {}
-                        }}
-                        onPointerUp={() => {
-                          if (diagramLongPressTimeoutRef.current) {
-                            clearTimeout(diagramLongPressTimeoutRef.current)
-                            diagramLongPressTimeoutRef.current = null
-                          }
-                        }}
-                        onPointerCancel={() => {
-                          if (diagramLongPressTimeoutRef.current) {
-                            clearTimeout(diagramLongPressTimeoutRef.current)
-                            diagramLongPressTimeoutRef.current = null
-                          }
                         }}
                         disabled={Boolean(fatalError)}
                       >
@@ -13610,30 +13567,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           className={editorHostClass}
                           style={{ ...editorHostStyle, height: '100%' }}
                           data-orientation={canvasOrientation}
-                        >
-                          {isRawInkMode && (
-                            <svg
-                              className="absolute inset-0 w-full h-full"
-                              viewBox={`0 0 ${RAW_INK_VIEWBOX_SIZE} ${RAW_INK_VIEWBOX_SIZE}`}
-                              preserveAspectRatio="none"
-                              aria-label="Raw ink canvas"
-                              style={{ pointerEvents: 'none', zIndex: 1 }}
-                            >
-                              {[...rawInkStrokes, ...rawInkActivePreview].map((stroke) => (
-                                <polyline
-                                  key={stroke.id}
-                                  points={rawInkStrokeToSvgPoints(stroke)}
-                                  fill="none"
-                                  stroke={stroke.color}
-                                  strokeWidth={Math.max(1, stroke.width * 10)}
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  vectorEffect="non-scaling-stroke"
-                                />
-                              ))}
-                            </svg>
-                          )}
-                        </div>
+                        />
                       </div>
                     </div>
                   </div>

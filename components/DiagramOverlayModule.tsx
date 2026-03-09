@@ -2588,6 +2588,9 @@ export default function DiagramOverlayModule(props: {
   }, [getLiveGridSceneState, isAdmin, localOnly, upsertSceneSnapshotLocal])
 
   const loadAutoResumeGridSceneSnapshot = useCallback(async (diagramId: string) => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return false
+
     const snapshots = await loadGridSceneSnapshots(diagramId)
     const autoResumeSnapshot = snapshots.find((snapshot) => snapshot.name === AUTO_RESUME_SCENE_NAME)
     if (!autoResumeSnapshot?.scene) return false
@@ -2801,11 +2804,16 @@ export default function DiagramOverlayModule(props: {
 
   useEffect(() => {
     if (!diagramState.isOpen || !isGridDiagram || !activeDiagram?.id) return
+    if (gridApiReadyVersion <= 0) return
     const loadKey = `${activeDiagram.id}:open`
     if (autoResumeLoadKeyRef.current === loadKey) return
-    autoResumeLoadKeyRef.current = loadKey
-    void loadAutoResumeGridSceneSnapshot(activeDiagram.id)
-  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram, loadAutoResumeGridSceneSnapshot])
+    void (async () => {
+      const loaded = await loadAutoResumeGridSceneSnapshot(activeDiagram.id)
+      if (loaded) {
+        autoResumeLoadKeyRef.current = loadKey
+      }
+    })()
+  }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, loadAutoResumeGridSceneSnapshot])
 
   useEffect(() => {
     if (diagramState.isOpen) return

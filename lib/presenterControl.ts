@@ -4,7 +4,6 @@ export type PresenterPresenceClient = {
   clientId: string
   name?: string
   userId?: string
-  isAdmin?: boolean
   platformRole?: PlatformRole
   technicalUserType?: TechnicalUserType
   canOrchestrateLesson?: boolean

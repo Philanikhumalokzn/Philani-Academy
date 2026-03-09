@@ -1821,17 +1821,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     connectedClientsRef.current = connectedClients
   }, [connectedClients])
 
-  // Controller rights allowlist: any clientId in this set is treated as a controller (edit + publish)
-  // without requiring them to be assigned as the exclusive controller.
-  // Admin UI wiring for toggling this comes later.
-  const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
-  // User-key allowlist (preferred): robust across reconnects / multiple clientIds per person.
-  // Keys are `uid:<userId>` when available, else `name:<normalized-lowercase-name>`.
-  const controllerRightsUserAllowlistRef = useRef<Set<string>>(new Set())
-  const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
+  const [presenterStateVersion, setPresenterStateVersion] = useState(0)
 
-  const bumpControllerRightsVersion = useCallback(() => {
-    setControllerRightsVersion(v => v + 1)
+  const bumpPresenterStateVersion = useCallback(() => {
+    setPresenterStateVersion(v => v + 1)
   }, [])
 
   const normalizeName = useCallback((value: string) => normalizeDisplayName(value), [])
@@ -1954,7 +1947,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const handoffInFlightRef = useRef(false)
   const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
   const lastPresenterSetTsRef = useRef(0)
-  const lastControllerRightsTsRef = useRef(0)
   const rightsGrantedAtByUserKeyRef = useRef<Map<string, number>>(new Map())
   const recentBroadcastTsByUserKeyRef = useRef<Map<string, number>>(new Map())
   const editingAuthorityUserKeysRef = useRef<Set<string>>(new Set())
@@ -2020,7 +2012,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     activePresenterClientIds: activePresenterClientIdsRef.current,
     connectedClients,
     fallbackInitial: 'P',
-  }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
+  }), [activePresenterUserKey, connectedClients, presenterStateVersion])
 
   const activePresenterBadge = useMemo(() => {
     if (canOrchestrateLesson && isSelfActivePresenter()) return null
@@ -2118,7 +2110,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
     activePresenterClientIds: activePresenterClientIdsRef.current,
     excludedClientIds: ['all', ALL_STUDENTS_ID],
-  }), [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
+  }), [activePresenterUserKey, connectedClients, presenterStateVersion, userId])
 
   const rosterAvatarLayout = useMemo(() => buildRosterAvatarLayout({
     activePresenterBadge,
@@ -3065,7 +3057,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     updateControlState(controlStateRef.current)
   }, [clientId, updateControlState])
 
-  const setControllerRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
+  const setPresenterForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
     if (!canOrchestrateLesson) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
     const userKey = typeof opts?.userKey === 'string' ? opts?.userKey : ''
@@ -3082,7 +3074,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         setActivePresenterUserKey(presenterKey)
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
-        bumpControllerRightsVersion()
+        bumpPresenterStateVersion()
 
         // Recompute permissions now that presenter changed.
         updateControlState(controlStateRef.current)
@@ -3109,7 +3101,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           setActivePresenterUserKey(null)
           activePresenterUserKeyRef.current = ''
           activePresenterClientIdsRef.current = new Set()
-          bumpControllerRightsVersion()
+          bumpPresenterStateVersion()
           updateControlState(controlStateRef.current)
           await channel.publish('control', {
             clientId: clientIdRef.current,
@@ -3124,7 +3116,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } catch (err) {
       console.warn('Failed to update presenter handoff', err)
     }
-  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, updateControlState, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, updateControlState, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
     if (!canOrchestrateLesson) return false
@@ -3134,9 +3126,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (teacherPresenterKey) {
       recordRightsGrant(teacherPresenterKey, Date.now())
     }
-    controllerRightsUserAllowlistRef.current.clear()
-    controllerRightsAllowlistRef.current.clear()
-    bumpControllerRightsVersion()
+    bumpPresenterStateVersion()
 
     // Reclaim means the teacher becomes the exclusive snapshot publisher.
     // This guarantees we never end up with two concurrent publishers even if a client misses revoke messages.
@@ -3174,23 +3164,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ts: ts + 1,
       } satisfies PresenterSetMessage)
 
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights-reset',
-        ts: ts + 2,
-      })
       return true
     } catch (err) {
       console.warn('Failed to reclaim admin control', err)
       return false
     }
-  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, updateControlState, userDisplayName])
 
-  // Semantic alias: presenter == controller-rights.
-  const setPresenterRightsForClients = setControllerRightsForClients
-
-  const setControllerRightsForClient = useCallback(async (targetClientId: string, allowed: boolean) => {
+  const setPresenterForClient = useCallback(async (targetClientId: string, allowed: boolean) => {
     const resolved = connectedClientsRef.current.find(c => c.clientId === targetClientId)
     const resolvedUserId = typeof (resolved as any)?.userId === 'string' ? String((resolved as any)?.userId) : undefined
     const resolvedName = normalizeName((resolved as any)?.name || '') || String(targetClientId)
@@ -3205,7 +3186,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       excludedClientIds: ['all', ALL_STUDENTS_ID],
     })
 
-    await setControllerRightsForClients(
+    await setPresenterForClients(
       resolvedSelection.nextClientIds.length ? resolvedSelection.nextClientIds : [targetClientId],
       allowed,
       {
@@ -3213,10 +3194,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         name: resolvedSelection.resolvedDisplayName || resolvedName,
       }
     )
-  }, [setControllerRightsForClients])
-
-  // Semantic alias: presenter == controller-rights.
-  const setPresenterRightsForClient = setControllerRightsForClient
+  }, [setPresenterForClients])
 
   const autoSaveCurrentQuestionAsNotesRef = useRef<null | ((options?: { requireEmptyBottom?: boolean }) => Promise<NotesSaveRecord | null>)>(null)
   const pendingPresenterContinuitySaveRef = useRef<NotesSaveRecord | null>(null)
@@ -3312,23 +3290,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         const previousPresenterKey = activePresenterUserKeyRef.current || null
         const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
-        const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
-        const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
 
         const nextPresenterKey = resolvedPresenterKey
-        const nextPresenterName = resolvedSelection.resolvedDisplayName || displayName
         recordRightsGrant(nextPresenterKey, Date.now())
-        controllerRightsUserAllowlistRef.current.clear()
-        controllerRightsAllowlistRef.current.clear()
-        if (nextPresenterKey) controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
-        for (const id of nextClientIds) {
-          if (!id || id === 'all' || id === ALL_STUDENTS_ID) continue
-          controllerRightsAllowlistRef.current.add(id)
-        }
         setActivePresenterUserKey(nextPresenterKey)
         activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
         activePresenterClientIdsRef.current = new Set(nextClientIds)
-        bumpControllerRightsVersion()
+        bumpPresenterStateVersion()
         updateControlState(controlStateRef.current)
 
         pendingPublishQueueRef.current = []
@@ -3342,9 +3310,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           setActivePresenterUserKey(previousPresenterKey)
           activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
           activePresenterClientIdsRef.current = previousPresenterClientIds
-          controllerRightsUserAllowlistRef.current = previousUserAllowlist
-          controllerRightsAllowlistRef.current = previousClientAllowlist
-          bumpControllerRightsVersion()
+          bumpPresenterStateVersion()
           updateControlState(controlStateRef.current)
           showHandoffFailure('Switch failed. Realtime channel unavailable.')
           setHandoffSwitching(false)
@@ -3377,32 +3343,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             targetClientId: nextClientIds[0],
             ts: ts + 1,
           } satisfies PresenterSetMessage)
-
-          await channel.publish('control', {
-            clientId: clientIdRef.current,
-            author: userDisplayName,
-            action: 'controller-rights-reset',
-            ts: ts + 2,
-          })
-
-          await channel.publish('control', {
-            clientId: clientIdRef.current,
-            author: userDisplayName,
-            action: 'controller-rights',
-            targetUserKey: nextPresenterKey,
-            name: nextPresenterName || null,
-            targetClientIds: nextClientIds,
-            targetClientId: nextClientIds[0],
-            allowed: true,
-              ts: ts + 3,
-          })
         } catch (err) {
           setActivePresenterUserKey(previousPresenterKey)
           activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
           activePresenterClientIdsRef.current = previousPresenterClientIds
-          controllerRightsUserAllowlistRef.current = previousUserAllowlist
-          controllerRightsAllowlistRef.current = previousClientAllowlist
-          bumpControllerRightsVersion()
+          bumpPresenterStateVersion()
           updateControlState(controlStateRef.current)
           showHandoffFailure('Switch failed. Please try again.')
           console.warn('Failed to hand over presentation', err)
@@ -3417,7 +3362,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
       })()
     },
-    [boardId, bumpControllerRightsVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
+    [boardId, bumpPresenterStateVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
   )
 
   const handleRosterAttendeeAvatarClick = useCallback(
@@ -3484,17 +3429,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const targetClientIds = Array.from(new Set((identity?.clientIds || []).filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
       if (!targetClientIds.length) return
 
-      controllerRightsUserAllowlistRef.current.clear()
-      controllerRightsAllowlistRef.current.clear()
-      controllerRightsUserAllowlistRef.current.add(userKey)
-      for (const id of targetClientIds) {
-        controllerRightsAllowlistRef.current.add(id)
-      }
-
       setActivePresenterUserKey(userKey)
       activePresenterUserKeyRef.current = userKey
       activePresenterClientIdsRef.current = new Set(targetClientIds)
-      bumpControllerRightsVersion()
+      bumpPresenterStateVersion()
       updateControlState(controlStateRef.current)
       recordRightsGrant(userKey, now)
 
@@ -3509,31 +3447,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         targetClientId: targetClientIds[0],
         ts: now,
       } satisfies PresenterSetMessage)
-
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights-reset',
-        ts: now + 1,
-      })
-
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights',
-        targetUserKey: userKey,
-        targetClientIds,
-        targetClientId: targetClientIds[0],
-        name: identity?.name || null,
-        allowed: true,
-        ts: now + 2,
-      })
     } catch (err) {
       console.warn('Failed to enforce canonical presenter', err)
     } finally {
       conflictResolverInFlightRef.current = false
     }
-  }, [bumpControllerRightsVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
 
   const evaluateSwitchingAuthority = useCallback(() => {
     if (!canOrchestrateLesson || forceEditableForAssignment || (isSessionQuizMode && quizActiveRef.current)) {
@@ -3547,36 +3466,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return
     }
 
-    const BROADCAST_SIGNAL_WINDOW_MS = 12000
     const FAILURE_TIMEOUT_MS = 60000
     const now = Date.now()
 
-    const control = controlStateRef.current
     const evaluation = evaluateSwitchingAuthorities({
       connectedClients: connectedClientsRef.current,
       excludedClientIds: ['all', ALL_STUDENTS_ID],
       activePresenterUserKey: activePresenterUserKeyRef.current,
       activePresenterClientIds: activePresenterClientIdsRef.current,
-      controllerRightsUserAllowlist: controllerRightsUserAllowlistRef.current,
-      controllerRightsClientAllowlist: controllerRightsAllowlistRef.current,
-      rightsGrantedAtByUserKey: rightsGrantedAtByUserKeyRef.current,
-      recentBroadcastTsByUserKey: recentBroadcastTsByUserKeyRef.current,
       lastPresenterSetTs: lastPresenterSetTsRef.current,
-      lastControllerRightsTs: lastControllerRightsTsRef.current,
-      controlLock: control && control.controllerId && control.controllerId !== ALL_STUDENTS_ID
-        ? { controllerId: control.controllerId, controllerName: control.controllerName, ts: control.ts }
-        : null,
-      selfCanWrite: hasBoardWriteRights(),
-      selfUserKey,
-      selfClientId: clientIdRef.current || undefined,
-      selfDisplayName: normalizeDisplayName(userDisplayName || '') || 'Teacher',
       nowTs: now,
-      broadcastSignalWindowMs: BROADCAST_SIGNAL_WINDOW_MS,
     })
-
-    for (const key of evaluation.staleBroadcastUserKeys) {
-      recentBroadcastTsByUserKeyRef.current.delete(key)
-    }
 
     const activeCandidates = evaluation.activeCandidates as EditingAuthorityCandidate[]
     const activeUserKeys = evaluation.activeUserKeys
@@ -3678,17 +3578,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     broadcastHighlightedController,
     enforceCanonicalPresenter,
     forceEditableForAssignment,
-    hasBoardWriteRights,
     canOrchestrateLesson,
     isSessionQuizMode,
     reclaimAdminControl,
     resolveIdentityForUserKey,
-    resolveUserForClientId,
-    selfUserKey,
     setEditingAuthorityKeysStable,
     setSwitchConflictActiveStable,
     showHandoffFailure,
-    userDisplayName,
   ])
 
   useEffect(() => {
@@ -7100,7 +6996,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             controllerId?: string
             controllerName?: string
             ts?: number
-            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'stacked-notes' | 'quiz' | 'controller-eligibility' | 'controller-rights' | 'controller-rights-reset' | 'controller-highlight' | 'presenter-set' | 'shared-page' | 'presenter-continuity-load'
+            action?: 'wipe' | 'convert' | 'force-resync' | 'latex-display' | 'stacked-notes' | 'quiz' | 'controller-highlight' | 'presenter-set' | 'shared-page' | 'presenter-continuity-load'
             targetClientId?: string
             targetClientIds?: string[]
             snapshot?: SnapshotPayload | null
@@ -7150,11 +7046,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
             // If the presenter was cleared (admin reclaim), ensure nobody flushes queued publishes.
             if (!nextKey) {
-              controllerRightsUserAllowlistRef.current.clear()
-              controllerRightsAllowlistRef.current.clear()
-              bumpControllerRightsVersion()
-              // Treat presenter clear as authoritative over any older rights grants.
-              lastControllerRightsTsRef.current = Math.max(lastControllerRightsTsRef.current, incomingTs)
+              bumpPresenterStateVersion()
               pendingPublishQueueRef.current = []
             }
 
@@ -7518,62 +7410,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             return
           }
           const controlAction = typeof (data as any)?.action === 'string' ? (data as any).action : ''
-          if (controlAction === 'controller-rights-reset') {
-            const incomingTs = typeof (data as any)?.ts === 'number' ? Number((data as any).ts) : Date.now()
-            if (incomingTs < lastControllerRightsTsRef.current) {
-              return
-            }
-            lastControllerRightsTsRef.current = incomingTs
-            controllerRightsUserAllowlistRef.current.clear()
-            controllerRightsAllowlistRef.current.clear()
-            bumpControllerRightsVersion()
-            pendingPublishQueueRef.current = []
-            // Re-apply normalization and permission refs.
-            updateControlState(controlStateRef.current)
-            return
-          }
-          if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
-            const incomingTs = typeof (data as any)?.ts === 'number' ? Number((data as any).ts) : Date.now()
-            if (incomingTs < lastControllerRightsTsRef.current) {
-              return
-            }
-            lastControllerRightsTsRef.current = incomingTs
-            const targets: string[] = Array.isArray((data as any).targetClientIds)
-              ? (data as any).targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
-              : []
-            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
-            const dedupedTargets: string[] = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
-            const allowed = Boolean((data as any).allowed)
-
-            const targetUserKey = typeof (data as any).targetUserKey === 'string' ? String((data as any).targetUserKey) : ''
-            const name = typeof (data as any).name === 'string' ? String((data as any).name).trim() : ''
-
-            if (targetUserKey) {
-              if (allowed) {
-                recordRightsGrant(targetUserKey, incomingTs)
-                controllerRightsUserAllowlistRef.current.add(targetUserKey)
-              } else {
-                controllerRightsUserAllowlistRef.current.delete(targetUserKey)
-              }
-            }
-
-            if (dedupedTargets.length) {
-              for (const target of dedupedTargets) {
-                if (!target) continue
-                if (allowed) {
-                  controllerRightsAllowlistRef.current.add(target)
-                } else {
-                  controllerRightsAllowlistRef.current.delete(target)
-                }
-              }
-            }
-
-            if (!targetUserKey && !dedupedTargets.length) return
-            bumpControllerRightsVersion()
-            // Re-apply normalization and permission refs.
-            updateControlState(controlStateRef.current)
-            return
-          }
           if (controlAction === 'controller-highlight') {
             const ts = typeof (data as any)?.ts === 'number' ? (data as any).ts : Date.now()
             const currentTs = highlightedControllerRef.current?.ts ?? 0
@@ -14813,8 +14649,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   const displayName = normalizeName((c as any)?.name || '') || String(c.clientId)
                   const cUserId = typeof (c as any)?.userId === 'string' ? String((c as any).userId) : undefined
                   const userKey = getUserKey(cUserId, displayName) || `name:${normalizeName(displayName).toLowerCase()}`
-                  const allowed = (userKey && controllerRightsUserAllowlistRef.current.has(userKey)) || controllerRightsAllowlistRef.current.has(c.clientId)
-                  return !allowed
+                  const isPresenter = (activePresenterUserKeyRef.current && userKey === activePresenterUserKeyRef.current)
+                    || activePresenterClientIdsRef.current.has(c.clientId)
+                  return !isPresenter
                 })
                 .map(c => (
                   <option key={c.clientId} value={c.clientId}>
@@ -14822,8 +14659,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       const displayName = normalizeName((c as any)?.name || '') || String(c.clientId)
                       const cUserId = typeof (c as any)?.userId === 'string' ? String((c as any).userId) : undefined
                       const userKey = getUserKey(cUserId, displayName) || `name:${normalizeName(displayName).toLowerCase()}`
-                      const allowed = (userKey && controllerRightsUserAllowlistRef.current.has(userKey)) || controllerRightsAllowlistRef.current.has(c.clientId)
-                      return displayName + (controllerRightsVersion >= 0 && allowed ? ' (presenter)' : '')
+                      const isPresenter = (activePresenterUserKeyRef.current && userKey === activePresenterUserKeyRef.current)
+                        || activePresenterClientIdsRef.current.has(c.clientId)
+                      return displayName + (presenterStateVersion >= 0 && isPresenter ? ' (presenter)' : '')
                     })()}
                   </option>
                 ))}
@@ -14837,8 +14675,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 const resolvedName = normalizeName((resolved as any)?.name || '') || String(selectedClientId)
                 const resolvedUserId = typeof (resolved as any)?.userId === 'string' ? String((resolved as any).userId) : undefined
                 const userKey = getUserKey(resolvedUserId, resolvedName) || `name:${normalizeName(resolvedName).toLowerCase()}`
-                const currentlyAllowed = (userKey && controllerRightsUserAllowlistRef.current.has(userKey)) || controllerRightsAllowlistRef.current.has(selectedClientId)
-                void setPresenterRightsForClient(selectedClientId, !currentlyAllowed)
+                const isPresenter = (activePresenterUserKeyRef.current && userKey === activePresenterUserKeyRef.current)
+                  || activePresenterClientIdsRef.current.has(selectedClientId)
+                void setPresenterForClient(selectedClientId, !isPresenter)
               }}
               className="canvas-admin-controls__button"
               disabled={Boolean(fatalError) || status !== 'ready'}
@@ -14848,8 +14687,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 const resolvedName = normalizeName((resolved as any)?.name || '') || String(selectedClientId)
                 const resolvedUserId = typeof (resolved as any)?.userId === 'string' ? String((resolved as any).userId) : undefined
                 const userKey = getUserKey(resolvedUserId, resolvedName) || `name:${normalizeName(resolvedName).toLowerCase()}`
-                const currentlyAllowed = (userKey && controllerRightsUserAllowlistRef.current.has(userKey)) || controllerRightsAllowlistRef.current.has(selectedClientId)
-                return currentlyAllowed ? 'Revoke Presenter Rights' : 'Grant Presenter Rights'
+                const isPresenter = (activePresenterUserKeyRef.current && userKey === activePresenterUserKeyRef.current)
+                  || activePresenterClientIdsRef.current.has(selectedClientId)
+                return isPresenter ? 'Clear Presenter' : 'Make Presenter'
               })()}
             </button>
           )}

@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
-import { createLessonRoleProfile, type LessonRoleProfile } from '../lib/lessonAccessControl'
+import { createLessonRoleProfile, type LessonRoleProfile, type PlatformRole } from '../lib/lessonAccessControl'
 import {
   buildRosterAvatarLayout,
   deriveActivePresenterBadge,
@@ -99,6 +99,8 @@ type PresenceClient = {
   clientId: string
   name: string
   userId?: string
+  platformRole?: PlatformRole
+  technicalUserType?: 'technical' | 'non-technical'
   canOrchestrateLesson?: boolean
 }
 
@@ -385,10 +387,7 @@ export default function DiagramOverlayModule(props: {
   const handoffInFlightRef = useRef(false)
   const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
   const lastPresenterSetTsRef = useRef(0)
-  const lastControllerRightsTsRef = useRef(0)
-  const controllerRightsAllowlistRef = useRef<Set<string>>(new Set())
-  const controllerRightsUserAllowlistRef = useRef<Set<string>>(new Set())
-  const [controllerRightsVersion, setControllerRightsVersion] = useState(0)
+  const [presenterStateVersion, setPresenterStateVersion] = useState(0)
   const [connectedClients, setConnectedClients] = useState<Array<PresenceClient>>([])
   const connectedClientsRef = useRef<Array<PresenceClient>>([])
   useEffect(() => {
@@ -426,8 +425,8 @@ export default function DiagramOverlayModule(props: {
     activePresenterUserKeyRef.current = activePresenterUserKey ? String(activePresenterUserKey) : ''
   }, [activePresenterUserKey])
 
-  const bumpControllerRightsVersion = useCallback(() => {
-    setControllerRightsVersion(v => v + 1)
+  const bumpPresenterStateVersion = useCallback(() => {
+    setPresenterStateVersion(v => v + 1)
   }, [])
 
   const showHandoffFailure = useCallback((message: string) => {
@@ -656,12 +655,12 @@ export default function DiagramOverlayModule(props: {
     [mobileTrayBottomOffsetPx, mobileTrayReservePx]
   )
 
-  const setPresenterRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
+  const setPresenterForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
     if (!canOrchestrateLesson) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all')))
     const userKey = typeof opts?.userKey === 'string' ? opts.userKey : ''
     if (!targets.length && !userKey) return
-    bumpControllerRightsVersion()
+    bumpPresenterStateVersion()
 
     const channel = channelRef.current
     if (!channel) return
@@ -704,19 +703,17 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
     if (!canOrchestrateLesson) return false
-    bumpControllerRightsVersion()
+    bumpPresenterStateVersion()
 
     const teacherPresenterKey = (selfUserKey || '').trim() || null
     const teacherClientId = clientIdRef.current
     if (teacherPresenterKey) {
       recordRightsGrant(teacherPresenterKey, Date.now())
     }
-    controllerRightsUserAllowlistRef.current.clear()
-    controllerRightsAllowlistRef.current.clear()
     setActivePresenterUserKey(teacherPresenterKey)
     activePresenterUserKeyRef.current = teacherPresenterKey ? String(teacherPresenterKey) : ''
     activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
@@ -741,17 +738,11 @@ export default function DiagramOverlayModule(props: {
         targetClientIds: teacherClientId ? [teacherClientId] : [],
         ts: ts + 1,
       })
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights-reset',
-        ts: ts + 2,
-      })
       return true
     } catch {
       return false
     }
-  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, userDisplayName])
 
   const handOverPresentation = useCallback((target: PresenterHandoffTarget) => {
     if (!canOrchestrateLesson) return
@@ -813,30 +804,19 @@ export default function DiagramOverlayModule(props: {
 
       const previousPresenterKey = activePresenterUserKeyRef.current || null
       const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
-      const previousUserAllowlist = new Set(controllerRightsUserAllowlistRef.current)
-      const previousClientAllowlist = new Set(controllerRightsAllowlistRef.current)
       const nextPresenterKey = resolvedPresenterKey
       recordRightsGrant(nextPresenterKey, Date.now())
-      controllerRightsUserAllowlistRef.current.clear()
-      controllerRightsAllowlistRef.current.clear()
-      controllerRightsUserAllowlistRef.current.add(nextPresenterKey)
-      for (const id of nextClientIds) {
-        if (!id || id === 'all') continue
-        controllerRightsAllowlistRef.current.add(id)
-      }
       setActivePresenterUserKey(nextPresenterKey)
       activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
       activePresenterClientIdsRef.current = new Set(nextClientIds)
-      bumpControllerRightsVersion()
+      bumpPresenterStateVersion()
 
       const channel = channelRef.current
       if (!channel) {
         setActivePresenterUserKey(previousPresenterKey)
         activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
         activePresenterClientIdsRef.current = previousPresenterClientIds
-        controllerRightsUserAllowlistRef.current = previousUserAllowlist
-        controllerRightsAllowlistRef.current = previousClientAllowlist
-        bumpControllerRightsVersion()
+        bumpPresenterStateVersion()
         showHandoffFailure('Switch failed. Realtime channel unavailable.')
         setHandoffSwitching(false)
         handoffInFlightRef.current = false
@@ -855,31 +835,11 @@ export default function DiagramOverlayModule(props: {
           ts,
         })
 
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          action: 'controller-rights-reset',
-          ts: ts + 1,
-        })
-
-        await channel.publish('control', {
-          clientId: clientIdRef.current,
-          author: userDisplayName,
-          action: 'controller-rights',
-          targetUserKey: nextPresenterKey,
-          targetClientIds: nextClientIds,
-          targetClientId: nextClientIds[0],
-          name: resolvedSelection.resolvedDisplayName || displayName,
-          allowed: true,
-          ts: ts + 2,
-        })
       } catch {
         setActivePresenterUserKey(previousPresenterKey)
         activePresenterUserKeyRef.current = previousPresenterKey ? String(previousPresenterKey) : ''
         activePresenterClientIdsRef.current = previousPresenterClientIds
-        controllerRightsUserAllowlistRef.current = previousUserAllowlist
-        controllerRightsAllowlistRef.current = previousClientAllowlist
-        bumpControllerRightsVersion()
+        bumpPresenterStateVersion()
         showHandoffFailure('Switch failed. Please try again.')
       } finally {
         setHandoffSwitching(false)
@@ -891,7 +851,7 @@ export default function DiagramOverlayModule(props: {
         }
       }
     })()
-  }, [bumpControllerRightsVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
+  }, [bumpPresenterStateVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
 
   const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
     if (!canOrchestrateLesson) return
@@ -916,17 +876,10 @@ export default function DiagramOverlayModule(props: {
       const targetClientIds = Array.from(new Set((identity?.clientIds || []).filter(id => id && id !== 'all')))
       if (!targetClientIds.length) return
 
-      controllerRightsUserAllowlistRef.current.clear()
-      controllerRightsAllowlistRef.current.clear()
-      controllerRightsUserAllowlistRef.current.add(userKey)
-      for (const id of targetClientIds) {
-        controllerRightsAllowlistRef.current.add(id)
-      }
-
       setActivePresenterUserKey(userKey)
       activePresenterUserKeyRef.current = userKey
       activePresenterClientIdsRef.current = new Set(targetClientIds)
-      bumpControllerRightsVersion()
+      bumpPresenterStateVersion()
       recordRightsGrant(userKey, now)
 
       const channel = channelRef.current
@@ -941,30 +894,12 @@ export default function DiagramOverlayModule(props: {
         ts: now,
       })
 
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights-reset',
-        ts: now + 1,
-      })
-
-      await channel.publish('control', {
-        clientId: clientIdRef.current,
-        author: userDisplayName,
-        action: 'controller-rights',
-        targetUserKey: userKey,
-        targetClientIds,
-        targetClientId: targetClientIds[0],
-        name: identity?.name || null,
-        allowed: true,
-        ts: now + 2,
-      })
     } catch {
       // ignore
     } finally {
       conflictResolverInFlightRef.current = false
     }
-  }, [bumpControllerRightsVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
 
   const evaluateSwitchingAuthority = useCallback(() => {
     if (!canOrchestrateLesson || localOnly) {
@@ -985,24 +920,9 @@ export default function DiagramOverlayModule(props: {
       excludedClientIds: ['all'],
       activePresenterUserKey: activePresenterUserKeyRef.current,
       activePresenterClientIds: activePresenterClientIdsRef.current,
-      controllerRightsUserAllowlist: controllerRightsUserAllowlistRef.current,
-      controllerRightsClientAllowlist: controllerRightsAllowlistRef.current,
-      rightsGrantedAtByUserKey: rightsGrantedAtByUserKeyRef.current,
-      recentBroadcastTsByUserKey: recentBroadcastTsByUserKeyRef.current,
       lastPresenterSetTs: lastPresenterSetTsRef.current,
-      lastControllerRightsTs: lastControllerRightsTsRef.current,
-      controlLock: null,
-      selfCanWrite: canPresentRef.current,
-      selfUserKey,
-      selfClientId: clientIdRef.current || undefined,
-      selfDisplayName: normalizeDisplayName(userDisplayName || '') || 'Teacher',
       nowTs: now,
-      broadcastSignalWindowMs: 12000,
     })
-
-    for (const key of evaluation.staleBroadcastUserKeys) {
-      recentBroadcastTsByUserKeyRef.current.delete(key)
-    }
 
     setEditingAuthorityKeysStable(evaluation.activeUserKeys)
 
@@ -1054,7 +974,7 @@ export default function DiagramOverlayModule(props: {
         conflictResolverInFlightRef.current = false
       }
     })()
-  }, [enforceCanonicalPresenter, canOrchestrateLesson, localOnly, reclaimAdminControl, selfUserKey, setEditingAuthorityKeysStable, setSwitchConflictActiveStable, showHandoffFailure, userDisplayName])
+  }, [enforceCanonicalPresenter, canOrchestrateLesson, localOnly, reclaimAdminControl, setEditingAuthorityKeysStable, setSwitchConflictActiveStable, showHandoffFailure])
 
   useEffect(() => {
     if (!canOrchestrateLesson || localOnly) {
@@ -1102,7 +1022,7 @@ export default function DiagramOverlayModule(props: {
     activePresenterClientIds: activePresenterClientIdsRef.current,
     connectedClients,
     fallbackInitial: 'P',
-  }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
+  }), [activePresenterUserKey, connectedClients, presenterStateVersion])
 
   const activePresenterBadge = useMemo(() => {
     if (canOrchestrateLesson && isSelfActivePresenter()) return null
@@ -1116,7 +1036,7 @@ export default function DiagramOverlayModule(props: {
     activePresenterUserKey: activePresenterUserKey || activePresenterUserKeyRef.current,
     activePresenterClientIds: activePresenterClientIdsRef.current,
     excludedClientIds: ['all'],
-  }), [activePresenterUserKey, connectedClients, controllerRightsVersion, userId])
+  }), [activePresenterUserKey, connectedClients, presenterStateVersion, userId])
 
   const rosterAvatarLayout = useMemo(() => buildRosterAvatarLayout({
     activePresenterBadge,
@@ -1881,7 +1801,7 @@ export default function DiagramOverlayModule(props: {
             setActivePresenterUserKey(teacherPresenterKey)
             activePresenterUserKeyRef.current = String(teacherPresenterKey)
             activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
-            bumpControllerRightsVersion()
+            bumpPresenterStateVersion()
             try {
               await channel.publish('control', {
                 clientId: clientIdRef.current,
@@ -2047,47 +1967,9 @@ export default function DiagramOverlayModule(props: {
             const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
             activePresenterClientIdsRef.current = new Set(dedupedTargets)
             if (!nextKey) {
-              controllerRightsUserAllowlistRef.current.clear()
-              controllerRightsAllowlistRef.current.clear()
-              if (controlTs) lastControllerRightsTsRef.current = Math.max(lastControllerRightsTsRef.current, controlTs)
-              bumpControllerRightsVersion()
+              bumpPresenterStateVersion()
             }
             return
-          }
-
-          if (controlAction === 'controller-rights-reset') {
-            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
-            if (controlTs) lastControllerRightsTsRef.current = controlTs
-            controllerRightsUserAllowlistRef.current.clear()
-            controllerRightsAllowlistRef.current.clear()
-            bumpControllerRightsVersion()
-            return
-          }
-
-          if (controlAction === 'controller-eligibility' || controlAction === 'controller-rights') {
-            if (controlTs && controlTs < lastControllerRightsTsRef.current) return
-            if (controlTs) lastControllerRightsTsRef.current = controlTs
-            const targets: string[] = Array.isArray(data.targetClientIds)
-              ? data.targetClientIds.filter((id: unknown): id is string => typeof id === 'string')
-              : []
-            const fallbackTarget = typeof data.targetClientId === 'string' ? data.targetClientId : ''
-            const dedupedTargets = targets.length ? Array.from(new Set(targets)) : (fallbackTarget ? [fallbackTarget] : [])
-            const allowed = Boolean(data.allowed)
-            const targetUserKey = typeof data.targetUserKey === 'string' ? String(data.targetUserKey) : ''
-
-            if (targetUserKey) {
-              if (allowed) {
-                recordRightsGrant(targetUserKey, controlTs || Date.now())
-                controllerRightsUserAllowlistRef.current.add(targetUserKey)
-              }
-              else controllerRightsUserAllowlistRef.current.delete(targetUserKey)
-            }
-            for (const target of dedupedTargets) {
-              if (!target) continue
-              if (allowed) controllerRightsAllowlistRef.current.add(target)
-              else controllerRightsAllowlistRef.current.delete(target)
-            }
-            if (targetUserKey || dedupedTargets.length) bumpControllerRightsVersion()
           }
         }
 
@@ -2208,7 +2090,7 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [bumpControllerRightsVersion, channelName, canOrchestrateLesson, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
+  }, [bumpPresenterStateVersion, channelName, canOrchestrateLesson, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
 
   useEffect(() => {
     return () => {

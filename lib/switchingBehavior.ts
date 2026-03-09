@@ -4,14 +4,8 @@ export type SwitchingPresenceClient = {
   clientId: string
   name?: string
   userId?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
 }
-
-export type SwitchingControlLock = {
-  controllerId: string
-  controllerName?: string
-  ts?: number
-} | null
 
 export type SwitchingAuthorityCandidate = {
   userKey: string
@@ -27,19 +21,8 @@ export type EvaluateSwitchingAuthoritiesArgs = {
   excludedClientIds?: string[]
   activePresenterUserKey?: string | null
   activePresenterClientIds: Set<string>
-  controllerRightsUserAllowlist: Set<string>
-  controllerRightsClientAllowlist: Set<string>
-  rightsGrantedAtByUserKey: Map<string, number>
-  recentBroadcastTsByUserKey: Map<string, number>
   lastPresenterSetTs: number
-  lastControllerRightsTs: number
-  controlLock?: SwitchingControlLock
-  selfCanWrite: boolean
-  selfUserKey: string
-  selfClientId?: string
-  selfDisplayName?: string
   nowTs?: number
-  broadcastSignalWindowMs?: number
 }
 
 export type EvaluateSwitchingAuthoritiesResult = {
@@ -47,7 +30,6 @@ export type EvaluateSwitchingAuthoritiesResult = {
   activeUserKeys: string[]
   canonicalCandidate: SwitchingAuthorityCandidate | null
   unresolvedReason: string
-  staleBroadcastUserKeys: string[]
 }
 
 const buildResolvers = (clients: SwitchingPresenceClient[], excludedClientIds: string[]) => {
@@ -98,11 +80,6 @@ const buildResolvers = (clients: SwitchingPresenceClient[], excludedClientIds: s
 }
 
 export const evaluateSwitchingAuthorities = (args: EvaluateSwitchingAuthoritiesArgs): EvaluateSwitchingAuthoritiesResult => {
-  const now = Number.isFinite(args.nowTs) ? Number(args.nowTs) : Date.now()
-  const broadcastSignalWindowMs = Number.isFinite(args.broadcastSignalWindowMs)
-    ? Math.max(2000, Number(args.broadcastSignalWindowMs))
-    : 12000
-
   const { resolveUserForClientId, resolveIdentityForUserKey } = buildResolvers(args.connectedClients, args.excludedClientIds || [])
 
   const candidates = new Map<string, SwitchingAuthorityCandidate>()
@@ -139,129 +116,55 @@ export const evaluateSwitchingAuthorities = (args: EvaluateSwitchingAuthoritiesA
   }
 
   const activePresenterKey = String(args.activePresenterUserKey || '').trim()
+  const declaredPresenterClientIds = Array.from(args.activePresenterClientIds).filter(Boolean)
+
   if (activePresenterKey) {
     const identity = resolveIdentityForUserKey(activePresenterKey)
-    const presenterGrant = args.rightsGrantedAtByUserKey.get(activePresenterKey) ?? args.lastPresenterSetTs
-    if (identity?.clientIds?.length) {
-      for (const clientId of identity.clientIds) {
-        addCandidate({
-          userKey: activePresenterKey,
-          name: identity.name,
-          clientId,
-          reason: 'presenter',
-          grantTs: presenterGrant,
-        })
+    const presenterGrantTs = Number.isFinite(args.lastPresenterSetTs) ? Number(args.lastPresenterSetTs) : 0
+    const matchingClientIds = new Set<string>((identity?.clientIds || []).filter(Boolean))
+
+    for (const clientId of declaredPresenterClientIds) {
+      const resolved = resolveUserForClientId(clientId)
+      if (!resolved || resolved.userKey === activePresenterKey) {
+        matchingClientIds.add(clientId)
+        continue
       }
-    } else {
+
+      addCandidate({
+        userKey: resolved.userKey,
+        name: resolved.name,
+        clientId,
+        reason: 'presenter-client-mismatch',
+        grantTs: presenterGrantTs,
+      })
+    }
+
+    addCandidate({
+      userKey: activePresenterKey,
+      name: identity?.name || activePresenterKey,
+      reason: 'presenter',
+      grantTs: presenterGrantTs,
+    })
+    for (const clientId of Array.from(matchingClientIds)) {
       addCandidate({
         userKey: activePresenterKey,
         name: identity?.name || activePresenterKey,
-        reason: 'presenter',
-        grantTs: presenterGrant,
-      })
-    }
-
-    for (const clientId of Array.from(args.activePresenterClientIds)) {
-      const resolved = resolveUserForClientId(clientId)
-      addCandidate({
-        userKey: resolved?.userKey || activePresenterKey,
-        name: resolved?.name || identity?.name || activePresenterKey,
         clientId,
         reason: 'presenter-client',
-        grantTs: presenterGrant,
+        grantTs: presenterGrantTs,
       })
     }
-  }
-
-  for (const userKey of Array.from(args.controllerRightsUserAllowlist)) {
-    const identity = resolveIdentityForUserKey(userKey)
-    const grantTs = args.rightsGrantedAtByUserKey.get(userKey) ?? args.lastControllerRightsTs
-    addCandidate({
-      userKey,
-      name: identity?.name || userKey,
-      reason: 'controller-rights-user',
-      grantTs,
-    })
-    for (const clientId of identity?.clientIds || []) {
+  } else if (declaredPresenterClientIds.length) {
+    for (const clientId of declaredPresenterClientIds) {
+      const resolved = resolveUserForClientId(clientId)
       addCandidate({
-        userKey,
-        name: identity?.name || userKey,
+        userKey: resolved?.userKey || `client:${clientId}`,
+        name: resolved?.name || clientId,
         clientId,
-        reason: 'controller-rights-user-client',
-        grantTs,
+        reason: 'presenter-client-without-user',
+        grantTs: Number.isFinite(args.lastPresenterSetTs) ? Number(args.lastPresenterSetTs) : 0,
       })
     }
-  }
-
-  for (const clientId of Array.from(args.controllerRightsClientAllowlist)) {
-    const resolved = resolveUserForClientId(clientId)
-    if (!resolved) {
-      addCandidate({
-        userKey: `client:${clientId}`,
-        name: clientId,
-        clientId,
-        reason: 'controller-rights-client',
-        grantTs: args.lastControllerRightsTs,
-      })
-      continue
-    }
-    addCandidate({
-      userKey: resolved.userKey,
-      name: resolved.name,
-      clientId,
-      reason: 'controller-rights-client',
-      grantTs: args.rightsGrantedAtByUserKey.get(resolved.userKey) ?? args.lastControllerRightsTs,
-    })
-  }
-
-  const control = args.controlLock
-  if (control && control.controllerId) {
-    const resolved = resolveUserForClientId(control.controllerId)
-    addCandidate({
-      userKey: resolved?.userKey || `client:${control.controllerId}`,
-      name: resolved?.name || control.controllerName || control.controllerId,
-      clientId: control.controllerId,
-      reason: 'control-lock',
-      grantTs: Number(control.ts) || now,
-    })
-  }
-
-  const staleBroadcastUserKeys: string[] = []
-  args.recentBroadcastTsByUserKey.forEach((activityTs, userKey) => {
-    if (!userKey) return
-    if (now - activityTs > broadcastSignalWindowMs) {
-      staleBroadcastUserKeys.push(userKey)
-      return
-    }
-
-    const identity = resolveIdentityForUserKey(userKey)
-    addCandidate({
-      userKey,
-      name: identity?.name || userKey,
-      reason: 'recent-broadcast',
-      broadcastTs: activityTs,
-      grantTs: args.rightsGrantedAtByUserKey.get(userKey) ?? 0,
-    })
-    for (const clientId of identity?.clientIds || []) {
-      addCandidate({
-        userKey,
-        name: identity?.name || userKey,
-        clientId,
-        reason: 'recent-broadcast-client',
-        broadcastTs: activityTs,
-        grantTs: args.rightsGrantedAtByUserKey.get(userKey) ?? 0,
-      })
-    }
-  })
-
-  if (args.selfCanWrite) {
-    addCandidate({
-      userKey: args.selfUserKey,
-      name: normalizeDisplayName(args.selfDisplayName || '') || 'Teacher',
-      clientId: args.selfClientId || undefined,
-      reason: 'self-write-rights',
-      grantTs: args.rightsGrantedAtByUserKey.get(args.selfUserKey) ?? now,
-    })
   }
 
   const activeCandidates = Array.from(candidates.values())
@@ -274,17 +177,21 @@ export const evaluateSwitchingAuthorities = (args: EvaluateSwitchingAuthoritiesA
 
   let canonicalCandidate: SwitchingAuthorityCandidate | null = null
   let unresolvedReason = ''
-  if (activeCandidates.length > 1) {
-    if (!grants.length) {
-      unresolvedReason = 'No grant timestamps were available for conflicting editors.'
+  if (activeCandidates.length === 1) {
+    canonicalCandidate = activeCandidates[0]
+  } else if (activeCandidates.length > 1) {
+    if (activePresenterKey) {
+      canonicalCandidate = activeCandidates.find(candidate => candidate.userKey === activePresenterKey) || null
+      unresolvedReason = 'Presenter client ids resolve to multiple user identities.'
+    } else if (!grants.length) {
+      unresolvedReason = 'Presenter client ids exist without a canonical presenter user key.'
     } else {
       const topGrantTs = grants[0].grantTs
       const top = grants.filter(item => item.grantTs === topGrantTs)
-      if (top.length !== 1) {
-        unresolvedReason = 'Conflicting editors share the same grant timestamp.'
-      } else {
+      if (top.length === 1) {
         canonicalCandidate = top[0].candidate
       }
+      unresolvedReason = 'Presenter client ids resolve to multiple user identities.'
     }
   }
 
@@ -293,6 +200,5 @@ export const evaluateSwitchingAuthorities = (args: EvaluateSwitchingAuthoritiesA
     activeUserKeys,
     canonicalCandidate,
     unresolvedReason,
-    staleBroadcastUserKeys,
   }
 }

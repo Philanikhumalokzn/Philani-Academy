@@ -585,7 +585,6 @@ export default function TextOverlayModule(props: {
           await channel.presence.enter({
             name: userDisplayName || 'Participant',
             userId,
-            isAdmin: Boolean(canOrchestrateLesson),
             platformRole: lessonRoleProfile.platformRole,
             technicalUserType: lessonRoleProfile.technicalUserType,
             canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,

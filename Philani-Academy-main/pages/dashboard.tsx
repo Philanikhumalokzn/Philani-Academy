@@ -10145,7 +10145,7 @@ export default function Dashboard() {
                   gradeLabel={selectedGrade ? activeGradeLabel : null}
                   userId={realtimeUserId}
                   userDisplayName={realtimeDisplayName}
-                  isAdmin={isOwnerUser}
+                  canOrchestrateLesson={isOwnerUser}
                 />
               )}
               {activeSessionId && (
@@ -10154,7 +10154,7 @@ export default function Dashboard() {
                   gradeLabel={selectedGrade ? activeGradeLabel : null}
                   userId={realtimeUserId}
                   userDisplayName={realtimeDisplayName}
-                  isAdmin={isOwnerUser}
+                  canOrchestrateLesson={isOwnerUser}
                 />
               )}
                   </>
@@ -10252,7 +10252,7 @@ export default function Dashboard() {
                         boardId={win.boardIdOverride ?? (activeSessionId ?? undefined)}
                         userId={realtimeUserId}
                         userDisplayName={realtimeDisplayName}
-                        isAdmin={win.isAdminOverride ?? isOwnerUser}
+                        canOrchestrateLesson={win.isAdminOverride ?? isOwnerUser}
                         quizMode={Boolean(win.quizMode)}
                         isVisible={!win.minimized}
                         defaultOrientation="portrait"
@@ -10285,7 +10285,7 @@ export default function Dashboard() {
                 gradeLabel={null}
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
-                isAdmin={isTeacherOrAdminUser}
+                canOrchestrateLesson={isTeacherOrAdminUser}
                 lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
                 autoOpen
                 onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}

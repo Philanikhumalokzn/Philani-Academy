@@ -335,7 +335,7 @@ export default function AssignmentQuestionPage() {
                 realtimeScopeId={realtimeScopeId}
                 userId={userId}
                 userDisplayName={userDisplayName}
-                isAdmin={false}
+                canOrchestrateLesson={false}
                 quizMode
                 initialQuiz={initialQuiz}
                 assignmentSubmission={{ sessionId, assignmentId, questionId, initialLatex: existingResponseLatex || undefined }}

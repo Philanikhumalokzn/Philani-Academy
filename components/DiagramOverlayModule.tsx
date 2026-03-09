@@ -99,7 +99,7 @@ type PresenceClient = {
   clientId: string
   name: string
   userId?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
 }
 
 type PresenterHandoffTarget = {
@@ -2099,7 +2099,6 @@ export default function DiagramOverlayModule(props: {
           await channel.presence.enter({
             name: userDisplayName || 'Participant',
             userId,
-            isAdmin: Boolean(canOrchestrateLesson),
             platformRole: lessonRoleProfile.platformRole,
             technicalUserType: lessonRoleProfile.technicalUserType,
             canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
@@ -2107,7 +2106,6 @@ export default function DiagramOverlayModule(props: {
           const toPresenceClient = (m: any): PresenceClient => ({
             clientId: String(m?.clientId || ''),
             name: normalizeDisplayName(m?.data?.name),
-            isAdmin: Boolean(m?.data?.isAdmin),
             platformRole: typeof m?.data?.platformRole === 'string' ? m.data.platformRole : undefined,
             technicalUserType: m?.data?.technicalUserType === 'technical' ? 'technical' : (m?.data?.technicalUserType === 'non-technical' ? 'non-technical' : undefined),
             canOrchestrateLesson: Boolean(m?.data?.canOrchestrateLesson),

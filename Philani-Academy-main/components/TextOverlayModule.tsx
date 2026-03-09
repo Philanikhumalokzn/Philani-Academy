@@ -253,9 +253,9 @@ export default function TextOverlayModule(props: {
   gradeLabel?: string | null
   userId: string
   userDisplayName?: string
-  isAdmin: boolean
+  canOrchestrateLesson?: boolean
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, canOrchestrateLesson: isAdmin } = props
 
   const [presenterOverride, setPresenterOverride] = useState(false)
   const isSoloScope = useMemo(() => {
@@ -574,7 +574,7 @@ export default function TextOverlayModule(props: {
 
         // Presence: when someone joins, the teacher rebroadcasts the latest state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName || 'Participant', canOrchestrateLesson: Boolean(isAdmin) })
           channel.presence.subscribe(async (presenceMsg: any) => {
             if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return

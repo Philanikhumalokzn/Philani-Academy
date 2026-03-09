@@ -34,7 +34,7 @@ type Props = {
   realtimeScopeId?: string
   userId: string
   userDisplayName?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
   forceEditable?: boolean
   quizMode?: boolean
   initialQuiz?: InitialQuizConfig
@@ -53,7 +53,7 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, isAdmin, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, canOrchestrateLesson, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
           realtimeScopeId={realtimeScopeId}
           userId={userId}
           userDisplayName={userDisplayName}
-          isAdmin={isAdmin}
+          canOrchestrateLesson={canOrchestrateLesson}
           forceEditable={forceEditable}
           quizMode={quizMode}
           initialQuiz={initialQuiz}
@@ -101,7 +101,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
             gradeLabel={gradeLabel || null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={Boolean(isAdmin)}
+            canOrchestrateLesson={Boolean(canOrchestrateLesson)}
             lessonAuthoring={lessonAuthoring}
           />
         )}
@@ -113,7 +113,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
             gradeLabel={gradeLabel || null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={Boolean(isAdmin)}
+            canOrchestrateLesson={Boolean(canOrchestrateLesson)}
           />
         )}
       </div>

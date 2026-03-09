@@ -2,7 +2,7 @@ export type PresenterPresenceClient = {
 	clientId: string
 	name?: string
 	userId?: string
-	isAdmin?: boolean
+	canOrchestrateLesson?: boolean
 }
 
 export type PresenterBadge = {
@@ -110,7 +110,7 @@ export const deriveActivePresenterBadge = (params: {
 
 	const candidates = params.connectedClients.filter(c => {
 		if (!c.clientId || c.clientId === 'all') return false
-		if (Boolean(c.isAdmin)) return false
+		if (Boolean(c.canOrchestrateLesson)) return false
 		const key = getUserKey(c.userId, c.name || '')
 		if (activeKey && key && key === activeKey) return true
 		return activeClientIds.has(c.clientId)
@@ -155,7 +155,7 @@ export const deriveAvailableRosterAttendees = (params: {
 	for (const c of params.connectedClients) {
 		if (!c.clientId || c.clientId === 'all' || excluded.has(c.clientId)) continue
 		if (c.clientId === selfClientId) continue
-		if (Boolean(c.isAdmin)) continue
+		if (Boolean(c.canOrchestrateLesson)) continue
 		if (selfUserId && c.userId && String(c.userId) === selfUserId) continue
 
 		const displayName = normalizeDisplayName(c.name || '') || String(c.clientId)

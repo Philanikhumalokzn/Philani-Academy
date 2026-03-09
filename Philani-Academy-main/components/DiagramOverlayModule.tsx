@@ -77,7 +77,7 @@ type PresenceClient = {
   clientId: string
   name: string
   userId?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
 }
 
 type PresenterHandoffTarget = {
@@ -261,7 +261,7 @@ export default function DiagramOverlayModule(props: {
   gradeLabel?: string | null
   userId: string
   userDisplayName?: string
-  isAdmin: boolean
+  canOrchestrateLesson?: boolean
   imageUrl?: string
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpen?: boolean
@@ -269,7 +269,7 @@ export default function DiagramOverlayModule(props: {
   onRequestClose?: () => void
   closeSignal?: number
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, canOrchestrateLesson: isAdmin, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
 
   const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
@@ -1963,11 +1963,11 @@ export default function DiagramOverlayModule(props: {
 
         // Presence: on new join, admin pushes current diagram state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', userId, isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName || 'Participant', userId, canOrchestrateLesson: Boolean(isAdmin) })
           const toPresenceClient = (m: any): PresenceClient => ({
             clientId: String(m?.clientId || ''),
             name: normalizeDisplayName(m?.data?.name),
-            isAdmin: Boolean(m?.data?.isAdmin),
+            canOrchestrateLesson: Boolean(m?.data?.canOrchestrateLesson),
             userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
           })
           const dedupePresence = (list: any[]) => {

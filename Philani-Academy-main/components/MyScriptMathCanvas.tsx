@@ -442,7 +442,7 @@ type PresenceClient = {
   clientId: string
   name?: string
   userId?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
 }
 
 type EditingAuthorityCandidate = {
@@ -477,7 +477,7 @@ type MyScriptMathCanvasProps = {
   roomId: string
   userId: string
   userDisplayName?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
   forceEditable?: boolean
   boardId?: string
   realtimeScopeId?: string
@@ -608,7 +608,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps) => {
   // --- Debug Panel State (must be inside component) ---
   const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
@@ -6695,13 +6695,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Presence tracking (simplified; no broadcaster election)
         try {
-          await channel.presence.enter({ name: userDisplayName, userId, isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({ name: userDisplayName, userId, canOrchestrateLesson: Boolean(isAdmin) })
           const members = await channel.presence.get()
           const normalizePresenceName = (value: any) => String(value || '').trim().replace(/\s+/g, ' ')
           const toPresenceClient = (m: any) => ({
             clientId: String(m?.clientId || ''),
             name: normalizePresenceName(m?.data?.name),
-            isAdmin: Boolean(m?.data?.isAdmin),
+            canOrchestrateLesson: Boolean(m?.data?.canOrchestrateLesson),
             userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
           })
           const dedupePresence = (list: any[]) => {

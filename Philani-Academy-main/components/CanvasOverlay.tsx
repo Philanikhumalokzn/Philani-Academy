@@ -10,10 +10,10 @@ type CanvasOverlayProps = {
   roomId: string
   userId: string
   userDisplayName?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
 }
 
-export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, userId, userDisplayName, isAdmin }: CanvasOverlayProps) {
+export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson }: CanvasOverlayProps) {
   const controlsHandleRef = useRef<{ open: () => void; close: () => void; toggle: () => void } | null>(null)
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return
@@ -69,7 +69,7 @@ export default function CanvasOverlay({ isOpen, onClose, gradeLabel, roomId, use
             roomId={roomId}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={isAdmin}
+            canOrchestrateLesson={canOrchestrateLesson}
             overlayControlsHandleRef={controlsHandleRef}
           />
         </div>

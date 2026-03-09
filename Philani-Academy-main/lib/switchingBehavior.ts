@@ -4,7 +4,7 @@ export type SwitchingPresenceClient = {
   clientId: string
   name?: string
   userId?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
 }
 
 export type SwitchingControlLock = {

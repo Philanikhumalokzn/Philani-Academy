@@ -52,7 +52,7 @@ export default function DiagramPage() {
 
   const userDisplayName = session?.user?.name || session?.user?.email || 'Participant'
   const role = (session as any)?.user?.role as string | undefined
-  const isAdmin = Boolean(role === 'admin' || role === 'teacher')
+  const canOrchestrateLesson = Boolean(role === 'admin' || role === 'teacher')
 
   // This page is intentionally diagram-only; boardId scopes realtime + diagram session state.
   const effectiveBoardId = boardId || `diagram-${userId}`
@@ -78,7 +78,7 @@ export default function DiagramPage() {
             gradeLabel={null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={isAdmin}
+            canOrchestrateLesson={canOrchestrateLesson}
             lessonAuthoring={lessonAuthoringPhase && lessonAuthoringPointId
               ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
               : undefined}

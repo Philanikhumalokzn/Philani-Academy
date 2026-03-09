@@ -1069,7 +1069,7 @@ export default function ChallengeAttemptPage() {
                     realtimeScopeId={realtimeScopeId}
                     userId={effectiveViewerId || 'anon'}
                     userDisplayName={userDisplayName}
-                    isAdmin={canAdmin}
+                    canOrchestrateLesson={canAdmin}
                     forceEditable
                     quizMode
                     initialQuiz={initialQuiz}

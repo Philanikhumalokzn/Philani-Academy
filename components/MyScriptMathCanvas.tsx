@@ -7890,25 +7890,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     console.warn('Failed to rebroadcast latex display state', err)
                   }
                 }
-                if (canPublishSnapshots()) {
-                  const stackedLatex = topPanelLatexSourceRef.current || ''
-                  const stackedOptions = topPanelLatexOptionsRef.current
-                  const presenterHasNotes = Boolean(stackedLatex) || lastSymbolCountRef.current > 0
-                  if (presenterHasNotes) {
-                    try {
-                      await channel.publish('control', {
-                        clientId: clientIdRef.current,
-                        author: userDisplayName,
-                        action: 'stacked-notes',
-                        latex: stackedLatex,
-                        options: stackedOptions,
-                        ts: Date.now(),
-                      })
-                    } catch (err) {
-                      console.warn('Failed to rebroadcast stacked notes preview', err)
-                    }
-                  }
-                }
                 // Ensure late-joining students receive the current quiz state (so the timer appears).
                 if (isAdmin && quizActiveRef.current) {
                   try {
@@ -8898,45 +8879,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [adminSteps.length, latexRenderSource, useAdminStepComposer, useStackedStudentLayout])
 
   const topPanelLatexSource = (useAdminStepComposer && useStackedStudentLayout)
-    ? (stableAdminStackedLatexRenderSource || latexRenderSource)
+    ? stableAdminStackedLatexRenderSource
     : latexRenderSource
-  const topPanelLatexSourceRef = useRef('')
-  const topPanelLatexOptionsRef = useRef<LatexDisplayOptions>(latexRenderOptions)
-
-  useEffect(() => {
-    topPanelLatexSourceRef.current = (topPanelLatexSource || '').trim()
-    topPanelLatexOptionsRef.current = latexRenderOptions
-  }, [latexRenderOptions, topPanelLatexSource])
-
-  useEffect(() => {
-    if (!isAdmin) return
-    if (!useStackedStudentLayout) return
-    if (!hasWriteAccess) return
-
-    const nextLatex = (topPanelLatexSource || '').trim()
-    setStackedNotesState(prev => {
-      const sameLatex = (prev.latex || '').trim() === nextLatex
-      const sameOptions = prev.options.fontScale === latexRenderOptions.fontScale
-        && prev.options.textAlign === latexRenderOptions.textAlign
-        && prev.options.alignAtEquals === latexRenderOptions.alignAtEquals
-
-      if (sameLatex && sameOptions) return prev
-
-      return {
-        ...prev,
-        latex: nextLatex,
-        options: latexRenderOptions,
-        ts: nextLatex ? Date.now() : prev.ts,
-      }
-    })
-  }, [hasWriteAccess, isAdmin, latexRenderOptions, topPanelLatexSource, useStackedStudentLayout])
 
   useEffect(() => {
     if (!hasBoardWriteRights()) return
     if (!useAdminStepComposer) return
     if (Date.now() < suppressStackedNotesPreviewUntilTsRef.current) return
-    publishStackedNotesPreview(topPanelLatexSource, latexRenderOptions)
-  }, [hasBoardWriteRights, latexRenderOptions, publishStackedNotesPreview, topPanelLatexSource, useAdminStepComposer])
+    publishStackedNotesPreview(latexRenderSource, latexRenderOptions)
+  }, [hasBoardWriteRights, latexRenderOptions, latexRenderSource, publishStackedNotesPreview, useAdminStepComposer])
 
   // Canonical payloads consumed by the top panel UI.
   const topPanelPayload: TopPanelPayload = useMemo(
@@ -12460,7 +12411,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             {!isRawInkMode && (
             <div
               className="flex flex-col"
-              style={{ flex: shouldCollapseStackedView ? 1 : Math.max(studentSplitRatio, 0.2), minHeight: '200px' }}
+              style={{ flex: shouldCollapseStackedView ? 1 : Math.max(studentSplitRatio, 0.2), minHeight: shouldCollapseStackedView ? 0 : '200px' }}
             >
               {!isOverlayMode && !isCompactViewport && canPersistLatex && (
                 <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
@@ -12830,13 +12781,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </div>
             </div>
             )}
-            {!isRawInkMode && !shouldCollapseStackedView && (
+            {!isRawInkMode && (
             <div
               role="separator"
               aria-orientation="horizontal"
               ref={splitHandleRef}
               className="relative z-20 flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
-              style={{ touchAction: 'none' }}
+              aria-hidden={shouldCollapseStackedView}
+              style={{
+                touchAction: 'none',
+                opacity: shouldCollapseStackedView ? 0 : 1,
+                pointerEvents: shouldCollapseStackedView ? 'none' : undefined,
+                minHeight: shouldCollapseStackedView ? 0 : undefined,
+                maxHeight: shouldCollapseStackedView ? 0 : undefined,
+                paddingTop: shouldCollapseStackedView ? 0 : undefined,
+                paddingBottom: shouldCollapseStackedView ? 0 : undefined,
+                overflow: shouldCollapseStackedView ? 'hidden' : undefined,
+              }}
               onPointerMove={handleSplitPointerMove}
               onPointerUp={event => {
                 event.stopPropagation()
@@ -12863,10 +12824,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             <div
               className="px-4 pb-3 flex flex-col min-h-0"
               style={{
-                display: shouldCollapseStackedView && !isRawInkMode ? 'none' : undefined,
-                flex: isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2),
-                minHeight: '220px',
+                flex: shouldCollapseStackedView ? 0 : (isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2)),
+                minHeight: shouldCollapseStackedView ? 0 : '220px',
+                maxHeight: shouldCollapseStackedView ? 0 : undefined,
+                opacity: shouldCollapseStackedView ? 0 : 1,
+                pointerEvents: shouldCollapseStackedView ? 'none' : undefined,
+                overflow: shouldCollapseStackedView ? 'hidden' : undefined,
+                paddingTop: shouldCollapseStackedView ? 0 : undefined,
+                paddingBottom: shouldCollapseStackedView ? 0 : undefined,
               }}
+              aria-hidden={shouldCollapseStackedView}
             >
               <div className={`flex items-center mb-2 ${canPersistLatex ? 'justify-between' : 'justify-end'}`}>
                 {!isRawInkMode && canPersistLatex ? (

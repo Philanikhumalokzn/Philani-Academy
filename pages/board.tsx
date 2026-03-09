@@ -225,7 +225,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
           roomId={boardRoomId}
           userId={realtimeUserId}
           userDisplayName={realtimeDisplayName}
-          isAdmin={isBoardAdmin}
+          canOrchestrateLesson={isBoardAdmin}
           roleProfile={boardRoleProfile}
           boardId={lessonAuthoring ? (lessonAuthoringBoardId || undefined) : undefined}
           autoOpenDiagramTray={Boolean(lessonAuthoring && lessonAuthoringModule === 'diagram')}
@@ -446,7 +446,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
                 gradeLabel={lessonAuthoring ? null : activeGradeLabel}
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
-                isAdmin={isBoardAdmin}
+                canOrchestrateLesson={isBoardAdmin}
                 roleProfile={boardRoleProfile}
                 lessonAuthoring={lessonAuthoring && lessonAuthoringPhase && lessonAuthoringPointId
                   ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
@@ -460,7 +460,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
                 gradeLabel={activeGradeLabel}
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
-                isAdmin={isOwnerUser}
+                canOrchestrateLesson={isOwnerUser}
                 roleProfile={boardRoleProfile}
               />
             )}

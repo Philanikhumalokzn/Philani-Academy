@@ -872,7 +872,7 @@ type MyScriptMathCanvasProps = {
   roomId: string
   userId: string
   userDisplayName?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
   roleProfile?: LessonRoleProfile
   forceEditable?: boolean
   boardId?: string
@@ -1130,11 +1130,11 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin: legacyIsAdmin, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
   const lessonRoleProfile = useMemo(() => {
     if (roleProfile) return roleProfile
-    return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
-  }, [legacyIsAdmin, roleProfile])
+    return createLessonRoleProfile({ platformRole: legacyCanOrchestrateLesson ? 'teacher' : 'learner' })
+  }, [legacyCanOrchestrateLesson, roleProfile])
   const isTechnicalAdmin = lessonRoleProfile.capabilities.canAccessTechnicalTools
   const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
   const canOrchestrateLesson = hasTeacherPrivileges

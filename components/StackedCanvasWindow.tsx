@@ -35,7 +35,7 @@ type Props = {
   realtimeScopeId?: string
   userId: string
   userDisplayName?: string
-  isAdmin?: boolean
+  canOrchestrateLesson?: boolean
   roleProfile?: LessonRoleProfile
   forceEditable?: boolean
   quizMode?: boolean
@@ -55,9 +55,9 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, isAdmin, roleProfile, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, canOrchestrateLesson, roleProfile, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
-  const hasTeacherPrivileges = Boolean(roleProfile?.capabilities.canOrchestrateLesson ?? isAdmin)
+  const hasTeacherPrivileges = Boolean(roleProfile?.capabilities.canOrchestrateLesson ?? canOrchestrateLesson)
 
   useEffect(() => {
     if (!isVisible || typeof window === 'undefined') return
@@ -84,7 +84,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
           realtimeScopeId={realtimeScopeId}
           userId={userId}
           userDisplayName={userDisplayName}
-          isAdmin={hasTeacherPrivileges}
+          canOrchestrateLesson={hasTeacherPrivileges}
           roleProfile={roleProfile}
           forceEditable={forceEditable}
           quizMode={quizMode}
@@ -105,7 +105,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
             gradeLabel={gradeLabel || null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={hasTeacherPrivileges}
+            canOrchestrateLesson={hasTeacherPrivileges}
             roleProfile={roleProfile}
             lessonAuthoring={lessonAuthoring}
           />
@@ -118,7 +118,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
             gradeLabel={gradeLabel || null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={hasTeacherPrivileges}
+            canOrchestrateLesson={hasTeacherPrivileges}
             roleProfile={roleProfile}
           />
         )}

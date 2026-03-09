@@ -10580,7 +10580,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   gradeLabel={selectedGrade ? activeGradeLabel : null}
                   userId={realtimeUserId}
                   userDisplayName={realtimeDisplayName}
-                  isAdmin={isOwnerUser}
+                  canOrchestrateLesson={isOwnerUser}
                 />
               )}
               {activeSessionId && (
@@ -10589,7 +10589,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   gradeLabel={selectedGrade ? activeGradeLabel : null}
                   userId={realtimeUserId}
                   userDisplayName={realtimeDisplayName}
-                  isAdmin={isOwnerUser}
+                  canOrchestrateLesson={isOwnerUser}
                 />
               )}
                   </>
@@ -10684,7 +10684,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           boardId={win.boardIdOverride ?? (activeSessionId ?? undefined)}
                           userId={realtimeUserId}
                           userDisplayName={realtimeDisplayName}
-                          isAdmin={windowHasTeacherPrivileges}
+                          canOrchestrateLesson={windowHasTeacherPrivileges}
                           roleProfile={windowRoleProfile}
                           quizMode={Boolean(win.quizMode)}
                           isVisible={!win.minimized}
@@ -10718,7 +10718,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 gradeLabel={null}
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
-                isAdmin={isTeacherOrAdminUser}
+                canOrchestrateLesson={isTeacherOrAdminUser}
                 roleProfile={currentLessonRoleProfile}
                 lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
                 autoOpen

@@ -359,7 +359,7 @@ export default function DiagramOverlayModule(props: {
   gradeLabel?: string | null
   userId: string
   userDisplayName?: string
-  isAdmin: boolean
+  canOrchestrateLesson?: boolean
   roleProfile?: LessonRoleProfile
   imageUrl?: string
   lessonAuthoring?: { phaseKey: string; pointId: string }
@@ -368,11 +368,11 @@ export default function DiagramOverlayModule(props: {
   onRequestClose?: () => void
   closeSignal?: number
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin: legacyIsAdmin, roleProfile, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
   const lessonRoleProfile = useMemo(() => {
     if (roleProfile) return roleProfile
-    return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
-  }, [legacyIsAdmin, roleProfile])
+    return createLessonRoleProfile({ platformRole: legacyCanOrchestrateLesson ? 'teacher' : 'learner' })
+  }, [legacyCanOrchestrateLesson, roleProfile])
   const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
   const canOrchestrateLesson = hasTeacherPrivileges
 

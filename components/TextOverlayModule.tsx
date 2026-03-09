@@ -254,14 +254,14 @@ export default function TextOverlayModule(props: {
   gradeLabel?: string | null
   userId: string
   userDisplayName?: string
-  isAdmin: boolean
+  canOrchestrateLesson?: boolean
   roleProfile?: LessonRoleProfile
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin: legacyIsAdmin, roleProfile } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile } = props
   const lessonRoleProfile = useMemo(() => {
     if (roleProfile) return roleProfile
-    return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
-  }, [legacyIsAdmin, roleProfile])
+    return createLessonRoleProfile({ platformRole: legacyCanOrchestrateLesson ? 'teacher' : 'learner' })
+  }, [legacyCanOrchestrateLesson, roleProfile])
   const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
   const canOrchestrateLesson = hasTeacherPrivileges
 

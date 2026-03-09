@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
+import { createLessonRoleProfile, type LessonRoleProfile } from '../lib/lessonAccessControl'
 import {
   buildRosterAvatarLayout,
   deriveActivePresenterBadge,
@@ -359,6 +360,7 @@ export default function DiagramOverlayModule(props: {
   userId: string
   userDisplayName?: string
   isAdmin: boolean
+  roleProfile?: LessonRoleProfile
   imageUrl?: string
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpen?: boolean
@@ -366,7 +368,13 @@ export default function DiagramOverlayModule(props: {
   onRequestClose?: () => void
   closeSignal?: number
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin: legacyIsAdmin, roleProfile, imageUrl, lessonAuthoring, autoOpen, autoPromptUpload, onRequestClose, closeSignal } = props
+  const lessonRoleProfile = useMemo(() => {
+    if (roleProfile) return roleProfile
+    return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
+  }, [legacyIsAdmin, roleProfile])
+  const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
+  const isAdmin = hasTeacherPrivileges
 
   const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
@@ -2088,11 +2096,21 @@ export default function DiagramOverlayModule(props: {
 
         // Presence: on new join, admin pushes current diagram state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', userId, isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({
+            name: userDisplayName || 'Participant',
+            userId,
+            isAdmin: Boolean(isAdmin),
+            platformRole: lessonRoleProfile.platformRole,
+            technicalUserType: lessonRoleProfile.technicalUserType,
+            canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
+          })
           const toPresenceClient = (m: any): PresenceClient => ({
             clientId: String(m?.clientId || ''),
             name: normalizeDisplayName(m?.data?.name),
             isAdmin: Boolean(m?.data?.isAdmin),
+            platformRole: typeof m?.data?.platformRole === 'string' ? m.data.platformRole : undefined,
+            technicalUserType: m?.data?.technicalUserType === 'technical' ? 'technical' : (m?.data?.technicalUserType === 'non-technical' ? 'non-technical' : undefined),
+            canOrchestrateLesson: Boolean(m?.data?.canOrchestrateLesson),
             userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
           })
           const dedupePresence = (list: any[]) => {

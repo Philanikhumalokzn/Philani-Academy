@@ -7,6 +7,7 @@ import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
+import { createLessonRoleProfile, type LessonRoleProfile } from '../lib/lessonAccessControl'
 import {
   buildRosterAvatarLayout,
   deriveActivePresenterBadge,
@@ -872,6 +873,7 @@ type MyScriptMathCanvasProps = {
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
+  roleProfile?: LessonRoleProfile
   forceEditable?: boolean
   boardId?: string
   realtimeScopeId?: string
@@ -1128,7 +1130,15 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdmin: legacyIsAdmin, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
+  const lessonRoleProfile = useMemo(() => {
+    if (roleProfile) return roleProfile
+    return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
+  }, [legacyIsAdmin, roleProfile])
+  const isTechnicalAdmin = lessonRoleProfile.capabilities.canAccessTechnicalTools
+  const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
+  const isAdmin = hasTeacherPrivileges
+  const canUseTechnicalControls = isTechnicalAdmin
   // --- Debug Panel State (must be inside component) ---
   const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
   const [myscriptEditorReady, setMyScriptEditorReady] = useState(false)
@@ -1169,7 +1179,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!ENABLE_RECOGNITION_DEBUG_PANEL) {
+    if (!ENABLE_RECOGNITION_DEBUG_PANEL || !isTechnicalAdmin) {
       setDebugPanelVisible(false)
       return
     }
@@ -1181,15 +1191,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setDebugPanelVisible(false)
       }
     } catch {}
-  }, [])
+  }, [isTechnicalAdmin])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!ENABLE_RECOGNITION_DEBUG_PANEL) return
+    if (!ENABLE_RECOGNITION_DEBUG_PANEL || !isTechnicalAdmin) return
     try {
       window.localStorage.setItem(DEBUG_PANEL_STORAGE_KEY, debugPanelVisible ? '1' : '0')
     } catch {}
-  }, [debugPanelVisible])
+  }, [debugPanelVisible, isTechnicalAdmin])
 
   const isAssignmentSolutionAuthoring = assignmentSubmission?.kind === 'solution'
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
@@ -1380,7 +1390,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [updateMathpixLocalCounts])
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isTechnicalAdmin) return
     if (typeof window === 'undefined') return
     try {
       const saved = window.localStorage.getItem(RECOGNITION_ENGINE_STORAGE_KEY)
@@ -1388,15 +1398,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setRecognitionEngine(saved)
       }
     } catch {}
-  }, [isAdmin])
+  }, [isTechnicalAdmin])
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isTechnicalAdmin) return
     if (typeof window === 'undefined') return
     try {
       window.localStorage.setItem(RECOGNITION_ENGINE_STORAGE_KEY, recognitionEngine)
     } catch {}
-  }, [isAdmin, recognitionEngine])
+  }, [isTechnicalAdmin, recognitionEngine])
   const [eraserShimReady, setEraserShimReady] = useState(false)
   const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const eraserLongPressTriggeredRef = useRef(false)
@@ -1404,8 +1414,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
-  const canUseDebugPanel = ENABLE_RECOGNITION_DEBUG_PANEL
-  const canUseScrollDebugPanel = ENABLE_SCROLL_DEBUG_PANEL
+  const canUseDebugPanel = ENABLE_RECOGNITION_DEBUG_PANEL && isTechnicalAdmin
+  const canUseScrollDebugPanel = ENABLE_SCROLL_DEBUG_PANEL && isTechnicalAdmin
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
     return Boolean(window.matchMedia('(max-width: 768px)').matches)
@@ -7749,13 +7759,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
         // Presence tracking (simplified; no broadcaster election)
         try {
-          await channel.presence.enter({ name: userDisplayName, userId, isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({
+            name: userDisplayName,
+            userId,
+            isAdmin: Boolean(isAdmin),
+            platformRole: lessonRoleProfile.platformRole,
+            technicalUserType: lessonRoleProfile.technicalUserType,
+            canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
+          })
           const members = await channel.presence.get()
           const normalizePresenceName = (value: any) => String(value || '').trim().replace(/\s+/g, ' ')
           const toPresenceClient = (m: any) => ({
             clientId: String(m?.clientId || ''),
             name: normalizePresenceName(m?.data?.name),
             isAdmin: Boolean(m?.data?.isAdmin),
+            platformRole: typeof m?.data?.platformRole === 'string' ? m.data.platformRole : undefined,
+            technicalUserType: m?.data?.technicalUserType === 'technical' ? 'technical' : (m?.data?.technicalUserType === 'non-technical' ? 'non-technical' : undefined),
+            canOrchestrateLesson: Boolean(m?.data?.canOrchestrateLesson),
             userId: typeof m?.data?.userId === 'string' && m.data.userId.trim() ? String(m.data.userId) : undefined,
           })
           const dedupePresence = (list: any[]) => {
@@ -8032,7 +8052,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, status, updateControlState, userDisplayName])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, lessonRoleProfile.capabilities.canOrchestrateLesson, lessonRoleProfile.platformRole, lessonRoleProfile.technicalUserType, status, updateControlState, userDisplayName])
 
   const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
 
@@ -12338,26 +12358,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const renderOverlayAdminControls = () => (
     <div className="canvas-toolbar">
       <div className="canvas-toolbar__buttons">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-semibold">Recognition engine</span>
-          <select
-            className="input"
-            value={recognitionEngine}
-            onChange={e => {
-              const next = e.target.value as RecognitionEngine
-              setRecognitionEngine(next)
-              setMathpixError(null)
-            }}
-            disabled={status !== 'ready' || Boolean(fatalError)}
-            aria-label="Choose recognition engine"
-          >
-            <option value="myscript">MyScript (primary)</option>
-            <option value="mathpix">Mathpix (backup)</option>
-          </select>
-          {recognitionEngine === 'mathpix' && mathpixError && (
-            <span className="text-[11px] text-red-600">{mathpixError}</span>
-          )}
-        </div>
+        {canUseTechnicalControls && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold">Recognition engine</span>
+            <select
+              className="input"
+              value={recognitionEngine}
+              onChange={e => {
+                const next = e.target.value as RecognitionEngine
+                setRecognitionEngine(next)
+                setMathpixError(null)
+              }}
+              disabled={status !== 'ready' || Boolean(fatalError)}
+              aria-label="Choose recognition engine"
+            >
+              <option value="myscript">MyScript (primary)</option>
+              <option value="mathpix">Mathpix (backup)</option>
+            </select>
+            {recognitionEngine === 'mathpix' && mathpixError && (
+              <span className="text-[11px] text-red-600">{mathpixError}</span>
+            )}
+          </div>
+        )}
         {canUseDebugPanel && (
           <label className="flex items-center gap-2 text-xs">
             <input

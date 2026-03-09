@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import katex from 'katex'
+import { createLessonRoleProfile, type LessonRoleProfile } from '../lib/lessonAccessControl'
 
 type TextSurface = 'stage'
 
@@ -254,8 +255,15 @@ export default function TextOverlayModule(props: {
   userId: string
   userDisplayName?: string
   isAdmin: boolean
+  roleProfile?: LessonRoleProfile
 }) {
-  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin } = props
+  const { boardId, realtimeScopeId, gradeLabel, userId, userDisplayName, isAdmin: legacyIsAdmin, roleProfile } = props
+  const lessonRoleProfile = useMemo(() => {
+    if (roleProfile) return roleProfile
+    return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
+  }, [legacyIsAdmin, roleProfile])
+  const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
+  const isAdmin = hasTeacherPrivileges
 
   const [presenterOverride, setPresenterOverride] = useState(false)
   const isSoloScope = useMemo(() => {
@@ -574,7 +582,14 @@ export default function TextOverlayModule(props: {
 
         // Presence: when someone joins, the teacher rebroadcasts the latest state.
         try {
-          await channel.presence.enter({ name: userDisplayName || 'Participant', isAdmin: Boolean(isAdmin) })
+          await channel.presence.enter({
+            name: userDisplayName || 'Participant',
+            userId,
+            isAdmin: Boolean(isAdmin),
+            platformRole: lessonRoleProfile.platformRole,
+            technicalUserType: lessonRoleProfile.technicalUserType,
+            canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
+          })
           channel.presence.subscribe(async (presenceMsg: any) => {
             if (!canPresentRef.current) return
             if (presenceMsg?.action !== 'enter') return

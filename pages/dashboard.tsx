@@ -22,6 +22,7 @@ import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderText
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
 import { toDisplayFileName } from '../lib/fileName'
+import { createLessonRoleProfile, normalizePlatformRole, type LessonRoleProfile } from '../lib/lessonAccessControl'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -130,7 +131,7 @@ type LiveWindowConfig = {
   subtitle?: string
   roomIdOverride?: string
   boardIdOverride?: string
-  isAdminOverride?: boolean
+  roleProfileOverride?: LessonRoleProfile
   quizMode?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpenDiagramTray?: boolean
@@ -428,7 +429,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
   const boardIdToSessionKey = (boardId: string) => `myscript:${sanitizeIdentifier(boardId).toLowerCase()}`
 
-  const isTeacherOrAdminUser = Boolean(session && (session as any)?.user?.role && (((session as any).user.role === 'admin') || ((session as any).user.role === 'teacher')))
+  const sessionPlatformRole = normalizePlatformRole((session as any)?.user?.role)
+  const currentLessonRoleProfile = useMemo(
+    () => createLessonRoleProfile({ platformRole: sessionPlatformRole }),
+    [sessionPlatformRole]
+  )
+  const isTeacherOrAdminUser = currentLessonRoleProfile.capabilities.canOrchestrateLesson
 
   const newPointDraft = (): LessonPointDraft => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2492,7 +2498,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             z: getNextWindowZ(),
             boardIdOverride: boardId,
             roomIdOverride: roomId,
-            isAdminOverride: isTeacherOrAdminUser,
+            roleProfileOverride: currentLessonRoleProfile,
             lessonAuthoring: { phaseKey: opts.phaseKey, pointId: opts.pointId }
           }
         })
@@ -2514,7 +2520,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         subtitle: 'Canvas',
         boardIdOverride: boardId,
         roomIdOverride: roomId,
-        isAdminOverride: isTeacherOrAdminUser,
+        roleProfileOverride: currentLessonRoleProfile,
         lessonAuthoring: { phaseKey: opts.phaseKey, pointId: opts.pointId },
         position: { x: 0, y: 0 },
         size: { width: stageWidth, height: stageHeight },
@@ -2526,7 +2532,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       return [...prev, baseWindow]
     })
-  }, [activeGradeLabel, boardIdToSessionKey, buildLessonAuthoringBoardId, getNextWindowZ, gradeReady, isTeacherOrAdminUser, overlayBounds.height, overlayBounds.width])
+  }, [activeGradeLabel, boardIdToSessionKey, buildLessonAuthoringBoardId, currentLessonRoleProfile, getNextWindowZ, gradeReady, isTeacherOrAdminUser, overlayBounds.height, overlayBounds.width])
 
   const pickCurrentOrNextSessionId = useCallback(() => {
     const activeId = activeSessionId ? String(activeSessionId) : null
@@ -10628,75 +10634,81 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
             {liveWindows.length > 0 && (
               <div className="live-overlay-stage">
-                {liveWindows.map(win => (
-                  <LiveOverlayWindow
-                    key={win.id}
-                    id={win.id}
-                    title={win.title}
-                    subtitle={win.subtitle}
-                    className={
-                      win.kind === 'canvas'
-                        ? `live-window--canvas${liveOverlayChromeVisible ? ' live-window--chrome-visible' : ''}`
-                        : undefined
-                    }
-                    onToggleTeacherAudio={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? handleToggleLiveTeacherAudio
-                        : undefined
-                    }
-                    teacherAudioEnabled={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? liveTeacherAudioEnabled
-                        : undefined
-                    }
-                    onToggleStudentMic={
-                      win.kind === 'canvas'
-                        ? handleToggleLiveStudentMic
-                        : undefined
-                    }
-                    studentMicMuted={
-                      win.kind === 'canvas'
-                        ? liveMuteState.audioMuted
-                        : undefined
-                    }
-                    onCloseOverlay={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? closeLiveOverlay
-                        : undefined
-                    }
-                    position={win.position}
-                    size={win.size}
-                    minimized={win.minimized}
-                    zIndex={win.z}
-                    bounds={overlayBounds}
-                    minSize={{ width: 360, height: 320 }}
-                    isResizable
-                    isFullscreen={win.mode === 'fullscreen'}
-                    onFocus={focusLiveWindow}
-                    onClose={closeLiveWindow}
-                    onToggleMinimize={toggleMinimizeLiveWindow}
-                    onRequestFullscreen={toggleFullscreenLiveWindow}
-                    onPositionChange={updateLiveWindowPosition}
-                    onResize={resizeLiveWindow}
-                  >
-                    {win.kind === 'canvas' && (
-                      <StackedCanvasWindow
-                        gradeLabel={selectedGrade ? activeGradeLabel : null}
-                        roomId={win.roomIdOverride ?? (activeSessionId ?? boardRoomId)}
-                        boardId={win.boardIdOverride ?? (activeSessionId ?? undefined)}
-                        userId={realtimeUserId}
-                        userDisplayName={realtimeDisplayName}
-                        isAdmin={win.isAdminOverride ?? isOwnerUser}
-                        quizMode={Boolean(win.quizMode)}
-                        isVisible={!win.minimized}
-                        defaultOrientation="portrait"
-                        autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}
-                        lessonAuthoring={win.lessonAuthoring}
-                        onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
-                      />
-                    )}
-                  </LiveOverlayWindow>
-                ))}
+                {liveWindows.map(win => {
+                  const windowRoleProfile = win.roleProfileOverride ?? currentLessonRoleProfile
+                  const windowHasTeacherPrivileges = windowRoleProfile.capabilities.canOrchestrateLesson
+
+                  return (
+                    <LiveOverlayWindow
+                      key={win.id}
+                      id={win.id}
+                      title={win.title}
+                      subtitle={win.subtitle}
+                      className={
+                        win.kind === 'canvas'
+                          ? `live-window--canvas${liveOverlayChromeVisible ? ' live-window--chrome-visible' : ''}`
+                          : undefined
+                      }
+                      onToggleTeacherAudio={
+                        win.kind === 'canvas' && !windowHasTeacherPrivileges
+                          ? handleToggleLiveTeacherAudio
+                          : undefined
+                      }
+                      teacherAudioEnabled={
+                        win.kind === 'canvas' && !windowHasTeacherPrivileges
+                          ? liveTeacherAudioEnabled
+                          : undefined
+                      }
+                      onToggleStudentMic={
+                        win.kind === 'canvas'
+                          ? handleToggleLiveStudentMic
+                          : undefined
+                      }
+                      studentMicMuted={
+                        win.kind === 'canvas'
+                          ? liveMuteState.audioMuted
+                          : undefined
+                      }
+                      onCloseOverlay={
+                        win.kind === 'canvas' && !windowHasTeacherPrivileges
+                          ? closeLiveOverlay
+                          : undefined
+                      }
+                      position={win.position}
+                      size={win.size}
+                      minimized={win.minimized}
+                      zIndex={win.z}
+                      bounds={overlayBounds}
+                      minSize={{ width: 360, height: 320 }}
+                      isResizable
+                      isFullscreen={win.mode === 'fullscreen'}
+                      onFocus={focusLiveWindow}
+                      onClose={closeLiveWindow}
+                      onToggleMinimize={toggleMinimizeLiveWindow}
+                      onRequestFullscreen={toggleFullscreenLiveWindow}
+                      onPositionChange={updateLiveWindowPosition}
+                      onResize={resizeLiveWindow}
+                    >
+                      {win.kind === 'canvas' && (
+                        <StackedCanvasWindow
+                          gradeLabel={selectedGrade ? activeGradeLabel : null}
+                          roomId={win.roomIdOverride ?? (activeSessionId ?? boardRoomId)}
+                          boardId={win.boardIdOverride ?? (activeSessionId ?? undefined)}
+                          userId={realtimeUserId}
+                          userDisplayName={realtimeDisplayName}
+                          isAdmin={windowHasTeacherPrivileges}
+                          roleProfile={windowRoleProfile}
+                          quizMode={Boolean(win.quizMode)}
+                          isVisible={!win.minimized}
+                          defaultOrientation="portrait"
+                          autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}
+                          lessonAuthoring={win.lessonAuthoring}
+                          onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
+                        />
+                      )}
+                    </LiveOverlayWindow>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -10719,11 +10731,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
                 isAdmin={isTeacherOrAdminUser}
+                roleProfile={currentLessonRoleProfile}
                 lessonAuthoring={{ phaseKey: lessonAuthoringDiagramOverlay.phaseKey, pointId: lessonAuthoringDiagramOverlay.pointId }}
                 autoOpen
                 onRequestClose={() => setLessonAuthoringDiagramOverlay(null)}
                 closeSignal={lessonAuthoringDiagramCloseSignal}
               />
+
 
               <div className="live-call-overlay__floating-actions">
                 <button

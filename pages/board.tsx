@@ -7,6 +7,7 @@ import BrandLogo from '../components/BrandLogo'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import type { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import useRedirectToDashboardOnReload from '../lib/useRedirectToDashboardOnReload'
+import { createLessonRoleProfile, normalizePlatformRole } from '../lib/lessonAccessControl'
 
 const MyScriptMathCanvas = dynamic(() => import('../components/MyScriptMathCanvas'), { ssr: false })
 const FloatingJitsiWindow = dynamic(() => import('../components/FloatingJitsiWindow'), { ssr: false })
@@ -94,6 +95,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || (session as any)?.user?.role === 'admin')
 
   const isTeacherUser = Boolean((session as any)?.user?.role === 'teacher')
+  const sessionPlatformRole = normalizePlatformRole((session as any)?.user?.role)
 
   const isLessonAuthoringTeacher = Boolean(
     lessonAuthoring &&
@@ -101,7 +103,14 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
       (((session as any).user.role === 'admin') || ((session as any).user.role === 'teacher'))
   )
 
-  const isBoardAdmin = lessonAuthoring ? isLessonAuthoringTeacher : (isOwnerUser || isTeacherUser)
+  const boardRoleProfile = useMemo(() => {
+    if (lessonAuthoring) {
+      return createLessonRoleProfile({ platformRole: isLessonAuthoringTeacher ? sessionPlatformRole : 'learner' })
+    }
+    if (isOwnerUser) return createLessonRoleProfile({ platformRole: 'admin' })
+    return createLessonRoleProfile({ platformRole: sessionPlatformRole })
+  }, [isLessonAuthoringTeacher, isOwnerUser, lessonAuthoring, sessionPlatformRole])
+  const isBoardAdmin = boardRoleProfile.capabilities.canOrchestrateLesson
   const realtimeUserId = useMemo(() => {
     const candidate = (session as any)?.user?.id as string | undefined
     if (candidate && typeof candidate === 'string') return candidate
@@ -217,6 +226,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
           userId={realtimeUserId}
           userDisplayName={realtimeDisplayName}
           isAdmin={isBoardAdmin}
+          roleProfile={boardRoleProfile}
           boardId={lessonAuthoring ? (lessonAuthoringBoardId || undefined) : undefined}
           autoOpenDiagramTray={Boolean(lessonAuthoring && lessonAuthoringModule === 'diagram')}
           onRequestVideoOverlay={lessonAuthoring
@@ -437,6 +447,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
                 isAdmin={isBoardAdmin}
+                roleProfile={boardRoleProfile}
                 lessonAuthoring={lessonAuthoring && lessonAuthoringPhase && lessonAuthoringPointId
                   ? { phaseKey: lessonAuthoringPhase, pointId: lessonAuthoringPointId }
                   : undefined}
@@ -450,6 +461,7 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
                 userId={realtimeUserId}
                 userDisplayName={realtimeDisplayName}
                 isAdmin={isOwnerUser}
+                roleProfile={boardRoleProfile}
               />
             )}
 

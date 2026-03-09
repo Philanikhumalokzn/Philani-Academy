@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import MyScriptMathCanvas from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
+import type { LessonRoleProfile } from '../lib/lessonAccessControl'
 
 const DiagramOverlayModule = dynamic(() => import('./DiagramOverlayModule'), { ssr: false })
 const TextOverlayModule = dynamic(() => import('./TextOverlayModule'), { ssr: false })
@@ -35,6 +36,7 @@ type Props = {
   userId: string
   userDisplayName?: string
   isAdmin?: boolean
+  roleProfile?: LessonRoleProfile
   forceEditable?: boolean
   quizMode?: boolean
   initialQuiz?: InitialQuizConfig
@@ -53,8 +55,9 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, isAdmin, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, isAdmin, roleProfile, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
+  const hasTeacherPrivileges = Boolean(roleProfile?.capabilities.canOrchestrateLesson ?? isAdmin)
 
   useEffect(() => {
     if (!isVisible || typeof window === 'undefined') return
@@ -81,7 +84,8 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
           realtimeScopeId={realtimeScopeId}
           userId={userId}
           userDisplayName={userDisplayName}
-          isAdmin={isAdmin}
+          isAdmin={hasTeacherPrivileges}
+          roleProfile={roleProfile}
           forceEditable={forceEditable}
           quizMode={quizMode}
           initialQuiz={initialQuiz}
@@ -101,7 +105,8 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
             gradeLabel={gradeLabel || null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={Boolean(isAdmin)}
+            isAdmin={hasTeacherPrivileges}
+            roleProfile={roleProfile}
             lessonAuthoring={lessonAuthoring}
           />
         )}
@@ -113,7 +118,8 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
             gradeLabel={gradeLabel || null}
             userId={userId}
             userDisplayName={userDisplayName}
-            isAdmin={Boolean(isAdmin)}
+            isAdmin={hasTeacherPrivileges}
+            roleProfile={roleProfile}
           />
         )}
       </div>

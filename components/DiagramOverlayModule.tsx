@@ -19,6 +19,7 @@ const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => 
 const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
 const GRID_DIAGRAM_URL = '/diagram-grid.svg'
+const AUTO_RESUME_SCENE_NAME = 'Auto-resume'
 const GRID_OVERFLOW_SCALE = 2.4
 const GRID_MIN_ZOOM = 1
 const GRID_MAX_ZOOM = 4
@@ -184,6 +185,20 @@ const normalizeGridSceneState = (value: any): GridSceneState | null => {
     : undefined
   const updatedAt = typeof value.updatedAt === 'string' ? value.updatedAt : null
   return { elements, appState, files, updatedAt }
+}
+
+const normalizeSceneSnapshotRecord = (snapshot: any): DiagramSceneSnapshotRecord | null => {
+  if (!snapshot || typeof snapshot !== 'object' || !snapshot.id) return null
+  return {
+    id: String(snapshot.id),
+    diagramId: String(snapshot.diagramId),
+    sessionKey: String(snapshot.sessionKey || ''),
+    name: typeof snapshot.name === 'string' ? snapshot.name : 'Untitled scene',
+    scene: normalizeGridSceneState(snapshot.scene),
+    createdBy: typeof snapshot.createdBy === 'string' ? snapshot.createdBy : null,
+    createdAt: typeof snapshot.createdAt === 'string' ? snapshot.createdAt : new Date().toISOString(),
+    updatedAt: typeof snapshot.updatedAt === 'string' ? snapshot.updatedAt : new Date().toISOString(),
+  }
 }
 
 const getGridScenePersistenceSignature = (scene: GridSceneState | null | undefined) => {
@@ -621,6 +636,7 @@ export default function DiagramOverlayModule(props: {
   const [sceneDraftName, setSceneDraftName] = useState('')
   const [sceneSaveBusy, setSceneSaveBusy] = useState(false)
   const [sceneActionBusyId, setSceneActionBusyId] = useState<string | null>(null)
+  const autoResumeLoadKeyRef = useRef('')
 
   const gridPersistedSceneByDiagramRef = useRef<Map<string, GridSceneState>>(new Map())
   const lastPersistedGridSceneSignatureRef = useRef<Map<string, string>>(new Map())
@@ -2480,16 +2496,9 @@ export default function DiagramOverlayModule(props: {
       }
       const payload = await res.json().catch(() => null)
       const nextSnapshots: DiagramSceneSnapshotRecord[] = Array.isArray(payload?.snapshots)
-        ? payload.snapshots.map((snapshot: any) => ({
-            id: String(snapshot.id),
-            diagramId: String(snapshot.diagramId),
-            sessionKey: String(snapshot.sessionKey || ''),
-            name: typeof snapshot.name === 'string' ? snapshot.name : 'Untitled scene',
-            scene: normalizeGridSceneState(snapshot.scene),
-            createdBy: typeof snapshot.createdBy === 'string' ? snapshot.createdBy : null,
-            createdAt: typeof snapshot.createdAt === 'string' ? snapshot.createdAt : new Date().toISOString(),
-            updatedAt: typeof snapshot.updatedAt === 'string' ? snapshot.updatedAt : new Date().toISOString(),
-          }))
+        ? payload.snapshots
+            .map((snapshot: any) => normalizeSceneSnapshotRecord(snapshot))
+            .filter((snapshot: DiagramSceneSnapshotRecord | null): snapshot is DiagramSceneSnapshotRecord => Boolean(snapshot))
         : []
       setSceneSnapshots(nextSnapshots)
       return nextSnapshots
@@ -2520,6 +2529,80 @@ export default function DiagramOverlayModule(props: {
     await loadGridSceneSnapshots(diagramId)
   }, [getLiveGridSceneState, loadGridSceneSnapshots, persistGridSceneNow])
 
+  const upsertSceneSnapshotLocal = useCallback((snapshot: DiagramSceneSnapshotRecord) => {
+    setSceneSnapshots((prev) => {
+      const next = prev.filter((item) => item.id !== snapshot.id && !(item.diagramId === snapshot.diagramId && item.name === snapshot.name))
+      next.unshift(snapshot)
+      next.sort((a, b) => {
+        const tsA = Date.parse(a.updatedAt || a.createdAt || '') || 0
+        const tsB = Date.parse(b.updatedAt || b.createdAt || '') || 0
+        return tsB - tsA
+      })
+      return next
+    })
+  }, [])
+
+  const upsertAutoResumeGridSceneSnapshot = useCallback(async (diagramId: string, scene?: GridSceneState | null, opts?: { keepalive?: boolean }) => {
+    if (!isAdmin || localOnly) return null
+    const payloadScene = normalizeGridSceneState(scene || getLiveGridSceneState(diagramId))
+    if (!payloadScene) return null
+
+    const url = `/api/diagrams/${encodeURIComponent(diagramId)}/scenes`
+    const body = JSON.stringify({
+      name: AUTO_RESUME_SCENE_NAME,
+      scene: payloadScene,
+      replaceExistingByName: true,
+    })
+
+    if (opts?.keepalive) {
+      try {
+        void fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive: true,
+        })
+      } catch {
+        // ignore keepalive failures during page exit
+      }
+      return null
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '')
+      throw new Error(msg || `Failed to save auto-resume scene (${res.status})`)
+    }
+    const payload = await res.json().catch(() => null)
+    const snapshot = normalizeSceneSnapshotRecord(payload?.snapshot)
+    if (snapshot) {
+      upsertSceneSnapshotLocal(snapshot)
+    }
+    return snapshot
+  }, [getLiveGridSceneState, isAdmin, localOnly, upsertSceneSnapshotLocal])
+
+  const loadAutoResumeGridSceneSnapshot = useCallback(async (diagramId: string) => {
+    const snapshots = await loadGridSceneSnapshots(diagramId)
+    const autoResumeSnapshot = snapshots.find((snapshot) => snapshot.name === AUTO_RESUME_SCENE_NAME)
+    if (!autoResumeSnapshot?.scene) return false
+
+    const autoTs = Date.parse(autoResumeSnapshot.updatedAt || autoResumeSnapshot.createdAt || '') || 0
+    const persistedTs = Date.parse(String(diagramsRef.current.find((diagram) => diagram.id === diagramId)?.gridSceneUpdatedAt || '')) || 0
+    if (persistedTs > autoTs) return false
+
+    const normalizedScene = normalizeGridSceneState(autoResumeSnapshot.scene)
+    if (!normalizedScene) return false
+    restoreGridSceneToApi(normalizedScene)
+    updateDiagramGridSceneRecord(diagramId, normalizedScene, autoResumeSnapshot.updatedAt)
+    return true
+  }, [loadGridSceneSnapshots, restoreGridSceneToApi, updateDiagramGridSceneRecord])
+
   useEffect(() => {
     return () => {
       if (typeof window === 'undefined') return
@@ -2529,6 +2612,35 @@ export default function DiagramOverlayModule(props: {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const persistOnExit = () => {
+      const state = diagramStateRef.current
+      const activeId = state.activeDiagramId
+      if (!state.isOpen || !activeId) return
+      const active = diagramsRef.current.find((diagram) => diagram.id === activeId)
+      if (!active || active.imageUrl !== GRID_DIAGRAM_URL) return
+      const scene = getLiveGridSceneState(activeId)
+      if (!scene) return
+      void upsertAutoResumeGridSceneSnapshot(activeId, scene, { keepalive: true })
+    }
+
+    const handlePageHide = () => persistOnExit()
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistOnExit()
+      }
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [getLiveGridSceneState, upsertAutoResumeGridSceneSnapshot])
 
   const queueGridScenePublish = useCallback((diagramId: string, elements: any[]) => {
     const snapshot = cloneGridElementsPayload(elements)
@@ -2688,6 +2800,19 @@ export default function DiagramOverlayModule(props: {
   }, [activeDiagram?.id, diagramState.isOpen, gridApiReadyVersion, isGridDiagram, restoreGridSceneToApi, setGridSceneToApi])
 
   useEffect(() => {
+    if (!diagramState.isOpen || !isGridDiagram || !activeDiagram?.id) return
+    const loadKey = `${activeDiagram.id}:open`
+    if (autoResumeLoadKeyRef.current === loadKey) return
+    autoResumeLoadKeyRef.current = loadKey
+    void loadAutoResumeGridSceneSnapshot(activeDiagram.id)
+  }, [activeDiagram?.id, diagramState.isOpen, isGridDiagram, loadAutoResumeGridSceneSnapshot])
+
+  useEffect(() => {
+    if (diagramState.isOpen) return
+    autoResumeLoadKeyRef.current = ''
+  }, [diagramState.isOpen])
+
+  useEffect(() => {
     if (!sceneManagerOpen) return
     if (!isGridDiagram) return
     if (!activeDiagram?.id) return
@@ -2760,13 +2885,22 @@ export default function DiagramOverlayModule(props: {
 
   const handleClose = useCallback(async () => {
     const saved = saveDiagramIntoLessonDraft()
+    const activeId = diagramStateRef.current.activeDiagramId
+    const active = activeId ? diagramsRef.current.find((diagram) => diagram.id === activeId) : null
+    if (activeId && active?.imageUrl === GRID_DIAGRAM_URL) {
+      const liveScene = getLiveGridSceneState(activeId)
+      if (liveScene) {
+        await persistGridSceneNow(activeId, liveScene)
+        await upsertAutoResumeGridSceneSnapshot(activeId, liveScene)
+      }
+    }
     await flushGridSceneAutosave()
     await setOverlayState({ activeDiagramId: diagramStateRef.current.activeDiagramId, isOpen: false })
     if (saved && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('philani:lesson-authoring:draft-updated', { detail: { kind: 'diagram', phaseKey: lessonAuthoring?.phaseKey, pointId: lessonAuthoring?.pointId } }))
     }
     onRequestClose?.()
-  }, [flushGridSceneAutosave, lessonAuthoring?.phaseKey, lessonAuthoring?.pointId, onRequestClose, saveDiagramIntoLessonDraft, setOverlayState])
+  }, [flushGridSceneAutosave, getLiveGridSceneState, lessonAuthoring?.phaseKey, lessonAuthoring?.pointId, onRequestClose, persistGridSceneNow, saveDiagramIntoLessonDraft, setOverlayState, upsertAutoResumeGridSceneSnapshot])
 
   const closeSignalRef = useRef<number | null>(null)
   useEffect(() => {

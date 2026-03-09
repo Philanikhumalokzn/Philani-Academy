@@ -54,6 +54,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!name) return res.status(400).json({ message: 'Missing snapshot name' })
     if (!req.body?.scene || typeof req.body.scene !== 'object') return res.status(400).json({ message: 'Missing scene payload' })
 
+    const replaceExistingByName = Boolean(req.body?.replaceExistingByName)
+
+    if (replaceExistingByName) {
+      const existing = await prisma.diagramSceneSnapshot.findFirst({
+        where: { diagramId, name },
+        orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      })
+
+      if (existing) {
+        const updated = await prisma.diagramSceneSnapshot.update({
+          where: { id: existing.id },
+          data: {
+            scene: req.body.scene,
+            createdBy: userId,
+          },
+        })
+
+        return res.status(200).json({
+          snapshot: {
+            id: updated.id,
+            diagramId: updated.diagramId,
+            sessionKey: updated.sessionKey,
+            name: updated.name,
+            scene: updated.scene,
+            createdBy: updated.createdBy ?? null,
+            createdAt: updated.createdAt.toISOString(),
+            updatedAt: updated.updatedAt.toISOString(),
+          },
+        })
+      }
+    }
+
     const created = await prisma.diagramSceneSnapshot.create({
       data: {
         diagramId,

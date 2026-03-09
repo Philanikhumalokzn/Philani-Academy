@@ -10639,13 +10639,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         ? `live-window--canvas${liveOverlayChromeVisible ? ' live-window--chrome-visible' : ''}`
                         : undefined
                     }
-                    onRequestVideoOverlay={
-                      win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
-                        ? () => {
-                          setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
-                        }
-                        : undefined
-                    }
                     onToggleTeacherAudio={
                       win.kind === 'canvas' && !(win.isAdminOverride ?? isOwnerUser)
                         ? handleToggleLiveTeacherAudio
@@ -10699,9 +10692,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         defaultOrientation="portrait"
                         autoOpenDiagramTray={Boolean(win.autoOpenDiagramTray)}
                         lessonAuthoring={win.lessonAuthoring}
-                        onRequestVideoOverlay={() => {
-                          setLiveWindows(prev => prev.map(w => (w.id === win.id ? { ...w, minimized: true, z: getNextWindowZ() } : w)))
-                        }}
                         onOverlayChromeVisibilityChange={setLiveOverlayChromeVisible}
                       />
                     )}

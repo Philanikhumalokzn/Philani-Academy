@@ -22,7 +22,7 @@ import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderText
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
 import { toDisplayFileName } from '../lib/fileName'
-import { createLessonRoleProfile, normalizePlatformRole, type LessonRoleProfile } from '../lib/lessonAccessControl'
+import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole, type LessonRoleProfile } from '../lib/lessonAccessControl'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -1381,19 +1381,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const learnerGradeText = status === 'authenticated' ? activeGradeLabel : 'Grade pending'
   const userRole = (session as any)?.user?.role as SectionRole | undefined
   const normalizedRole: SectionRole = userRole ?? 'guest'
-  const isAdmin = normalizedRole === 'admin'
-  const isInstructor = normalizedRole === 'teacher'
-  const isVerifiedAccount = isAdmin || isInstructor
+  const isAdmin = currentLessonRoleProfile.capabilities.canManagePlatform
+  const isInstructor = currentLessonRoleProfile.platformRole === 'teacher'
+  const isVerifiedAccount = currentLessonRoleProfile.capabilities.canOrchestrateLesson
   const roleFlagText = useMemo(() => {
-    if (normalizedRole === 'admin') return 'Admin'
-    if (normalizedRole === 'teacher') return 'Instructor'
-    if (normalizedRole === 'student') {
-      const gradeText = status === 'authenticated' ? activeGradeLabel : ''
-      return gradeText ? `Student (${gradeText})` : 'Student'
-    }
-    return 'Guest'
+    return getPlatformRoleDisplayLabel(normalizedRole, {
+      learnerGradeLabel: status === 'authenticated' ? activeGradeLabel : '',
+      variant: 'dashboard',
+    })
   }, [activeGradeLabel, normalizedRole, status])
-  const canManageAnnouncements = normalizedRole === 'admin' || normalizedRole === 'teacher'
+  const canManageAnnouncements = currentLessonRoleProfile.capabilities.canOrchestrateLesson
   const isLearner = normalizedRole === 'student'
   const isTestStudent = useMemo(() => isSpecialTestStudentEmail(session?.user?.email || ''), [session?.user?.email])
   const learnerNotesLabel = 'Notes'
@@ -1533,8 +1530,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const searchDiscover = useCallback(async (query: string) => {
     const q = query.trim()
-    const role = ((session as any)?.user?.role as string | undefined) || 'student'
-    const isPrivileged = role === 'admin' || role === 'teacher'
 
     // Allow empty query for recommendations and 1-char live search.
     // Privileged users may still see more results due to server-side rules.
@@ -2005,12 +2000,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [session])
 
   const roleLabel = useCallback((raw: unknown) => {
-    const v = String(raw || '').trim().toLowerCase()
-    if (!v) return ''
-    if (v === 'student') return 'Learner'
-    if (v === 'admin') return 'Admin'
-    if (v === 'teacher') return 'Teacher'
-    return v.slice(0, 1).toUpperCase() + v.slice(1)
+    const normalized = String(raw || '').trim()
+    if (!normalized) return ''
+    return getPlatformRoleDisplayLabel(normalized, {
+      variant: 'directory',
+      emptyWhenUnknown: true,
+    })
   }, [])
 
   useEffect(() => {
@@ -2171,7 +2166,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setSubscriptionGatingSaving(false)
     }
   }, [])
-  const canUploadMaterials = normalizedRole === 'admin' || normalizedRole === 'teacher'
+  const canUploadMaterials = currentLessonRoleProfile.capabilities.canAuthorLessons
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
   const formatFileSize = (bytes?: number | null) => {
@@ -2657,7 +2652,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   )
 
   const sessionRole = (((session as any)?.user?.role as string | undefined) || 'student')
-  const canManageSessionThumbnails = sessionRole === 'admin' || sessionRole === 'teacher'
+  const sessionCanOrchestrateLessons = hasLessonCapabilityForRole(sessionRole, 'canOrchestrateLesson')
+  const canManageSessionThumbnails = sessionCanOrchestrateLessons
 
   const studentMobileTabIndex = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
     if (tab === 'timeline') return 0
@@ -2968,7 +2964,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (sessionRole !== 'student' && sessionRole !== 'admin' && sessionRole !== 'teacher') return
+    if (!isRecognizedLessonParticipantRole(sessionRole)) return
 
     let cancelled = false
     setStudentFeedLoading(true)
@@ -3815,7 +3811,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const renderStudentHomeFeed = () => {
     if (status !== 'authenticated') return null
-    if (sessionRole !== 'student' && sessionRole !== 'admin' && sessionRole !== 'teacher') return null
+    if (!isRecognizedLessonParticipantRole(sessionRole)) return null
 
     const nowMs = Date.now()
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
@@ -3868,7 +3864,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="rounded-3xl border border-white/10 bg-white/5 p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold text-white">Current lesson</div>
-                {sessionRole === 'admin' || sessionRole === 'teacher' ? (
+                {sessionCanOrchestrateLessons ? (
                   <div className="flex items-center gap-1 text-xs font-semibold text-white/70">
                     <span>Grade</span>
                     <button
@@ -3978,7 +3974,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </button>
                       {(() => {
                         const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
-                        const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                        const canManage = sessionCanOrchestrateLessons && isOwner
                         if (!canManage) return null
                         return (
                           <TaskManageMenu
@@ -4115,7 +4111,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const authorId = p?.createdBy?.id ? String(p.createdBy.id) : null
                 const authorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
                 const authorRole = String(p?.createdBy?.role || '').toLowerCase()
-                const authorVerified = authorRole === 'admin' || authorRole === 'teacher'
+                const authorVerified = hasLessonCapabilityForRole(authorRole, 'canOrchestrateLesson')
                 const authorHasAvatar = Boolean(authorAvatar)
                 const showAuthorAvatarTick = authorVerified && authorHasAvatar
                 const showAuthorNameTick = authorVerified && !authorHasAvatar
@@ -6195,22 +6191,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [startsAt])
   useEffect(() => {
     // fetch users only for admins
-    if ((session as any)?.user?.role === 'admin') {
+    if (isAdmin) {
       fetchUsers()
     }
-  }, [session])
+  }, [isAdmin])
 
   useEffect(() => {
     // fetch plans for admins
-    if ((session as any)?.user?.role === 'admin') {
+    if (isAdmin) {
       fetchPlans()
     }
     // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
     try {
-      const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || (session as any)?.user?.role === 'admin'
+      const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || isAdmin
       ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
     } catch (e) {}
-  }, [session])
+  }, [isAdmin, session])
   async function fetchPlans() {
     setPlansLoading(true)
     try {
@@ -6578,7 +6574,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   )
 
   const renderSessionsSection = () => {
-    const canCreateSession = Boolean(session && (session as any).user?.role && ((session as any).user.role === 'admin' || (session as any).user.role === 'teacher'))
+    const canCreateSession = currentLessonRoleProfile.capabilities.canAuthorLessons
     const canAuthorLessonModules = canCreateSession
 
     const nowMs = Date.now()
@@ -7266,7 +7262,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </button>
                         {(() => {
                           const isOwner = viewerId && String(s?.createdBy || '') === String(viewerId)
-                          const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                          const canManage = sessionCanOrchestrateLessons && isOwner
                           if (!canManage) return null
                           return (
                             <TaskManageMenu
@@ -7499,7 +7495,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   <div className="shrink-0">
                                     {(() => {
                                       const isOwner = viewerId && (String(a?.createdBy || '') === String(viewerId) || String(sessionDetailsSession?.createdBy || '') === String(viewerId))
-                                      const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                                      const canManage = sessionCanOrchestrateLessons && isOwner
                                       if (!canManage) {
                                         return (
                                           <button
@@ -7690,7 +7686,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="space-y-3">
                 {(() => {
                   const isOwner = viewerId && (String(selectedAssignment?.createdBy || '') === String(viewerId) || String(sessionDetailsSession?.createdBy || '') === String(viewerId))
-                  const canManage = (sessionRole === 'admin' || sessionRole === 'teacher') && isOwner
+                  const canManage = sessionCanOrchestrateLessons && isOwner
                   if (!canManage || !expandedSessionId || !selectedAssignment?.id) return null
                   return (
                     <div className="flex items-center justify-end">
@@ -8935,8 +8931,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   const membership = myGroups.find((g) => g.group.id === selectedGroupId)
                   const myRole = membership?.memberRole || ''
                   const canManage =
-                    normalizedRole === 'admin' ||
-                    normalizedRole === 'teacher' ||
+                    currentLessonRoleProfile.capabilities.canOrchestrateLesson ||
                     myRole === 'owner' ||
                     myRole === 'instructor' ||
                     (myId && selectedGroupCreatedById && myId === selectedGroupCreatedById)
@@ -9012,7 +9007,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         ) : (
                           <div className="grid gap-2">
                             {pendingForGroup.map((r: any) => {
-                              const requesterVerified = r?.requestedBy?.verified || r?.requestedBy?.role === 'admin' || r?.requestedBy?.role === 'teacher'
+                              const requesterVerified = r?.requestedBy?.verified || hasLessonCapabilityForRole(r?.requestedBy?.role, 'canOrchestrateLesson')
                               return (
                                 <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                   <div className="text-sm text-white/90">
@@ -9055,15 +9050,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 ) : (
                   <div className="grid gap-2">
                     {selectedGroupMembers.map((m) => {
-                      const verified = m.user.role === 'admin' || m.user.role === 'teacher'
-                      const label =
-                        m.user.role === 'admin'
-                          ? 'Admin'
-                          : m.user.role === 'teacher'
-                            ? 'Instructor'
-                            : m.user.grade
-                              ? `Student (${gradeToLabel(m.user.grade as GradeValue)})`
-                              : 'Student'
+                      const verified = hasLessonCapabilityForRole(m.user.role, 'canOrchestrateLesson')
+                      const label = getPlatformRoleDisplayLabel(m.user.role, {
+                        learnerGradeLabel: m.user.grade ? gradeToLabel(m.user.grade as GradeValue) : '',
+                        variant: 'dashboard',
+                      })
                       const showRoleTick = verified && Boolean(label)
                       const showAvatarTick = verified && !showRoleTick && Boolean(m.user.avatar)
                       const showNameTick = verified && !showRoleTick && !m.user.avatar
@@ -9152,13 +9143,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </UserLink>
                         </div>
                         <div className="text-xs muted">
-                          {profilePeek.role === 'admin'
-                            ? 'Admin'
-                            : profilePeek.role === 'teacher'
-                              ? 'Instructor'
-                              : profilePeek.grade
-                                ? `Student (${gradeToLabel(profilePeek.grade as GradeValue)})`
-                                : 'Student'}
+                          {getPlatformRoleDisplayLabel(profilePeek.role, {
+                            learnerGradeLabel: profilePeek.grade ? gradeToLabel(profilePeek.grade as GradeValue) : '',
+                            variant: 'dashboard',
+                          })}
                           {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
                           {profilePeek.verified ? (
                             <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">

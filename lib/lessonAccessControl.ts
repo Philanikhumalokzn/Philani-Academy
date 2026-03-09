@@ -4,6 +4,8 @@ export type PlatformRole = 'admin' | 'teacher' | 'learner' | 'guest'
 
 export type SessionRole = 'audience' | 'presenter'
 
+export type PlatformRoleDisplayVariant = 'dashboard' | 'directory'
+
 export type LessonCapabilities = {
   canManagePlatform: boolean
   canAccessTechnicalTools: boolean
@@ -18,6 +20,8 @@ export type LessonCapabilities = {
   canParticipateAsAudience: boolean
   canPresentToSession: boolean
 }
+
+export type LessonCapabilityKey = keyof LessonCapabilities
 
 export type LessonRoleProfile = {
   technicalUserType: TechnicalUserType
@@ -38,6 +42,31 @@ export const normalizePlatformRole = (value: unknown): PlatformRole => {
   if (normalized === 'teacher') return 'teacher'
   if (normalized === 'student' || normalized === 'learner') return 'learner'
   return 'guest'
+}
+
+export const getPlatformRoleDisplayLabel = (
+  value: unknown,
+  options?: {
+    learnerGradeLabel?: string | null
+    variant?: PlatformRoleDisplayVariant
+    emptyWhenUnknown?: boolean
+  }
+) => {
+  const rawValue = String(value || '').trim().toLowerCase()
+  if (!rawValue && options?.emptyWhenUnknown) return ''
+
+  const platformRole = normalizePlatformRole(rawValue)
+  const variant = options?.variant ?? 'dashboard'
+
+  if (platformRole === 'admin') return 'Admin'
+  if (platformRole === 'teacher') return variant === 'directory' ? 'Teacher' : 'Instructor'
+  if (platformRole === 'learner') {
+    const learnerLabel = variant === 'directory' ? 'Learner' : 'Student'
+    const gradeLabel = (options?.learnerGradeLabel || '').trim()
+    return gradeLabel ? `${learnerLabel} (${gradeLabel})` : learnerLabel
+  }
+
+  return options?.emptyWhenUnknown ? '' : 'Guest'
 }
 
 export const getTechnicalUserType = (platformRole: PlatformRole): TechnicalUserType => {
@@ -88,6 +117,18 @@ export const createLessonRoleProfile = (params?: {
       canPresentToSession: canParticipate && sessionRole === 'presenter',
     },
   }
+}
+
+export const hasLessonCapabilityForRole = (
+  platformRole: PlatformRole | string | null | undefined,
+  capability: LessonCapabilityKey,
+  sessionRole?: SessionRole | null
+) => {
+  return createLessonRoleProfile({ platformRole, sessionRole }).capabilities[capability]
+}
+
+export const isRecognizedLessonParticipantRole = (platformRole: PlatformRole | string | null | undefined) => {
+  return normalizePlatformRole(platformRole) !== 'guest'
 }
 
 export const withSessionRole = (profile: LessonRoleProfile, sessionRole: SessionRole): LessonRoleProfile => {

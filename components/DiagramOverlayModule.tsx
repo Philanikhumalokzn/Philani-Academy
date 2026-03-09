@@ -6273,6 +6273,8 @@ export default function DiagramOverlayModule(props: {
                 onChange={(elements: any[], appState: any, files: any) => {
                   const diagramId = activeDiagram?.id
                   if (!diagramId) return
+                  if (suppressGridScenePublishRef.current) return
+
                   const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
                   const nextScene: GridSceneState = {
                     elements: nextElements,
@@ -6296,7 +6298,6 @@ export default function DiagramOverlayModule(props: {
                       const flushDiagramId = gridLastDrawingDiagramIdRef.current
                       const flushElements = gridLastDrawingElementsRef.current
                       if (!flushDiagramId || !Array.isArray(flushElements)) return
-                      if (suppressGridScenePublishRef.current) return
                       if (!canPresentRef.current) return
                       const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(flushDiagramId) || []
                       queueGridSceneDeltaPublish(flushDiagramId, prevForDelta, flushElements)
@@ -6304,7 +6305,6 @@ export default function DiagramOverlayModule(props: {
                     }, 280)
                   }
 
-                  if (suppressGridScenePublishRef.current) return
                   if (!canPresentRef.current) return
                   const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(diagramId) || []
                   queueGridSceneDeltaPublish(diagramId, prevForDelta, nextElements)

@@ -13148,7 +13148,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
                 )}
 
-                {(isAdmin || quizActive || (!isAdmin && typeof onRequestVideoOverlay === 'function')) ? (
+                {(isAdmin || quizActive) ? (
                   <div className="flex items-center gap-2">
                     {isAdmin && isCompactViewport && (
                       <button

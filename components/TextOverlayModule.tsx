@@ -263,14 +263,14 @@ export default function TextOverlayModule(props: {
     return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
   }, [legacyIsAdmin, roleProfile])
   const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
-  const isAdmin = hasTeacherPrivileges
+  const canOrchestrateLesson = hasTeacherPrivileges
 
   const [presenterOverride, setPresenterOverride] = useState(false)
   const isSoloScope = useMemo(() => {
     const scope = (realtimeScopeId || '').toLowerCase()
     return scope.startsWith('assignment:') || scope.startsWith('challenge:')
   }, [realtimeScopeId])
-  const canPresent = Boolean(isAdmin) || presenterOverride || isSoloScope
+  const canPresent = Boolean(canOrchestrateLesson) || presenterOverride || isSoloScope
   const canPresentRef = useRef(canPresent)
   useEffect(() => {
     canPresentRef.current = canPresent
@@ -422,7 +422,7 @@ export default function TextOverlayModule(props: {
   // This preserves all teacher-authored lesson/context text boxes.
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (isAdmin) return
+    if (canOrchestrateLesson) return
 
     const handler = () => {
       setLocalQuizOverride(prev => ({ ...(prev || {}), hidden: true }))
@@ -433,7 +433,7 @@ export default function TextOverlayModule(props: {
 
     window.addEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
     return () => window.removeEventListener(QUIZ_SUBMITTED_EVENT, handler as any)
-  }, [clearQuizFeedbackAutoHide, dispatchStudentQuizTextResponse, isAdmin])
+  }, [clearQuizFeedbackAutoHide, dispatchStudentQuizTextResponse, canOrchestrateLesson])
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
 
@@ -560,7 +560,7 @@ export default function TextOverlayModule(props: {
             setBoxes(normalized)
 
             // If the quiz prompt content is updated (or re-shown), re-open it for students.
-            if (!isAdmin) {
+            if (!canOrchestrateLesson) {
               const quiz = normalized.find(b => b.id === QUIZ_BOX_ID) || null
               const signature = quiz ? `${quiz.visible ? '1' : '0'}|${quiz.text || ''}` : ''
               if (signature && signature !== lastQuizPromptSignatureRef.current) {
@@ -585,7 +585,7 @@ export default function TextOverlayModule(props: {
           await channel.presence.enter({
             name: userDisplayName || 'Participant',
             userId,
-            isAdmin: Boolean(isAdmin),
+            isAdmin: Boolean(canOrchestrateLesson),
             platformRole: lessonRoleProfile.platformRole,
             technicalUserType: lessonRoleProfile.technicalUserType,
             canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
@@ -621,7 +621,7 @@ export default function TextOverlayModule(props: {
       channelRef.current = null
       realtimeRef.current = null
     }
-  }, [boardId, broadcastFullState, channelName, isAdmin, userDisplayName, userId])
+  }, [boardId, broadcastFullState, channelName, canOrchestrateLesson, userDisplayName, userId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -778,7 +778,7 @@ export default function TextOverlayModule(props: {
     if (typeof window === 'undefined') return
 
     const handler = (event: Event) => {
-      if (isAdmin) return
+      if (canOrchestrateLesson) return
       const detail = (event as CustomEvent)?.detail as ScriptTextEventDetail
       const targetIdRaw = typeof detail?.id === 'string' ? detail.id : QUIZ_FEEDBACK_BOX_ID
       const targetId = targetIdRaw.trim().length > 0 ? targetIdRaw.trim() : QUIZ_FEEDBACK_BOX_ID
@@ -854,7 +854,7 @@ export default function TextOverlayModule(props: {
 
     window.addEventListener('philani-text:local-apply', handler as any)
     return () => window.removeEventListener('philani-text:local-apply', handler as any)
-  }, [clearQuizFeedbackAutoHide, isAdmin])
+  }, [clearQuizFeedbackAutoHide, canOrchestrateLesson])
 
   const addBox = useCallback(async () => {
     if (!canPresentRef.current) return
@@ -1010,7 +1010,7 @@ export default function TextOverlayModule(props: {
     if (!hostRect) return
 
     // Start drag immediately, but if the box is locked we won't move it.
-    const initial = !isAdmin && isQuizBox && localQuizOverrideRef.current
+    const initial = !canOrchestrateLesson && isQuizBox && localQuizOverrideRef.current
       ? {
           x: typeof localQuizOverrideRef.current?.x === 'number' ? localQuizOverrideRef.current.x : box.x,
           y: typeof localQuizOverrideRef.current?.y === 'number' ? localQuizOverrideRef.current.y : box.y,
@@ -1031,7 +1031,7 @@ export default function TextOverlayModule(props: {
     try {
       ;(event.currentTarget as any).setPointerCapture?.(event.pointerId)
     } catch {}
-  }, [isAdmin, openBoxContextMenu, setStateAndBroadcast])
+  }, [canOrchestrateLesson, openBoxContextMenu, setStateAndBroadcast])
 
   const onResizeHandlePointerDown = useCallback((box: TextBoxRecord, event: React.PointerEvent<HTMLButtonElement>) => {
     const isQuizBox = box.id === QUIZ_BOX_ID
@@ -1044,7 +1044,7 @@ export default function TextOverlayModule(props: {
     const hostRect = hostEl?.getBoundingClientRect()
     if (!hostRect) return
 
-    const initial = !isAdmin && isQuizBox && localQuizOverrideRef.current
+    const initial = !canOrchestrateLesson && isQuizBox && localQuizOverrideRef.current
       ? {
           w: typeof localQuizOverrideRef.current?.w === 'number' ? localQuizOverrideRef.current.w : box.w,
           h: typeof localQuizOverrideRef.current?.h === 'number' ? localQuizOverrideRef.current.h : box.h,
@@ -1065,7 +1065,7 @@ export default function TextOverlayModule(props: {
     try {
       ;(event.currentTarget as any).setPointerCapture?.(event.pointerId)
     } catch {}
-  }, [isAdmin])
+  }, [canOrchestrateLesson])
 
   const onBoxPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
@@ -1101,7 +1101,7 @@ export default function TextOverlayModule(props: {
       const nextW = clamp01(Math.min(MAX_BOX_FRAC, Math.max(minW, resize.startW + dw)))
       const nextH = clamp01(Math.min(MAX_BOX_FRAC, Math.max(minH, resize.startH + dh)))
 
-      if (!isAdmin && isQuizBox) {
+      if (!canOrchestrateLesson && isQuizBox) {
         setLocalQuizOverride(prev => ({
           ...(prev || {}),
           w: nextW,
@@ -1141,7 +1141,7 @@ export default function TextOverlayModule(props: {
     const nextX = clamp01(drag.startX + dx)
     const nextY = clamp01(drag.startY + dy)
 
-    if (!isAdmin && isQuizBox) {
+    if (!canOrchestrateLesson && isQuizBox) {
       setLocalQuizOverride(prev => ({
         ...(prev || {}),
         x: nextX,
@@ -1163,7 +1163,7 @@ export default function TextOverlayModule(props: {
 
     boxesRef.current = nextBoxes
     setBoxes(nextBoxes)
-  }, [isAdmin])
+  }, [canOrchestrateLesson])
 
   const onBoxPointerUp = useCallback(async () => {
     if (typeof window !== 'undefined' && longPressRef.current?.timer) {
@@ -1238,17 +1238,17 @@ export default function TextOverlayModule(props: {
   ) : null
 
   const mergedBoxes = useMemo(() => {
-    if (isAdmin) return boxes
+    if (canOrchestrateLesson) return boxes
     if (!studentLocalBoxes.length) return boxes
     const byId = new Map<string, TextBoxRecord>()
     for (const b of boxes) byId.set(b.id, b)
     for (const b of studentLocalBoxes) byId.set(b.id, b)
     return Array.from(byId.values())
-  }, [boxes, isAdmin, studentLocalBoxes])
+  }, [boxes, canOrchestrateLesson, studentLocalBoxes])
 
   // When quiz prompt box disappears, clear the typed response so the next quiz starts clean.
   useEffect(() => {
-    if (isAdmin) return
+    if (canOrchestrateLesson) return
     const quizBox = mergedBoxes.find(b => b.id === QUIZ_BOX_ID) || null
     const quizVisible = Boolean(quizBox?.visible) && !Boolean(localQuizOverrideRef.current?.hidden)
     if (quizVisible) return
@@ -1258,23 +1258,23 @@ export default function TextOverlayModule(props: {
     }
     setStudentQuizTextResponse('')
     dispatchStudentQuizTextResponse('')
-  }, [dispatchStudentQuizTextResponse, isAdmin, mergedBoxes, studentQuizTextResponse])
+  }, [dispatchStudentQuizTextResponse, canOrchestrateLesson, mergedBoxes, studentQuizTextResponse])
 
   const renderBoxes = mergedBoxes
     .filter(b => {
       const isClosing = Boolean(closingPopupIds[b.id])
       if (!b.visible && !isClosing) return false
-      if (!isAdmin && b.id === QUIZ_BOX_ID && localQuizOverrideRef.current?.hidden && !isClosing) return false
+      if (!canOrchestrateLesson && b.id === QUIZ_BOX_ID && localQuizOverrideRef.current?.hidden && !isClosing) return false
       return true
     })
     .sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
 
   const showRestoreQuizButton = useMemo(() => {
-    if (isAdmin) return false
+    if (canOrchestrateLesson) return false
     if (!localQuizOverrideRef.current?.hidden) return false
     const quizBox = mergedBoxes.find(b => b.id === QUIZ_BOX_ID) || null
     return Boolean(quizBox?.visible)
-  }, [isAdmin, mergedBoxes])
+  }, [canOrchestrateLesson, mergedBoxes])
 
   return (
     <>
@@ -1294,8 +1294,8 @@ export default function TextOverlayModule(props: {
           const isReadOnlyForUser = !canPresent && !isQuizPopupBox
           // For learners we want to support drag-anywhere on the quiz prompt.
           // This requires pointer events on the popup (so we can't fully allow ink-through underneath).
-          const allowCanvasInkThrough = !isAdmin && isQuizPopupBox && !isQuizBox
-          const effective = (!isAdmin && isQuizBox && localQuizOverrideRef.current)
+          const allowCanvasInkThrough = !canOrchestrateLesson && isQuizPopupBox && !isQuizBox
+          const effective = (!canOrchestrateLesson && isQuizBox && localQuizOverrideRef.current)
             ? {
                 ...box,
                 x: typeof localQuizOverrideRef.current.x === 'number' ? localQuizOverrideRef.current.x : box.x,
@@ -1304,8 +1304,8 @@ export default function TextOverlayModule(props: {
                 h: typeof localQuizOverrideRef.current.h === 'number' ? localQuizOverrideRef.current.h : box.h,
               }
             : box
-          const isMinimized = Boolean(!isAdmin && isQuizBox && localQuizOverrideRef.current?.minimized)
-          const shouldAutoFitHeight = isQuizFeedbackBox || (!isAdmin && isQuizBox) || isMinimized
+          const isMinimized = Boolean(!canOrchestrateLesson && isQuizBox && localQuizOverrideRef.current?.minimized)
+          const shouldAutoFitHeight = isQuizFeedbackBox || (!canOrchestrateLesson && isQuizBox) || isMinimized
           return (
             <div
               key={box.id}
@@ -1334,7 +1334,7 @@ export default function TextOverlayModule(props: {
               onContextMenu={event => onBoxContextMenu(box, event)}
             >
               <div
-                className={`relative border ${isMinimized ? 'rounded-full px-3 py-2' : 'rounded-2xl p-3'} ${(!isAdmin && isQuizPopupBox) ? (isClosing ? 'philani-quiz-pop-out' : 'philani-quiz-pop') : ''}`}
+                className={`relative border ${isMinimized ? 'rounded-full px-3 py-2' : 'rounded-2xl p-3'} ${(!canOrchestrateLesson && isQuizPopupBox) ? (isClosing ? 'philani-quiz-pop-out' : 'philani-quiz-pop') : ''}`}
                 style={{
                   background: 'rgba(0,0,0,0.65)',
                   borderColor: isActive ? 'rgba(106,165,255,0.6)' : 'rgba(255,255,255,0.18)',
@@ -1349,7 +1349,7 @@ export default function TextOverlayModule(props: {
                 }}
               >
                 {(isQuizBox || isQuizFeedbackBox) && (
-                  (isMinimized && !isAdmin && isQuizBox) ? (
+                  (isMinimized && !canOrchestrateLesson && isQuizBox) ? (
                     <div
                       className="flex items-center gap-2 whitespace-nowrap pr-2"
                       style={{ pointerEvents: 'auto' }}
@@ -1359,7 +1359,7 @@ export default function TextOverlayModule(props: {
                       }}
                     >
                       <div className="text-xs font-semibold text-white/90">Quiz</div>
-                      {!isAdmin && quizTimeLeftSec != null && (
+                      {!canOrchestrateLesson && quizTimeLeftSec != null && (
                         <div className="text-xs text-white/75">⏱ {formatCountdown(quizTimeLeftSec)}</div>
                       )}
                       <div className="text-xs text-white/35">⋮⋮</div>
@@ -1434,7 +1434,7 @@ export default function TextOverlayModule(props: {
                     </div>
                   ) : (
                     <div className="absolute right-2 top-2 flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
-                      {!isAdmin && isQuizBox && (
+                      {!canOrchestrateLesson && isQuizBox && (
                         <button
                           type="button"
                           className="px-2 py-1 text-xs text-white/80 hover:text-white"
@@ -1488,7 +1488,7 @@ export default function TextOverlayModule(props: {
                         onClick={async e => {
                           e.preventDefault()
                           e.stopPropagation()
-                          if (isAdmin) {
+                          if (canOrchestrateLesson) {
                             await toggleBoxVisibilityById(box.id)
                             return
                           }
@@ -1534,13 +1534,13 @@ export default function TextOverlayModule(props: {
                   <>
                     <div className="text-sm whitespace-pre-wrap">{renderTextWithKatex(box.text)}</div>
 
-                    {!isAdmin && isQuizBox && quizTimeLeftSec != null && (
+                    {!canOrchestrateLesson && isQuizBox && quizTimeLeftSec != null && (
                       <div className="mt-2 flex items-center justify-end text-xs text-white/80" style={{ pointerEvents: 'none' }}>
                         Time left: {formatCountdown(quizTimeLeftSec)}
                       </div>
                     )}
 
-                    {!isAdmin && isQuizBox && (
+                    {!canOrchestrateLesson && isQuizBox && (
                       <div className="mt-3">
                         <div className="mb-1 text-xs text-white/80">Your typed answer (optional)</div>
                         <textarea

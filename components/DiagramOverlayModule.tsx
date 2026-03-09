@@ -374,7 +374,7 @@ export default function DiagramOverlayModule(props: {
     return createLessonRoleProfile({ platformRole: legacyIsAdmin ? 'teacher' : 'learner' })
   }, [legacyIsAdmin, roleProfile])
   const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
-  const isAdmin = hasTeacherPrivileges
+  const canOrchestrateLesson = hasTeacherPrivileges
 
   const localOnly = typeof imageUrl === 'string' && imageUrl.trim().length > 0
 
@@ -550,8 +550,8 @@ export default function DiagramOverlayModule(props: {
   }, [activePresenterUserKey, selfUserKey])
 
   const hasControllerRights = useCallback(() => {
-    return Boolean(isAdmin)
-  }, [isAdmin, selfUserKey])
+    return Boolean(canOrchestrateLesson)
+  }, [canOrchestrateLesson, selfUserKey])
 
   const presenterControlCanPresent = useMemo(() => {
     return isSelfActivePresenter()
@@ -657,7 +657,7 @@ export default function DiagramOverlayModule(props: {
   )
 
   const setPresenterRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all')))
     const userKey = typeof opts?.userKey === 'string' ? opts.userKey : ''
     if (!targets.length && !userKey) return
@@ -704,10 +704,10 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, userDisplayName])
+  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
-    if (!isAdmin) return false
+    if (!canOrchestrateLesson) return false
     bumpControllerRightsVersion()
 
     const teacherPresenterKey = (selfUserKey || '').trim() || null
@@ -751,10 +751,10 @@ export default function DiagramOverlayModule(props: {
     } catch {
       return false
     }
-  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, selfUserKey, userDisplayName])
+  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, userDisplayName])
 
   const handOverPresentation = useCallback((target: PresenterHandoffTarget) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     void (async () => {
       if (handoffInFlightRef.current) {
         pendingHandoffTargetRef.current = target
@@ -891,10 +891,10 @@ export default function DiagramOverlayModule(props: {
         }
       }
     })()
-  }, [bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
+  }, [bumpControllerRightsVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
 
   const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (handoffInFlightRef.current || conflictResolverInFlightRef.current) return
 
     const now = Date.now()
@@ -964,10 +964,10 @@ export default function DiagramOverlayModule(props: {
     } finally {
       conflictResolverInFlightRef.current = false
     }
-  }, [bumpControllerRightsVersion, isAdmin, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
+  }, [bumpControllerRightsVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
 
   const evaluateSwitchingAuthority = useCallback(() => {
-    if (!isAdmin || localOnly) {
+    if (!canOrchestrateLesson || localOnly) {
       conflictStartedAtRef.current = null
       lastConflictReasonRef.current = ''
       setSwitchConflictActiveStable(false)
@@ -1054,10 +1054,10 @@ export default function DiagramOverlayModule(props: {
         conflictResolverInFlightRef.current = false
       }
     })()
-  }, [enforceCanonicalPresenter, isAdmin, localOnly, reclaimAdminControl, selfUserKey, setEditingAuthorityKeysStable, setSwitchConflictActiveStable, showHandoffFailure, userDisplayName])
+  }, [enforceCanonicalPresenter, canOrchestrateLesson, localOnly, reclaimAdminControl, selfUserKey, setEditingAuthorityKeysStable, setSwitchConflictActiveStable, showHandoffFailure, userDisplayName])
 
   useEffect(() => {
-    if (!isAdmin || localOnly) {
+    if (!canOrchestrateLesson || localOnly) {
       setEditingAuthorityKeysStable([])
       setSwitchConflictActiveStable(false)
       return
@@ -1070,12 +1070,12 @@ export default function DiagramOverlayModule(props: {
     return () => {
       window.clearInterval(timer)
     }
-  }, [evaluateSwitchingAuthority, isAdmin, localOnly, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
+  }, [evaluateSwitchingAuthority, canOrchestrateLesson, localOnly, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
 
   const handleRosterAttendeeAvatarClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     const el = e.currentTarget
     const clickedClientId = String(el?.dataset?.clientId || '').trim()
     const clickedUserId = String(el?.dataset?.userId || '').trim()
@@ -1087,7 +1087,7 @@ export default function DiagramOverlayModule(props: {
       userKey: clickedUserKey,
       displayName,
     })
-  }, [handOverPresentation, isAdmin])
+  }, [handOverPresentation, canOrchestrateLesson])
 
   const teacherBadge = useMemo(() => {
     const resolvedName = normalizeDisplayName(userDisplayName || '') || 'Teacher'
@@ -1105,9 +1105,9 @@ export default function DiagramOverlayModule(props: {
   }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
 
   const activePresenterBadge = useMemo(() => {
-    if (isAdmin && isSelfActivePresenter()) return null
+    if (canOrchestrateLesson && isSelfActivePresenter()) return null
     return rawActivePresenterBadge
-  }, [isAdmin, isSelfActivePresenter, rawActivePresenterBadge])
+  }, [canOrchestrateLesson, isSelfActivePresenter, rawActivePresenterBadge])
 
   const availableRosterAttendees = useMemo(() => deriveAvailableRosterAttendees({
     connectedClients,
@@ -1171,9 +1171,9 @@ export default function DiagramOverlayModule(props: {
   const isGridDiagram = activeDiagram?.imageUrl === GRID_DIAGRAM_URL
 
   useEffect(() => {
-    if (diagramState.isOpen && isGridDiagram && isAdmin) return
+    if (diagramState.isOpen && isGridDiagram && canOrchestrateLesson) return
     setOverlayRosterVisible(false)
-  }, [diagramState.isOpen, isAdmin, isGridDiagram])
+  }, [diagramState.isOpen, canOrchestrateLesson, isGridDiagram])
 
   const gridHeaderTitle = useMemo(() => {
     const raw = String(gradeLabel || '').trim()
@@ -1389,16 +1389,16 @@ export default function DiagramOverlayModule(props: {
   }, [channelName])
 
   const requestUpload = useCallback(() => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     setUploadError(null)
     fileInputRef.current?.click()
-  }, [isAdmin])
+  }, [canOrchestrateLesson])
 
   const didAutoPromptUploadRef = useRef(false)
   useEffect(() => {
     if (!autoPromptUpload) return
     if (!autoOpen) return
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (didAutoPromptUploadRef.current) return
     if (uploading) return
     if (diagrams.length > 0) return
@@ -1413,11 +1413,11 @@ export default function DiagramOverlayModule(props: {
       } catch {}
     }, 50)
     return () => window.clearTimeout(t)
-  }, [autoOpen, autoPromptUpload, diagramState.isOpen, diagrams.length, isAdmin, requestUpload, uploading])
+  }, [autoOpen, autoPromptUpload, diagramState.isOpen, diagrams.length, canOrchestrateLesson, requestUpload, uploading])
 
   const uploadAndCreateDiagram = useCallback(
     async (file: File, title?: string) => {
-      if (!isAdmin) return
+      if (!canOrchestrateLesson) return
       if (!channelName) return
       setUploadError(null)
       setUploading(true)
@@ -1469,7 +1469,7 @@ export default function DiagramOverlayModule(props: {
         setUploading(false)
       }
     },
-    [channelName, isAdmin, isLessonAuthoring, loadFromServer, saveDiagramIntoLessonDraft]
+    [channelName, canOrchestrateLesson, isLessonAuthoring, loadFromServer, saveDiagramIntoLessonDraft]
   )
 
   const onFilePicked = useCallback(
@@ -1514,7 +1514,7 @@ export default function DiagramOverlayModule(props: {
   }, [recordBroadcastActivity, selfUserKey])
 
   const persistState = useCallback(async (next: DiagramState) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (localOnly) return
     try {
       await fetch('/api/diagrams/state', {
@@ -1526,13 +1526,13 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [channelName, isAdmin, localOnly])
+  }, [channelName, canOrchestrateLesson, localOnly])
 
   const setOverlayState = useCallback(async (next: DiagramState) => {
     setDiagramState(next)
     if (!canPresentRef.current) return
 
-    if (isAdmin) {
+    if (canOrchestrateLesson) {
       try {
         const prev = diagramStateRef.current
         if (Boolean(prev?.isOpen) !== Boolean(next.isOpen)) {
@@ -1574,7 +1574,7 @@ export default function DiagramOverlayModule(props: {
         }
       }
     }
-  }, [isAdmin, persistState, publish, toTransportAnnotations])
+  }, [canOrchestrateLesson, persistState, publish, toTransportAnnotations])
 
   const clearDiagramAnnotations = useCallback(async (diagramId: string) => {
     const emptyAnnotations: DiagramAnnotations = { space: IMAGE_SPACE, strokes: [], arrows: [] }
@@ -1582,7 +1582,7 @@ export default function DiagramOverlayModule(props: {
     diagramsRef.current = next
     setDiagrams(next)
 
-    if (!isAdmin || localOnly) return
+    if (!canOrchestrateLesson || localOnly) return
     try {
       await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}`, {
         method: 'PATCH',
@@ -1593,21 +1593,21 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [isAdmin, localOnly])
+  }, [canOrchestrateLesson, localOnly])
 
   const openGridDiagram = useCallback(async () => {
     if (!canPresentRef.current) return
     const normalizedTitle = GRID_DIAGRAM_TITLE.toLowerCase()
     const existing = diagramsRef.current.find(d => (d.title || '').trim().toLowerCase() === normalizedTitle)
     if (existing) {
-      if (isAdmin) {
+      if (canOrchestrateLesson) {
         await clearDiagramAnnotations(existing.id)
       }
       await setOverlayState({ activeDiagramId: existing.id, isOpen: true })
       return
     }
 
-    if (!isAdmin || !channelName) {
+    if (!canOrchestrateLesson || !channelName) {
       await setOverlayState({ ...diagramStateRef.current, isOpen: true })
       return
     }
@@ -1666,7 +1666,7 @@ export default function DiagramOverlayModule(props: {
     }
 
     await setOverlayState({ ...diagramStateRef.current, isOpen: true })
-  }, [channelName, clearDiagramAnnotations, isAdmin, normalizeAnnotations, setOverlayState])
+  }, [channelName, clearDiagramAnnotations, canOrchestrateLesson, normalizeAnnotations, setOverlayState])
 
   const didAutoOpenExplicitRef = useRef(false)
   useEffect(() => {
@@ -1715,7 +1715,7 @@ export default function DiagramOverlayModule(props: {
         <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
 
         <div className="flex gap-2 overflow-x-auto">
-          {isAdmin ? (
+          {canOrchestrateLesson ? (
             <button
               type="button"
               className="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -1828,7 +1828,7 @@ export default function DiagramOverlayModule(props: {
   }, [diagramState.isOpen])
 
   const persistAnnotations = useCallback(async (diagramId: string, annotations: DiagramAnnotations | null) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (localOnly) return
     try {
       const transport = toTransportAnnotations(diagramId, annotations)
@@ -1841,7 +1841,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [isAdmin, localOnly, toTransportAnnotations])
+  }, [canOrchestrateLesson, localOnly, toTransportAnnotations])
 
   // Ably connection (independent from canvas)
   useEffect(() => {
@@ -1873,7 +1873,7 @@ export default function DiagramOverlayModule(props: {
         channelRef.current = channel
         await channel.attach()
 
-        if (isAdmin && !localOnly && !activePresenterUserKeyRef.current) {
+        if (canOrchestrateLesson && !localOnly && !activePresenterUserKeyRef.current) {
           const teacherClientId = clientIdRef.current
           const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
           if (teacherPresenterKey) {
@@ -2099,7 +2099,7 @@ export default function DiagramOverlayModule(props: {
           await channel.presence.enter({
             name: userDisplayName || 'Participant',
             userId,
-            isAdmin: Boolean(isAdmin),
+            isAdmin: Boolean(canOrchestrateLesson),
             platformRole: lessonRoleProfile.platformRole,
             technicalUserType: lessonRoleProfile.technicalUserType,
             canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
@@ -2210,7 +2210,7 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [bumpControllerRightsVersion, channelName, isAdmin, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
+  }, [bumpControllerRightsVersion, channelName, canOrchestrateLesson, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
 
   useEffect(() => {
     return () => {
@@ -2449,7 +2449,7 @@ export default function DiagramOverlayModule(props: {
   }, [activeDiagram?.id])
 
   const persistGridSceneNow = useCallback(async (diagramId: string, scene: GridSceneState) => {
-    if (!isAdmin || localOnly) return null
+    if (!canOrchestrateLesson || localOnly) return null
     const nextSignature = getGridScenePersistenceSignature(scene)
     const prevSignature = lastPersistedGridSceneSignatureRef.current.get(diagramId)
     if (nextSignature === prevSignature) return null
@@ -2470,7 +2470,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       return null
     }
-  }, [isAdmin, localOnly, updateDiagramGridSceneRecord])
+  }, [canOrchestrateLesson, localOnly, updateDiagramGridSceneRecord])
 
   const flushGridSceneAutosave = useCallback(async () => {
     if (typeof window !== 'undefined' && gridAutosaveTimerRef.current != null) {
@@ -2484,7 +2484,7 @@ export default function DiagramOverlayModule(props: {
   }, [persistGridSceneNow])
 
   const queueGridSceneAutosave = useCallback((diagramId: string, scene: GridSceneState) => {
-    if (!isAdmin || localOnly) return
+    if (!canOrchestrateLesson || localOnly) return
     const nextSignature = getGridScenePersistenceSignature(scene)
     const prevSignature = lastPersistedGridSceneSignatureRef.current.get(diagramId)
     if (nextSignature === prevSignature) return
@@ -2501,7 +2501,7 @@ export default function DiagramOverlayModule(props: {
       gridAutosaveTimerRef.current = null
       void flushGridSceneAutosave()
     }, 900)
-  }, [flushGridSceneAutosave, isAdmin, localOnly])
+  }, [flushGridSceneAutosave, canOrchestrateLesson, localOnly])
 
   const loadGridSceneSnapshots = useCallback(async (diagramId: string) => {
     setSceneSnapshotsLoading(true)
@@ -2561,7 +2561,7 @@ export default function DiagramOverlayModule(props: {
   }, [])
 
   const upsertAutoResumeGridSceneSnapshot = useCallback(async (diagramId: string, scene?: GridSceneState | null, opts?: { keepalive?: boolean }) => {
-    if (!isAdmin || localOnly) return null
+    if (!canOrchestrateLesson || localOnly) return null
     const payloadScene = normalizeGridSceneState(scene || getLiveGridSceneState(diagramId))
     if (!payloadScene) return null
 
@@ -2603,7 +2603,7 @@ export default function DiagramOverlayModule(props: {
       upsertSceneSnapshotLocal(snapshot)
     }
     return snapshot
-  }, [getLiveGridSceneState, isAdmin, localOnly, upsertSceneSnapshotLocal])
+  }, [getLiveGridSceneState, canOrchestrateLesson, localOnly, upsertSceneSnapshotLocal])
 
   const loadAutoResumeGridSceneSnapshot = useCallback(async (diagramId: string) => {
     const api = excalidrawApiRef.current
@@ -4409,7 +4409,7 @@ export default function DiagramOverlayModule(props: {
         const nextUrl = off.toDataURL('image/png')
         setDiagrams(prev => prev.map(d => (d.id === activeDiagram.id ? { ...d, imageUrl: nextUrl, annotations: nextAnn } : d)))
       } else {
-        if (!isAdmin) return
+        if (!canOrchestrateLesson) return
         if (!channelName) return
 
         setUploadError(null)
@@ -4463,7 +4463,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [activeDiagram, channelName, isAdmin, localOnly, normalizeCropRect, publish, redraw, transformAnnotationsForCrop])
+  }, [activeDiagram, channelName, canOrchestrateLesson, localOnly, normalizeCropRect, publish, redraw, transformAnnotationsForCrop])
 
   useEffect(() => {
     const host = containerRef.current
@@ -5153,7 +5153,7 @@ export default function DiagramOverlayModule(props: {
   // Best-effort migration: legacy strokes were stored in container-normalized space (0..1 of host).
   // Convert to image-relative space so portrait/landscape clients render identically.
   useEffect(() => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (!diagramState.isOpen) return
     const diag = activeDiagram
     if (!diag?.id) return
@@ -5204,7 +5204,7 @@ export default function DiagramOverlayModule(props: {
     setDiagrams(prev => prev.map(d => (d.id === diag.id ? { ...d, annotations: migrated } : d)))
     void persistAnnotations(diag.id, migrated)
     void publish({ kind: 'annotations-set', diagramId: diag.id, annotations: toTransportAnnotations(diag.id, migrated) })
-  }, [activeDiagram, diagramState.isOpen, getContainRect, isAdmin, normalizeAnnotations, persistAnnotations, publish, toTransportAnnotations])
+  }, [activeDiagram, diagramState.isOpen, getContainRect, canOrchestrateLesson, normalizeAnnotations, persistAnnotations, publish, toTransportAnnotations])
 
   const handlePasteAtPoint = useCallback((diagramId: string, point: DiagramStrokePoint) => {
     const clip = clipboardRef.current
@@ -5393,7 +5393,7 @@ export default function DiagramOverlayModule(props: {
 
   const canApplyCrop = (() => {
     if (!cropMode) return false
-    if (!(localOnly || isAdmin)) return false
+    if (!(localOnly || canOrchestrateLesson)) return false
     if (uploading) return false
     const r = normalizeCropRect(cropRect)
     return Boolean(r && r.w >= 0.01 && r.h >= 0.01)
@@ -5484,24 +5484,24 @@ export default function DiagramOverlayModule(props: {
           title="Diagram"
           subtitle="No diagrams yet"
           variant="light"
-          position={isAdmin ? 'absolute' : 'fixed'}
+          position={canOrchestrateLesson ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
           panelSize="full"
           onClose={() => {
-            if (!(canPresent || isAdmin)) return
+            if (!(canPresent || canOrchestrateLesson)) return
             void handleClose()
           }}
           onBackdropClick={() => {
-            if (!(canPresent || isAdmin)) return
+            if (!(canPresent || canOrchestrateLesson)) return
             void handleClose()
           }}
-          closeDisabled={!(canPresent || isAdmin)}
-          showCloseButton={Boolean(canPresent || isAdmin)}
+          closeDisabled={!(canPresent || canOrchestrateLesson)}
+          showCloseButton={Boolean(canPresent || canOrchestrateLesson)}
           frameClassName="absolute inset-0 flex items-end justify-center p-0"
           panelClassName="!rounded-none"
           rightActions={
             <>
-              {isAdmin && (
+              {canOrchestrateLesson && (
                 <button
                   type="button"
                   className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -5524,23 +5524,23 @@ export default function DiagramOverlayModule(props: {
           title={isGridDiagram ? gridHeaderTitle : 'Diagram'}
           subtitle={isGridDiagram ? undefined : (toDisplayFileName(activeDiagram.title) || activeDiagram.title || 'Untitled diagram')}
           variant="light"
-          position={isAdmin ? 'absolute' : 'fixed'}
+          position={canOrchestrateLesson ? 'absolute' : 'fixed'}
           zIndexClassName="z-[200]"
           panelSize="full"
           onClose={() => {
-            if (!isAdmin) return
+            if (!canOrchestrateLesson) return
             void handleClose()
           }}
           onBackdropClick={() => {
-            if (!isAdmin) return
+            if (!canOrchestrateLesson) return
             void handleClose()
           }}
-          closeDisabled={!isAdmin}
-          showCloseButton={isAdmin}
+          closeDisabled={!canOrchestrateLesson}
+          showCloseButton={canOrchestrateLesson}
           frameClassName="absolute inset-0 flex items-end justify-center p-0"
           panelClassName="!rounded-none"
           rightActions={
-            isAdmin ? (
+            canOrchestrateLesson ? (
               <>
                 {isGridDiagram ? (
                   <button
@@ -5565,7 +5565,7 @@ export default function DiagramOverlayModule(props: {
           }
           contentClassName="relative p-0 flex flex-col overflow-hidden"
         >
-          {isGridDiagram && isAdmin ? (
+          {isGridDiagram && canOrchestrateLesson ? (
             <div
               className="absolute"
               style={{
@@ -5723,7 +5723,7 @@ export default function DiagramOverlayModule(props: {
             </div>
           ) : null}
 
-          {isGridDiagram && isAdmin && sceneManagerOpen ? (
+          {isGridDiagram && canOrchestrateLesson && sceneManagerOpen ? (
             <div
               className="absolute right-4 top-4 z-[2147483646] w-[min(92vw,24rem)] rounded-2xl border border-slate-200 bg-white/96 p-4 shadow-2xl backdrop-blur-sm"
               onPointerDown={(event) => event.stopPropagation()}
@@ -6067,7 +6067,7 @@ export default function DiagramOverlayModule(props: {
             </div>
           )}
 
-          {isAdmin && contextMenu && (
+          {canOrchestrateLesson && contextMenu && (
             <div
               className="absolute z-50"
               style={{ left: contextMenu.x, top: contextMenu.y }}

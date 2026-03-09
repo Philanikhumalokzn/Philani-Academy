@@ -1137,7 +1137,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [legacyIsAdmin, roleProfile])
   const isTechnicalAdmin = lessonRoleProfile.capabilities.canAccessTechnicalTools
   const hasTeacherPrivileges = lessonRoleProfile.capabilities.canOrchestrateLesson
-  const isAdmin = hasTeacherPrivileges
+  const canOrchestrateLesson = hasTeacherPrivileges
   const canUseTechnicalControls = isTechnicalAdmin
   // --- Debug Panel State (must be inside component) ---
   const [myscriptScriptLoaded, setMyScriptScriptLoaded] = useState(false)
@@ -1205,7 +1205,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isAssignmentView = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId)
   // Assignments & timeline challenges are single-user canvases. They must remain editable for the current
   // learner without requiring presenter/controller allowlisting (which is only for live sessions).
-  const forceEditableForAssignment = Boolean(forceEditable) || Boolean((!isAdmin || isAssignmentSolutionAuthoring) && isAssignmentView)
+  const forceEditableForAssignment = Boolean(forceEditable) || Boolean((!canOrchestrateLesson || isAssignmentSolutionAuthoring) && isAssignmentView)
   const editorHostRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const realtimeRef = useRef<any>(null)
@@ -1411,7 +1411,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const eraserLongPressTriggeredRef = useRef(false)
 
-  const initialOrientation: CanvasOrientation = defaultOrientation || (isAdmin ? 'landscape' : 'portrait')
+  const initialOrientation: CanvasOrientation = defaultOrientation || (canOrchestrateLesson ? 'landscape' : 'portrait')
   const [canvasOrientation, setCanvasOrientation] = useState<CanvasOrientation>(initialOrientation)
   const isOverlayMode = uiMode === 'overlay'
   const canUseDebugPanel = ENABLE_RECOGNITION_DEBUG_PANEL && isTechnicalAdmin
@@ -1426,14 +1426,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     onLatexOutputChange(latexOutput)
   }, [latexOutput, onLatexOutputChange])
 
-  const isStudentView = !isAdmin
+  const isStudentView = !canOrchestrateLesson
   const isQuizMode = Boolean(quizMode)
   const isChallengeBoard = useMemo(
     () => typeof boardId === 'string' && boardId.startsWith('challenge:'),
     [boardId]
   )
   const isSessionQuizMode = !isAssignmentView && !forceEditableForAssignment && !isChallengeBoard
-  const useStackedStudentLayout = isStudentView || (isAdmin && isCompactViewport)
+  const useStackedStudentLayout = isStudentView || (canOrchestrateLesson && isCompactViewport)
   // Note: `useAdminStepComposer` is defined later once controller/presenter rights are available.
 
   const [quizSubmitting, setQuizSubmitting] = useState(false)
@@ -1861,8 +1861,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const hasControllerRights = useCallback(() => {
     // Controller-only actions (quiz/lesson orchestration) are teacher-only.
-    return Boolean(isAdmin)
-  }, [isAdmin])
+    return Boolean(canOrchestrateLesson)
+  }, [canOrchestrateLesson])
 
   // Exclusive snapshot publishing rule:
   // - ONLY the active presenter may publish SnapshotPayload.
@@ -1884,9 +1884,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   // - assignment/challenge local override.
   const hasBoardWriteRights = useCallback(() => {
     if (forceEditableForAssignment) return true
-    if (!isAdmin && isSessionQuizMode && quizActiveRef.current) return true
+    if (!canOrchestrateLesson && isSessionQuizMode && quizActiveRef.current) return true
     return isSelfActivePresenter()
-  }, [forceEditableForAssignment, isAdmin, isSelfActivePresenter, isSessionQuizMode])
+  }, [forceEditableForAssignment, canOrchestrateLesson, isSelfActivePresenter, isSessionQuizMode])
 
   const [viewOnlyMode, setViewOnlyMode] = useState(() => !hasBoardWriteRights())
 
@@ -1929,14 +1929,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     && hasBoardWriteRights()
     // Do not enable the admin step-composer on single-user canvases (assignments/challenges).
     // Those flows use `studentCommittedLatex` + `latexOutput` and should append steps as new lines.
-    && (isAdmin || (!forceEditableForAssignment && !forceEditable))
+    && (canOrchestrateLesson || (!forceEditableForAssignment && !forceEditable))
   )
   useEffect(() => {
     useAdminStepComposerRef.current = useAdminStepComposer
   }, [useAdminStepComposer])
 
-  const allowStudentTextTray = !isAdmin && (isAssignmentView || isChallengeBoard)
-  const useStudentStepComposer = !isAdmin && useStackedStudentLayout && (isAssignmentView || isChallengeBoard)
+  const allowStudentTextTray = !canOrchestrateLesson && (isAssignmentView || isChallengeBoard)
+  const useStudentStepComposer = !canOrchestrateLesson && useStackedStudentLayout && (isAssignmentView || isChallengeBoard)
   const showTextIcon = useAdminStepComposer || useStudentStepComposer || allowStudentTextTray
 
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -2023,9 +2023,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }), [activePresenterUserKey, connectedClients, controllerRightsVersion])
 
   const activePresenterBadge = useMemo(() => {
-    if (isAdmin && isSelfActivePresenter()) return null
+    if (canOrchestrateLesson && isSelfActivePresenter()) return null
     return rawActivePresenterBadge
-  }, [isAdmin, isSelfActivePresenter, rawActivePresenterBadge])
+  }, [canOrchestrateLesson, isSelfActivePresenter, rawActivePresenterBadge])
 
   const setEditingAuthorityKeysStable = useCallback((nextKeys: string[]) => {
     const nextUnique = Array.from(new Set(nextKeys.filter(Boolean))).sort((a, b) => a.localeCompare(b))
@@ -2190,7 +2190,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   useEffect(() => {
     if (!initialQuiz) return
-    if (isAdmin) return
+    if (canOrchestrateLesson) return
     if (!isQuizMode) return
     if (!initialQuiz.quizId || !initialQuiz.prompt) return
     if (initialQuizAppliedRef.current === initialQuiz.quizId) return
@@ -2283,7 +2283,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     setLatexOutput('')
     // NOTE: `captureFullSnapshot` is defined later in this component; do not reference it in deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignmentSubmission?.initialLatex, initialQuiz, isAdmin, isQuizMode, playSnapSound, setQuizActiveState])
+  }, [assignmentSubmission?.initialLatex, initialQuiz, canOrchestrateLesson, isQuizMode, playSnapSound, setQuizActiveState])
 
   const loadAdminStepForEditing = useCallback(async (index: number) => {
     if (!useAdminStepComposer) return
@@ -2763,7 +2763,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   useEffect(() => {
     isAssignmentViewRef.current = isAssignmentView
   }, [isAssignmentView])
-  const lockedOutRef = useRef(!isAdmin && !forceEditableForAssignment)
+  const lockedOutRef = useRef(!canOrchestrateLesson && !forceEditableForAssignment)
   const hasExclusiveControlRef = useRef(false)
   const lastControlBroadcastTsRef = useRef(0)
   const lastLatexBroadcastTsRef = useRef(0)
@@ -3066,7 +3066,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [clientId, updateControlState])
 
   const setControllerRightsForClients = useCallback(async (targetClientIds: string[], allowed: boolean, opts?: { userKey?: string; name?: string }) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     const targets = Array.from(new Set(targetClientIds.filter(id => id && id !== 'all' && id !== ALL_STUDENTS_ID)))
     const userKey = typeof opts?.userKey === 'string' ? opts?.userKey : ''
     if (!targets.length && !userKey) return
@@ -3124,10 +3124,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to update presenter handoff', err)
     }
-  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, updateControlState, userDisplayName])
+  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, updateControlState, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
-    if (!isAdmin) return false
+    if (!canOrchestrateLesson) return false
 
     const teacherClientId = clientIdRef.current
     const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
@@ -3185,7 +3185,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to reclaim admin control', err)
       return false
     }
-  }, [bumpControllerRightsVersion, isAdmin, recordRightsGrant, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpControllerRightsVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, updateControlState, userDisplayName])
 
   // Semantic alias: presenter == controller-rights.
   const setPresenterRightsForClients = setControllerRightsForClients
@@ -3225,7 +3225,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const handOverPresentation = useCallback(
     (target: PresenterHandoffTarget) => {
-      if (!isAdmin) return
+      if (!canOrchestrateLesson) return
 
       void (async () => {
         if (handoffInFlightRef.current) {
@@ -3417,14 +3417,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
       })()
     },
-    [boardId, bumpControllerRightsVersion, connectedClients, isAdmin, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
+    [boardId, bumpControllerRightsVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
   )
 
   const handleRosterAttendeeAvatarClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault()
       e.stopPropagation()
-      if (!isAdmin) return
+      if (!canOrchestrateLesson) return
 
       const el = e.currentTarget
       const clickedClientId = String(el?.dataset?.clientId || '').trim()
@@ -3439,11 +3439,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         displayName,
       })
     },
-    [handOverPresentation, isAdmin]
+    [handOverPresentation, canOrchestrateLesson]
   )
 
   const broadcastHighlightedController = useCallback(async (payload: { clientId: string; userId?: string; name?: string } | null) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     const channel = channelRef.current
     if (!channel) return
     try {
@@ -3459,10 +3459,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to broadcast highlighted controller', err)
     }
-  }, [isAdmin, userDisplayName])
+  }, [canOrchestrateLesson, userDisplayName])
 
   const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (handoffInFlightRef.current || conflictResolverInFlightRef.current) return
 
     const now = Date.now()
@@ -3533,10 +3533,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       conflictResolverInFlightRef.current = false
     }
-  }, [bumpControllerRightsVersion, isAdmin, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpControllerRightsVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
 
   const evaluateSwitchingAuthority = useCallback(() => {
-    if (!isAdmin || forceEditableForAssignment || (isSessionQuizMode && quizActiveRef.current)) {
+    if (!canOrchestrateLesson || forceEditableForAssignment || (isSessionQuizMode && quizActiveRef.current)) {
       conflictStartedAtRef.current = null
       lastConflictReasonRef.current = ''
       setSwitchConflictActiveStable(false)
@@ -3679,7 +3679,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     enforceCanonicalPresenter,
     forceEditableForAssignment,
     hasBoardWriteRights,
-    isAdmin,
+    canOrchestrateLesson,
     isSessionQuizMode,
     reclaimAdminControl,
     resolveIdentityForUserKey,
@@ -3692,7 +3692,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   ])
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!canOrchestrateLesson) {
       setEditingAuthorityKeysStable([])
       setSwitchConflictActiveStable(false)
       return
@@ -3705,7 +3705,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     return () => {
       window.clearInterval(timer)
     }
-  }, [evaluateSwitchingAuthority, isAdmin, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
+  }, [evaluateSwitchingAuthority, canOrchestrateLesson, setEditingAuthorityKeysStable, setSwitchConflictActiveStable])
 
   const clearOverlayAutoHide = useCallback(() => {
     if (overlayHideTimeoutRef.current) {
@@ -3899,7 +3899,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [getLessonScriptPhaseSteps, getLessonScriptV2, lessonScriptResolved])
 
   const loadLessonScript = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (!boardId) return
 
     setLessonScriptLoading(true)
@@ -3925,13 +3925,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setLessonScriptLoading(false)
     }
-  }, [boardId, isAdmin])
+  }, [boardId, canOrchestrateLesson])
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (!boardId) return
     void loadLessonScript()
-  }, [boardId, isAdmin, loadLessonScript])
+  }, [boardId, canOrchestrateLesson, loadLessonScript])
 
   const channelName = useMemo(() => {
     // Ably realtime scope (and diagram sessionKey) is intentionally separable from boardId.
@@ -4321,7 +4321,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const persistDiagramState = useCallback(async (next: DiagramState) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     try {
       await fetch('/api/diagrams/state', {
         method: 'PUT',
@@ -4336,21 +4336,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {
       // ignore
     }
-  }, [channelName, isAdmin])
+  }, [channelName, canOrchestrateLesson])
 
   const setDiagramOverlayState = useCallback(
     async (next: DiagramState) => {
       setDiagramState(next)
-      if (isAdmin) {
+      if (canOrchestrateLesson) {
         await persistDiagramState(next)
         await publishDiagramMessage({ kind: 'state', activeDiagramId: next.activeDiagramId, isOpen: next.isOpen })
       }
     },
-    [isAdmin, persistDiagramState, publishDiagramMessage]
+    [canOrchestrateLesson, persistDiagramState, publishDiagramMessage]
   )
 
   const persistDiagramAnnotations = useCallback(async (diagramId: string, annotations: DiagramAnnotations | null) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     const now = Date.now()
     if (now - diagramLastPersistTsRef.current < 250) return
     diagramLastPersistTsRef.current = now
@@ -4364,10 +4364,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch {
       // ignore
     }
-  }, [isAdmin])
+  }, [canOrchestrateLesson])
 
   const commitDiagramAnnotations = useCallback(async (diagramId: string, next: DiagramAnnotations | null, pushUndoFrom?: DiagramAnnotations | null) => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
 
     if (pushUndoFrom) {
       diagramUndoRef.current.push(cloneDiagramAnnotations(pushUndoFrom))
@@ -4378,7 +4378,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     applyDiagramAnnotations(diagramId, next)
     await persistDiagramAnnotations(diagramId, next)
     await publishDiagramMessage({ kind: 'annotations-set', diagramId, annotations: next })
-  }, [applyDiagramAnnotations, cloneDiagramAnnotations, isAdmin, persistDiagramAnnotations, publishDiagramMessage, syncDiagramHistoryFlags])
+  }, [applyDiagramAnnotations, cloneDiagramAnnotations, canOrchestrateLesson, persistDiagramAnnotations, publishDiagramMessage, syncDiagramHistoryFlags])
 
   const eraseDiagramAt = useCallback(async (diagramId: string, point: DiagramStrokePoint) => {
     const diagram = diagramsRef.current.find(d => d.id === diagramId)
@@ -6667,7 +6667,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // Respect assignment override + general lock state.
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
-          if (!isAdmin && lockedOutRef.current) {
+          if (!canOrchestrateLesson && lockedOutRef.current) {
             enforceAuthoritativeSnapshot()
             return
           }
@@ -6726,7 +6726,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           // Student quiz/assignment mode: show a live LaTeX preview while the learner writes.
           // (The normal student view doesn't continuously export LaTeX, so we enable it for
           // active quizzes and for assignment pages that use the same commit-then-submit flow.)
-          if (!isAdmin && (quizActiveRef.current || isAssignmentViewRef.current)) {
+          if (!canOrchestrateLesson && (quizActiveRef.current || isAssignmentViewRef.current)) {
             if (studentQuizPreviewExportRef.current) {
               clearTimeout(studentQuizPreviewExportRef.current)
             }
@@ -6903,7 +6903,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, canvasMode, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, isAdmin, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
+  }, [broadcastSnapshot, canvasMode, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, canOrchestrateLesson, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useAdminStepComposer) return
@@ -7005,7 +7005,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         channelRef.current = channel
         await channel.attach()
 
-        if (isAdmin && !forceEditableForAssignment && !activePresenterUserKeyRef.current) {
+        if (canOrchestrateLesson && !forceEditableForAssignment && !activePresenterUserKeyRef.current) {
           const teacherClientId = clientIdRef.current
           const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
           if (teacherPresenterKey) {
@@ -7030,7 +7030,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         const handleStroke = (message: any) => {
-          if (!isAdmin && latexDisplayStateRef.current.enabled) {
+          if (!canOrchestrateLesson && latexDisplayStateRef.current.enabled) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -7041,7 +7041,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         }
 
         const handleSyncState = (message: any) => {
-          if (!isAdmin && latexDisplayStateRef.current.enabled) {
+          if (!canOrchestrateLesson && latexDisplayStateRef.current.enabled) {
             return
           }
           const data = message?.data as SnapshotMessage
@@ -7322,7 +7322,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           if (data?.action === 'quiz') {
             const phase = data.phase
             // Teacher sees incoming submissions in realtime; minimal UX for now.
-            if (isAdmin && phase === 'submit') {
+            if (canOrchestrateLesson && phase === 'submit') {
               const who = (data.fromName || 'Student').trim()
               const combined = (data.combinedLatex || '').trim()
               if (combined) {
@@ -7334,7 +7334,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             }
 
             // Students: enter/exit quiz mode via teacher broadcast.
-            if (!isAdmin) {
+            if (!canOrchestrateLesson) {
               if (phase === 'active') {
                 // Capture the pre-quiz control state once per quiz so we can restore it
                 // after the student receives AI feedback (or when the teacher ends the quiz).
@@ -7472,7 +7472,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             return
           }
           if (data?.action === 'convert') {
-            if (isAdmin) return
+            if (canOrchestrateLesson) return
             if (isBroadcastPausedRef.current) return
             if (!editor) return
             forcedConvertDepthRef.current += 1
@@ -7485,10 +7485,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
             const latex = typeof data.latex === 'string' ? data.latex : ''
             const options = sanitizeLatexOptions(data.options)
             setLatexDisplayState({ enabled, latex, options })
-            if (!isAdmin) {
+            if (!canOrchestrateLesson) {
               setLatexProjectionOptions(options)
             }
-            if (!isAdmin) {
+            if (!canOrchestrateLesson) {
               if (enabled) {
                 try {
                   editor.clear()
@@ -7762,7 +7762,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           await channel.presence.enter({
             name: userDisplayName,
             userId,
-            isAdmin: Boolean(isAdmin),
+            isAdmin: Boolean(canOrchestrateLesson),
             platformRole: lessonRoleProfile.platformRole,
             technicalUserType: lessonRoleProfile.technicalUserType,
             canOrchestrateLesson: lessonRoleProfile.capabilities.canOrchestrateLesson,
@@ -7853,7 +7853,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 // (and its annotations) so "Show Diagram" is reflected on student screens.
                 // IMPORTANT: only admins should broadcast this; otherwise a student's default
                 // state (isOpen=false) can override the teacher for late joiners.
-                if (ENABLE_EMBEDDED_DIAGRAMS && isAdmin) {
+                if (ENABLE_EMBEDDED_DIAGRAMS && canOrchestrateLesson) {
                   try {
                     const currentDiagramState = diagramStateRef.current
                     await channel.publish('diagram', {
@@ -7909,7 +7909,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                   }
                 }
                 // Ensure late-joining students receive the current quiz state (so the timer appears).
-                if (isAdmin && quizActiveRef.current) {
+                if (canOrchestrateLesson && quizActiveRef.current) {
                   try {
                     const quizId = (quizIdRef.current || '').trim()
                     const prompt = (quizPromptRef.current || '').trim()
@@ -7940,7 +7940,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     console.warn('Failed to rebroadcast quiz state', err)
                   }
                 }
-                if (isAdmin && hasExclusiveControlRef.current) {
+                if (canOrchestrateLesson && hasExclusiveControlRef.current) {
                   const now = Date.now()
                   if (now - lastControlBroadcastTsRef.current > 1500) {
                     await channel.publish('control', {
@@ -8005,7 +8005,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       try {
         channelRef.current = null
         if (channel) {
-          if (isAdmin && hasExclusiveControlRef.current) {
+          if (canOrchestrateLesson && hasExclusiveControlRef.current) {
             const ts = Date.now()
             channel
               .publish('control', {
@@ -8052,7 +8052,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         remoteProcessingRef.current = false
       }
     }
-  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, isAdmin, lessonRoleProfile.capabilities.canOrchestrateLesson, lessonRoleProfile.platformRole, lessonRoleProfile.technicalUserType, status, updateControlState, userDisplayName])
+  }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, canOrchestrateLesson, lessonRoleProfile.capabilities.canOrchestrateLesson, lessonRoleProfile.platformRole, lessonRoleProfile.technicalUserType, status, updateControlState, userDisplayName])
 
   const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
 
@@ -8718,21 +8718,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const handleOrientationChange = useCallback(
     (next: CanvasOrientation) => {
-      if (isAdmin && isFullscreen && next !== 'landscape') {
+      if (canOrchestrateLesson && isFullscreen && next !== 'landscape') {
         return
       }
       setCanvasOrientation(curr => (curr === next ? curr : next))
-      if (isAdmin && !isFullscreen) {
+      if (canOrchestrateLesson && !isFullscreen) {
         adminOrientationPreferenceRef.current = next
       }
     },
-    [isAdmin, isFullscreen]
+    [canOrchestrateLesson, isFullscreen]
   )
 
   const toggleFullscreen = () => {
     const next = !isFullscreen
     setIsFullscreen(next)
-    if (isAdmin) {
+    if (canOrchestrateLesson) {
       if (next) {
         adminOrientationPreferenceRef.current = canvasOrientation
         if (canvasOrientation !== 'landscape') {
@@ -8753,14 +8753,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const isRawInkMode = false
   const shouldCollapseStackedView = Boolean(
     useStackedStudentLayout
-    && !isAdmin
+    && !canOrchestrateLesson
     && isViewOnly
     && !isRawInkMode
     && !forceEditableForAssignment
-    && !(isSessionQuizMode && quizActive && !isAdmin)
+    && !(isSessionQuizMode && quizActive && !canOrchestrateLesson)
   )
-  const isStudentSendContext = (!isAdmin || isAssignmentSolutionAuthoring) && (quizActive || isAssignmentView)
-  const canUseAdminSend = isAdmin || hasWriteAccess
+  const isStudentSendContext = (!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (quizActive || isAssignmentView)
+  const canUseAdminSend = canOrchestrateLesson || hasWriteAccess
 
   useEffect(() => {
     if (canvasMode !== 'raw-ink') return
@@ -8781,10 +8781,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [EDITABLE_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, useStackedStudentLayout, viewOnlyMode])
 
   useEffect(() => {
-    if (isAdmin) return
+    if (canOrchestrateLesson) return
     if (!isSessionQuizMode) return
     updateControlState(controlStateRef.current ?? null)
-  }, [isAdmin, isSessionQuizMode, quizActive, updateControlState])
+  }, [canOrchestrateLesson, isSessionQuizMode, quizActive, updateControlState])
 
   const controlOwnerLabel = (() => {
     if (controlState) {
@@ -8801,9 +8801,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
 
   const latexRenderOptions = useAdminStepComposer
     ? { ...latexProjectionOptions, alignAtEquals: true }
-    : (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout)
+    : (!canOrchestrateLesson && quizActive && !isAssignmentView && useStackedStudentLayout)
       ? { ...stackedNotesState.options, alignAtEquals: true }
-    : (!isAdmin && isAssignmentView && useStackedStudentLayout)
+    : (!canOrchestrateLesson && isAssignmentView && useStackedStudentLayout)
       ? { ...stackedNotesState.options, alignAtEquals: true }
       : hasWriteAccess
         ? latexProjectionOptions
@@ -8838,12 +8838,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       return lines.filter(Boolean).join(' \\\\ ').trim()
     }
-    if (!isAdmin && quizActive && !isAssignmentView && useStackedStudentLayout) {
+    if (!canOrchestrateLesson && quizActive && !isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
       const live = (latexOutput || '').trim()
       return [committed, live].filter(Boolean).join(' \\\\ ').trim()
     }
-    if (!isAdmin && isAssignmentView && useStackedStudentLayout) {
+    if (!canOrchestrateLesson && isAssignmentView && useStackedStudentLayout) {
       const committed = (studentCommittedLatex || '').trim()
       const live = (latexOutput || '').trim()
       return [committed, live].filter(Boolean).join(' \\\\ ').trim()
@@ -8855,7 +8855,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, isAdmin, isAssignmentView, latexDisplayState.latex, latexOutput, quizActive, stackedNotesState.latex, studentCommittedLatex, studentEditIndex, studentSteps, useAdminStepComposer, useStackedStudentLayout, useStudentStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, canOrchestrateLesson, isAssignmentView, latexDisplayState.latex, latexOutput, quizActive, stackedNotesState.latex, studentCommittedLatex, studentEditIndex, studentSteps, useAdminStepComposer, useStackedStudentLayout, useStudentStepComposer])
 
   useEffect(() => {
     latexRenderSourceRef.current = latexRenderSource || ''
@@ -9009,7 +9009,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [])
 
   const studentQuizLatexPreviewMarkup = useMemo(() => {
-    if (isAdmin) return ''
+    if (canOrchestrateLesson) return ''
     if (!quizActive) return ''
     const latexString = (latexOutput || '').trim()
     if (!latexString) return ''
@@ -9022,7 +9022,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       console.warn('Failed to render student quiz preview', err)
       return ''
     }
-  }, [isAdmin, latexOutput, quizActive])
+  }, [canOrchestrateLesson, latexOutput, quizActive])
 
   const latexOverlayStyle = useMemo<CSSProperties>(
     () => ({
@@ -9778,7 +9778,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [boardId, gradeLabel])
 
   const openQuizSetupOverlay = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     setQuizSetupOpen(true)
     setQuizSetupLoading(true)
     setQuizSetupError(null)
@@ -9803,7 +9803,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } finally {
       setQuizSetupLoading(false)
     }
-  }, [clampQuizDurationSec, isAdmin, suggestQuizPromptAndLabel, suggestQuizTimerDurationSec])
+  }, [clampQuizDurationSec, canOrchestrateLesson, suggestQuizPromptAndLabel, suggestQuizTimerDurationSec])
 
   useEffect(() => {
     if (!quizSetupOpen) return
@@ -10120,7 +10120,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     } catch (err) {
       console.warn('Failed to publish quiz state', err)
     }
-  }, [adminDraftLatex, adminSteps, boardId, gradeLabel, hasControllerRights, isAdmin, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, useAdminStepComposer, userDisplayName])
+  }, [adminDraftLatex, adminSteps, boardId, gradeLabel, hasControllerRights, canOrchestrateLesson, latexOutput, lessonScriptPhaseKey, lessonScriptPointIndex, lessonScriptV2ActivePoint?.id, lessonScriptV2ActivePoint?.title, useAdminStepComposer, userDisplayName])
 
   const startQuizFromOverlay = useCallback(async () => {
     const prompt = (quizSetupPrompt || '').trim()
@@ -10145,7 +10145,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const isSolution = assignmentSubmission?.kind === 'solution'
     // This flow is for learners (and for teachers when authoring solutions).
     // Don't block it just because we grant write access on single-user canvases.
-    if (isAdmin && !isSolution) return
+    if (canOrchestrateLesson && !isSolution) return
 
     const isAssignment = Boolean(assignmentSubmission?.assignmentId && assignmentSubmission?.questionId && assignmentSubmission?.sessionId)
     const isChallengeBoard = typeof boardId === 'string' && boardId.startsWith('challenge:')
@@ -10472,7 +10472,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
 
   const handleSendStepClick = useCallback(async () => {
-    if ((!isAdmin || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
+    if ((!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
       if (lockedOutRef.current) return
       await studentQuizCommitOrSubmit()
       return
@@ -10483,7 +10483,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     if (lockedOutRef.current) return
     if (adminSendingStep) return
 
-    if (isAdmin && !isAssignmentSolutionAuthoring) {
+    if (canOrchestrateLesson && !isAssignmentSolutionAuthoring) {
       const emptyCanvas = isEditorEmptyNow()
       const emptyLine = isCurrentLineEmptyNow()
       if (emptyCanvas && emptyLine && adminSteps.length > 0) {
@@ -10581,7 +10581,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     captureFullSnapshot,
     exportLatexFromEngine,
     getLatexFromEngineModel,
-    isAdmin,
+    canOrchestrateLesson,
     isAssignmentSolutionAuthoring,
     isCurrentLineEmptyNow,
     isEditorEmptyNow,
@@ -10593,7 +10593,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   ])
 
   useEffect(() => {
-    if (isAdmin) return
+    if (canOrchestrateLesson) return
     if (!quizActive) return
     if (quizSubmitting) return
     if (quizTimeLeftSec == null) return
@@ -10603,7 +10603,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     void (async () => {
       await studentQuizCommitOrSubmit({ forceSubmit: true, skipConfirm: true })
     })()
-  }, [isAdmin, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
+  }, [canOrchestrateLesson, quizActive, quizSubmitting, quizTimeLeftSec, studentQuizCommitOrSubmit])
 
   const toggleMobileDiagramTray = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -11244,7 +11244,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     </div>
   ) : null
 
-  const orientationLockedToLandscape = Boolean(isAdmin && isFullscreen)
+  const orientationLockedToLandscape = Boolean(canOrchestrateLesson && isFullscreen)
 
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const parsedLessonAuthoring = useMemo(() => {
@@ -11430,7 +11430,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       }
       const latexValue = (latexDisplayStateRef.current.latex || latexOutput || '').trim()
       if (!latexValue) return
-      const sharedFlag = options?.shared ?? isAdmin
+      const sharedFlag = options?.shared ?? canOrchestrateLesson
       const hash = `${sharedFlag ? 'shared' : 'mine'}::${latexValue}`
       if (isAuto && lastSavedHashRef.current === hash) return
 
@@ -11462,7 +11462,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         if (!isAuto) setIsSavingLatex(false)
       }
     },
-    [canPersistLatex, isAdmin, isLessonAuthoring, latexOutput, saveLatexIntoLessonDraft, sessionKey]
+    [canPersistLatex, canOrchestrateLesson, isLessonAuthoring, latexOutput, saveLatexIntoLessonDraft, sessionKey]
   )
 
   // Auto-save shared class notes on presenter/controller switches.
@@ -11471,7 +11471,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const prevPresenterKeyForAutoSaveRef = useRef<string | null | undefined>(undefined)
   useEffect(() => {
     if (isLessonAuthoring) return
-    if (!isAdmin) return
+    if (!canOrchestrateLesson) return
     if (!canPersistLatex || !sessionKey) return
 
     const nextKey = activePresenterUserKey ? String(activePresenterUserKey) : ''
@@ -11486,7 +11486,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       void saveLatexSnapshot({ shared: true, auto: true })
     }
     prevPresenterKeyForAutoSaveRef.current = nextKey
-  }, [activePresenterUserKey, canPersistLatex, isAdmin, isLessonAuthoring, saveLatexSnapshot, sessionKey])
+  }, [activePresenterUserKey, canPersistLatex, canOrchestrateLesson, isLessonAuthoring, saveLatexSnapshot, sessionKey])
 
   const saveQuestionAsNotes = useCallback(
     async (options: { title: string; noteId: string; stepsOverride?: Array<{ latex: string; symbols: any[] }> }) => {
@@ -11494,7 +11494,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setLatexSaveError('Finish Question is only available inside a live session.')
         return null
       }
-      if (!isAdmin) {
+      if (!canOrchestrateLesson) {
         setLatexSaveError('Finish Question is only available for teachers.')
         return null
       }
@@ -11554,7 +11554,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
         setIsSavingLatex(false)
       }
     },
-    [adminSteps, canPersistLatex, isAdmin, isLessonAuthoring, normalizeStepLatex, sessionKey]
+    [adminSteps, canPersistLatex, canOrchestrateLesson, isLessonAuthoring, normalizeStepLatex, sessionKey]
   )
 
   // Silent "Finish Question" save (no modal) used when the admin is switching presenter context.
@@ -11562,7 +11562,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
   const lastAutoQuestionNotesHashRef = useRef<string | null>(null)
   const autoSaveCurrentQuestionAsNotes = useCallback(async (options?: { requireEmptyBottom?: boolean }) => {
     if (isLessonAuthoring) return null
-    if (!isAdmin) return null
+    if (!canOrchestrateLesson) return null
     if (!canPersistLatex || !sessionKey) return null
 
     const requireEmptyBottom = options?.requireEmptyBottom !== false
@@ -11623,7 +11623,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
     const inferredTitle = prettyPrintTitleFromLatex(stepsForSave[0]?.latex || '')
     const title = (inferredTitle || '').trim() || 'Untitled question'
     return await saveQuestionAsNotes({ title, noteId, stepsOverride: stepsForSave })
-  }, [adminSteps, canPersistLatex, createSessionNoteId, isAdmin, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
+  }, [adminSteps, canPersistLatex, createSessionNoteId, canOrchestrateLesson, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {
     autoSaveCurrentQuestionAsNotesRef.current = async (options?: { requireEmptyBottom?: boolean }) => {
@@ -11697,14 +11697,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
       clearTimeout(autosaveTimeoutRef.current)
     }
     autosaveTimeoutRef.current = setTimeout(() => {
-      saveLatexSnapshot({ shared: isAdmin, auto: true })
+      saveLatexSnapshot({ shared: canOrchestrateLesson, auto: true })
     }, 2500)
     return () => {
       if (autosaveTimeoutRef.current) {
         clearTimeout(autosaveTimeoutRef.current)
       }
     }
-  }, [canPersistLatex, isAdmin, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
+  }, [canPersistLatex, canOrchestrateLesson, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
   const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean; continuity?: boolean }) => {
     if (!save) return
@@ -12525,7 +12525,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     await loadTopPanelStepForEditing(index)
                   } : undefined}
                 >
-                  {isAdmin && hasWriteAccess && !isAssignmentSolutionAuthoring && (
+                  {canOrchestrateLesson && hasWriteAccess && !isAssignmentSolutionAuthoring && (
                     <button
                       type="button"
                       aria-label={quizActive ? 'Stop quiz mode' : 'Start quiz mode'}
@@ -12611,7 +12611,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                           type="button"
                           className={`w-6 h-6 rounded-full text-white text-[10px] font-semibold flex items-center justify-center border shadow-sm ${teacherAvatarGold ? 'bg-amber-500 border-amber-700 ring-2 ring-amber-200' : 'bg-slate-900 border-white/60'}`}
                           onClick={(e) => {
-                            if (!isAdmin) return
+                            if (!canOrchestrateLesson) return
                             e.preventDefault()
                             e.stopPropagation()
                             if (overlayRosterVisible) {
@@ -12625,12 +12625,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             setOverlayRosterVisible(true)
                           }}
                           onPointerDown={(e) => {
-                            if (!isAdmin) return
+                            if (!canOrchestrateLesson) return
                             e.stopPropagation()
                           }}
-                          aria-label={isAdmin ? 'Toggle session avatars' : undefined}
+                          aria-label={canOrchestrateLesson ? 'Toggle session avatars' : undefined}
                           title={teacherBadge.name}
-                          style={{ pointerEvents: isAdmin ? 'auto' : 'none' }}
+                          style={{ pointerEvents: canOrchestrateLesson ? 'auto' : 'none' }}
                         >
                           {teacherBadge.initials}
                         </button>
@@ -13170,9 +13170,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 </div>
                 )}
 
-                {(isAdmin || quizActive) ? (
+                {(canOrchestrateLesson || quizActive) ? (
                   <div className="flex items-center gap-2">
-                    {isAdmin && isCompactViewport && (
+                    {canOrchestrateLesson && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -13228,7 +13228,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                         className="px-2 py-1"
                         title="Text"
                         onClick={() => {
-                          const canOpenTray = isAdmin || allowStudentTextTray
+                          const canOpenTray = canOrchestrateLesson || allowStudentTextTray
                           const now = Date.now()
                           const last = textIconLastTapRef.current
 
@@ -13242,7 +13242,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             textIconLastTapRef.current = null
                             if (canOpenTray) {
                               toggleMobileTextTray()
-                              if (isAdmin) {
+                              if (canOrchestrateLesson) {
                                 openPickerOrApplySingle('text')
                               }
                             }
@@ -13303,7 +13303,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                             clearTimeout(eraserLongPressTimeoutRef.current)
                             eraserLongPressTimeoutRef.current = null
                           }
-                          if (isAdmin) {
+                          if (canOrchestrateLesson) {
                             // Admin-only: long press opens the old canvas controls (replaces the gear icon).
                             eraserLongPressTimeoutRef.current = setTimeout(() => {
                               eraserLongPressTimeoutRef.current = null
@@ -13600,7 +13600,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     Preparing collaborative canvas…
                   </div>
                 )}
-                {isViewOnly && !forceEditableForAssignment && !(isSessionQuizMode && quizActive && !isAdmin) && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+                {isViewOnly && !forceEditableForAssignment && !(isSessionQuizMode && quizActive && !canOrchestrateLesson) && !(!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>
@@ -13624,7 +13624,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                     <div>{stackedScrollDebugLabel.vertical}</div>
                   </div>
                 )}
-                {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
+                {!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled && (
                   <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
                     {topPanelRenderPayload.markup ? (
                       <div
@@ -14330,7 +14330,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                       }}
                     />
 
-                    {isAdmin && diagramContextMenu && diagramContextMenu.diagramId === activeDiagram.id && (
+                    {canOrchestrateLesson && diagramContextMenu && diagramContextMenu.diagramId === activeDiagram.id && (
                       <div
                         ref={diagramContextMenuRef}
                         className="absolute z-40 w-56 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
@@ -14530,12 +14530,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           {editorReconnecting && (
             <div className="absolute inset-0 z-20 pointer-events-auto bg-transparent" aria-hidden="true" />
           )}
-          {isViewOnly && !(isSessionQuizMode && quizActive && !isAdmin) && !(!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled) && (
+          {isViewOnly && !(isSessionQuizMode && quizActive && !canOrchestrateLesson) && !(!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
               {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
             </div>
           )}
-          {!isAdmin && !useStackedStudentLayout && latexDisplayState.enabled && (
+          {!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled && (
             <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
               {topPanelRenderPayload.markup ? (
                 <div
@@ -14607,7 +14607,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
               </button>
             </div>
             <p className="orientation-panel__note">
-              {isAdmin
+              {canOrchestrateLesson
                 ? orientationLockedToLandscape
                   ? 'Fullscreen keeps you in landscape for the widest writing surface.'
                   : 'Switch layouts when not projecting fullscreen.'
@@ -14616,7 +14616,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {isAdmin && !isOverlayMode && (
+        {canOrchestrateLesson && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Recognition engine</span>
@@ -14682,7 +14682,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           </div>
         )}
 
-        {isAdmin && !isOverlayMode && (
+        {canOrchestrateLesson && !isOverlayMode && (
           <div className="canvas-settings-panel">
             <button
               className="btn"
@@ -14719,7 +14719,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
           <p className="text-xs muted">Canvas is scoped to the {gradeLabel} cohort.</p>
         )}
 
-        {!isOverlayMode && isAdmin && (
+        {!isOverlayMode && canOrchestrateLesson && (
           <div className="flex items-center gap-2 text-xs mb-1">
             <button
               type="button"
@@ -14831,7 +14831,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, isAdm
                 ))}
             </select>
           )}
-          {isAdmin && selectedClientId !== 'all' && (
+          {canOrchestrateLesson && selectedClientId !== 'all' && (
             <button
               type="button"
               onClick={() => {

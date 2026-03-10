@@ -6,6 +6,22 @@ import '@cortex-js/compute-engine'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { toDisplayFileName } from '../lib/fileName'
+import {
+  buildSolutionSessionPayloadV2,
+  buildQuestionPayloadV1,
+  extractNotebookSaveState,
+  extractNotebookSolutionId,
+  extractSolutionSessionEditorState,
+  getNotebookRevisionKind,
+  isNotebookLibraryRecord,
+  type NotebookTextBoxRecord,
+  type NotebookTextOverlayState,
+  type NotebookTextTimelineEvent,
+  type NotebookRevisionKind,
+  type NotesSaveRecord,
+  type NotebookStepRecord,
+  type SolutionSessionEditorStateV2,
+} from '../lib/stackedCanvasNotebook'
 import RecognitionDebugPanel, { DebugSection } from './RecognitionDebugPanel'
 import { createLessonRoleProfile, type LessonRoleProfile } from '../lib/lessonAccessControl'
 import {
@@ -2337,26 +2353,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
 
-  type NotesSaveRecord = {
-    id: string
-    title: string
-    latex: string
-    shared: boolean
-    noteId?: string | null
-    payload?: any | null
-    createdAt?: string
-    updatedAt?: string
-  }
-
   const [latestSharedSave, setLatestSharedSave] = useState<NotesSaveRecord | null>(null)
+  const [latestContinuitySave, setLatestContinuitySave] = useState<NotesSaveRecord | null>(null)
   const [latestPersonalSave, setLatestPersonalSave] = useState<NotesSaveRecord | null>(null)
   const latestSharedSaveRef = useRef<NotesSaveRecord | null>(null)
+  const latestContinuitySaveRef = useRef<NotesSaveRecord | null>(null)
   useEffect(() => {
     latestSharedSaveRef.current = latestSharedSave
   }, [latestSharedSave])
+  useEffect(() => {
+    latestContinuitySaveRef.current = latestContinuitySave
+  }, [latestContinuitySave])
   const [isSavingLatex, setIsSavingLatex] = useState(false)
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
 
+  const [activeNotebookSolutionId, setActiveNotebookSolutionId] = useState<string | null>(null)
   const [finishQuestionModalOpen, setFinishQuestionModalOpen] = useState(false)
   const [finishQuestionTitle, setFinishQuestionTitle] = useState('')
   const [finishQuestionNoteId, setFinishQuestionNoteId] = useState<string | null>(null)
@@ -3200,7 +3211,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         // Bidirectional: null target means the admin reclaims control.
         if (!target) {
           try {
-            const continuityRecord = continuitySave || latestSharedSaveRef.current
+            const continuityRecord = continuitySave || latestContinuitySaveRef.current
             const channel = channelRef.current
             const myClientId = clientIdRef.current
             if (continuityRecord && channel && myClientId) {
@@ -3293,7 +3304,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         const ts = Date.now()
         try {
-          const continuityRecord = continuitySave || latestSharedSaveRef.current
+          const continuityRecord = continuitySave || latestContinuitySaveRef.current
           if (continuityRecord) {
             await channel.publish('control', {
               clientId: clientIdRef.current,
@@ -6778,6 +6789,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setAdminDraftLatex('')
     setAdminSendingStep(false)
     setAdminEditIndex(null)
+    setActiveNotebookSolutionId(null)
+    setFinishQuestionNoteId(null)
   }, [boardId, useAdminStepComposer])
 
   useEffect(() => {
@@ -7857,6 +7870,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const clearEverything = () => {
     if (lockedOutRef.current) return
+
+    setActiveNotebookSolutionId(null)
+    setFinishQuestionNoteId(null)
 
     if (canvasModeRef.current === 'raw-ink') {
       const nextSnapshot = makeRawInkSnapshot([], localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-clear`)
@@ -10281,8 +10297,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const emptyCanvas = isEditorEmptyNow()
       const emptyLine = isCurrentLineEmptyNow()
       if (emptyCanvas && emptyLine && adminSteps.length > 0) {
-        const noteId = createSessionNoteId()
+        const noteId = activeNotebookSolutionId || finishQuestionNoteId || createSessionNoteId()
         setFinishQuestionNoteId(noteId)
+        setActiveNotebookSolutionId(noteId)
         setFinishQuestionTitle(prettyPrintTitleFromLatex(adminSteps[0]?.latex || ''))
         setLatexSaveError(null)
         setFinishQuestionModalOpen(true)
@@ -10368,12 +10385,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setAdminSendingStep(false)
     }
   }, [
+    activeNotebookSolutionId,
     adminDraftLatex,
     adminEditIndex,
     adminSendingStep,
     adminSteps,
     captureFullSnapshot,
     exportLatexFromEngine,
+    finishQuestionNoteId,
     getLatexFromEngineModel,
     canOrchestrateLesson,
     isAssignmentSolutionAuthoring,
@@ -11155,9 +11174,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/latex-saves`)
       if (!res.ok) return
       const data = await res.json()
-      const latestShared = Array.isArray(data?.shared) && data.shared.length > 0 ? data.shared[0] : null
+      const sharedSaves = Array.isArray(data?.shared) ? data.shared : []
+      const latestShared = sharedSaves.find((record: any) => getNotebookRevisionKind(record?.payload) !== 'checkpoint') || null
+      const latestCheckpoint = sharedSaves.find((record: any) => getNotebookRevisionKind(record?.payload) === 'checkpoint') || null
       const latestMine = Array.isArray(data?.mine) && data.mine.length > 0 ? data.mine[0] : null
       setLatestSharedSave(latestShared || null)
+      setLatestContinuitySave(latestCheckpoint || null)
       setLatestPersonalSave(latestMine || null)
     } catch (err) {
       console.warn('Failed to fetch saved notes', err)
@@ -11171,7 +11193,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (!res.ok) return [] as NotesSaveRecord[]
     const data = await res.json().catch(() => null)
     const shared = Array.isArray(data?.shared) ? data.shared : []
-    const questions = shared.filter((r: any) => r && r.payload && r.payload.kind === 'question-v1')
+    const questions = shared.filter((record: unknown) => isNotebookLibraryRecord(record))
     return questions as NotesSaveRecord[]
   }, [canPersistLatex, isLessonAuthoring, sessionKey])
 
@@ -11283,7 +11305,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [activePresenterUserKey, canPersistLatex, canOrchestrateLesson, isLessonAuthoring, saveLatexSnapshot, sessionKey])
 
   const saveQuestionAsNotes = useCallback(
-    async (options: { title: string; noteId: string; stepsOverride?: Array<{ latex: string; symbols: any[] }> }) => {
+    async (options: {
+      title: string
+      noteId: string
+      stepsOverride?: NotebookStepRecord[]
+      revisionKind?: NotebookRevisionKind
+      status?: 'draft' | 'final'
+    }) => {
       if (isLessonAuthoring) {
         setLatexSaveError('Finish Question is only available inside a live session.')
         return null
@@ -11309,13 +11337,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
 
       const latexValue = steps.map(s => s.latex).filter(Boolean).join(' \\\\ ').trim()
-      const payload = {
-        kind: 'question-v1',
-        noteId: options.noteId,
-        questionId: options.noteId,
-        createdAt: Date.now(),
-        steps,
-      }
+      const legacyPayload = buildQuestionPayloadV1(options.noteId, steps)
+      const revisionKind = options.revisionKind || 'final-save'
+      const status = options.status || (revisionKind === 'final-save' ? 'final' : 'draft')
+      const payload = buildSolutionSessionPayloadV2({
+        notebook: {
+          solutionId: options.noteId,
+          revisionId: `${options.noteId}:${Date.now()}`,
+          revisionKind,
+          status,
+          title: options.title,
+        },
+        editorState: await captureSolutionSessionEditorState(steps, latexValue),
+      })
 
       setIsSavingLatex(true)
       setLatexSaveError(null)
@@ -11329,6 +11363,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             shared: true,
             noteId: options.noteId,
             payload,
+            legacyPayload,
           }),
         })
         if (!res.ok) {
@@ -11337,7 +11372,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           throw new Error(typeof message === 'string' ? message : 'Failed to save notes')
         }
         const saved = await res.json()
-        setLatestSharedSave(saved)
+        if (revisionKind === 'checkpoint') setLatestContinuitySave(saved)
+        else setLatestSharedSave(saved)
         return saved
       } catch (err: any) {
         const message = err?.message || 'Failed to save notes'
@@ -11410,13 +11446,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const hash = normalizedLatexParts.length
       ? normalizedLatexParts.join('\n')
       : `symbols:${stepsForSave.reduce((acc, step) => acc + (Array.isArray((step as any).symbols) ? (step as any).symbols.length : 0), 0)}`
-    if (lastAutoQuestionNotesHashRef.current === hash) return latestSharedSaveRef.current
+    if (lastAutoQuestionNotesHashRef.current === hash) return latestContinuitySaveRef.current
     lastAutoQuestionNotesHashRef.current = hash
 
     const noteId = createSessionNoteId()
     const inferredTitle = prettyPrintTitleFromLatex(stepsForSave[0]?.latex || '')
     const title = (inferredTitle || '').trim() || 'Untitled question'
-    return await saveQuestionAsNotes({ title, noteId, stepsOverride: stepsForSave })
+    return await saveQuestionAsNotes({
+      title,
+      noteId,
+      stepsOverride: stepsForSave,
+      revisionKind: 'checkpoint',
+      status: 'draft',
+    })
   }, [adminSteps, canPersistLatex, createSessionNoteId, canOrchestrateLesson, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {
@@ -11442,17 +11484,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [finishQuestionModalOpen])
 
-  const confirmFinishQuestionSave = useCallback(async () => {
+  const persistFinishQuestionSave = useCallback(async (mode: 'draft' | 'final') => {
     if (!finishQuestionNoteId) return
     const title = String(finishQuestionTitle || '').trim()
     if (!title) {
       setLatexSaveError('Title is required.')
       return
     }
-    const saved = await saveQuestionAsNotes({ title, noteId: finishQuestionNoteId })
+    const saved = await saveQuestionAsNotes({
+      title,
+      noteId: finishQuestionNoteId,
+      revisionKind: mode === 'draft' ? 'draft-save' : 'final-save',
+      status: mode === 'draft' ? 'draft' : 'final',
+    })
     if (!saved) return
 
+    const solutionId = extractNotebookSolutionId(saved) || finishQuestionNoteId
+    setActiveNotebookSolutionId(solutionId)
+    setFinishQuestionNoteId(solutionId)
+
     setFinishQuestionModalOpen(false)
+    if (mode === 'draft') return
+
     setFinishQuestionNoteId(null)
 
     // Start the next question on a clean slate.
@@ -11464,6 +11517,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } catch {}
     clearEverything()
   }, [clearEverything, finishQuestionNoteId, finishQuestionTitle, saveQuestionAsNotes])
+
+  const confirmFinishQuestionSave = useCallback(async () => {
+    await persistFinishQuestionSave('final')
+  }, [persistFinishQuestionSave])
+
+  const confirmFinishQuestionDraftSave = useCallback(async () => {
+    await persistFinishQuestionSave('draft')
+  }, [persistFinishQuestionSave])
 
   useEffect(() => {
     fetchLatexSaves()
@@ -11477,6 +11538,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     if (canPersistLatex) return
     setLatestSharedSave(null)
+    setLatestContinuitySave(null)
     setLatestPersonalSave(null)
     setLatexSaveError(null)
     lastSavedHashRef.current = null
@@ -11500,30 +11562,196 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [canPersistLatex, canOrchestrateLesson, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
+  async function captureSolutionSessionEditorState(steps: NotebookStepRecord[], aggregatedLatex: string): Promise<SolutionSessionEditorStateV2> {
+    const textCtx = await requestWindowContext<any>({
+      requestEvent: 'philani-text:request-context',
+      responseEvent: 'philani-text:context',
+      timeoutMs: 220,
+    })
+
+    const textOverlayState: NotebookTextOverlayState | null = textCtx?.overlayState && typeof textCtx.overlayState === 'object'
+      ? {
+          isOpen: Boolean(textCtx.overlayState.isOpen),
+          activeId: typeof textCtx.overlayState.activeId === 'string' ? textCtx.overlayState.activeId : null,
+        }
+      : null
+
+    const textBoxes: NotebookTextBoxRecord[] = Array.isArray(textCtx?.boxes)
+      ? textCtx.boxes
+          .map((box: any) => {
+            const id = typeof box?.id === 'string' ? box.id : ''
+            if (!id) return null
+            return {
+              id,
+              text: typeof box?.text === 'string' ? box.text : '',
+              x: typeof box?.x === 'number' && Number.isFinite(box.x) ? Math.max(0, Math.min(1, box.x)) : 0.1,
+              y: typeof box?.y === 'number' && Number.isFinite(box.y) ? Math.max(0, Math.min(1, box.y)) : 0.1,
+              w: typeof box?.w === 'number' && Number.isFinite(box.w) ? Math.max(0, Math.min(1, box.w)) : 0.45,
+              h: typeof box?.h === 'number' && Number.isFinite(box.h) ? Math.max(0, Math.min(1, box.h)) : 0.18,
+              z: typeof box?.z === 'number' && Number.isFinite(box.z) ? box.z : 0,
+              surface: 'stage' as const,
+              visible: typeof box?.visible === 'boolean' ? box.visible : true,
+              locked: typeof box?.locked === 'boolean' ? box.locked : false,
+            }
+          })
+          .filter(Boolean) as NotebookTextBoxRecord[]
+      : []
+
+    const textTimeline: NotebookTextTimelineEvent[] = Array.isArray(textCtx?.timeline)
+      ? textCtx.timeline
+          .map((entry: any) => {
+            const ts = typeof entry?.ts === 'number' && Number.isFinite(entry.ts) ? entry.ts : NaN
+            const kind = entry?.kind === 'overlay-state' || entry?.kind === 'box' ? entry.kind : ''
+            const action = typeof entry?.action === 'string' ? entry.action : ''
+            if (!Number.isFinite(ts) || !kind || !action) return null
+            return {
+              ts,
+              kind,
+              action,
+              boxId: typeof entry?.boxId === 'string' ? entry.boxId : undefined,
+              visible: typeof entry?.visible === 'boolean' ? entry.visible : undefined,
+              textSnippet: typeof entry?.textSnippet === 'string' ? entry.textSnippet : undefined,
+            }
+          })
+          .filter(Boolean) as NotebookTextTimelineEvent[]
+      : []
+
+    return {
+      content: {
+        steps,
+        draftStep: {
+          latex: adminDraftLatex,
+          symbols: [],
+          rawStrokes: cloneRawInkStrokes(rawInkStrokesRef.current),
+        },
+        aggregatedLatex,
+        stackedLatex: stackedNotesState.latex,
+        rawInkStrokes: cloneRawInkStrokes(rawInkStrokesRef.current),
+        diagrams: diagramsRef.current.map(diagram => ({
+          id: diagram.id,
+          title: diagram.title,
+          imageUrl: diagram.imageUrl,
+          order: diagram.order,
+          annotations: cloneDiagramAnnotations(diagram.annotations),
+        })),
+        diagramState: {
+          activeDiagramId: diagramStateRef.current.activeDiagramId,
+          isOpen: diagramStateRef.current.isOpen,
+        },
+        textOverlay: {
+          overlayState: textOverlayState,
+          boxes: textBoxes,
+          timeline: textTimeline,
+        },
+      },
+      interaction: {
+        canvasMode,
+        topPanelEditingMode,
+        selectedStepIndex: topPanelSelectedStep,
+        editingStepIndex: adminEditIndex,
+        studentEditingStepIndex: studentEditIndex,
+        diagramTool: diagramToolRef.current,
+        diagramSelection: diagramSelectionRef.current,
+        splitRatio: studentSplitRatioRef.current,
+      },
+      history: {
+        rawInkRedoStack: rawInkRedoStackRef.current.map(cloneRawInkStrokes),
+        stepNavRedoStack: [...stepNavRedoStackRef.current],
+        diagramUndoStack: diagramUndoRef.current.map(value => cloneDiagramAnnotations(value)),
+        diagramRedoStack: diagramRedoRef.current.map(value => cloneDiagramAnnotations(value)),
+      },
+    }
+  }
+
+  const restoreSolutionSessionEditorState = useCallback((editorState: SolutionSessionEditorStateV2 | null, continuityLatex: string) => {
+    if (!editorState) return
+
+    if (typeof window !== 'undefined' && editorState.content?.textOverlay) {
+      try {
+        window.dispatchEvent(new CustomEvent('philani-text:restore-context', {
+          detail: {
+            overlayState: editorState.content.textOverlay.overlayState || null,
+            boxes: Array.isArray(editorState.content.textOverlay.boxes) ? editorState.content.textOverlay.boxes : [],
+            timeline: Array.isArray(editorState.content.textOverlay.timeline) ? editorState.content.textOverlay.timeline : [],
+          },
+        }))
+      } catch {}
+    }
+
+    if (editorState.content?.stackedLatex) {
+      setStackedNotesState(curr => ({
+        ...curr,
+        latex: editorState.content?.stackedLatex || continuityLatex,
+        ts: Date.now(),
+      }))
+    }
+
+    if (editorState.content?.rawInkStrokes) {
+      const nextMode = editorState.interaction?.canvasMode === 'raw-ink' ? 'raw-ink' : 'math'
+      setCanvasMode(nextMode)
+      replaceRawInkState((editorState.content.rawInkStrokes as any[]) || [], { clearRedo: true })
+      setCanUndo(Array.isArray(editorState.content.rawInkStrokes) && editorState.content.rawInkStrokes.length > 0)
+    }
+
+    if (editorState.content?.diagrams) {
+      setDiagrams(editorState.content.diagrams.map((diagram: any) => ({
+        id: String(diagram?.id || ''),
+        title: typeof diagram?.title === 'string' ? diagram.title : '',
+        imageUrl: typeof diagram?.imageUrl === 'string' ? diagram.imageUrl : '',
+        order: Number.isFinite(diagram?.order) ? Number(diagram.order) : 0,
+        annotations: diagram?.annotations ? normalizeAnnotations(diagram.annotations) : null,
+      })))
+    }
+
+    if (editorState.content?.diagramState) {
+      setDiagramState({
+        activeDiagramId: editorState.content.diagramState.activeDiagramId || null,
+        isOpen: Boolean(editorState.content.diagramState.isOpen),
+      })
+    }
+
+    if (editorState.interaction?.diagramTool) {
+      setDiagramTool(editorState.interaction.diagramTool)
+    }
+
+    setDiagramSelection((editorState.interaction?.diagramSelection as any) || null)
+
+    if (typeof editorState.interaction?.topPanelEditingMode === 'boolean') {
+      setTopPanelEditingMode(editorState.interaction.topPanelEditingMode)
+    }
+
+    if (typeof editorState.interaction?.splitRatio === 'number' && Number.isFinite(editorState.interaction.splitRatio)) {
+      setStudentSplitRatio(editorState.interaction.splitRatio)
+      studentSplitRatioRef.current = editorState.interaction.splitRatio
+    }
+
+    rawInkRedoStackRef.current = Array.isArray(editorState.history?.rawInkRedoStack)
+      ? editorState.history.rawInkRedoStack.map(strokes => cloneRawInkStrokes(strokes as any[]))
+      : []
+    stepNavRedoStackRef.current = Array.isArray(editorState.history?.stepNavRedoStack)
+      ? editorState.history.stepNavRedoStack.filter(value => Number.isFinite(value)).map(value => Number(value))
+      : []
+    diagramUndoRef.current = Array.isArray(editorState.history?.diagramUndoStack)
+      ? editorState.history.diagramUndoStack.map(value => cloneDiagramAnnotations(value as any))
+      : []
+    diagramRedoRef.current = Array.isArray(editorState.history?.diagramRedoStack)
+      ? editorState.history.diagramRedoStack.map(value => cloneDiagramAnnotations(value as any))
+      : []
+    setDiagramCanUndo(diagramUndoRef.current.length > 0)
+    setDiagramCanRedo(diagramRedoRef.current.length > 0)
+    setCanRedo(rawInkRedoStackRef.current.length > 0)
+  }, [cloneDiagramAnnotations, normalizeAnnotations, replaceRawInkState])
+
   const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean; continuity?: boolean }) => {
     if (!save) return
 
-    const payload: any = (save as any)?.payload
-    let mergedSymbols: any[] = []
-    let stepsForComposer: Array<{ latex: string; symbols: any[] }> = []
-    if (payload?.kind === 'question-v1' && Array.isArray(payload?.steps)) {
-      const steps = payload.steps
-        .filter((s: any) => s && typeof s === 'object')
-        .map((s: any) => ({ latex: typeof s.latex === 'string' ? s.latex : '', symbols: Array.isArray(s.symbols) ? s.symbols : [] }))
-        .filter((s: any) => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
-
-      stepsForComposer = steps
-      mergedSymbols = steps.flatMap((s: any) => (Array.isArray(s.symbols) ? s.symbols : []))
-    }
-
-    const payloadLatex = stepsForComposer
-      .map(step => String(step?.latex || '').trim())
-      .filter(Boolean)
-      .join(' \\\\ ')
-      .trim()
-    const loadedLatexRaw = (save as any)?.latex
-    const loadedLatex = typeof loadedLatexRaw === 'string' ? loadedLatexRaw.trim() : ''
-    const continuityLatex = loadedLatex || payloadLatex
+    const editorState = extractSolutionSessionEditorState(save.payload)
+    const solutionId = extractNotebookSolutionId(save)
+    const {
+      steps: stepsForComposer,
+      mergedSymbols,
+      continuityLatex,
+    } = extractNotebookSaveState(save)
 
     if (options?.continuity && !mergedSymbols.length) {
       const latexValue = continuityLatex
@@ -11534,6 +11762,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setLatexDisplayState(curr => ({ ...curr, enabled: false, latex: latexValue }))
       return
     }
+
+    setActiveNotebookSolutionId(solutionId)
+    setFinishQuestionNoteId(solutionId)
 
     // Overwrite the current local state.
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -11562,9 +11793,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (stepsForComposer.length) {
       if (useAdminStepComposer && hasControllerRights()) {
         setAdminSteps(stepsForComposer)
-        setAdminEditIndex(null)
-        setAdminDraftLatex('')
-        setTopPanelSelectedStep(null)
+        setAdminEditIndex(editorState?.interaction?.editingStepIndex ?? null)
+        setAdminDraftLatex(editorState?.content?.draftStep?.latex || '')
+        setTopPanelSelectedStep(editorState?.interaction?.selectedStepIndex ?? null)
       }
     } else if (useAdminStepComposer && hasControllerRights()) {
       // If a non-question note is loaded in composer mode, clear the step list so the LaTeX panel can take over.
@@ -11587,10 +11818,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       latestSnapshotRef.current = { snapshot: canonical, ts: Date.now(), reason: 'update' }
     }
 
+    restoreSolutionSessionEditorState(editorState, continuityLatex)
+
     if (options?.publish && canPublishSnapshots()) {
       await forcePublishCanvas(undefined, { shareIndex: pageIndexRef.current })
     }
-  }, [applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, useAdminStepComposer])
+  }, [applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, restoreSolutionSessionEditorState, useAdminStepComposer])
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
@@ -14696,6 +14929,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   Internal ID saved (hidden): <span className="font-mono">{finishQuestionNoteId}</span>
                 </div>
               )}
+              <div className="mt-2 text-[11px] text-slate-500">
+                Save draft keeps this solution on the board. Save final stores it as a finished notebook item and clears the canvas for the next question.
+              </div>
             </div>
 
             {latexSaveError && (
@@ -14712,11 +14948,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 Cancel
               </button>
               <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => { void confirmFinishQuestionDraftSave() }}
+                disabled={isSavingLatex || !finishQuestionNoteId}
+              >
+                {isSavingLatex ? 'Saving…' : 'Save Draft'}
+              </button>
+              <button
                 type="submit"
                 className="btn btn-primary btn-sm"
                 disabled={isSavingLatex || !finishQuestionNoteId}
               >
-                {isSavingLatex ? 'Saving…' : 'Save'}
+                {isSavingLatex ? 'Saving…' : 'Save Final'}
               </button>
             </div>
           </form>
@@ -14760,6 +15004,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 {notesLibraryItems.map((item) => {
                   const updatedAt = (item as any)?.updatedAt
                   const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
+                  const revisionKind = getNotebookRevisionKind((item as any)?.payload)
+                  const revisionLabel = revisionKind === 'draft-save'
+                    ? 'Draft'
+                    : revisionKind === 'checkpoint'
+                      ? 'Checkpoint'
+                      : 'Final'
+                  const revisionBadgeClass = revisionKind === 'draft-save'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : revisionKind === 'checkpoint'
+                      ? 'border-slate-200 bg-slate-100 text-slate-600'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   return (
                     <button
                       key={item.id}
@@ -14770,7 +15025,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         setNotesLibraryOpen(false)
                       }}
                     >
-                      <div className="text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
+                          {revisionLabel}
+                        </span>
+                      </div>
                       <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
                         <span className="truncate">{when}</span>
                         <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>

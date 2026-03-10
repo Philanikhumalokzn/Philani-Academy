@@ -22,6 +22,15 @@ type TextOverlayState = {
   activeId: string | null
 }
 
+type TextTimelineEvent = {
+  ts: number
+  kind: 'overlay-state' | 'box'
+  action: string
+  boxId?: string
+  visible?: boolean
+  textSnippet?: string
+}
+
 type TextRealtimeMessage =
   | { kind: 'state'; state: TextOverlayState; ts?: number; sender?: string }
   | { kind: 'boxes'; boxes: TextBoxRecord[]; ts?: number; sender?: string }
@@ -30,6 +39,19 @@ type ScriptTextEventDetail = {
   id?: string
   text?: string | null
   visible?: boolean
+}
+
+type RestoreTextOverlayEventDetail = {
+  overlayState?: Partial<TextOverlayState> | null
+  boxes?: Array<Partial<TextBoxRecord> | null> | null
+  timeline?: Array<{
+    ts?: number
+    kind?: 'overlay-state' | 'box'
+    action?: string
+    boxId?: string
+    visible?: boolean
+    textSnippet?: string
+  } | null> | null
 }
 
 const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
@@ -46,6 +68,58 @@ const makeChannelName = (boardId?: string, gradeLabel?: string | null, realtimeS
 }
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
+
+const normalizeTextOverlayState = (value: any): TextOverlayState => ({
+  isOpen: Boolean(value?.isOpen),
+  activeId: typeof value?.activeId === 'string' ? value.activeId : null,
+})
+
+const normalizeTextBoxRecord = (value: any): TextBoxRecord | null => {
+  const id = typeof value?.id === 'string' ? value.id : ''
+  if (!id) return null
+  return {
+    id,
+    text: typeof value?.text === 'string' ? value.text : '',
+    x: typeof value?.x === 'number' ? clamp01(value.x) : 0.1,
+    y: typeof value?.y === 'number' ? clamp01(value.y) : 0.1,
+    w: typeof value?.w === 'number' ? clamp01(value.w) : 0.45,
+    h: typeof value?.h === 'number' ? clamp01(value.h) : 0.18,
+    z: typeof value?.z === 'number' && Number.isFinite(value.z) ? value.z : 0,
+    surface: 'stage',
+    visible: typeof value?.visible === 'boolean' ? value.visible : true,
+    locked: typeof value?.locked === 'boolean' ? value.locked : false,
+  }
+}
+
+const normalizeTextBoxList = (input: unknown): TextBoxRecord[] => {
+  if (!Array.isArray(input)) return []
+  return input
+    .map(normalizeTextBoxRecord)
+    .filter(Boolean) as TextBoxRecord[]
+}
+
+const normalizeTextTimelineEvent = (value: any): TextTimelineEvent | null => {
+  const ts = typeof value?.ts === 'number' && Number.isFinite(value.ts) ? value.ts : NaN
+  const kind = value?.kind === 'overlay-state' || value?.kind === 'box' ? value.kind : ''
+  const action = typeof value?.action === 'string' ? value.action : ''
+  if (!Number.isFinite(ts) || !kind || !action) return null
+  return {
+    ts,
+    kind,
+    action,
+    boxId: typeof value?.boxId === 'string' ? value.boxId : undefined,
+    visible: typeof value?.visible === 'boolean' ? value.visible : undefined,
+    textSnippet: typeof value?.textSnippet === 'string' ? value.textSnippet : undefined,
+  }
+}
+
+const normalizeTextTimeline = (input: unknown): TextTimelineEvent[] => {
+  if (!Array.isArray(input)) return []
+  const next = input
+    .map(normalizeTextTimelineEvent)
+    .filter(Boolean) as TextTimelineEvent[]
+  return next.length > 250 ? next.slice(next.length - 250) : next
+}
 
 const randomId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -437,14 +511,6 @@ export default function TextOverlayModule(props: {
 
   const [closingPopupIds, setClosingPopupIds] = useState<Record<string, boolean>>({})
 
-  type TextTimelineEvent = {
-    ts: number
-    kind: 'overlay-state' | 'box'
-    action: string
-    boxId?: string
-    visible?: boolean
-    textSnippet?: string
-  }
   const textTimelineRef = useRef<TextTimelineEvent[]>([])
   const pushTextTimeline = useCallback((evt: TextTimelineEvent) => {
     const next = [...textTimelineRef.current, evt]
@@ -528,34 +594,13 @@ export default function TextOverlayModule(props: {
           if (data.sender && data.sender === clientIdRef.current) return
 
           if (data.kind === 'state') {
-            const next: TextOverlayState = {
-              isOpen: Boolean(data.state?.isOpen),
-              activeId: typeof data.state?.activeId === 'string' ? data.state.activeId : null,
-            }
+            const next = normalizeTextOverlayState(data.state)
             setOverlayState(next)
             return
           }
 
           if (data.kind === 'boxes') {
-            const incoming = Array.isArray(data.boxes) ? data.boxes : []
-            const normalized: TextBoxRecord[] = incoming
-              .map((b: any) => {
-                const id = typeof b?.id === 'string' ? b.id : ''
-                if (!id) return null
-                return {
-                  id,
-                  text: typeof b.text === 'string' ? b.text : '',
-                  x: typeof b.x === 'number' ? clamp01(b.x) : 0.1,
-                  y: typeof b.y === 'number' ? clamp01(b.y) : 0.1,
-                  w: typeof b.w === 'number' ? clamp01(b.w) : 0.45,
-                  h: typeof b.h === 'number' ? clamp01(b.h) : 0.18,
-                  z: typeof b.z === 'number' && Number.isFinite(b.z) ? b.z : 0,
-                  surface: 'stage',
-                  visible: typeof b.visible === 'boolean' ? b.visible : true,
-                  locked: typeof b.locked === 'boolean' ? b.locked : false,
-                } as TextBoxRecord
-              })
-              .filter(Boolean) as TextBoxRecord[]
+            const normalized = normalizeTextBoxList(data.boxes)
             normalized.sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
             setBoxes(normalized)
 
@@ -641,16 +686,26 @@ export default function TextOverlayModule(props: {
       const requestId = typeof detail?.requestId === 'string' ? detail.requestId : ''
       if (!requestId) return
 
-      const visibleBoxes = boxesRef.current
-        .filter(b => Boolean(b.visible))
-        .map(b => ({ id: b.id, text: b.text || '', visible: Boolean(b.visible), z: b.z }))
+      const snapshotBoxes = boxesRef.current
+        .map(box => ({
+          id: box.id,
+          text: box.text || '',
+          x: box.x,
+          y: box.y,
+          w: box.w,
+          h: box.h,
+          z: box.z,
+          surface: 'stage' as const,
+          visible: Boolean(box.visible),
+          locked: Boolean(box.locked),
+        }))
 
       window.dispatchEvent(new CustomEvent('philani-text:context', {
         detail: {
           requestId,
           ts: Date.now(),
           overlayState: overlayStateRef.current,
-          boxes: visibleBoxes,
+          boxes: snapshotBoxes,
           timeline: textTimelineRef.current.slice(Math.max(0, textTimelineRef.current.length - 80)),
         },
       }))
@@ -772,6 +827,35 @@ export default function TextOverlayModule(props: {
     window.addEventListener('philani-text:script-apply', handler as any)
     return () => window.removeEventListener('philani-text:script-apply', handler as any)
   }, [upsertScriptBox])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handler = (event: Event) => {
+      if (!canPresentRef.current) return
+      const detail = (event as CustomEvent)?.detail as RestoreTextOverlayEventDetail | undefined
+      const nextBoxes = normalizeTextBoxList(detail?.boxes)
+      nextBoxes.sort((a, b) => (a.z - b.z) || a.id.localeCompare(b.id))
+      const nextStateRaw = normalizeTextOverlayState(detail?.overlayState)
+      const nextState: TextOverlayState = {
+        ...nextStateRaw,
+        activeId: nextBoxes.some(box => box.id === nextStateRaw.activeId) ? nextStateRaw.activeId : null,
+      }
+      const nextTimeline = normalizeTextTimeline(detail?.timeline)
+
+      overlayStateRef.current = nextState
+      boxesRef.current = nextBoxes
+      textTimelineRef.current = nextTimeline
+      setOverlayState(nextState)
+      setBoxes(nextBoxes)
+
+      void publish({ kind: 'state', state: nextState })
+      void publish({ kind: 'boxes', boxes: nextBoxes })
+    }
+
+    window.addEventListener('philani-text:restore-context', handler as any)
+    return () => window.removeEventListener('philani-text:restore-context', handler as any)
+  }, [publish])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

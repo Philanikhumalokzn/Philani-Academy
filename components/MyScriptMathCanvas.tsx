@@ -1032,6 +1032,42 @@ const countSymbols = (source: any): number => {
   return 0
 }
 
+const normalizeSymbolEventType = (evt: any): string => {
+  const raw = evt?.type ?? evt?.eventType ?? evt?.state ?? evt?.phase ?? evt?.kind ?? evt?.action ?? ''
+  return String(raw).toLowerCase()
+}
+
+const splitSymbolEventsForReplay = (source: any): any[][] => {
+  const events = Array.isArray(source)
+    ? source
+    : Array.isArray(source?.events)
+      ? source.events
+      : []
+  if (!events.length) return []
+
+  const batches: any[][] = []
+  let current: any[] = []
+
+  const flush = () => {
+    if (!current.length) return
+    batches.push(current)
+    current = []
+  }
+
+  for (const evt of events) {
+    const type = normalizeSymbolEventType(evt)
+    const isStart = Boolean(evt?.isFirst || evt?.isStart) || /(down|start|begin)/.test(type)
+    const isEnd = Boolean(evt?.isLast || evt?.isEnd) || /(up|end|stop)/.test(type)
+
+    if (isStart && current.length) flush()
+    current.push(evt)
+    if (isEnd) flush()
+  }
+
+  flush()
+  return batches.length ? batches : [events]
+}
+
 const getSnapshotMode = (_snapshot: SnapshotPayload | null | undefined): CanvasMode => {
   return 'math'
 }
@@ -2376,6 +2412,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [notesLibraryLoading, setNotesLibraryLoading] = useState(false)
   const [notesLibraryError, setNotesLibraryError] = useState<string | null>(null)
   const [notesLibraryItems, setNotesLibraryItems] = useState<NotesSaveRecord[]>([])
+  const [notesLibrarySelectedSolutionId, setNotesLibrarySelectedSolutionId] = useState<string | null>(null)
+  const [notesLibraryCollapsedSolutionIds, setNotesLibraryCollapsedSolutionIds] = useState<string[]>([])
   const notesLibraryGroups = useMemo(() => {
     const toTimestamp = (value: unknown) => {
       if (typeof value !== 'string' || !value) return 0
@@ -2422,6 +2460,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }))
       .sort((left, right) => right.latestTs - left.latestTs)
   }, [notesLibraryItems])
+  const selectedNotesLibraryGroup = useMemo(() => {
+    if (!notesLibraryGroups.length) return null
+    if (notesLibrarySelectedSolutionId) {
+      const selected = notesLibraryGroups.find(group => group.solutionId === notesLibrarySelectedSolutionId)
+      if (selected) return selected
+    }
+    if (activeNotebookSolutionId) {
+      const active = notesLibraryGroups.find(group => group.solutionId === activeNotebookSolutionId)
+      if (active) return active
+    }
+    return notesLibraryGroups[0] || null
+  }, [activeNotebookSolutionId, notesLibraryGroups, notesLibrarySelectedSolutionId])
 
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
@@ -11257,14 +11307,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     try {
       const items = await fetchAllSessionQuestionNotes()
       setNotesLibraryItems(items)
+      const preferredSolutionId = activeNotebookSolutionId
+        || extractNotebookSolutionId(items[0] || null)
+        || null
+      setNotesLibrarySelectedSolutionId(preferredSolutionId)
+      setNotesLibraryCollapsedSolutionIds([])
     } catch (err: any) {
       console.warn('Failed to load session notes library', err)
       setNotesLibraryError(err?.message || 'Failed to load notes')
       setNotesLibraryItems([])
+      setNotesLibrarySelectedSolutionId(null)
     } finally {
       setNotesLibraryLoading(false)
     }
-  }, [canPersistLatex, fetchAllSessionQuestionNotes, sessionKey])
+  }, [activeNotebookSolutionId, canPersistLatex, fetchAllSessionQuestionNotes, sessionKey])
 
   const saveLatexSnapshot = useCallback(
     async (options?: { shared?: boolean; auto?: boolean }) => {
@@ -11613,6 +11669,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [canPersistLatex, canOrchestrateLesson, isLessonAuthoring, latexDisplayState.latex, latexOutput, saveLatexSnapshot])
 
+  const importNotebookSymbolsForRestore = useCallback(async (symbols: any[] | null | undefined) => {
+    const editor = editorInstanceRef.current
+    if (!editor) return 0
+
+    const events = Array.isArray(symbols) ? symbols : []
+    if (!events.length) return 0
+
+    const batches = splitSymbolEventsForReplay(events)
+    const shouldReplayInBatches = batches.length > 1 && batches.length <= 64 && events.length <= 6000
+
+    if (!shouldReplayInBatches) {
+      await nextAnimationFrame()
+      await editor.importPointEvents(events)
+      if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+      return events.length
+    }
+
+    for (let index = 0; index < batches.length; index += 1) {
+      const batch = batches[index]
+      if (!batch.length) continue
+      await nextAnimationFrame()
+      await editor.importPointEvents(batch)
+      if (typeof editor.waitForIdle === 'function' && (index === batches.length - 1 || index % 6 === 5)) {
+        await editor.waitForIdle()
+      }
+    }
+
+    if (typeof editor.waitForIdle === 'function') await editor.waitForIdle()
+    return events.length
+  }, [])
+
   async function captureSolutionSessionEditorState(steps: NotebookStepRecord[], aggregatedLatex: string): Promise<SolutionSessionEditorStateV2> {
     const textCtx = await requestWindowContext<any>({
       requestEvent: 'philani-text:request-context',
@@ -11828,11 +11915,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (mergedSymbols.length) {
       if (mergedSymbols.length) {
         try {
-          await nextAnimationFrame()
-          await editorInstanceRef.current?.importPointEvents?.(mergedSymbols)
-          if (typeof editorInstanceRef.current?.waitForIdle === 'function') {
-            await editorInstanceRef.current.waitForIdle()
-          }
+          await importNotebookSymbolsForRestore(mergedSymbols)
         } catch (err) {
           console.warn('Failed to import continuity notes symbols', err)
         }
@@ -11874,7 +11957,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (options?.publish && canPublishSnapshots()) {
       await forcePublishCanvas(undefined, { shareIndex: pageIndexRef.current })
     }
-  }, [applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, restoreSolutionSessionEditorState, useAdminStepComposer])
+  }, [applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, importNotebookSymbolsForRestore, restoreSolutionSessionEditorState, useAdminStepComposer])
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
@@ -15036,7 +15119,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onClose={() => setNotesLibraryOpen(false)}
           onBackdropClick={() => setNotesLibraryOpen(false)}
           frameClassName="absolute inset-0 flex items-center justify-center p-3"
-          panelClassName="w-[min(680px,calc(100vw-24px))] max-h-[min(78vh,720px)] rounded-lg"
+          panelClassName="w-[min(980px,calc(100vw-24px))] max-h-[min(82vh,760px)] rounded-lg"
           contentClassName="p-0 overflow-hidden flex flex-col"
           rightActions={
             <button
@@ -15059,34 +15142,116 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             ) : notesLibraryItems.length === 0 ? (
               <div className="text-sm text-slate-600">No saved questions yet.</div>
             ) : (
-              <div className="space-y-3">
-                {notesLibraryGroups.map((group) => {
-                  const isActiveGroup = Boolean(activeNotebookSolutionId && group.solutionId === activeNotebookSolutionId)
-                  return (
-                    <div
-                      key={group.solutionId}
-                      className={`rounded-lg border bg-white ${isActiveGroup ? 'border-slate-400 shadow-sm' : 'border-slate-200'}`}
-                    >
-                      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-800">{group.title}</div>
-                          <div className="text-[11px] text-slate-500">
-                            {group.items.length === 1 ? '1 revision' : `${group.items.length} revisions`}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+                <div className="space-y-3">
+                  {notesLibraryGroups.map((group) => {
+                    const isActiveGroup = Boolean(activeNotebookSolutionId && group.solutionId === activeNotebookSolutionId)
+                    const isSelectedGroup = selectedNotesLibraryGroup?.solutionId === group.solutionId
+                    const isCollapsed = notesLibraryCollapsedSolutionIds.includes(group.solutionId)
+                    const showItems = !isCollapsed || isSelectedGroup
+                    return (
+                      <div
+                        key={group.solutionId}
+                        className={`rounded-lg border bg-white ${isActiveGroup ? 'border-slate-400 shadow-sm' : 'border-slate-200'}`}
+                      >
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2">
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 text-left"
+                            onClick={() => setNotesLibrarySelectedSolutionId(group.solutionId)}
+                          >
+                            <div className="truncate text-sm font-semibold text-slate-800">{group.title}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {group.items.length === 1 ? '1 revision' : `${group.items.length} revisions`}
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-2">
+                            {isActiveGroup && (
+                              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700">
+                                Current
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600 hover:bg-slate-50"
+                              onClick={() => {
+                                setNotesLibrarySelectedSolutionId(group.solutionId)
+                                setNotesLibraryCollapsedSolutionIds(curr => (
+                                  curr.includes(group.solutionId)
+                                    ? curr.filter(id => id !== group.solutionId)
+                                    : [...curr, group.solutionId]
+                                ))
+                              }}
+                            >
+                              {isCollapsed && !isSelectedGroup ? 'Expand' : 'Collapse'}
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isActiveGroup && (
-                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700">
-                              Current
-                            </span>
-                          )}
-                          <span className="font-mono text-[10px] text-slate-400">{group.solutionId.slice(0, 14)}</span>
-                        </div>
+                        {showItems && (
+                          <div className="p-2 space-y-2">
+                            {group.items.map((item, index) => {
+                              const updatedAt = (item as any)?.updatedAt
+                              const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
+                              const revisionKind = getNotebookRevisionKind((item as any)?.payload)
+                              const revisionLabel = revisionKind === 'draft-save'
+                                ? 'Draft'
+                                : revisionKind === 'checkpoint'
+                                  ? 'Checkpoint'
+                                  : 'Final'
+                              const revisionBadgeClass = revisionKind === 'draft-save'
+                                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                : revisionKind === 'checkpoint'
+                                  ? 'border-slate-200 bg-slate-100 text-slate-600'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  className={`w-full text-left rounded-md border px-3 py-2 ${index === 0 ? 'border-slate-300 bg-white hover:bg-slate-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}
+                                  onClick={() => {
+                                    setNotesLibrarySelectedSolutionId(group.solutionId)
+                                    applySavedNotesRecord(item)
+                                    setNotesLibraryOpen(false)
+                                  }}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
+                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
+                                      {revisionLabel}
+                                    </span>
+                                  </div>
+                                  <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                                    <span className="truncate">{when || (index === 0 ? 'Latest revision' : 'Saved revision')}</span>
+                                    <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <div className="p-2 space-y-2">
-                        {group.items.map((item) => {
+                    )
+                  })}
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-0 h-fit">
+                  {!selectedNotesLibraryGroup ? (
+                    <div className="text-sm text-slate-600">Select a saved solution to inspect its revision timeline.</div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-slate-800">{selectedNotesLibraryGroup.title}</div>
+                          <div className="mt-0.5 text-[11px] text-slate-500">
+                            {selectedNotesLibraryGroup.items.length === 1 ? '1 revision in this solution' : `${selectedNotesLibraryGroup.items.length} revisions in this solution`}
+                          </div>
+                        </div>
+                        <span className="font-mono text-[10px] text-slate-400">{selectedNotesLibraryGroup.solutionId.slice(0, 14)}</span>
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        {selectedNotesLibraryGroup.items.map((item, index) => {
                           const updatedAt = (item as any)?.updatedAt
-                          const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
+                          const when = updatedAt ? new Date(updatedAt).toLocaleString() : 'Unknown time'
                           const revisionKind = getNotebookRevisionKind((item as any)?.payload)
                           const revisionLabel = revisionKind === 'draft-save'
                             ? 'Draft'
@@ -15099,32 +15264,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               ? 'border-slate-200 bg-slate-100 text-slate-600'
                               : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="w-full text-left rounded-md border border-slate-200 bg-slate-50 px-3 py-2 hover:bg-slate-100"
-                              onClick={() => {
-                                applySavedNotesRecord(item)
-                                setNotesLibraryOpen(false)
-                              }}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
-                                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
-                                  {revisionLabel}
-                                </span>
+                            <div key={item.id} className="relative pl-5">
+                              <div className="absolute left-[6px] top-2 bottom-[-14px] w-px bg-slate-200 last:hidden" />
+                              <div className="absolute left-0 top-2 h-3 w-3 rounded-full border border-slate-300 bg-white" />
+                              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-medium text-slate-800">{index === 0 ? 'Latest revision' : `Revision ${selectedNotesLibraryGroup.items.length - index}`}</div>
+                                    <div className="mt-0.5 text-[11px] text-slate-500 truncate">{when}</div>
+                                  </div>
+                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
+                                    {revisionLabel}
+                                  </span>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                  <div className="text-[11px] text-slate-500 truncate">{item.title || 'Untitled'}</div>
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                                    onClick={() => {
+                                      applySavedNotesRecord(item)
+                                      setNotesLibraryOpen(false)
+                                    }}
+                                  >
+                                    Load Revision
+                                  </button>
+                                </div>
                               </div>
-                              <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
-                                <span className="truncate">{when}</span>
-                                <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
-                              </div>
-                            </button>
+                            </div>
                           )
                         })}
                       </div>
-                    </div>
-                  )
-                })}
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>

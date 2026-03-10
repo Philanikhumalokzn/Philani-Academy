@@ -2376,6 +2376,52 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [notesLibraryLoading, setNotesLibraryLoading] = useState(false)
   const [notesLibraryError, setNotesLibraryError] = useState<string | null>(null)
   const [notesLibraryItems, setNotesLibraryItems] = useState<NotesSaveRecord[]>([])
+  const notesLibraryGroups = useMemo(() => {
+    const toTimestamp = (value: unknown) => {
+      if (typeof value !== 'string' || !value) return 0
+      const parsed = Date.parse(value)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+
+    const grouped = new Map<string, {
+      solutionId: string
+      title: string
+      latestTs: number
+      items: NotesSaveRecord[]
+    }>()
+
+    for (const item of notesLibraryItems) {
+      const solutionId = extractNotebookSolutionId(item) || String(item.id || '') || `ungrouped:${grouped.size}`
+      const title = String(item.title || '').trim() || 'Untitled'
+      const itemTs = toTimestamp((item as any)?.updatedAt) || toTimestamp((item as any)?.createdAt)
+      const existing = grouped.get(solutionId)
+      if (!existing) {
+        grouped.set(solutionId, {
+          solutionId,
+          title,
+          latestTs: itemTs,
+          items: [item],
+        })
+        continue
+      }
+      existing.items.push(item)
+      if (itemTs >= existing.latestTs) {
+        existing.latestTs = itemTs
+        existing.title = title || existing.title
+      }
+    }
+
+    return Array.from(grouped.values())
+      .map(group => ({
+        ...group,
+        items: [...group.items].sort((left, right) => {
+          const rightTs = toTimestamp((right as any)?.updatedAt) || toTimestamp((right as any)?.createdAt)
+          const leftTs = toTimestamp((left as any)?.updatedAt) || toTimestamp((left as any)?.createdAt)
+          return rightTs - leftTs
+        }),
+      }))
+      .sort((left, right) => right.latestTs - left.latestTs)
+  }, [notesLibraryItems])
 
   type DiagramStrokePoint = { x: number; y: number }
   type DiagramStroke = { id: string; color: string; width: number; points: DiagramStrokePoint[]; z?: number; locked?: boolean }
@@ -11484,22 +11530,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [finishQuestionModalOpen])
 
-  const persistFinishQuestionSave = useCallback(async (mode: 'draft' | 'final') => {
+  const persistFinishQuestionSave = useCallback(async (mode: 'draft' | 'final', options?: { fork?: boolean }) => {
     if (!finishQuestionNoteId) return
     const title = String(finishQuestionTitle || '').trim()
     if (!title) {
       setLatexSaveError('Title is required.')
       return
     }
+    const noteId = options?.fork ? createSessionNoteId() : finishQuestionNoteId
     const saved = await saveQuestionAsNotes({
       title,
-      noteId: finishQuestionNoteId,
+      noteId,
       revisionKind: mode === 'draft' ? 'draft-save' : 'final-save',
       status: mode === 'draft' ? 'draft' : 'final',
     })
     if (!saved) return
 
-    const solutionId = extractNotebookSolutionId(saved) || finishQuestionNoteId
+    const solutionId = extractNotebookSolutionId(saved) || noteId
     setActiveNotebookSolutionId(solutionId)
     setFinishQuestionNoteId(solutionId)
 
@@ -11516,7 +11563,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setStackedNotesState(curr => ({ ...curr, latex: '' }))
     } catch {}
     clearEverything()
-  }, [clearEverything, finishQuestionNoteId, finishQuestionTitle, saveQuestionAsNotes])
+  }, [clearEverything, createSessionNoteId, finishQuestionNoteId, finishQuestionTitle, saveQuestionAsNotes])
 
   const confirmFinishQuestionSave = useCallback(async () => {
     await persistFinishQuestionSave('final')
@@ -11524,6 +11571,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const confirmFinishQuestionDraftSave = useCallback(async () => {
     await persistFinishQuestionSave('draft')
+  }, [persistFinishQuestionSave])
+
+  const confirmFinishQuestionForkSave = useCallback(async () => {
+    await persistFinishQuestionSave('draft', { fork: true })
   }, [persistFinishQuestionSave])
 
   useEffect(() => {
@@ -14930,7 +14981,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 </div>
               )}
               <div className="mt-2 text-[11px] text-slate-500">
-                Save draft keeps this solution on the board. Save final stores it as a finished notebook item and clears the canvas for the next question.
+                Save draft updates this solution and keeps it on the board. Save as new forks a new solution lineage from the current board. Save final stores the current solution as finished and clears the canvas for the next question.
               </div>
             </div>
 
@@ -14954,6 +15005,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 disabled={isSavingLatex || !finishQuestionNoteId}
               >
                 {isSavingLatex ? 'Saving…' : 'Save Draft'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => { void confirmFinishQuestionForkSave() }}
+                disabled={isSavingLatex || !finishQuestionNoteId}
+              >
+                {isSavingLatex ? 'Saving…' : 'Save As New'}
               </button>
               <button
                 type="submit"
@@ -15000,42 +15059,70 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             ) : notesLibraryItems.length === 0 ? (
               <div className="text-sm text-slate-600">No saved questions yet.</div>
             ) : (
-              <div className="space-y-2">
-                {notesLibraryItems.map((item) => {
-                  const updatedAt = (item as any)?.updatedAt
-                  const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
-                  const revisionKind = getNotebookRevisionKind((item as any)?.payload)
-                  const revisionLabel = revisionKind === 'draft-save'
-                    ? 'Draft'
-                    : revisionKind === 'checkpoint'
-                      ? 'Checkpoint'
-                      : 'Final'
-                  const revisionBadgeClass = revisionKind === 'draft-save'
-                    ? 'border-amber-200 bg-amber-50 text-amber-700'
-                    : revisionKind === 'checkpoint'
-                      ? 'border-slate-200 bg-slate-100 text-slate-600'
-                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              <div className="space-y-3">
+                {notesLibraryGroups.map((group) => {
+                  const isActiveGroup = Boolean(activeNotebookSolutionId && group.solutionId === activeNotebookSolutionId)
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="w-full text-left rounded-md border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50"
-                      onClick={() => {
-                        applySavedNotesRecord(item)
-                        setNotesLibraryOpen(false)
-                      }}
+                    <div
+                      key={group.solutionId}
+                      className={`rounded-lg border bg-white ${isActiveGroup ? 'border-slate-400 shadow-sm' : 'border-slate-200'}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
-                          {revisionLabel}
-                        </span>
+                      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-slate-800">{group.title}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {group.items.length === 1 ? '1 revision' : `${group.items.length} revisions`}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isActiveGroup && (
+                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700">
+                              Current
+                            </span>
+                          )}
+                          <span className="font-mono text-[10px] text-slate-400">{group.solutionId.slice(0, 14)}</span>
+                        </div>
                       </div>
-                      <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
-                        <span className="truncate">{when}</span>
-                        <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
+                      <div className="p-2 space-y-2">
+                        {group.items.map((item) => {
+                          const updatedAt = (item as any)?.updatedAt
+                          const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
+                          const revisionKind = getNotebookRevisionKind((item as any)?.payload)
+                          const revisionLabel = revisionKind === 'draft-save'
+                            ? 'Draft'
+                            : revisionKind === 'checkpoint'
+                              ? 'Checkpoint'
+                              : 'Final'
+                          const revisionBadgeClass = revisionKind === 'draft-save'
+                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : revisionKind === 'checkpoint'
+                              ? 'border-slate-200 bg-slate-100 text-slate-600'
+                              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className="w-full text-left rounded-md border border-slate-200 bg-slate-50 px-3 py-2 hover:bg-slate-100"
+                              onClick={() => {
+                                applySavedNotesRecord(item)
+                                setNotesLibraryOpen(false)
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
+                                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
+                                  {revisionLabel}
+                                </span>
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                                <span className="truncate">{when}</span>
+                                <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>

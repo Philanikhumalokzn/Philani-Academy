@@ -399,8 +399,6 @@ export default function DiagramOverlayModule(props: {
   const [editingAuthorityUserKeys, setEditingAuthorityUserKeys] = useState<string[]>([])
   const [switchConflictActive, setSwitchConflictActive] = useState(false)
   const handoffMessageTimerRef = useRef<number | null>(null)
-  const rightsGrantedAtByUserKeyRef = useRef<Map<string, number>>(new Map())
-  const recentBroadcastTsByUserKeyRef = useRef<Map<string, number>>(new Map())
   const editingAuthorityUserKeysRef = useRef<Set<string>>(new Set())
   const switchConflictActiveRef = useRef(false)
   const conflictStartedAtRef = useRef<number | null>(null)
@@ -510,26 +508,6 @@ export default function DiagramOverlayModule(props: {
       name: first ? (normalizeDisplayName(first.name || '') || first.clientId) : userKey.replace(/^uid:|^name:|^client:/, ''),
       userId: first?.userId,
       clientIds: members.map(member => member.clientId),
-    }
-  }, [])
-
-  const recordRightsGrant = useCallback((userKey: string | null | undefined, ts?: number) => {
-    const key = String(userKey || '').trim()
-    if (!key) return
-    const grantTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
-    const previous = rightsGrantedAtByUserKeyRef.current.get(key) ?? 0
-    if (grantTs >= previous) {
-      rightsGrantedAtByUserKeyRef.current.set(key, grantTs)
-    }
-  }, [])
-
-  const recordBroadcastActivity = useCallback((userKey: string | null | undefined, ts?: number) => {
-    const key = String(userKey || '').trim()
-    if (!key) return
-    const activityTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
-    const previous = recentBroadcastTsByUserKeyRef.current.get(key) ?? 0
-    if (activityTs >= previous) {
-      recentBroadcastTsByUserKeyRef.current.set(key, activityTs)
     }
   }, [])
 
@@ -669,7 +647,6 @@ export default function DiagramOverlayModule(props: {
       if (allowed) {
         const presenterKey = userKey || null
         if (!presenterKey) return
-        recordRightsGrant(presenterKey, ts)
         setActivePresenterUserKey(presenterKey)
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
@@ -703,7 +680,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       // ignore
     }
-  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
     if (!canOrchestrateLesson) return false
@@ -711,9 +688,6 @@ export default function DiagramOverlayModule(props: {
 
     const teacherPresenterKey = (selfUserKey || '').trim() || null
     const teacherClientId = clientIdRef.current
-    if (teacherPresenterKey) {
-      recordRightsGrant(teacherPresenterKey, Date.now())
-    }
     setActivePresenterUserKey(teacherPresenterKey)
     activePresenterUserKeyRef.current = teacherPresenterKey ? String(teacherPresenterKey) : ''
     activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
@@ -742,7 +716,7 @@ export default function DiagramOverlayModule(props: {
     } catch {
       return false
     }
-  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, selfUserKey, userDisplayName])
 
   const handOverPresentation = useCallback((target: PresenterHandoffTarget) => {
     if (!canOrchestrateLesson) return
@@ -805,7 +779,6 @@ export default function DiagramOverlayModule(props: {
       const previousPresenterKey = activePresenterUserKeyRef.current || null
       const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
       const nextPresenterKey = resolvedPresenterKey
-      recordRightsGrant(nextPresenterKey, Date.now())
       setActivePresenterUserKey(nextPresenterKey)
       activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
       activePresenterClientIdsRef.current = new Set(nextClientIds)
@@ -851,7 +824,7 @@ export default function DiagramOverlayModule(props: {
         }
       }
     })()
-  }, [bumpPresenterStateVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, userDisplayName])
+  }, [bumpPresenterStateVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, showHandoffFailure, userDisplayName])
 
   const enforceCanonicalPresenter = useCallback(async (userKey: string, reason: string) => {
     if (!canOrchestrateLesson) return
@@ -880,7 +853,6 @@ export default function DiagramOverlayModule(props: {
       activePresenterUserKeyRef.current = userKey
       activePresenterClientIdsRef.current = new Set(targetClientIds)
       bumpPresenterStateVersion()
-      recordRightsGrant(userKey, now)
 
       const channel = channelRef.current
       if (!channel) return
@@ -899,7 +871,7 @@ export default function DiagramOverlayModule(props: {
     } finally {
       conflictResolverInFlightRef.current = false
     }
-  }, [bumpPresenterStateVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, reclaimAdminControl, resolveIdentityForUserKey, selfUserKey, userDisplayName])
 
   const evaluateSwitchingAuthority = useCallback(() => {
     if (!canOrchestrateLesson || localOnly) {
@@ -1425,13 +1397,10 @@ export default function DiagramOverlayModule(props: {
         ts,
         sender: message.sender ?? clientIdRef.current,
       })
-      if (message.kind !== 'state') {
-        recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), ts)
-      }
     } catch {
       // ignore
     }
-  }, [recordBroadcastActivity, selfUserKey])
+  }, [])
 
   const persistState = useCallback(async (next: DiagramState) => {
     if (!canOrchestrateLesson) return
@@ -1797,7 +1766,6 @@ export default function DiagramOverlayModule(props: {
           const teacherClientId = clientIdRef.current
           const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
           if (teacherPresenterKey) {
-            recordRightsGrant(teacherPresenterKey, Date.now())
             setActivePresenterUserKey(teacherPresenterKey)
             activePresenterUserKeyRef.current = String(teacherPresenterKey)
             activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
@@ -1821,12 +1789,6 @@ export default function DiagramOverlayModule(props: {
           const data = message?.data as DiagramRealtimeMessage
           if (!data || typeof data !== 'object') return
           if ((data as any).sender && (data as any).sender === clientIdRef.current) return
-          const senderClientId = typeof (data as any).sender === 'string' ? String((data as any).sender) : ''
-          if (senderClientId && data.kind !== 'state') {
-            const resolved = resolveUserForClientId(senderClientId)
-            const activityTs = Number((data as any).ts || Date.now())
-            recordBroadcastActivity(resolved?.userKey || `client:${senderClientId}`, activityTs)
-          }
 
           if (data.kind === 'state') {
             const next: DiagramState = {
@@ -1955,9 +1917,6 @@ export default function DiagramOverlayModule(props: {
             if (controlTs) lastPresenterSetTsRef.current = controlTs
             const incomingKey = typeof data.presenterUserKey === 'string' ? String(data.presenterUserKey) : ''
             const nextKey = incomingKey ? incomingKey : null
-            if (nextKey) {
-              recordRightsGrant(nextKey, controlTs || Date.now())
-            }
             setActivePresenterUserKey(nextKey)
             activePresenterUserKeyRef.current = nextKey ? String(nextKey) : ''
             const targets: string[] = Array.isArray(data.targetClientIds)
@@ -2090,7 +2049,7 @@ export default function DiagramOverlayModule(props: {
         // ignore
       }
     }
-  }, [bumpPresenterStateVersion, channelName, canOrchestrateLesson, loadFromServer, localOnly, publish, recordBroadcastActivity, recordRightsGrant, resolveUserForClientId, selfUserKey, toTransportAnnotations, userDisplayName, userId])
+  }, [bumpPresenterStateVersion, channelName, canOrchestrateLesson, loadFromServer, localOnly, publish, selfUserKey, toTransportAnnotations, userDisplayName, userId])
 
   useEffect(() => {
     return () => {

@@ -1947,8 +1947,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const handoffInFlightRef = useRef(false)
   const pendingHandoffTargetRef = useRef<PresenterHandoffTarget>(null)
   const lastPresenterSetTsRef = useRef(0)
-  const rightsGrantedAtByUserKeyRef = useRef<Map<string, number>>(new Map())
-  const recentBroadcastTsByUserKeyRef = useRef<Map<string, number>>(new Map())
   const editingAuthorityUserKeysRef = useRef<Set<string>>(new Set())
   const switchConflictActiveRef = useRef(false)
   const conflictStartedAtRef = useRef<number | null>(null)
@@ -2076,26 +2074,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       clientIds: members.map(member => member.clientId),
     }
   }, [getUserKey])
-
-  const recordRightsGrant = useCallback((userKey: string | null | undefined, ts?: number) => {
-    const key = String(userKey || '').trim()
-    if (!key) return
-    const grantTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
-    const previous = rightsGrantedAtByUserKeyRef.current.get(key) ?? 0
-    if (grantTs >= previous) {
-      rightsGrantedAtByUserKeyRef.current.set(key, grantTs)
-    }
-  }, [])
-
-  const recordBroadcastActivity = useCallback((userKey: string | null | undefined, ts?: number) => {
-    const key = String(userKey || '').trim()
-    if (!key) return
-    const activityTs = Number.isFinite(ts) ? Math.max(0, Number(ts)) : Date.now()
-    const previous = recentBroadcastTsByUserKeyRef.current.get(key) ?? 0
-    if (activityTs >= previous) {
-      recentBroadcastTsByUserKeyRef.current.set(key, activityTs)
-    }
-  }, [])
 
   const isAvatarEditingAuthority = useCallback((userKey?: string | null) => {
     const key = String(userKey || '').trim()
@@ -3070,7 +3048,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (allowed) {
         const presenterKey = userKey || null
         if (!presenterKey) return
-        recordRightsGrant(presenterKey, ts)
         setActivePresenterUserKey(presenterKey)
         activePresenterUserKeyRef.current = presenterKey ? String(presenterKey) : ''
         activePresenterClientIdsRef.current = new Set(targets)
@@ -3116,16 +3093,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } catch (err) {
       console.warn('Failed to update presenter handoff', err)
     }
-  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, updateControlState, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, updateControlState, userDisplayName])
 
   const reclaimAdminControl = useCallback(async () => {
     if (!canOrchestrateLesson) return false
 
     const teacherClientId = clientIdRef.current
     const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
-    if (teacherPresenterKey) {
-      recordRightsGrant(teacherPresenterKey, Date.now())
-    }
     bumpPresenterStateVersion()
 
     // Reclaim means the teacher becomes the exclusive snapshot publisher.
@@ -3169,7 +3143,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       console.warn('Failed to reclaim admin control', err)
       return false
     }
-  }, [bumpPresenterStateVersion, canOrchestrateLesson, recordRightsGrant, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, selfUserKey, updateControlState, userDisplayName])
 
   const setPresenterForClient = useCallback(async (targetClientId: string, allowed: boolean) => {
     const resolved = connectedClientsRef.current.find(c => c.clientId === targetClientId)
@@ -3292,7 +3266,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const previousPresenterClientIds = new Set(activePresenterClientIdsRef.current)
 
         const nextPresenterKey = resolvedPresenterKey
-        recordRightsGrant(nextPresenterKey, Date.now())
         setActivePresenterUserKey(nextPresenterKey)
         activePresenterUserKeyRef.current = nextPresenterKey ? String(nextPresenterKey) : ''
         activePresenterClientIdsRef.current = new Set(nextClientIds)
@@ -3362,7 +3335,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
       })()
     },
-    [boardId, bumpPresenterStateVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, showHandoffFailure, updateControlState, userDisplayName]
+    [boardId, bumpPresenterStateVersion, connectedClients, canOrchestrateLesson, reclaimAdminControl, showHandoffFailure, updateControlState, userDisplayName]
   )
 
   const handleRosterAttendeeAvatarClick = useCallback(
@@ -3434,7 +3407,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       activePresenterClientIdsRef.current = new Set(targetClientIds)
       bumpPresenterStateVersion()
       updateControlState(controlStateRef.current)
-      recordRightsGrant(userKey, now)
 
       const channel = channelRef.current
       if (!channel) return
@@ -3452,7 +3424,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } finally {
       conflictResolverInFlightRef.current = false
     }
-  }, [bumpPresenterStateVersion, canOrchestrateLesson, reclaimAdminControl, recordRightsGrant, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
+  }, [bumpPresenterStateVersion, canOrchestrateLesson, reclaimAdminControl, resolveIdentityForUserKey, selfUserKey, updateControlState, userDisplayName])
 
   const evaluateSwitchingAuthority = useCallback(() => {
     if (!canOrchestrateLesson || forceEditableForAssignment || (isSessionQuizMode && quizActiveRef.current)) {
@@ -5048,7 +5020,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             reason: record.reason,
             originClientId: clientIdRef.current,
           })
-          recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), record.ts)
         } catch (err) {
           console.warn('Failed to publish stroke update', err)
           pendingPublishQueueRef.current.push(record)
@@ -5072,7 +5043,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         publish()
       }, broadcastDebounceMs)
     },
-    [broadcastDebounceMs, canPublishSnapshots, collectEditorSnapshot, hasControllerRights, pageIndex, recordBroadcastActivity, selfUserKey, userDisplayName]
+    [broadcastDebounceMs, canPublishSnapshots, collectEditorSnapshot, hasControllerRights, pageIndex, userDisplayName]
   )
 
   const publishLatexDisplayState = useCallback(
@@ -6875,7 +6846,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   reason: rec.reason,
                   originClientId: clientIdRef.current,
                 })
-                recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), rec.ts)
                 lastBroadcastBaseCountRef.current = countSymbols(rec.snapshot.symbols)
               } catch (e) {
                 console.warn('Retry publish failed', e)
@@ -6905,7 +6875,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           const teacherClientId = clientIdRef.current
           const teacherPresenterKey = (selfUserKey || '').trim() || (teacherClientId ? `client:${teacherClientId}` : null)
           if (teacherPresenterKey) {
-            recordRightsGrant(teacherPresenterKey, Date.now())
             setActivePresenterUserKey(teacherPresenterKey)
             activePresenterUserKeyRef.current = String(teacherPresenterKey)
             activePresenterClientIdsRef.current = teacherClientId ? new Set([teacherClientId]) : new Set()
@@ -6931,8 +6900,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          const sourceUser = resolveUserForClientId(data.clientId)
-          recordBroadcastActivity(sourceUser?.userKey || `client:${String(data.clientId || '')}`, data.ts)
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -6942,8 +6909,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           }
           const data = message?.data as SnapshotMessage
           if (!data || data.clientId === clientIdRef.current) return
-          const sourceUser = resolveUserForClientId(data.clientId)
-          recordBroadcastActivity(sourceUser?.userKey || `client:${String(data.clientId || '')}`, data.ts)
           enqueueSnapshot(data, typeof message?.timestamp === 'number' ? message.timestamp : undefined)
         }
 
@@ -6983,7 +6948,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               reason: existingRecord.reason ?? 'update',
               originClientId: clientIdRef.current,
             })
-            recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), existingRecord.ts)
           } catch (err) {
             console.warn('Failed to publish sync-state', err)
           }
@@ -7031,9 +6995,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             lastPresenterSetTsRef.current = incomingTs
             const incomingKey = typeof (data as any).presenterUserKey === 'string' ? String((data as any).presenterUserKey) : ''
             const nextKey = incomingKey ? incomingKey : null
-            if (nextKey) {
-              recordRightsGrant(nextKey, incomingTs)
-            }
             setActivePresenterUserKey(nextKey)
             activePresenterUserKeyRef.current = nextKey ? incomingKey : ''
 
@@ -7462,8 +7423,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           const controlTs = data?.ts ?? Date.now()
           if (data.locked) {
             if (!data.controllerId) return
-            const controlResolved = resolveUserForClientId(data.controllerId)
-            recordRightsGrant(controlResolved?.userKey || `client:${String(data.controllerId)}`, controlTs)
             updateControlState({ controllerId: data.controllerId, controllerName: data.controllerName, ts: controlTs })
             return
           }
@@ -7583,7 +7542,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               ts: record.ts,
               reason: record.reason,
             })
-            recordBroadcastActivity(selfUserKey || (clientIdRef.current ? `client:${clientIdRef.current}` : ''), record.ts)
           }
         }
 

@@ -8553,6 +8553,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   )
   const isStudentSendContext = (!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (quizActive || isAssignmentView)
   const canUseAdminSend = canOrchestrateLesson || hasWriteAccess
+  const canUsePresenterMiddleStripTools = canOrchestrateLesson || isSelfActivePresenter()
+  const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
 
   useEffect(() => {
     if (canvasMode !== 'raw-ink') return
@@ -12962,9 +12964,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 </div>
                 )}
 
-                {(canOrchestrateLesson || quizActive) ? (
+                {shouldShowMiddleStripActionCluster ? (
                   <div className="flex items-center gap-2">
-                    {canOrchestrateLesson && isCompactViewport && (
+                    {canUsePresenterMiddleStripTools && isCompactViewport && (
                       <button
                         type="button"
                         className="px-2 py-1"
@@ -13071,7 +13073,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       </button>
                     )}
 
-                    {isOverlayMode && (
+                    {isOverlayMode && canUsePresenterMiddleStripTools && (
                       <button
                         type="button"
                         className={`px-2 py-1 rounded ${isEraserMode ? 'bg-slate-900/10' : ''} ${isViewOnly ? 'opacity-50' : ''}`}

@@ -8,7 +8,6 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import NavBar from '../components/NavBar'
-import MobileTopChrome from '../components/MobileTopChrome'
 import AppErrorBoundary from '../components/AppErrorBoundary'
 import { OverlayRestoreProvider } from '../lib/overlayRestore'
 
@@ -171,12 +170,6 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId]'
     || router.pathname === '/challenges/[id]'
 
-  const hideMobileTopChrome = router.pathname === '/board'
-    || router.pathname === '/diagram'
-    || router.pathname === '/jaas-demo'
-    || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/q/[questionId]'
-    || router.pathname === '/sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId]'
-
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator)) return
@@ -288,7 +281,6 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <AppErrorBoundary key={router.asPath}>
         <div className="app-shell">
           {!hideNavBar && <NavBar />}
-          {!hideMobileTopChrome && <MobileTopChrome />}
           <OverlayRestoreProvider>
             <Component {...pageProps} />
           </OverlayRestoreProvider>

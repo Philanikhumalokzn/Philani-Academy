@@ -15,8 +15,7 @@ function ensureDir(p) {
 }
 
 function copyDir(src, dest) {
-  // Node 16+ supports fs.cpSync
-  fs.cpSync(src, dest, { recursive: true, force: true })
+   fs.cpSync(src, dest, { recursive: true, force: true })
 }
 
 function main() {

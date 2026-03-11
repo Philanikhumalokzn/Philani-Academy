@@ -3034,11 +3034,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const splitWindowCleanupRef = useRef<null | (() => void)>(null)
 
   const editorResizeRafRef = useRef<number | null>(null)
+  const editorResizeRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestEditorResize = useCallback(() => {
     if (typeof window === 'undefined') return
     if (editorResizeRafRef.current) return
     editorResizeRafRef.current = window.requestAnimationFrame(() => {
       editorResizeRafRef.current = null
+      const host = editorHostRef.current
+      if (!host || !host.isConnected) return
+      if (host.clientWidth < 1 || host.clientHeight < 1) return
       try {
         editorInstanceRef.current?.resize?.()
       } catch {}
@@ -3136,10 +3140,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [sharedPageIndex])
 
   useEffect(() => {
-    try {
-      editorInstanceRef.current?.resize?.()
-    } catch {}
-  }, [canvasOrientation, isFullscreen])
+    requestEditorResize()
+  }, [canvasOrientation, isFullscreen, requestEditorResize])
 
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return
@@ -3155,6 +3157,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       try {
         obs.disconnect()
       } catch {}
+      if (editorResizeRetryTimeoutRef.current) {
+        clearTimeout(editorResizeRetryTimeoutRef.current)
+        editorResizeRetryTimeoutRef.current = null
+      }
       if (editorResizeRafRef.current && typeof window !== 'undefined') {
         try {
           window.cancelAnimationFrame(editorResizeRafRef.current)
@@ -6777,9 +6783,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         setMyScriptLastError(null)
 
         // Ensure the editor has a valid view size after any initial layout shifts.
-        try {
-          editor.resize?.()
-        } catch {}
+        requestEditorResize()
 
         const handleChanged = (evt: any) => {
           setMyScriptChangedCount((count) => count + 1)
@@ -6946,11 +6950,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
           setMyScriptLastError(raw)
           const lower = String(raw).toLowerCase()
+          const isViewSizeNull = /viewsize(?:height|width) must not be null/.test(lower)
           const isSessionTooLong = /(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session)/.test(lower)
           const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
           const isSymbolsUndefined = /cannot read properties of undefined.*symbols/i.test(raw)
           const shouldAutoReconnect = isSessionTooLong
           const fatal = isAuthMissing
+
+          if (isViewSizeNull) {
+            if (editorResizeRetryTimeoutRef.current) {
+              clearTimeout(editorResizeRetryTimeoutRef.current)
+            }
+            editorResizeRetryTimeoutRef.current = setTimeout(() => {
+              editorResizeRetryTimeoutRef.current = null
+              requestEditorResize()
+            }, 120)
+            return
+          }
 
           if (shouldAutoReconnect) {
             triggerEditorReinit(raw)
@@ -6979,7 +6995,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         })
 
         resizeHandler = () => {
-          editor.resize()
+          requestEditorResize()
         }
         window.addEventListener('resize', resizeHandler)
       })
@@ -7001,6 +7017,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (pendingExportRef.current) {
         clearTimeout(pendingExportRef.current)
         pendingExportRef.current = null
+      }
+      if (editorResizeRetryTimeoutRef.current) {
+        clearTimeout(editorResizeRetryTimeoutRef.current)
+        editorResizeRetryTimeoutRef.current = null
       }
       if (mathpixPreviewTimeoutRef.current) {
         clearTimeout(mathpixPreviewTimeoutRef.current)
@@ -7031,7 +7051,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         eraserLongPressTimeoutRef.current = null
       }
     }
-  }, [broadcastSnapshot, canvasMode, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, canOrchestrateLesson, normalizeStepLatex, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
+  }, [broadcastSnapshot, canvasMode, editorInitKey, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, canOrchestrateLesson, normalizeStepLatex, requestEditorResize, scheduleMathpixPreview, triggerEditorReinit, useStackedStudentLayout])
 
   useEffect(() => {
     if (!useAdminStepComposer) return
@@ -12336,6 +12356,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         stackedPinchStateRef.current.active = false
         applyStackedLivePinchStyle(stackedZoomRef.current)
         hideStackedZoomHudWithFade()
+        if (editorResizeRetryTimeoutRef.current) {
+          clearTimeout(editorResizeRetryTimeoutRef.current)
+        }
+        editorResizeRetryTimeoutRef.current = setTimeout(() => {
+          editorResizeRetryTimeoutRef.current = null
+          requestEditorResize()
+        }, 80)
       }
 
       stackedTouchActiveRef.current = e.touches.length > 0
@@ -12366,8 +12393,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       hideStackedZoomHudWithFade()
       startStackedInteractionMotionMonitor()
       applyStackedLivePinchStyle(stackedZoomRef.current)
+      if (editorResizeRetryTimeoutRef.current) {
+        clearTimeout(editorResizeRetryTimeoutRef.current)
+        editorResizeRetryTimeoutRef.current = null
+      }
     }
-  }, [applyStackedLivePinchStyle, hideStackedZoomHudWithFade, markStackedUserInteracting, showStackedZoomHud, startStackedInteractionMotionMonitor, useStackedStudentLayout])
+  }, [applyStackedLivePinchStyle, hideStackedZoomHudWithFade, markStackedUserInteracting, requestEditorResize, showStackedZoomHud, startStackedInteractionMotionMonitor, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

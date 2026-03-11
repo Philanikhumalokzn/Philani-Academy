@@ -822,11 +822,13 @@ type TopPanelPayload = {
 type TopPanelStepItem = {
   index: number
   latex: string
+  isEditing: boolean
 }
 
 type TopPanelStepsPayload = {
   steps: TopPanelStepItem[]
   selectedIndex: number | null
+  editingIndex: number | null
   options: LatexDisplayOptions
 }
 
@@ -2186,6 +2188,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [topPanelEditingMode])
 
   const [topPanelSelectedStep, setTopPanelSelectedStep] = useState<number | null>(null)
+  const [mobileTopPanelActionStepIndex, setMobileTopPanelActionStepIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!isCompactViewport) {
+      setMobileTopPanelActionStepIndex(null)
+      return
+    }
+    if (topPanelSelectedStep === null || mobileTopPanelActionStepIndex !== topPanelSelectedStep) {
+      setMobileTopPanelActionStepIndex(null)
+    }
+  }, [isCompactViewport, mobileTopPanelActionStepIndex, topPanelSelectedStep])
+
+  useEffect(() => {
+    if (!isCompactViewport) return
+    if (mobileTopPanelActionStepIndex === null) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null
+      const shell = target?.closest?.('[data-top-panel-step-shell]') as HTMLElement | null
+      const shellIndex = shell?.getAttribute('data-step-idx')
+      if (shellIndex === String(mobileTopPanelActionStepIndex)) return
+      setMobileTopPanelActionStepIndex(null)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [isCompactViewport, mobileTopPanelActionStepIndex])
 
   // Step navigation redo stack (used when undo/redo crosses between step lines).
   // We represent the draft line as index === adminSteps.length.
@@ -2205,6 +2236,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const textIconLastTapRef = useRef<number | null>(null)
   const textIconTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const topPanelStepLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const topPanelStepLongPressTriggeredRef = useRef<number | null>(null)
+
+  const clearTopPanelStepLongPress = useCallback(() => {
+    if (topPanelStepLongPressTimeoutRef.current) {
+      clearTimeout(topPanelStepLongPressTimeoutRef.current)
+      topPanelStepLongPressTimeoutRef.current = null
+    }
+  }, [])
 
   const clearTopPanelSelection = useCallback(() => {
     setTopPanelSelectedStep(null)
@@ -2375,6 +2415,111 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       await loadStudentStepForEditing(index)
     }
   }, [loadAdminStepForEditing, loadStudentStepForEditing, useAdminStepComposer, useStudentStepComposer])
+
+  const clearTopPanelComposerCanvas = useCallback(async () => {
+    suppressBroadcastUntilTsRef.current = Date.now() + 1200
+    try {
+      editorInstanceRef.current?.clear?.()
+    } catch {}
+    clearMathpixLocalStrokes()
+    lastSymbolCountRef.current = 0
+    lastBroadcastBaseCountRef.current = 0
+  }, [clearMathpixLocalStrokes])
+
+  const startNewTopPanelStepDraft = useCallback(async () => {
+    if (!useAdminStepComposer && !useStudentStepComposer) return
+    if (lockedOutRef.current) return
+
+    if (useAdminStepComposer) {
+      setAdminEditIndex(null)
+      setAdminDraftLatex('')
+    }
+    if (useStudentStepComposer) {
+      setStudentEditIndex(null)
+    }
+
+    setLatexOutput('')
+    clearTopPanelSelection()
+    await clearTopPanelComposerCanvas()
+  }, [clearTopPanelComposerCanvas, clearTopPanelSelection, useAdminStepComposer, useStudentStepComposer])
+
+  const duplicateTopPanelStepAsNew = useCallback(async (index: number) => {
+    const sourceStep = useAdminStepComposer
+      ? adminSteps[index]
+      : (useStudentStepComposer ? studentSteps[index] : null)
+    if (!sourceStep) return
+    if (lockedOutRef.current) return
+
+    if (useAdminStepComposer) {
+      setAdminEditIndex(null)
+      setAdminDraftLatex(sourceStep.latex || '')
+    }
+    if (useStudentStepComposer) {
+      setStudentEditIndex(null)
+    }
+
+    setTopPanelSelectedStep(index)
+    setLatexOutput(sourceStep.latex || '')
+    await clearTopPanelComposerCanvas()
+
+    if (Array.isArray(sourceStep.symbols) && sourceStep.symbols.length) {
+      try {
+        await nextAnimationFrame()
+        await editorInstanceRef.current?.importPointEvents?.(sourceStep.symbols)
+        lastSymbolCountRef.current = sourceStep.symbols.length
+        lastBroadcastBaseCountRef.current = sourceStep.symbols.length
+      } catch (err) {
+        console.warn('Failed to duplicate step ink into composer', err)
+      }
+    }
+  }, [adminSteps, clearTopPanelComposerCanvas, studentSteps, useAdminStepComposer, useStudentStepComposer])
+
+  const deleteTopPanelStep = useCallback(async (index: number) => {
+    const sourceSteps = useAdminStepComposer ? adminSteps : (useStudentStepComposer ? studentSteps : [])
+    if (!sourceSteps.length) return
+    if (index < 0 || index >= sourceSteps.length) return
+
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm(`Delete step ${index + 1}?`)
+    if (!confirmed) return
+
+    const deletingAdminEditTarget = useAdminStepComposer && adminEditIndex === index
+    const deletingStudentEditTarget = useStudentStepComposer && studentEditIndex === index
+
+    if (useAdminStepComposer) {
+      setAdminSteps(prev => prev.filter((_, stepIndex) => stepIndex !== index))
+      setAdminEditIndex(prev => {
+        if (prev === null) return null
+        if (prev === index) return null
+        return prev > index ? prev - 1 : prev
+      })
+      if (deletingAdminEditTarget) {
+        setAdminDraftLatex('')
+      }
+    }
+
+    if (useStudentStepComposer) {
+      setStudentSteps(prev => prev.filter((_, stepIndex) => stepIndex !== index))
+      setStudentEditIndex(prev => {
+        if (prev === null) return null
+        if (prev === index) return null
+        return prev > index ? prev - 1 : prev
+      })
+    }
+
+    setTopPanelSelectedStep(prev => {
+      if (prev === null) return null
+      if (prev === index) return null
+      return prev > index ? prev - 1 : prev
+    })
+
+    if (deletingAdminEditTarget || deletingStudentEditTarget) {
+      setLatexOutput('')
+      clearTopPanelSelection()
+      await clearTopPanelComposerCanvas()
+    }
+  }, [adminEditIndex, adminSteps, clearTopPanelComposerCanvas, clearTopPanelSelection, studentEditIndex, studentSteps, useAdminStepComposer, useStudentStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -8869,20 +9014,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [topPanelPayload.latex, topPanelRenderPayload.markup])
 
   const adminTopPanelStepItems = useMemo(() => {
-    if (!useAdminStepComposer) return [] as Array<{ index: number; latex: string }>
-    if (!topPanelEditingMode) return [] as Array<{ index: number; latex: string }>
+    if (!useAdminStepComposer) return [] as TopPanelStepItem[]
+    if (!topPanelEditingMode) return [] as TopPanelStepItem[]
     return adminSteps.map((s, index) => {
       const latex = (adminEditIndex === index ? adminDraftLatex : (s?.latex || '')).trimEnd()
-      return { index, latex }
+      return { index, latex, isEditing: adminEditIndex === index }
     })
   }, [adminDraftLatex, adminEditIndex, adminSteps, topPanelEditingMode, useAdminStepComposer])
 
   const studentTopPanelStepItems = useMemo(() => {
-    if (!useStudentStepComposer) return [] as Array<{ index: number; latex: string }>
-    if (!topPanelEditingMode) return [] as Array<{ index: number; latex: string }>
+    if (!useStudentStepComposer) return [] as TopPanelStepItem[]
+    if (!topPanelEditingMode) return [] as TopPanelStepItem[]
     return studentSteps.map((s, index) => {
       const latex = (studentEditIndex === index ? (latexOutput || '') : (s?.latex || '')).trimEnd()
-      return { index, latex }
+      return { index, latex, isEditing: studentEditIndex === index }
     })
   }, [latexOutput, studentEditIndex, studentSteps, topPanelEditingMode, useStudentStepComposer])
 
@@ -8892,6 +9037,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return {
         steps: adminTopPanelStepItems,
         selectedIndex: topPanelSelectedStep,
+        editingIndex: adminEditIndex,
         options: topPanelPayload.options,
       }
     }
@@ -8899,11 +9045,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return {
         steps: studentTopPanelStepItems,
         selectedIndex: topPanelSelectedStep,
+        editingIndex: studentEditIndex,
         options: topPanelPayload.options,
       }
     }
     return null
-  }, [adminTopPanelStepItems, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
+  }, [adminEditIndex, adminTopPanelStepItems, studentEditIndex, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
+
+  const activeComposerEditIndex = useMemo(() => {
+    if (useAdminStepComposer) return adminEditIndex
+    if (useStudentStepComposer) return studentEditIndex
+    return null
+  }, [adminEditIndex, studentEditIndex, useAdminStepComposer, useStudentStepComposer])
+
+  const isEditingExistingTopPanelStep = activeComposerEditIndex !== null && activeComposerEditIndex >= 0
+
+  const normalizeLoadedStepIndex = useCallback((value: unknown, stepsLength: number) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null
+    const index = Math.trunc(value)
+    if (index < 0 || index >= stepsLength) return null
+    return index
+  }, [])
 
   const renderLatexStepInline = useCallback((latex: string) => {
     if (!latex) return ''
@@ -11885,6 +12047,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const editorState = extractSolutionSessionEditorState(save.payload)
     const solutionId = extractNotebookSolutionId(save)
+    const previousSolutionId = activeNotebookSolutionId
     const {
       steps: stepsForComposer,
       mergedSymbols,
@@ -11903,6 +12066,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     setActiveNotebookSolutionId(solutionId)
     setFinishQuestionNoteId(solutionId)
+    if (solutionId) {
+      setNotesLibrarySelectedSolutionId(solutionId)
+      setNotesLibraryCollapsedSolutionIds(curr => curr.filter(id => id !== solutionId))
+    } else {
+      setNotesLibrarySelectedSolutionId(null)
+    }
 
     // Overwrite the current local state.
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -11925,11 +12094,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     if (stepsForComposer.length) {
+      const sameSolutionLineage = Boolean(solutionId && previousSolutionId && solutionId === previousSolutionId)
+      const savedSelectedStepIndex = normalizeLoadedStepIndex(editorState?.interaction?.selectedStepIndex, stepsForComposer.length)
+      const savedAdminEditingStepIndex = normalizeLoadedStepIndex(editorState?.interaction?.editingStepIndex, stepsForComposer.length)
+      const savedStudentEditingStepIndex = normalizeLoadedStepIndex(editorState?.interaction?.studentEditingStepIndex, stepsForComposer.length)
+      const preservedSelectedStepIndex = sameSolutionLineage
+        ? normalizeLoadedStepIndex(topPanelSelectedStep, stepsForComposer.length)
+        : null
+      const preservedEditingStepIndex = sameSolutionLineage
+        ? normalizeLoadedStepIndex(activeComposerEditIndex, stepsForComposer.length)
+        : null
+      const nextSelectedStepIndex = savedSelectedStepIndex
+        ?? preservedSelectedStepIndex
+        ?? savedAdminEditingStepIndex
+        ?? savedStudentEditingStepIndex
+        ?? preservedEditingStepIndex
+        ?? null
+
       if (useAdminStepComposer && hasControllerRights()) {
         setAdminSteps(stepsForComposer)
-        setAdminEditIndex(editorState?.interaction?.editingStepIndex ?? null)
-        setAdminDraftLatex(editorState?.content?.draftStep?.latex || '')
-        setTopPanelSelectedStep(editorState?.interaction?.selectedStepIndex ?? null)
+        const nextAdminEditIndex = savedAdminEditingStepIndex ?? preservedEditingStepIndex ?? null
+        setAdminEditIndex(nextAdminEditIndex)
+        setAdminDraftLatex(nextAdminEditIndex !== null
+          ? (editorState?.content?.draftStep?.latex || stepsForComposer[nextAdminEditIndex]?.latex || '')
+          : '')
+        setTopPanelSelectedStep(nextSelectedStepIndex)
       }
     } else if (useAdminStepComposer && hasControllerRights()) {
       // If a non-question note is loaded in composer mode, clear the step list so the LaTeX panel can take over.
@@ -11957,7 +12146,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (options?.publish && canPublishSnapshots()) {
       await forcePublishCanvas(undefined, { shareIndex: pageIndexRef.current })
     }
-  }, [applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, importNotebookSymbolsForRestore, restoreSolutionSessionEditorState, useAdminStepComposer])
+  }, [activeComposerEditIndex, activeNotebookSolutionId, applyLoadedLatex, canPublishSnapshots, captureFullSnapshot, forcePublishCanvas, hasControllerRights, importNotebookSymbolsForRestore, normalizeLoadedStepIndex, restoreSolutionSessionEditorState, topPanelSelectedStep, useAdminStepComposer])
 
   const handleLoadSavedLatex = useCallback(
     (scope: 'shared' | 'mine') => {
@@ -12634,6 +12823,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     if ((useAdminStepComposer || useStudentStepComposer) && topPanelEditingMode) {
                       // Step-recall mode: tap a step line to restore its ink for editing.
                       const target = e.target as HTMLElement | null
+                      const actionEl = target?.closest?.('[data-top-panel-step-action]') as HTMLElement | null
+                      if (actionEl) {
+                        e.stopPropagation()
+                        return
+                      }
                       const stepEl = target?.closest?.('[data-top-panel-step]') as HTMLElement | null
                       const idxRaw = stepEl?.getAttribute?.('data-step-idx') || ''
                       const idx = idxRaw ? Number(idxRaw) : NaN
@@ -12861,28 +13055,201 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           className="text-slate-900 leading-relaxed text-center"
                           style={topPanelRenderPayload.style}
                         >
-                          {topPanelStepsPayload.steps.map(({ index, latex }) => {
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                            <div>
+                              {topPanelStepsPayload.editingIndex !== null
+                                ? `Editing step ${topPanelStepsPayload.editingIndex + 1}. Send to update it.`
+                                : 'Tap a step to edit it, or start a new step.'}
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50"
+                              onClick={() => {
+                                void startNewTopPanelStepDraft()
+                              }}
+                            >
+                              New step
+                            </button>
+                          </div>
+                          {topPanelStepsPayload.steps.map(({ index, latex, isEditing }) => {
                             const selected = topPanelStepsPayload.selectedIndex === index
+                            const mobileActionsOpen = isCompactViewport && mobileTopPanelActionStepIndex === index
                             const html = renderLatexStepInline(latex)
                             return (
-                              <div key={index} className="py-1">
-                                <button
-                                  type="button"
-                                  data-top-panel-step
-                                  data-step-idx={String(index)}
-                                  className={`w-full rounded px-2 py-1 focus:outline-none focus:ring-0 text-center ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
-                                  onClick={(ev) => {
-                                    ev.preventDefault()
-                                    ev.stopPropagation()
-                                    void loadTopPanelStepForEditing(index)
-                                  }}
-                                >
-                                  {html ? (
-                                    <span className="inline align-middle" dangerouslySetInnerHTML={{ __html: html }} />
-                                  ) : (
-                                    <span className="text-slate-500">&nbsp;</span>
-                                  )}
-                                </button>
+                              <div key={index} className="py-1" data-top-panel-step-shell data-step-idx={String(index)}>
+                                <div className={`rounded border ${selected ? 'border-slate-300 bg-slate-50' : 'border-transparent bg-transparent'}`}>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      data-top-panel-step
+                                      data-step-idx={String(index)}
+                                      className={`min-w-0 flex-1 rounded px-2 py-1 focus:outline-none focus:ring-0 text-center ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
+                                      onPointerDown={(ev) => {
+                                        ev.stopPropagation()
+                                        if (!isCompactViewport) return
+                                        topPanelStepLongPressTriggeredRef.current = null
+                                        clearTopPanelStepLongPress()
+                                        topPanelStepLongPressTimeoutRef.current = setTimeout(() => {
+                                          topPanelStepLongPressTimeoutRef.current = null
+                                          topPanelStepLongPressTriggeredRef.current = index
+                                          setTopPanelSelectedStep(index)
+                                          setMobileTopPanelActionStepIndex(index)
+                                        }, 420)
+                                      }}
+                                      onPointerUp={() => {
+                                        clearTopPanelStepLongPress()
+                                      }}
+                                      onPointerCancel={() => {
+                                        clearTopPanelStepLongPress()
+                                      }}
+                                      onPointerLeave={() => {
+                                        clearTopPanelStepLongPress()
+                                      }}
+                                      onClick={(ev) => {
+                                        ev.preventDefault()
+                                        ev.stopPropagation()
+                                        if (topPanelStepLongPressTriggeredRef.current === index) {
+                                          topPanelStepLongPressTriggeredRef.current = null
+                                          return
+                                        }
+                                        topPanelStepLongPressTriggeredRef.current = null
+                                        void loadTopPanelStepForEditing(index)
+                                      }}
+                                    >
+                                      <span className="mr-2 inline-block min-w-[2.25rem] text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                        {isEditing ? 'Edit' : `Step ${index + 1}`}
+                                      </span>
+                                      {html ? (
+                                        <span className="inline align-middle" dangerouslySetInnerHTML={{ __html: html }} />
+                                      ) : (
+                                        <span className="text-slate-500">&nbsp;</span>
+                                      )}
+                                    </button>
+
+                                    {selected ? (
+                                      isCompactViewport ? (
+                                        <div className="flex shrink-0 items-center pr-1">
+                                          <button
+                                            type="button"
+                                            data-top-panel-step-action="menu"
+                                            className={`rounded border px-2 py-1 text-[10px] font-medium ${mobileActionsOpen ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                            onClick={(ev) => {
+                                              ev.preventDefault()
+                                              ev.stopPropagation()
+                                              setMobileTopPanelActionStepIndex(current => (current === index ? null : index))
+                                            }}
+                                            aria-expanded={mobileActionsOpen}
+                                            aria-label={`Step ${index + 1} actions`}
+                                          >
+                                            Actions
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex shrink-0 items-center gap-1 pr-1">
+                                          {!isEditing ? (
+                                            <button
+                                              type="button"
+                                              data-top-panel-step-action="edit"
+                                              className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                                              onClick={(ev) => {
+                                                ev.preventDefault()
+                                                ev.stopPropagation()
+                                                void loadTopPanelStepForEditing(index)
+                                              }}
+                                            >
+                                              Edit
+                                            </button>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            data-top-panel-step-action="duplicate"
+                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                                            onClick={(ev) => {
+                                              ev.preventDefault()
+                                              ev.stopPropagation()
+                                              void duplicateTopPanelStepAsNew(index)
+                                            }}
+                                          >
+                                            Copy
+                                          </button>
+                                          <button
+                                            type="button"
+                                            data-top-panel-step-action="delete"
+                                            className="rounded border border-red-200 bg-white px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50"
+                                            onClick={(ev) => {
+                                              ev.preventDefault()
+                                              ev.stopPropagation()
+                                              void deleteTopPanelStep(index)
+                                            }}
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      )
+                                    ) : null}
+                                  </div>
+
+                                  {selected && mobileActionsOpen ? (
+                                    <div className="px-2 pb-2">
+                                      <div
+                                        className="mt-1 flex flex-wrap items-center gap-1 rounded-md border border-slate-200 bg-white p-1.5"
+                                        data-top-panel-step-action="menu-panel"
+                                      >
+                                        {!isEditing ? (
+                                          <button
+                                            type="button"
+                                            data-top-panel-step-action="edit"
+                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                                            onClick={(ev) => {
+                                              ev.preventDefault()
+                                              ev.stopPropagation()
+                                              setMobileTopPanelActionStepIndex(null)
+                                              void loadTopPanelStepForEditing(index)
+                                            }}
+                                          >
+                                            Edit
+                                          </button>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          data-top-panel-step-action="duplicate"
+                                          className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50"
+                                          onClick={(ev) => {
+                                            ev.preventDefault()
+                                            ev.stopPropagation()
+                                            setMobileTopPanelActionStepIndex(null)
+                                            void duplicateTopPanelStepAsNew(index)
+                                          }}
+                                        >
+                                          Copy as new
+                                        </button>
+                                        <button
+                                          type="button"
+                                          data-top-panel-step-action="delete"
+                                          className="rounded border border-red-200 bg-white px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50"
+                                          onClick={(ev) => {
+                                            ev.preventDefault()
+                                            ev.stopPropagation()
+                                            setMobileTopPanelActionStepIndex(null)
+                                            void deleteTopPanelStep(index)
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  {selected ? (
+                                    <div className="px-2 pb-2 text-left text-[10px] text-slate-500">
+                                      {isEditing
+                                        ? 'This step is loaded into the board. Send to update it, or choose New step to append instead.'
+                                        : (isCompactViewport
+                                          ? 'Use Actions to edit, copy, or delete this step.'
+                                          : 'Select Edit to overwrite this step, or Copy to use it as the starting point for a new step.')}
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             )
                           })}
@@ -13509,36 +13876,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
 
                     {!isRawInkMode && (
-                    <button
-                      type="button"
-                      className="px-2 py-1"
-                      title={isAssignmentSolutionAuthoring ? 'Commit / Save' : 'Send step'}
-                      onClick={handleSendStepClick}
-                      disabled={
-                        status !== 'ready'
-                        || Boolean(fatalError)
-                        || (
-                          isStudentSendContext
-                            ? quizSubmitting
-                            : (canUseAdminSend
-                              ? (adminSendingStep || (!adminDraftLatex && !canClear && !(adminSteps.length > 0)))
-                              : true)
-                        )
-                      }
-                    >
-                      <span className="sr-only">Send</span>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        width="18"
-                        height="18"
-                        fill="currentColor"
-                        className="text-slate-700"
-                        aria-hidden="true"
+                    <div className="flex items-center gap-2">
+                      {isEditingExistingTopPanelStep && !isAssignmentSolutionAuthoring ? (
+                        <>
+                          <div
+                            className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                            aria-live="polite"
+                          >
+                            Editing step {Number(activeComposerEditIndex) + 1}
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            title="Start a new step"
+                            onClick={() => {
+                              void startNewTopPanelStepDraft()
+                            }}
+                            disabled={status !== 'ready' || Boolean(fatalError)}
+                          >
+                            New step
+                          </button>
+                        </>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        className="px-2 py-1"
+                        title={isAssignmentSolutionAuthoring ? 'Commit / Save' : (isEditingExistingTopPanelStep ? 'Update step' : 'Send step')}
+                        onClick={handleSendStepClick}
+                        disabled={
+                          status !== 'ready'
+                          || Boolean(fatalError)
+                          || (
+                            isStudentSendContext
+                              ? quizSubmitting
+                              : (canUseAdminSend
+                                ? (adminSendingStep || (!adminDraftLatex && !canClear && !(adminSteps.length > 0)))
+                                : true)
+                          )
+                        }
                       >
-                        <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
-                      </svg>
-                    </button>
+                        <span className="sr-only">{isEditingExistingTopPanelStep ? 'Update step' : 'Send step'}</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          width="18"
+                          height="18"
+                          fill="currentColor"
+                          className="text-slate-700"
+                          aria-hidden="true"
+                        >
+                          <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                        </svg>
+                      </button>
+                    </div>
                     )}
 
                     {isCompactViewport && mobileLatexTrayOpen && (

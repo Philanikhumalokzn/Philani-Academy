@@ -373,8 +373,6 @@ export default function MobileTopChrome() {
     return () => router.events.off('routeChangeStart', handleRoute)
   }, [router.events, clearChromeTimer, setChromeVisible])
 
-  if (!isVisible) return null
-
   const acknowledgeNewNotifications = () => {
     if (typeof window === 'undefined') return
     if (newNotificationIds.length === 0) return
@@ -640,6 +638,8 @@ export default function MobileTopChrome() {
     if (!id) return
     setExpandedRequestId(prev => (prev === id ? null : id))
   }
+
+  if (!isVisible) return null
 
   return (
     <>

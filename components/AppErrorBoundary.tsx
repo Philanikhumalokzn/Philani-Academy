@@ -9,6 +9,12 @@ type AppErrorBoundaryState = {
   componentStack?: string
 }
 
+const formatErrorBlock = (label: string, value: string | undefined) => {
+  const safeValue = String(value || '').trim()
+  if (!safeValue) return ''
+  return `${label}:\n${safeValue}`
+}
+
 export default class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { error: null }
 
@@ -65,15 +71,28 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
     if (!error) return this.props.children
 
     const isHookMismatch = this.getIsHookMismatch(error)
+    const href = typeof window !== 'undefined' ? window.location.href : ''
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+    const details = [
+      formatErrorBlock('Message', String((error as any)?.message || error)),
+      formatErrorBlock('Stack', (error as any)?.stack ? String((error as any).stack) : ''),
+      formatErrorBlock('Component stack', componentStack),
+      formatErrorBlock('Route', href),
+      formatErrorBlock('User agent', ua),
+    ].filter(Boolean).join('\n\n')
 
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/5 p-5">
-          <div className="text-lg font-semibold">Something went wrong</div>
+          <div className="text-lg font-semibold">Client render error</div>
           <div className="mt-1 text-sm text-white/70">
             {isHookMismatch
               ? 'A client-side render error occurred. This is usually caused by a component calling React hooks conditionally.'
               : 'A client-side error occurred while rendering this page.'}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+            {String((error as any)?.message || error)}
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -102,9 +121,7 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
           <details className="mt-4">
             <summary className="cursor-pointer text-sm text-white/70">Details</summary>
             <pre className="mt-2 text-xs whitespace-pre-wrap break-words text-white/70">
-{String((error as any)?.message || error)}
-{(error as any)?.stack ? `\n\n${String((error as any).stack)}` : ''}
-{componentStack ? `\n\n${componentStack}` : ''}
+{details}
             </pre>
           </details>
         </div>

@@ -167,8 +167,10 @@ const collectAuthDiagnostics = async (page: Page) => {
 }
 
 const recoverFromClientExceptionScreen = async (page: Page) => {
-  const crashBanner = page.getByText(/Application error: a client-side exception has occurred while loading/i)
-  const crashSeen = await crashBanner.first().isVisible().catch(() => false)
+  const detailedCrashBanner = page.getByText(/Client runtime error|Client render error/i)
+  const genericCrashBanner = page.getByText(/Application error: a client-side exception has occurred while loading/i)
+  const crashSeen = await detailedCrashBanner.first().isVisible().catch(() => false)
+    || await genericCrashBanner.first().isVisible().catch(() => false)
   if (!crashSeen) return false
 
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 8_000 })

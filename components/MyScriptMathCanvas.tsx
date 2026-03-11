@@ -832,6 +832,14 @@ type TopPanelStepsPayload = {
   options: LatexDisplayOptions
 }
 
+type LoadedNotebookRevisionState = {
+  saveId: string
+  solutionId: string | null
+  selectedStepIndex: number | null
+  editingStepIndex: number | null
+  loadedAt: number
+}
+
 type TopPanelRenderPayload = {
   markup: string
   style: CSSProperties
@@ -2549,6 +2557,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [latexSaveError, setLatexSaveError] = useState<string | null>(null)
 
   const [activeNotebookSolutionId, setActiveNotebookSolutionId] = useState<string | null>(null)
+  const [loadedNotebookRevision, setLoadedNotebookRevision] = useState<LoadedNotebookRevisionState | null>(null)
   const [finishQuestionModalOpen, setFinishQuestionModalOpen] = useState(false)
   const [finishQuestionTitle, setFinishQuestionTitle] = useState('')
   const [finishQuestionNoteId, setFinishQuestionNoteId] = useState<string | null>(null)
@@ -7031,6 +7040,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setAdminSendingStep(false)
     setAdminEditIndex(null)
     setActiveNotebookSolutionId(null)
+    setLoadedNotebookRevision(null)
     setFinishQuestionNoteId(null)
   }, [boardId, useAdminStepComposer])
 
@@ -8113,6 +8123,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (lockedOutRef.current) return
 
     setActiveNotebookSolutionId(null)
+    setLoadedNotebookRevision(null)
     setFinishQuestionNoteId(null)
 
     if (canvasModeRef.current === 'raw-ink') {
@@ -12110,22 +12121,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ?? savedStudentEditingStepIndex
         ?? preservedEditingStepIndex
         ?? null
+      const nextEditingStepIndex = savedAdminEditingStepIndex ?? preservedEditingStepIndex ?? null
 
       if (useAdminStepComposer && hasControllerRights()) {
         setAdminSteps(stepsForComposer)
-        const nextAdminEditIndex = savedAdminEditingStepIndex ?? preservedEditingStepIndex ?? null
-        setAdminEditIndex(nextAdminEditIndex)
-        setAdminDraftLatex(nextAdminEditIndex !== null
-          ? (editorState?.content?.draftStep?.latex || stepsForComposer[nextAdminEditIndex]?.latex || '')
+        setAdminEditIndex(nextEditingStepIndex)
+        setAdminDraftLatex(nextEditingStepIndex !== null
+          ? (editorState?.content?.draftStep?.latex || stepsForComposer[nextEditingStepIndex]?.latex || '')
           : '')
         setTopPanelSelectedStep(nextSelectedStepIndex)
       }
+
+      setLoadedNotebookRevision({
+        saveId: String(save.id || ''),
+        solutionId,
+        selectedStepIndex: nextSelectedStepIndex,
+        editingStepIndex: nextEditingStepIndex,
+        loadedAt: Date.now(),
+      })
     } else if (useAdminStepComposer && hasControllerRights()) {
       // If a non-question note is loaded in composer mode, clear the step list so the LaTeX panel can take over.
       setAdminSteps([])
       setAdminEditIndex(null)
       setAdminDraftLatex('')
       setTopPanelSelectedStep(null)
+      setLoadedNotebookRevision({
+        saveId: String(save.id || ''),
+        solutionId,
+        selectedStepIndex: null,
+        editingStepIndex: null,
+        loadedAt: Date.now(),
+      })
     }
 
     if (options?.continuity) {
@@ -15540,6 +15566,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     const isSelectedGroup = selectedNotesLibraryGroup?.solutionId === group.solutionId
                     const isCollapsed = notesLibraryCollapsedSolutionIds.includes(group.solutionId)
                     const showItems = !isCollapsed || isSelectedGroup
+                    const isLoadedGroup = Boolean(loadedNotebookRevision?.solutionId && group.solutionId === loadedNotebookRevision.solutionId)
                     return (
                       <div
                         key={group.solutionId}
@@ -15560,6 +15587,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             {isActiveGroup && (
                               <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-700">
                                 Current
+                              </span>
+                            )}
+                            {isLoadedGroup && (
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">
+                                Loaded
                               </span>
                             )}
                             <button
@@ -15584,6 +15616,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               const updatedAt = (item as any)?.updatedAt
                               const when = updatedAt ? new Date(updatedAt).toLocaleString() : ''
                               const revisionKind = getNotebookRevisionKind((item as any)?.payload)
+                              const isLoadedRevision = loadedNotebookRevision?.saveId === String(item.id || '')
                               const revisionLabel = revisionKind === 'draft-save'
                                 ? 'Draft'
                                 : revisionKind === 'checkpoint'
@@ -15607,14 +15640,30 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                 >
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0 text-sm font-medium text-slate-800 truncate">{item.title || 'Untitled'}</div>
-                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
-                                      {revisionLabel}
-                                    </span>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      {isLoadedRevision ? (
+                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">
+                                          Loaded
+                                        </span>
+                                      ) : null}
+                                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
+                                        {revisionLabel}
+                                      </span>
+                                    </div>
                                   </div>
                                   <div className="mt-0.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
                                     <span className="truncate">{when || (index === 0 ? 'Latest revision' : 'Saved revision')}</span>
                                     <span className="font-mono text-[10px] text-slate-400">{String((item as any)?.noteId || (item as any)?.payload?.noteId || '').slice(0, 14)}</span>
                                   </div>
+                                  {isLoadedRevision ? (
+                                    <div className="mt-1 text-[11px] text-amber-700">
+                                      {loadedNotebookRevision?.editingStepIndex !== null
+                                        ? `Restored editing step ${Number(loadedNotebookRevision?.editingStepIndex) + 1}.`
+                                        : loadedNotebookRevision?.selectedStepIndex !== null
+                                          ? `Restored step ${Number(loadedNotebookRevision?.selectedStepIndex) + 1} selection.`
+                                          : 'Loaded without a step focus.'}
+                                    </div>
+                                  ) : null}
                                 </button>
                               )
                             })}
@@ -15644,6 +15693,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           const updatedAt = (item as any)?.updatedAt
                           const when = updatedAt ? new Date(updatedAt).toLocaleString() : 'Unknown time'
                           const revisionKind = getNotebookRevisionKind((item as any)?.payload)
+                          const isLoadedRevision = loadedNotebookRevision?.saveId === String(item.id || '')
                           const revisionLabel = revisionKind === 'draft-save'
                             ? 'Draft'
                             : revisionKind === 'checkpoint'
@@ -15664,10 +15714,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                     <div className="text-sm font-medium text-slate-800">{index === 0 ? 'Latest revision' : `Revision ${selectedNotesLibraryGroup.items.length - index}`}</div>
                                     <div className="mt-0.5 text-[11px] text-slate-500 truncate">{when}</div>
                                   </div>
-                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
-                                    {revisionLabel}
-                                  </span>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    {isLoadedRevision ? (
+                                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">
+                                        Loaded
+                                      </span>
+                                    ) : null}
+                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${revisionBadgeClass}`}>
+                                      {revisionLabel}
+                                    </span>
+                                  </div>
                                 </div>
+                                {isLoadedRevision ? (
+                                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                                    {loadedNotebookRevision?.editingStepIndex !== null
+                                      ? `This revision restored editing step ${Number(loadedNotebookRevision?.editingStepIndex) + 1} into the composer.`
+                                      : loadedNotebookRevision?.selectedStepIndex !== null
+                                        ? `This revision restored step ${Number(loadedNotebookRevision?.selectedStepIndex) + 1} as the selected step.`
+                                        : 'This revision loaded without restoring a specific step focus.'}
+                                  </div>
+                                ) : null}
                                 <div className="mt-2 flex items-center justify-between gap-2">
                                   <div className="text-[11px] text-slate-500 truncate">{item.title || 'Untitled'}</div>
                                   <button

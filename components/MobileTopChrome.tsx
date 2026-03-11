@@ -889,13 +889,13 @@ export default function MobileTopChrome() {
                     <div className="mt-2 text-sm text-white/70">No announcements.</div>
                   ) : (
                     <div className="mt-2 space-y-2">
-                      {announcements.map((a) => {
+                      {announcements.map((a, index) => {
                         const id = a?.id == null ? '' : String(a.id)
                         const isExpanded = id && expandedId === id
                         const isRead = id ? readSet.has(id) : true
                         return (
                           <div
-                            key={id || Math.random().toString(36)}
+                            key={id || `announcement-${index}`}
                             className={`rounded-2xl border backdrop-blur p-3 ${isRead ? 'border-white/10 bg-white/5' : 'border-blue-300/40 bg-white/10'}`}
                           >
                             <button

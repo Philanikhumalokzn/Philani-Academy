@@ -1504,6 +1504,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [transientError, setTransientError] = useState<string | null>(null)
   const [editorReinitNonce, setEditorReinitNonce] = useState(0)
   const [editorReconnecting, setEditorReconnecting] = useState(false)
+  const editorReconnectPhaseRef = useRef<'pending-init' | 'waiting-result' | null>(null)
   const lastEditorInitTraceRef = useRef<null | {
     editorInitLayoutKey: string
     editorReinitNonce: number
@@ -6846,6 +6847,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const triggerEditorReinit = useCallback((reason?: string) => {
     if (editorReconnectingRef.current) return
     editorReconnectingRef.current = true
+    editorReconnectPhaseRef.current = 'pending-init'
     suppressNextLoadingOverlayRef.current = true
     setEditorReconnecting(true)
     setTransientError(null)
@@ -6857,15 +6859,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   useEffect(() => {
     if (!editorReconnecting) return
+    if (editorReconnectPhaseRef.current === 'pending-init') return
     if (status === 'ready') {
       setEditorReconnecting(false)
       editorReconnectingRef.current = false
+      editorReconnectPhaseRef.current = null
       suppressNextLoadingOverlayRef.current = false
       return
     }
     if (status === 'error') {
       setEditorReconnecting(false)
       editorReconnectingRef.current = false
+      editorReconnectPhaseRef.current = null
       suppressNextLoadingOverlayRef.current = false
     }
   }, [editorReconnecting, status])
@@ -6903,6 +6908,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       suppressedLoadingOverlay: suppressNextLoadingOverlayRef.current,
       state: initTraceState,
     })
+
+    if (editorReconnectPhaseRef.current === 'pending-init') {
+      editorReconnectPhaseRef.current = 'waiting-result'
+    }
 
     if (!host) {
       return
@@ -14516,7 +14525,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   </div>
                 </div>
 
-                {!isRawInkMode && (status === 'loading' || status === 'idle') && (
+                {!isRawInkMode && !editorReconnecting && (status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
                     Preparing collaborative canvas…
                   </div>
@@ -15433,7 +15442,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
           )}
 
-          {(status === 'loading' || status === 'idle') && (
+          {!editorReconnecting && (status === 'loading' || status === 'idle') && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
               Preparing collaborative canvas…
             </div>

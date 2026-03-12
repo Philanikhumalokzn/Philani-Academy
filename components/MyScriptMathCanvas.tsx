@@ -1504,7 +1504,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [transientError, setTransientError] = useState<string | null>(null)
   const [editorReinitNonce, setEditorReinitNonce] = useState(0)
   const [editorReconnecting, setEditorReconnecting] = useState(false)
-  const editorReconnectPhaseRef = useRef<'pending-init' | 'waiting-result' | null>(null)
+  const editorReconnectPhaseRef = useRef<'pending-init' | 'waiting-result' | 'restoring' | null>(null)
+  const editorReconnectRestoreSnapshotRef = useRef<SnapshotPayload | null>(null)
   const lastEditorInitTraceRef = useRef<null | {
     editorInitLayoutKey: string
     editorReinitNonce: number
@@ -6846,6 +6847,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const triggerEditorReinit = useCallback((reason?: string) => {
     if (editorReconnectingRef.current) return
+    const reconnectSnapshot = cloneSnapshotPayload(latestSnapshotRef.current?.snapshot ?? captureFullSnapshot())
+    if (reconnectSnapshot) {
+      reconnectSnapshot.baseSymbolCount = -1
+    }
+    editorReconnectRestoreSnapshotRef.current = reconnectSnapshot
     editorReconnectingRef.current = true
     editorReconnectPhaseRef.current = 'pending-init'
     suppressNextLoadingOverlayRef.current = true
@@ -6855,25 +6861,40 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // Intentionally do not show the raw engine error text here.
     // This path is used for the iink "session expired" / max-duration cases and should be seamless.
     setEditorReinitNonce(n => n + 1)
-  }, [])
+  }, [captureFullSnapshot])
 
   useEffect(() => {
     if (!editorReconnecting) return
     if (editorReconnectPhaseRef.current === 'pending-init') return
+    if (editorReconnectPhaseRef.current === 'restoring') return
     if (status === 'ready') {
-      setEditorReconnecting(false)
-      editorReconnectingRef.current = false
-      editorReconnectPhaseRef.current = null
-      suppressNextLoadingOverlayRef.current = false
+      const reconnectSnapshot = cloneSnapshotPayload(editorReconnectRestoreSnapshotRef.current)
+      editorReconnectPhaseRef.current = 'restoring'
+      void (async () => {
+        try {
+          if (reconnectSnapshot) {
+            await applyPageSnapshot(reconnectSnapshot)
+          }
+        } catch (err) {
+          console.warn('Failed to restore editor state after reconnect', err)
+        } finally {
+          editorReconnectRestoreSnapshotRef.current = null
+          setEditorReconnecting(false)
+          editorReconnectingRef.current = false
+          editorReconnectPhaseRef.current = null
+          suppressNextLoadingOverlayRef.current = false
+        }
+      })()
       return
     }
     if (status === 'error') {
+      editorReconnectRestoreSnapshotRef.current = null
       setEditorReconnecting(false)
       editorReconnectingRef.current = false
       editorReconnectPhaseRef.current = null
       suppressNextLoadingOverlayRef.current = false
     }
-  }, [editorReconnecting, status])
+  }, [applyPageSnapshot, editorReconnecting, status])
 
   useEffect(() => {
     let cancelled = false
@@ -7018,6 +7039,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         await waitForHostSize()
         if (cancelled) return
+
+        try {
+          host.replaceChildren()
+        } catch {
+          try {
+            host.innerHTML = ''
+          } catch {}
+        }
 
         const options = {
           configuration: {
@@ -7331,6 +7360,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
         editorInstanceRef.current = null
         setMyScriptEditorReady(false)
+      }
+      try {
+        const host = editorHostRef.current
+        host?.replaceChildren?.()
+      } catch {
+        try {
+          const host = editorHostRef.current
+          if (host) host.innerHTML = ''
+        } catch {}
       }
 
       if (eraserLongPressTimeoutRef.current) {
@@ -14252,12 +14290,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     <div className="flex items-center gap-2">
                       {isEditingExistingTopPanelStep && !isAssignmentSolutionAuthoring ? (
                         <>
-                          <div
-                            className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
-                            aria-live="polite"
-                          >
-                            Editing step {Number(activeComposerEditIndex) + 1}
-                          </div>
                           <button
                             type="button"
                             className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"

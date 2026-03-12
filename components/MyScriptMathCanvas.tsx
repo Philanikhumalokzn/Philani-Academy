@@ -13625,7 +13625,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                              className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Notes"
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -13658,7 +13658,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                             <button
                               type="button"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                              className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
                               disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
@@ -13731,7 +13731,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                             <button
                               type="button"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                              className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
                               disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
@@ -13804,7 +13804,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                             <button
                               type="button"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                              className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Clear"
                               onClick={(e) => {
                                 if (binLongPressTriggeredRef.current) {
@@ -13921,7 +13921,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                        className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                     title="Compute answer"
                     onClick={() => runCanvasAction(appendComputedLineFromLastStep)}
                     disabled={Boolean(fatalError)}
@@ -13954,7 +13954,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {canUsePresenterMiddleStripTools && isCompactViewport && (
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                        className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                         title="Diagrams"
                         onClick={() => {
                           const now = Date.now()
@@ -14009,7 +14009,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {!isRawInkMode && showTextIcon && (
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                        className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                         title="Text"
                         onClick={() => {
                           const canOpenTray = canOrchestrateLesson || allowStudentTextTray
@@ -14072,7 +14072,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {isOverlayMode && canUsePresenterMiddleStripTools && (
                       <button
                         type="button"
-                        className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 ${isEraserMode ? 'border-slate-900/20 bg-slate-900/10 text-slate-900' : 'text-slate-700'} ${isViewOnly ? 'opacity-50' : ''}`}
+                        className={`px-2 py-1 transition-colors hover:text-slate-900 ${isEraserMode ? 'text-slate-900' : 'text-slate-700'} ${isViewOnly ? 'opacity-50' : ''}`}
                         title={isEraserMode ? (eraserShimReady ? 'Eraser (on)' : 'Eraser (on, initializing)') : (eraserShimReady ? 'Eraser' : 'Eraser (initializing)')}
                         aria-pressed={isEraserMode}
                         onClick={(e) => {
@@ -14168,7 +14168,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
+                        className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                         title={isAssignmentSolutionAuthoring ? 'Commit / Save' : (isEditingExistingTopPanelStep ? 'Update step' : 'Send step')}
                         onClick={handleSendStepClick}
                         disabled={

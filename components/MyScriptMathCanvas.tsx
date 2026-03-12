@@ -13625,7 +13625,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                               title="Notes"
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -13640,19 +13640,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                   viewBox="0 0 24 24"
                                   width="18"
                                   height="18"
-                                  fill="currentColor"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
                                   className="text-slate-700"
                                   aria-hidden="true"
                                 >
-                                  <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm2 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11v5h3v10z" />
-                                  <path d="M7 12h10v8H7z" opacity="0.2" />
-                                  <path d="M7 12h10v8H7zm2 2v4h6v-4H9z" />
+                                  <path d="M7 4.5h8.5L19 8v11a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19V6a1.5 1.5 0 0 1 1-1.41Z" />
+                                  <path d="M15 4.5V8h3.5" />
+                                  <path d="M9 11h6" />
+                                  <path d="M9 14.5h6" />
+                                  <path d="M9 18h4" />
                                 </svg>
                             </button>
 
                             <button
                               type="button"
-                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
                               disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
@@ -13710,17 +13716,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                 viewBox="0 0 24 24"
                                 width="18"
                                 height="18"
-                                fill="currentColor"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.9"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                                 className="text-slate-700"
                                 aria-hidden="true"
                               >
-                                <path d="M12.5 8H7.83l2.58-2.59L9 4 4 9l5 5 1.41-1.41L7.83 10H12.5A5.5 5.5 0 1 1 7 15h-2a7.5 7.5 0 1 0 7.5-7.5z" />
+                                <path d="M9 7 4.5 11.5 9 16" />
+                                <path d="M4.5 11.5H13a6.5 6.5 0 1 1 0 13h-1" />
                               </svg>
                             </button>
 
                             <button
                               type="button"
-                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
                               disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
@@ -13778,17 +13789,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                 viewBox="0 0 24 24"
                                 width="18"
                                 height="18"
-                                fill="currentColor"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.9"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                                 className="text-slate-700"
                                 aria-hidden="true"
                               >
-                                <path d="M11.5 8H16.17l-2.58-2.59L15 4l5 5-5 5-1.41-1.41L16.17 10H11.5A5.5 5.5 0 1 0 17 15h2a7.5 7.5 0 1 1-7.5-7.5z" />
+                                <path d="m15 7 4.5 4.5L15 16" />
+                                <path d="M19.5 11.5H11a6.5 6.5 0 1 0 0 13h1" />
                               </svg>
                             </button>
 
                             <button
                               type="button"
-                              className="px-2 py-1 text-slate-700 disabled:opacity-50"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                               title="Clear"
                               onClick={(e) => {
                                 if (binLongPressTriggeredRef.current) {
@@ -13836,11 +13852,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                 viewBox="0 0 24 24"
                                 width="18"
                                 height="18"
-                                fill="currentColor"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.9"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                                 className="text-slate-700"
                                 aria-hidden="true"
                               >
-                                <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" />
+                                <path d="M4 7h16" />
+                                <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />
+                                <path d="M7 7l.8 11a2 2 0 0 0 2 1.85h4.4a2 2 0 0 0 2-1.85L17 7" />
+                                <path d="M10 10.5v5" />
+                                <path d="M14 10.5v5" />
                               </svg>
                             </button>
                           </div>
@@ -13895,9 +13919,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                 {!isRawInkMode && (
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="px-2 py-1"
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                     title="Compute answer"
                     onClick={() => runCanvasAction(appendComputedLineFromLastStep)}
                     disabled={Boolean(fatalError)}
@@ -13910,23 +13934,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       height="18"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="2"
+                      strokeWidth="1.9"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       className="text-slate-700"
                       aria-hidden="true"
                     >
-                      <rect x="5" y="3" width="14" height="18" rx="2" />
-                      <line x1="8" y1="7" x2="16" y2="7" />
-                      <line x1="9" y1="11" x2="9" y2="11" />
-                      <line x1="12" y1="11" x2="12" y2="11" />
-                      <line x1="15" y1="11" x2="15" y2="11" />
-                      <line x1="9" y1="14" x2="9" y2="14" />
-                      <line x1="12" y1="14" x2="12" y2="14" />
-                      <line x1="15" y1="14" x2="15" y2="14" />
-                      <line x1="9" y1="17" x2="9" y2="17" />
-                      <line x1="12" y1="17" x2="12" y2="17" />
-                      <line x1="15" y1="17" x2="15" y2="17" />
+                      <path d="M12 4v16" />
+                      <path d="M4 12h16" />
+                      <path d="m16 8 4 4-4 4" />
+                      <path d="M8 8h4v8H8" />
                     </svg>
                   </button>
                 </div>
@@ -13937,7 +13954,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {canUsePresenterMiddleStripTools && isCompactViewport && (
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                         title="Diagrams"
                         onClick={() => {
                           const now = Date.now()
@@ -13972,14 +13989,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           viewBox="0 0 24 24"
                           width="18"
                           height="18"
-                          fill="currentColor"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           className="text-slate-700"
                           aria-hidden="true"
                         >
-                          <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm2 0v14h12V5H6z" />
-                          <path d="M8 15l2.5-3 2 2.4L15 12l3 4H8z" opacity="0.25" />
-                          <path d="M8 15l2.5-3 2 2.4L15 12l3 4H8z" />
-                          <circle cx="9" cy="9" r="1.4" />
+                          <rect x="3.5" y="4.5" width="7" height="7" rx="1.5" />
+                          <rect x="13.5" y="4.5" width="7" height="7" rx="1.5" />
+                          <rect x="8.5" y="13.5" width="7" height="7" rx="1.5" />
+                          <path d="M10.5 8h3" />
+                          <path d="M12 11.5v2" />
                         </svg>
                       </button>
                     )}
@@ -13987,7 +14009,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {!isRawInkMode && showTextIcon && (
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                         title="Text"
                         onClick={() => {
                           const canOpenTray = canOrchestrateLesson || allowStudentTextTray
@@ -14032,11 +14054,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           viewBox="0 0 24 24"
                           width="18"
                           height="18"
-                          fill="currentColor"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           className="text-slate-700"
                           aria-hidden="true"
                         >
-                          <path d="M5 4h14v3h-5v13h-4V7H5V4z" />
+                          <path d="M5 6.5h14" />
+                          <path d="M12 6.5v11" />
+                          <path d="M8.5 17.5h7" />
                         </svg>
                       </button>
                     )}
@@ -14044,7 +14072,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {isOverlayMode && canUsePresenterMiddleStripTools && (
                       <button
                         type="button"
-                        className={`px-2 py-1 rounded ${isEraserMode ? 'bg-slate-900/10' : ''} ${isViewOnly ? 'opacity-50' : ''}`}
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 ${isEraserMode ? 'border-slate-900/20 bg-slate-900/10 text-slate-900' : 'text-slate-700'} ${isViewOnly ? 'opacity-50' : ''}`}
                         title={isEraserMode ? (eraserShimReady ? 'Eraser (on)' : 'Eraser (on, initializing)') : (eraserShimReady ? 'Eraser' : 'Eraser (initializing)')}
                         aria-pressed={isEraserMode}
                         onClick={(e) => {
@@ -14096,13 +14124,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           viewBox="0 0 24 24"
                           width="18"
                           height="18"
-                          fill="currentColor"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           className={isEraserMode ? 'text-slate-900' : 'text-slate-700'}
                           aria-hidden="true"
                         >
-                          <path d="M16.24 3.56a2.5 2.5 0 0 1 3.54 0l.66.66a2.5 2.5 0 0 1 0 3.54l-9.2 9.2a2.5 2.5 0 0 1-1.77.73H5.5a1.5 1.5 0 0 1-1.06-.44l-1.1-1.1a1.5 1.5 0 0 1 0-2.12l12.9-12.9z" opacity="0.25" />
-                          <path d="M15.53 4.27 4.04 15.76a.5.5 0 0 0 0 .71l1.1 1.1c.09.1.22.15.35.15h3.97c.2 0 .38-.08.52-.21l9.2-9.2a1.5 1.5 0 0 0 0-2.12l-.66-.66a1.5 1.5 0 0 0-2.12 0z" />
-                          <path d="M4 20h16v2H4v-2z" />
+                          <path d="m14.5 4.5 5 5" />
+                          <path d="m4.5 14.5 8.5-8.5a2.12 2.12 0 0 1 3 0l2 2a2.12 2.12 0 0 1 0 3l-5.5 5.5a2 2 0 0 1-1.41.59H7.1a2 2 0 0 1-1.41-.59l-1.19-1.19a1.95 1.95 0 0 1 0-2.76Z" />
+                          <path d="M13 17.5 18.5 12" />
+                          <path d="M4 20h8" />
                         </svg>
                       </button>
                     )}
@@ -14135,7 +14168,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                       <button
                         type="button"
-                        className="px-2 py-1"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white/85 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
                         title={isAssignmentSolutionAuthoring ? 'Commit / Save' : (isEditingExistingTopPanelStep ? 'Update step' : 'Send step')}
                         onClick={handleSendStepClick}
                         disabled={
@@ -14156,11 +14189,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           viewBox="0 0 24 24"
                           width="18"
                           height="18"
-                          fill="currentColor"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           className="text-slate-700"
                           aria-hidden="true"
                         >
-                          <path d="M21.9 2.6c.2-.7-.5-1.3-1.2-1.1L2.4 7.7c-.9.3-1 1.6-.1 2l7 3.2 3.2 7c.4.9 1.7.8 2-.1l6.2-18.2zM10.2 12.5 5.2 10.2l12.3-4.2-7.3 6.5zm2.3 6.3-2.3-5 6.5-7.3-4.2 12.3z" />
+                          <path d="M21 3 10 14" />
+                          <path d="m21 3-7 18-4-7-7-4 18-7Z" />
                         </svg>
                       </button>
                     </div>

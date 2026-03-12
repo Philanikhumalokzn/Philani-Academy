@@ -6926,6 +6926,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     editorReconnectPhaseRef.current = 'pending-init'
     suppressNextLoadingOverlayRef.current = true
     setEditorReconnecting(true)
+    setStatus('idle')
+    setMyScriptEditorReady(false)
     setTransientError(null)
     setFatalError(null)
     // Intentionally do not show the raw engine error text here.

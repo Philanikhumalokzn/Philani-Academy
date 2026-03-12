@@ -1132,6 +1132,14 @@ const getSilentMyScriptRuntimeDisposition = (details: { message?: string; stack?
   return 'reinit' as const
 }
 
+const isHardMyScriptReconnectMessage = (details: { message?: string; stack?: string; source?: string; raw?: string }) => {
+  const normalized = [details.message || '', details.stack || '', details.source || '', details.raw || '']
+    .join(' ')
+    .toLowerCase()
+
+  return /(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session|unauthorized|forbidden|missing.*key|networkerror|network error|connection closed|websocket closed)/.test(normalized)
+}
+
 const recordSilentCanvasRecovery = (kind: string, details: { message?: string; stack?: string; source?: string; raw?: string }) => {
   try {
     if (typeof window !== 'undefined') {
@@ -2427,6 +2435,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   type StudentStep = { latex: string; symbols: any[] | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
   const [studentEditIndex, setStudentEditIndex] = useState<number | null>(null)
+  const studentEditIndexRef = useRef<number | null>(null)
+  useEffect(() => {
+    studentEditIndexRef.current = studentEditIndex
+  }, [studentEditIndex])
 
   const [topPanelEditingMode, setTopPanelEditingMode] = useState(false)
   const topPanelEditingModeRef = useRef(false)
@@ -2435,6 +2447,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [topPanelEditingMode])
 
   const [topPanelSelectedStep, setTopPanelSelectedStep] = useState<number | null>(null)
+  const topPanelSelectedStepRef = useRef<number | null>(null)
+  useEffect(() => {
+    topPanelSelectedStepRef.current = topPanelSelectedStep
+  }, [topPanelSelectedStep])
   const [mobileTopPanelActionStepIndex, setMobileTopPanelActionStepIndex] = useState<number | null>(null)
 
   useEffect(() => {
@@ -7179,9 +7195,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           setCanRedo(Boolean(evt.detail?.canRedo))
           setCanClear(Boolean(evt.detail?.canClear))
           const now = Date.now()
-          if (now < suppressBroadcastUntilTsRef.current) {
-            return
-          }
+          const suppressPublish = now < suppressBroadcastUntilTsRef.current
           // Respect assignment override + general lock state.
           // `lockedOutRef` is the single source of truth for whether the current user
           // is allowed to edit/publish (it already includes `forceEditableForAssignment`).
@@ -7190,7 +7204,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             return
           }
           const isSharedPage = pageIndex === sharedPageIndexRef.current
-          const canSend = canPublishSnapshotsRef.current() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
+          const canSend = !suppressPublish && canPublishSnapshotsRef.current() && isSharedPage && !isBroadcastPausedRef.current && !lockedOutRef.current
           const snapshot = collectEditorSnapshot(canSend)
           if (!snapshot) return
           if (snapshot.version === lastAppliedRemoteVersionRef.current) return
@@ -7350,9 +7364,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             raw: details.raw,
           })
 
+          const editingTopPanelStep = topPanelEditingModeRef.current
+            && (adminEditIndex !== null || studentEditIndexRef.current !== null || topPanelSelectedStepRef.current !== null)
           const disposition = getSilentMyScriptRuntimeDisposition(details)
+          const effectiveDisposition = editingTopPanelStep && disposition === 'reinit' && !isHardMyScriptReconnectMessage(details)
+            ? 'ignore'
+            : disposition
 
-          if (disposition === 'resize') {
+          if (effectiveDisposition === 'resize') {
             recordSilentCanvasRecovery('myscript-resize', details)
             if (editorResizeRetryTimeoutRef.current) {
               clearTimeout(editorResizeRetryTimeoutRef.current)
@@ -7364,12 +7383,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             return
           }
 
-          if (disposition === 'ignore') {
+          if (effectiveDisposition === 'ignore') {
             recordSilentCanvasRecovery('myscript-ignore', details)
             return
           }
 
-          if (disposition === 'reinit') {
+          if (effectiveDisposition === 'reinit') {
             recordSilentCanvasRecovery('myscript-reinit', details)
             triggerEditorReinit(raw)
             return

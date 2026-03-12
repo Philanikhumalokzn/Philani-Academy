@@ -1122,7 +1122,10 @@ const getSilentMyScriptRuntimeDisposition = (details: { message?: string; stack?
     .toLowerCase()
 
   if (/viewsize(?:height|width) must not be null/.test(normalized)) return 'resize' as const
-  if (/(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session|unauthorized|forbidden|missing.*key|networkerror|network error|connection closed|websocket closed|cannot read properties of undefined.*symbols)/.test(normalized)) {
+  if (/cannot read properties of undefined.*symbols/.test(normalized)) {
+    return 'ignore' as const
+  }
+  if (/(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session|unauthorized|forbidden|missing.*key|networkerror|network error|connection closed|websocket closed)/.test(normalized)) {
     return 'reinit' as const
   }
   if (isSilentMyScriptRuntimeMessage(details)) return 'ignore' as const

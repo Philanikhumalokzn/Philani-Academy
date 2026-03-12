@@ -211,7 +211,22 @@ const isIgnorableNonFatalClientError = (value: unknown): boolean => {
       || normalized.includes('customevent')
     )
 
-  return isIinkSymbolsSyncError
+  const isIinkActionBoundaryError = (
+    normalized.includes('undo not allowed')
+    || normalized.includes('redo not allowed')
+    || normalized.includes('clear not allowed')
+    || normalized.includes('convert not allowed')
+    || normalized.includes('export not allowed')
+    || normalized.includes('import not allowed')
+  ) && (
+    normalized.includes('iink')
+    || normalized.includes('interactiveinkssreditor')
+    || normalized.includes('historymanager')
+    || normalized.includes('customevent')
+    || normalized.includes('promise rejection')
+  )
+
+  return isIinkSymbolsSyncError || isIinkActionBoundaryError
 }
 
 const formatClientErrorDetails = (error: GlobalClientErrorState) => {

@@ -1141,6 +1141,64 @@ const countSymbols = (source: any): number => {
   return 0
 }
 
+const getNonFatalIinkActionErrorMessage = (error: unknown): string => {
+  if (!error) return ''
+  if (typeof error === 'string') return error
+  if (error instanceof Error) return error.message || String(error)
+  if (typeof error === 'object') {
+    const anyError = error as any
+    if (typeof anyError?.message === 'string') return anyError.message
+    if (typeof anyError?.reason === 'string') return anyError.reason
+  }
+  try {
+    return String(error)
+  } catch {
+    return ''
+  }
+}
+
+const isNonFatalIinkActionError = (error: unknown): boolean => {
+  const message = getNonFatalIinkActionErrorMessage(error).trim().toLowerCase()
+  if (!message) return false
+  return (
+    message === 'undo not allowed'
+    || message === 'redo not allowed'
+    || message === 'clear not allowed'
+    || message === 'convert not allowed'
+    || message === 'export not allowed'
+    || message === 'import not allowed'
+    || message.includes("cannot read properties of undefined (reading 'symbols')")
+  )
+}
+
+const recordIgnoredIinkActionError = (error: unknown) => {
+  try {
+    if (typeof window !== 'undefined') {
+      ;(window as any).__philani_last_ignored_client_error = {
+        kind: 'iink-action',
+        href: window.location.href,
+        timestamp: Date.now(),
+        message: getNonFatalIinkActionErrorMessage(error),
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const runIinkActionSafely = async (action: () => unknown | Promise<unknown>): Promise<boolean> => {
+  try {
+    await action()
+    return true
+  } catch (error) {
+    if (!isNonFatalIinkActionError(error)) {
+      throw error
+    }
+    recordIgnoredIinkActionError(error)
+    return false
+  }
+}
+
 const normalizeSymbolEventType = (evt: any): string => {
   const raw = evt?.type ?? evt?.eventType ?? evt?.state ?? evt?.phase ?? evt?.kind ?? evt?.action ?? ''
   return String(raw).toLowerCase()
@@ -4005,13 +4063,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     [closeOverlayControls, openOverlayControls, toggleOverlayControls]
   )
 
-  const runCanvasAction = useCallback((action: () => void | Promise<void>) => {
-    if (typeof action === 'function') {
-      action()
-    }
-    if (isOverlayMode) {
-      clearOverlayAutoHide()
-      setOverlayControlsVisible(false)
+  const runCanvasAction = useCallback(async (action: () => void | Promise<void>) => {
+    try {
+      if (typeof action === 'function') {
+        await action()
+      }
+    } catch (error) {
+      if (!isNonFatalIinkActionError(error)) {
+        throw error
+      }
+      recordIgnoredIinkActionError(error)
+    } finally {
+      if (isOverlayMode) {
+        clearOverlayAutoHide()
+        setOverlayControlsVisible(false)
+      }
     }
   }, [clearOverlayAutoHide, isOverlayMode])
 
@@ -6564,7 +6630,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       try {
         forcedConvertDepthRef.current += 1
         setIsConverting(true)
-        editor.convert()
+        void runIinkActionSafely(() => editor.convert())
       } catch {
         void finish()
       }
@@ -7727,7 +7793,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             if (!editor) return
             forcedConvertDepthRef.current += 1
             setIsConverting(true)
-            editor.convert()
+            void runIinkActionSafely(() => editor.convert())
             return
           }
           if (data?.action === 'latex-display') {
@@ -8371,9 +8437,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
 
-    try {
-      editorInstanceRef.current.undo()
-    } catch {}
+    const didUndo = await runIinkActionSafely(() => editorInstanceRef.current!.undo())
+    if (!didUndo) return
     broadcastSnapshot(false)
 
     // Step-boundary undo: once empty, go to the line above.
@@ -8410,9 +8475,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
 
-    try {
-      editorInstanceRef.current.redo()
-    } catch {}
+    const didRedo = await runIinkActionSafely(() => editorInstanceRef.current!.redo())
+    if (!didRedo) return
     broadcastSnapshot(false)
 
     // Step-boundary redo: when empty, redo to the next line we previously stepped from.
@@ -8457,7 +8521,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     setIsConverting(true)
-    editorInstanceRef.current.convert()
+    void runIinkActionSafely(() => editorInstanceRef.current!.convert())
     if (canPublishSnapshots() && pageIndex === sharedPageIndexRef.current && !isBroadcastPausedRef.current) {
       const channel = channelRef.current
       if (channel) {

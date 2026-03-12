@@ -2608,18 +2608,53 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } catch {}
 
     const stepSymbols = adminSteps[index]?.symbols
+    const stepLatex = adminSteps[index]?.latex || ''
     if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
       try {
         await nextAnimationFrame()
         await editor.importPointEvents(stepSymbols)
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
       } catch (err) {
         console.warn('Failed to load step ink for editing', err)
       }
     }
 
+    const symbolCount = Array.isArray(stepSymbols) ? stepSymbols.length : 0
+    lastSymbolCountRef.current = symbolCount
+    lastBroadcastBaseCountRef.current = symbolCount
+
+    const recalledSnapshot = cloneSnapshotPayload({
+      mode: 'math',
+      symbols: Array.isArray(stepSymbols) ? stepSymbols : null,
+      rawInk: null,
+      latex: stepLatex,
+      jiix: null,
+      version: localVersionRef.current,
+      snapshotId: `${clientIdRef.current}-${Date.now()}-step-edit-${index}`,
+      baseSymbolCount: -1,
+    })
+    if (recalledSnapshot) {
+      const page = pageIndexRef.current
+      while (pageRecordsRef.current.length <= page) {
+        pageRecordsRef.current.push({ snapshot: null })
+      }
+      while (mathModePageSnapshotsRef.current.length <= page) {
+        mathModePageSnapshotsRef.current.push(null)
+      }
+      pageRecordsRef.current[page] = { snapshot: recalledSnapshot }
+      mathModePageSnapshotsRef.current[page] = recalledSnapshot
+      latestSnapshotRef.current = {
+        snapshot: recalledSnapshot,
+        ts: Date.now(),
+        reason: symbolCount > 0 || stepLatex.trim() ? 'update' : 'clear',
+      }
+    }
+
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
-    setAdminDraftLatex(adminSteps[index]?.latex || '')
+    setAdminDraftLatex(stepLatex)
   }, [adminSteps, useAdminStepComposer])
 
   const loadStudentStepForEditing = useCallback(async (index: number) => {
@@ -2637,17 +2672,52 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } catch {}
 
     const stepSymbols = studentSteps[index]?.symbols
+    const stepLatex = studentSteps[index]?.latex || ''
     if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
       try {
         await nextAnimationFrame()
         await editor.importPointEvents(stepSymbols)
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
       } catch (err) {
         console.warn('Failed to load step ink for editing', err)
       }
     }
 
+    const symbolCount = Array.isArray(stepSymbols) ? stepSymbols.length : 0
+    lastSymbolCountRef.current = symbolCount
+    lastBroadcastBaseCountRef.current = symbolCount
+
+    const recalledSnapshot = cloneSnapshotPayload({
+      mode: 'math',
+      symbols: Array.isArray(stepSymbols) ? stepSymbols : null,
+      rawInk: null,
+      latex: stepLatex,
+      jiix: null,
+      version: localVersionRef.current,
+      snapshotId: `${clientIdRef.current}-${Date.now()}-step-edit-${index}`,
+      baseSymbolCount: -1,
+    })
+    if (recalledSnapshot) {
+      const page = pageIndexRef.current
+      while (pageRecordsRef.current.length <= page) {
+        pageRecordsRef.current.push({ snapshot: null })
+      }
+      while (mathModePageSnapshotsRef.current.length <= page) {
+        mathModePageSnapshotsRef.current.push(null)
+      }
+      pageRecordsRef.current[page] = { snapshot: recalledSnapshot }
+      mathModePageSnapshotsRef.current[page] = recalledSnapshot
+      latestSnapshotRef.current = {
+        snapshot: recalledSnapshot,
+        ts: Date.now(),
+        reason: symbolCount > 0 || stepLatex.trim() ? 'update' : 'clear',
+      }
+    }
+
     setStudentEditIndex(index)
-    setLatexOutput(studentSteps[index]?.latex || '')
+    setLatexOutput(stepLatex)
   }, [studentSteps])
 
   const loadTopPanelStepForEditing = useCallback(async (index: number) => {

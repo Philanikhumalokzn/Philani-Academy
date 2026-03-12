@@ -66,40 +66,140 @@ type GlobalClientErrorState = {
   message: string
   stack?: string
   source?: string
+  origin?: string
+  raw?: string
   href: string
   timestamp: number
 }
 
-const formatClientErrorValue = (value: unknown): { name?: string; message: string; stack?: string } => {
+const serializeClientErrorValue = (value: unknown, maxChars = 20000): string => {
+  if (value == null) return ''
+  try {
+    const seen = new WeakSet<object>()
+    const text = typeof value === 'string'
+      ? value
+      : JSON.stringify(value, (_key, current) => {
+          if (typeof current === 'function') return '[function]'
+          if (current && typeof current === 'object') {
+            if (typeof Element !== 'undefined' && current instanceof Element) {
+              return `[element ${current.tagName.toLowerCase()}]`
+            }
+            if (typeof Window !== 'undefined' && current instanceof Window) {
+              return '[window]'
+            }
+            if (seen.has(current)) return '[circular]'
+            seen.add(current)
+          }
+          return current
+        }, 2)
+    if (!text) return ''
+    if (text.length <= maxChars) return text
+    return `${text.slice(0, maxChars)}\n...truncated...`
+  } catch {
+    try {
+      return String(value)
+    } catch {
+      return ''
+    }
+  }
+}
+
+const collectClientErrorSources = (value: unknown): string[] => {
+  if (!value || typeof value !== 'object') return []
+  const anyValue = value as any
+  const values = [
+    anyValue?.filename,
+    anyValue?.fileName,
+    anyValue?.sourceURL,
+    anyValue?.url,
+    anyValue?.src,
+    anyValue?.target?.src,
+    anyValue?.target?.href,
+    anyValue?.currentTarget?.src,
+    anyValue?.currentTarget?.href,
+  ]
+  return Array.from(new Set(values.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)))
+}
+
+const formatClientErrorValue = (value: unknown): { name?: string; message: string; stack?: string; source?: string; origin?: string; raw?: string } => {
+  const raw = serializeClientErrorValue(value) || undefined
   if (value instanceof Error) {
     return {
       name: value.name || 'Error',
       message: value.message || String(value),
       stack: value.stack || '',
+      origin: value.constructor?.name || 'Error',
+      raw,
     }
   }
   if (typeof value === 'object' && value) {
-    const anyValue = value as any
-    const name = typeof anyValue?.name === 'string' ? anyValue.name : undefined
-    const message = typeof anyValue?.message === 'string'
-      ? anyValue.message
-      : getChunkErrorText(value) || 'Unknown client error'
-    const stack = typeof anyValue?.stack === 'string' ? anyValue.stack : ''
-    return { name, message, stack }
+    const queue: unknown[] = [value]
+    const seen = new WeakSet<object>()
+    let name: string | undefined
+    let message = ''
+    let stack = ''
+    let source = ''
+    let origin = ''
+
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (!current) continue
+
+      if (current instanceof Error) {
+        name ||= current.name || 'Error'
+        message ||= current.message || String(current)
+        stack ||= current.stack || ''
+        origin ||= current.constructor?.name || 'Error'
+        continue
+      }
+
+      if (typeof current === 'string') {
+        message ||= current
+        continue
+      }
+
+      if (typeof current !== 'object') continue
+      if (seen.has(current)) continue
+      seen.add(current)
+
+      const anyValue = current as any
+      name ||= typeof anyValue?.name === 'string' ? anyValue.name : undefined
+      message ||= [anyValue?.message, anyValue?.reason, anyValue?.statusText].find((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) || ''
+      stack ||= typeof anyValue?.stack === 'string' ? anyValue.stack : ''
+      source ||= collectClientErrorSources(anyValue)[0] || ''
+      origin ||= typeof anyValue?.constructor?.name === 'string' ? anyValue.constructor.name : ''
+
+      if (anyValue?.error) queue.push(anyValue.error)
+      if (anyValue?.reason) queue.push(anyValue.reason)
+      if (anyValue?.detail) queue.push(anyValue.detail)
+      if (anyValue?.cause) queue.push(anyValue.cause)
+      if (anyValue?.data) queue.push(anyValue.data)
+    }
+
+    return {
+      name,
+      message: message || getChunkErrorText(value) || raw || 'Unknown client error',
+      stack,
+      source,
+      origin: origin || undefined,
+      raw,
+    }
   }
   if (typeof value === 'string') {
-    return { message: value }
+    return { message: value, raw }
   }
-  return { message: getChunkErrorText(value) || 'Unknown client error' }
+  return { message: getChunkErrorText(value) || raw || 'Unknown client error', raw }
 }
 
 const formatClientErrorDetails = (error: GlobalClientErrorState) => {
   const blocks = [
     `Kind:\n${error.kind}`,
     error.name ? `Name:\n${error.name}` : '',
+    error.origin ? `Origin:\n${error.origin}` : '',
     `Message:\n${error.message}`,
     error.source ? `Source:\n${error.source}` : '',
     error.stack ? `Stack:\n${error.stack}` : '',
+    error.raw ? `Raw payload:\n${error.raw}` : '',
     `Route:\n${error.href}`,
     `Timestamp:\n${new Date(error.timestamp).toISOString()}`,
   ].filter(Boolean)
@@ -191,13 +291,19 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         return
       }
 
-      const details = formatClientErrorValue(event?.error || event?.message || 'Unknown window error')
+      event.preventDefault?.()
+
+      const details = formatClientErrorValue(event?.error || event || event?.message || 'Unknown window error')
+      const locationSource = event?.filename ? `${event.filename}:${event.lineno || 0}:${event.colno || 0}` : ''
+      const combinedSource = [details.source, locationSource].filter(Boolean).join('\n')
       const nextError: GlobalClientErrorState = {
         kind: 'error',
         name: details.name,
         message: details.message,
         stack: details.stack,
-        source: event?.filename ? `${event.filename}:${event.lineno || 0}:${event.colno || 0}` : '',
+        source: combinedSource,
+        origin: details.origin || 'ErrorEvent',
+        raw: details.raw,
         href: window.location.href,
         timestamp: Date.now(),
       }
@@ -215,13 +321,17 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         return
       }
 
+      event.preventDefault?.()
+
       const details = formatClientErrorValue(event?.reason)
       const nextError: GlobalClientErrorState = {
         kind: 'unhandledrejection',
         name: details.name,
         message: details.message,
         stack: details.stack,
-        source: 'Promise rejection',
+        source: details.source || 'Promise rejection',
+        origin: details.origin || 'PromiseRejectionEvent',
+        raw: details.raw,
         href: window.location.href,
         timestamp: Date.now(),
       }

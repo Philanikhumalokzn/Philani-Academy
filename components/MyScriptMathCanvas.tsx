@@ -1005,6 +1005,105 @@ const toDebugJson = (value: unknown, maxChars = 12000) => {
   }
 }
 
+const collectRuntimeErrorSources = (value: unknown): string[] => {
+  if (!value || typeof value !== 'object') return []
+  const anyValue = value as any
+  const values = [
+    anyValue?.filename,
+    anyValue?.fileName,
+    anyValue?.sourceURL,
+    anyValue?.url,
+    anyValue?.src,
+    anyValue?.target?.src,
+    anyValue?.target?.href,
+    anyValue?.currentTarget?.src,
+    anyValue?.currentTarget?.href,
+  ]
+  return Array.from(new Set(values.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)))
+}
+
+const formatRuntimeErrorDetails = (value: unknown, fallback = 'Unknown client error') => {
+  const raw = toDebugJson(value, 16000) || undefined
+
+  if (value instanceof Error) {
+    return {
+      name: value.name || 'Error',
+      message: value.message || String(value),
+      stack: value.stack || '',
+      source: undefined as string | undefined,
+      raw,
+    }
+  }
+
+  if (typeof value === 'string') {
+    return {
+      name: undefined as string | undefined,
+      message: value,
+      stack: '',
+      source: undefined as string | undefined,
+      raw,
+    }
+  }
+
+  if (!value || typeof value !== 'object') {
+    return {
+      name: undefined as string | undefined,
+      message: raw || fallback,
+      stack: '',
+      source: undefined as string | undefined,
+      raw,
+    }
+  }
+
+  const queue: unknown[] = [value]
+  const seen = new WeakSet<object>()
+  let name: string | undefined
+  let message = ''
+  let stack = ''
+  let source = ''
+
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (!current) continue
+
+    if (current instanceof Error) {
+      name ||= current.name || 'Error'
+      message ||= current.message || String(current)
+      stack ||= current.stack || ''
+      continue
+    }
+
+    if (typeof current === 'string') {
+      message ||= current
+      continue
+    }
+
+    if (typeof current !== 'object') continue
+    if (seen.has(current)) continue
+    seen.add(current)
+
+    const anyValue = current as any
+    name ||= typeof anyValue?.name === 'string' ? anyValue.name : undefined
+    message ||= [anyValue?.message, anyValue?.reason, anyValue?.statusText].find((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) || ''
+    stack ||= typeof anyValue?.stack === 'string' ? anyValue.stack : ''
+    source ||= collectRuntimeErrorSources(anyValue)[0] || ''
+
+    if (anyValue?.error) queue.push(anyValue.error)
+    if (anyValue?.reason) queue.push(anyValue.reason)
+    if (anyValue?.detail) queue.push(anyValue.detail)
+    if (anyValue?.cause) queue.push(anyValue.cause)
+    if (anyValue?.data) queue.push(anyValue.data)
+  }
+
+  return {
+    name,
+    message: message || raw || fallback,
+    stack,
+    source: source || undefined,
+    raw,
+  }
+}
+
 // Reserve a small strip above the bottom of the viewport in stacked mobile mode so
 // fixed overlays (like the custom scrollbar and quick trays) never cover ink.
 const STACKED_BOTTOM_OVERLAY_RESERVE_PX = 28
@@ -6947,13 +7046,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           })()
         }
         const handleError = (evt: any) => {
-          const raw = evt?.detail?.message || evt?.message || 'Unknown error from MyScript editor.'
-          setMyScriptLastError(raw)
-          const lower = String(raw).toLowerCase()
+          const details = formatRuntimeErrorDetails(evt, 'Unknown error from MyScript editor.')
+          const raw = details.message
+          const sourceLabel = details.source ? `Source: ${details.source}` : ''
+          const firstStackLine = details.stack ? String(details.stack).split('\n')[0] : ''
+          const overlayMessage = [raw, sourceLabel || firstStackLine].filter(Boolean).join('\n')
+          const debugMessage = [raw, sourceLabel, details.stack ? `Stack:\n${details.stack}` : '', details.raw ? `Raw:\n${details.raw}` : '']
+            .filter(Boolean)
+            .join('\n\n')
+
+          setMyScriptLastError(debugMessage || raw)
+          console.error('[MyScript editor] runtime error', {
+            message: raw,
+            source: details.source,
+            stack: details.stack,
+            raw: details.raw,
+          })
+
+          const lower = String(debugMessage || raw).toLowerCase()
           const isViewSizeNull = /viewsize(?:height|width) must not be null/.test(lower)
           const isSessionTooLong = /(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session)/.test(lower)
           const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
-          const isSymbolsUndefined = /cannot read properties of undefined.*symbols/i.test(raw)
           const shouldAutoReconnect = isSessionTooLong
           const fatal = isAuthMissing
 
@@ -6974,15 +7087,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           }
 
           if (fatal) {
-            setFatalError(raw)
+            setFatalError(debugMessage || raw)
             setStatus('error')
             return
           }
           // Transient: keep canvas usable
-          setTransientError(raw)
+          setTransientError(overlayMessage || raw)
           // Auto-clear transient after 6s
           setTimeout(() => {
-            setTransientError(curr => (curr === raw ? null : curr))
+            setTransientError(curr => (curr === (overlayMessage || raw) ? null : curr))
           }, 6000)
         }
 
@@ -15132,7 +15245,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
           )}
           {transientError && status === 'ready' && (
-            <div className="absolute bottom-2 left-2 max-w-[60%] text-[11px] text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm pointer-events-none">
+            <div className="absolute bottom-2 left-2 max-w-[75%] whitespace-pre-wrap break-words text-[11px] leading-4 text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm pointer-events-none">
               {transientError}
             </div>
           )}

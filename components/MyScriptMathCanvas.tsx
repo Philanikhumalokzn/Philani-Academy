@@ -1144,6 +1144,20 @@ const recordSilentCanvasRecovery = (kind: string, details: { message?: string; s
   }
 }
 
+const recordCanvasInitTrace = (details: Record<string, unknown>) => {
+  try {
+    if (typeof window !== 'undefined') {
+      ;(window as any).__philani_last_canvas_init_trace = {
+        timestamp: Date.now(),
+        href: window.location.href,
+        ...details,
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 // Reserve a small strip above the bottom of the viewport in stacked mobile mode so
 // fixed overlays (like the custom scrollbar and quick trays) never cover ink.
 const STACKED_BOTTOM_OVERLAY_RESERVE_PX = 28
@@ -1490,6 +1504,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [transientError, setTransientError] = useState<string | null>(null)
   const [editorReinitNonce, setEditorReinitNonce] = useState(0)
   const [editorReconnecting, setEditorReconnecting] = useState(false)
+  const lastEditorInitTraceRef = useRef<null | {
+    editorInitLayoutKey: string
+    editorReinitNonce: number
+    canvasMode: CanvasMode
+    canOrchestrateLesson: boolean
+    forceEditableForAssignment: boolean
+    useStackedStudentLayout: boolean
+    isCompactViewport: boolean
+  }>(null)
   const suppressNextLoadingOverlayRef = useRef(false)
   const editorReconnectingRef = useRef(false)
   const [latexOutput, setLatexOutput] = useState('')
@@ -6850,6 +6873,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     let cancelled = false
     const host = editorHostRef.current
+
+    const initTraceState = {
+      editorInitLayoutKey,
+      editorReinitNonce,
+      canvasMode,
+      canOrchestrateLesson,
+      forceEditableForAssignment,
+      useStackedStudentLayout,
+      isCompactViewport,
+    }
+    const previousInitTraceState = lastEditorInitTraceRef.current
+    const initReasons = previousInitTraceState
+      ? [
+          previousInitTraceState.editorReinitNonce !== initTraceState.editorReinitNonce ? 'editor-reinit-nonce' : null,
+          previousInitTraceState.editorInitLayoutKey !== initTraceState.editorInitLayoutKey ? 'layout-key' : null,
+          previousInitTraceState.canvasMode !== initTraceState.canvasMode ? 'canvas-mode' : null,
+          previousInitTraceState.canOrchestrateLesson !== initTraceState.canOrchestrateLesson ? 'orchestration-rights' : null,
+          previousInitTraceState.forceEditableForAssignment !== initTraceState.forceEditableForAssignment ? 'force-editable' : null,
+          previousInitTraceState.useStackedStudentLayout !== initTraceState.useStackedStudentLayout ? 'stacked-layout' : null,
+          previousInitTraceState.isCompactViewport !== initTraceState.isCompactViewport ? 'compact-viewport' : null,
+        ].filter(Boolean)
+      : ['initial-mount']
+    lastEditorInitTraceRef.current = initTraceState
+
+    recordCanvasInitTrace({
+      kind: 'editor-init-effect',
+      reasons: initReasons,
+      suppressedLoadingOverlay: suppressNextLoadingOverlayRef.current,
+      state: initTraceState,
+    })
 
     if (!host) {
       return

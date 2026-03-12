@@ -11085,6 +11085,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       clearMathpixLocalStrokes()
       lastSymbolCountRef.current = 0
       lastBroadcastBaseCountRef.current = 0
+      clearTopPanelSelection()
+
+      const clearedSnapshot = cloneSnapshotPayload({
+        mode: 'math',
+        symbols: null,
+        rawInk: null,
+        latex: '',
+        jiix: null,
+        version: localVersionRef.current,
+        snapshotId: `${clientIdRef.current}-${Date.now()}-post-step-commit-clear`,
+        baseSymbolCount: -1,
+      })
+      if (clearedSnapshot) {
+        cacheModeSnapshotForPage(pageIndexRef.current, clearedSnapshot)
+        latestSnapshotRef.current = {
+          snapshot: clearedSnapshot,
+          ts: Date.now(),
+          reason: 'clear',
+        }
+      }
     } finally {
       setAdminSendingStep(false)
     }
@@ -11095,11 +11115,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     adminSendingStep,
     adminSteps,
     captureFullSnapshot,
+    cacheModeSnapshotForPage,
     exportLatexFromEngine,
     finishQuestionNoteId,
     getLatexFromEngineModel,
     canOrchestrateLesson,
     isAssignmentSolutionAuthoring,
+    clearTopPanelSelection,
     isCurrentLineEmptyNow,
     isEditorEmptyNow,
     invalidatePendingLatexPreviewWork,

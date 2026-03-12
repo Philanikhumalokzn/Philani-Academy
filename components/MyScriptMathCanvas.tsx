@@ -1122,7 +1122,7 @@ const getSilentMyScriptRuntimeDisposition = (details: { message?: string; stack?
     .toLowerCase()
 
   if (/viewsize(?:height|width) must not be null/.test(normalized)) return 'resize' as const
-  if (/(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session|unauthorized|forbidden|missing.*key|networkerror|network error|connection closed|websocket closed)/.test(normalized)) {
+  if (/(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session|unauthorized|forbidden|missing.*key|networkerror|network error|connection closed|websocket closed|cannot read properties of undefined.*symbols)/.test(normalized)) {
     return 'reinit' as const
   }
   if (isSilentMyScriptRuntimeMessage(details)) return 'ignore' as const
@@ -1565,6 +1565,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setMyScriptLastError(null)
     setLatexOutput('')
   }, [canvasMode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const currentCount = Number((window as any).__philani_stacked_canvas_active_count || 0)
+    ;(window as any).__philani_stacked_canvas_active_count = currentCount + 1
+    ;(window as any).__philani_silence_stacked_canvas_errors = true
+    return () => {
+      const nextCount = Math.max(0, Number((window as any).__philani_stacked_canvas_active_count || 1) - 1)
+      ;(window as any).__philani_stacked_canvas_active_count = nextCount
+      if (nextCount === 0) {
+        ;(window as any).__philani_silence_stacked_canvas_errors = false
+      }
+    }
+  }, [])
 
   const updateMathpixLocalCounts = useCallback(() => {
     const strokes = mathpixLocalStrokesRef.current

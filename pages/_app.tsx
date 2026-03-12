@@ -239,6 +239,11 @@ const isIgnorableNonFatalClientError = (value: unknown): boolean => {
   return isIinkSymbolsSyncError || isIinkActionBoundaryError || isBroadMyScriptCanvasError
 }
 
+const isStackedCanvasSilentErrorMode = (): boolean => {
+  if (typeof window === 'undefined') return false
+  return Boolean((window as any).__philani_silence_stacked_canvas_errors)
+}
+
 const formatClientErrorDetails = (error: GlobalClientErrorState) => {
   const blocks = [
     `Kind:\n${error.kind}`,
@@ -339,6 +344,21 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         return
       }
 
+      if (isStackedCanvasSilentErrorMode()) {
+        event.preventDefault?.()
+        try {
+          ;(window as any).__philani_last_ignored_client_error = {
+            kind: 'stacked-canvas-global-suppress',
+            href: window.location.href,
+            timestamp: Date.now(),
+            details: formatClientErrorValue(event?.error || event || event?.message),
+          }
+        } catch {
+          // ignore
+        }
+        return
+      }
+
       if (isIgnorableNonFatalClientError(event) || isIgnorableNonFatalClientError(event?.error) || isIgnorableNonFatalClientError(event?.message)) {
         event.preventDefault?.()
         try {
@@ -381,6 +401,21 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       if (isRecoverableChunkLoadError(event?.reason)) {
         reloadForChunkRecoveryOnce()
+        return
+      }
+
+      if (isStackedCanvasSilentErrorMode()) {
+        event.preventDefault?.()
+        try {
+          ;(window as any).__philani_last_ignored_client_error = {
+            kind: 'stacked-canvas-global-suppress',
+            href: window.location.href,
+            timestamp: Date.now(),
+            details: formatClientErrorValue(event?.reason || event),
+          }
+        } catch {
+          // ignore
+        }
         return
       }
 

@@ -191,6 +191,29 @@ const formatClientErrorValue = (value: unknown): { name?: string; message: strin
   return { message: getChunkErrorText(value) || raw || 'Unknown client error', raw }
 }
 
+const isIgnorableNonFatalClientError = (value: unknown): boolean => {
+  const details = formatClientErrorValue(value)
+  const haystack = [
+    details.name || '',
+    details.message || '',
+    details.stack || '',
+    details.source || '',
+    details.origin || '',
+    details.raw || '',
+  ].join(' ')
+  const normalized = haystack.toLowerCase()
+
+  const isIinkSymbolsSyncError = normalized.includes("cannot read properties of undefined (reading 'symbols')")
+    && (
+      normalized.includes('iink')
+      || normalized.includes('interactiveinkssreditor')
+      || normalized.includes('historymanager')
+      || normalized.includes('customevent')
+    )
+
+  return isIinkSymbolsSyncError
+}
+
 const formatClientErrorDetails = (error: GlobalClientErrorState) => {
   const blocks = [
     `Kind:\n${error.kind}`,
@@ -291,6 +314,21 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         return
       }
 
+      if (isIgnorableNonFatalClientError(event) || isIgnorableNonFatalClientError(event?.error) || isIgnorableNonFatalClientError(event?.message)) {
+        event.preventDefault?.()
+        try {
+          ;(window as any).__philani_last_ignored_client_error = {
+            kind: 'iink-symbols-sync',
+            href: window.location.href,
+            timestamp: Date.now(),
+            details: formatClientErrorValue(event?.error || event || event?.message),
+          }
+        } catch {
+          // ignore
+        }
+        return
+      }
+
       event.preventDefault?.()
 
       const details = formatClientErrorValue(event?.error || event || event?.message || 'Unknown window error')
@@ -318,6 +356,21 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       if (isRecoverableChunkLoadError(event?.reason)) {
         reloadForChunkRecoveryOnce()
+        return
+      }
+
+      if (isIgnorableNonFatalClientError(event) || isIgnorableNonFatalClientError(event?.reason)) {
+        event.preventDefault?.()
+        try {
+          ;(window as any).__philani_last_ignored_client_error = {
+            kind: 'iink-symbols-sync',
+            href: window.location.href,
+            timestamp: Date.now(),
+            details: formatClientErrorValue(event?.reason || event),
+          }
+        } catch {
+          // ignore
+        }
         return
       }
 

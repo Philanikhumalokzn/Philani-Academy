@@ -1104,6 +1104,46 @@ const formatRuntimeErrorDetails = (value: unknown, fallback = 'Unknown client er
   }
 }
 
+const isSilentMyScriptRuntimeMessage = (details: { message?: string; stack?: string; source?: string; raw?: string }) => {
+  const normalized = [details.message || '', details.stack || '', details.source || '', details.raw || '']
+    .join(' ')
+    .toLowerCase()
+
+  return normalized.includes('iink')
+    || normalized.includes('interactiveinkssreditor')
+    || normalized.includes('historymanager')
+    || normalized.includes('myscript')
+    || normalized.includes('webdemoapi.myscript.com')
+}
+
+const getSilentMyScriptRuntimeDisposition = (details: { message?: string; stack?: string; source?: string; raw?: string }) => {
+  const normalized = [details.message || '', details.stack || '', details.source || '', details.raw || '']
+    .join(' ')
+    .toLowerCase()
+
+  if (/viewsize(?:height|width) must not be null/.test(normalized)) return 'resize' as const
+  if (/(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session|unauthorized|forbidden|missing.*key|networkerror|network error|connection closed|websocket closed)/.test(normalized)) {
+    return 'reinit' as const
+  }
+  if (isSilentMyScriptRuntimeMessage(details)) return 'ignore' as const
+  return 'reinit' as const
+}
+
+const recordSilentCanvasRecovery = (kind: string, details: { message?: string; stack?: string; source?: string; raw?: string }) => {
+  try {
+    if (typeof window !== 'undefined') {
+      ;(window as any).__philani_last_ignored_client_error = {
+        kind,
+        href: window.location.href,
+        timestamp: Date.now(),
+        details,
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 // Reserve a small strip above the bottom of the viewport in stacked mobile mode so
 // fixed overlays (like the custom scrollbar and quick trays) never cover ink.
 const STACKED_BOTTOM_OVERLAY_RESERVE_PX = 28
@@ -6771,6 +6811,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     editorReconnectingRef.current = true
     suppressNextLoadingOverlayRef.current = true
     setEditorReconnecting(true)
+    setTransientError(null)
     setFatalError(null)
     // Intentionally do not show the raw engine error text here.
     // This path is used for the iink "session expired" / max-duration cases and should be seamless.
@@ -7122,21 +7163,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             .join('\n\n')
 
           setMyScriptLastError(debugMessage || raw)
-          console.error('[MyScript editor] runtime error', {
+          console.warn('[MyScript editor] runtime recovery', {
             message: raw,
             source: details.source,
             stack: details.stack,
             raw: details.raw,
           })
 
-          const lower = String(debugMessage || raw).toLowerCase()
-          const isViewSizeNull = /viewsize(?:height|width) must not be null/.test(lower)
-          const isSessionTooLong = /(session too long|max session duration|session is too old|session closed due to no activity|closed due to no activity|inactive session)/.test(lower)
-          const isAuthMissing = /missing.*key|unauthorized|forbidden/.test(lower)
-          const shouldAutoReconnect = isSessionTooLong
-          const fatal = isAuthMissing
+          const disposition = getSilentMyScriptRuntimeDisposition(details)
 
-          if (isViewSizeNull) {
+          if (disposition === 'resize') {
+            recordSilentCanvasRecovery('myscript-resize', details)
             if (editorResizeRetryTimeoutRef.current) {
               clearTimeout(editorResizeRetryTimeoutRef.current)
             }
@@ -7147,22 +7184,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             return
           }
 
-          if (shouldAutoReconnect) {
-            triggerEditorReinit(raw)
+          if (disposition === 'ignore') {
+            recordSilentCanvasRecovery('myscript-ignore', details)
             return
           }
 
-          if (fatal) {
-            setFatalError(debugMessage || raw)
-            setStatus('error')
+          if (disposition === 'reinit') {
+            recordSilentCanvasRecovery('myscript-reinit', details)
+            triggerEditorReinit(raw)
             return
           }
-          // Transient: keep canvas usable
-          setTransientError(overlayMessage || raw)
-          // Auto-clear transient after 6s
-          setTimeout(() => {
-            setTransientError(curr => (curr === (overlayMessage || raw) ? null : curr))
-          }, 6000)
         }
 
         listeners.push({ type: 'changed', handler: handleChanged })
@@ -7180,11 +7211,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       })
       .catch(err => {
         if (cancelled) return
-        console.error('MyScript initialization failed', err)
+        console.warn('MyScript initialization recovery', err)
         setMyScriptScriptLoaded(Boolean(window?.iink?.Editor?.load))
-        setMyScriptLastError(err instanceof Error ? err.message : String(err))
-        setFatalError(err instanceof Error ? err.message : String(err))
-        setStatus('error')
+        const message = err instanceof Error ? err.message : String(err)
+        setMyScriptLastError(message)
+        recordSilentCanvasRecovery('myscript-init-retry', { message })
+        triggerEditorReinit(message)
       })
 
     return () => {
@@ -8241,13 +8273,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         // Removed periodic reconcile tied to broadcaster role.
       } catch (err) {
-        console.error('Failed to initialise Ably realtime collaboration', err)
+        console.warn('Realtime collaboration recovery', err)
         if (!disposed) {
-          const message = 'Realtime collaboration is temporarily unavailable. Retrying…'
-          setTransientError(message)
-          setTimeout(() => {
-            setTransientError(curr => (curr === message ? null : curr))
-          }, 6000)
+          recordSilentCanvasRecovery('realtime-retry', {
+            message: err instanceof Error ? err.message : String(err),
+          })
           scheduleRealtimeRetry()
         }
       }
@@ -15346,13 +15376,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               {fatalError}
             </div>
           )}
-          {transientError && status === 'ready' && (
-            <div className="absolute bottom-2 left-2 max-w-[75%] whitespace-pre-wrap break-words text-[11px] leading-4 text-red-600 bg-white/90 border border-red-300 rounded px-2 py-1 shadow-sm pointer-events-none">
-              {transientError}
-            </div>
-          )}
           {editorReconnecting && (
-            <div className="absolute inset-0 z-20 pointer-events-auto bg-transparent" aria-hidden="true" />
+            <div className="absolute inset-0 z-20 pointer-events-none bg-transparent" aria-hidden="true" />
           )}
           {isViewOnly && !(isSessionQuizMode && quizActive && !canOrchestrateLesson) && !(!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled) && (
             <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">

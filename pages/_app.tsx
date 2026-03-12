@@ -226,7 +226,17 @@ const isIgnorableNonFatalClientError = (value: unknown): boolean => {
     || normalized.includes('promise rejection')
   )
 
-  return isIinkSymbolsSyncError || isIinkActionBoundaryError
+  const isBroadMyScriptCanvasError = normalized.includes('iink')
+    || normalized.includes('interactiveinkssreditor')
+    || normalized.includes('historymanager')
+    || normalized.includes('myscript')
+    || normalized.includes('webdemoapi.myscript.com')
+    || normalized.includes('session closed due to no activity')
+    || normalized.includes('inactive session')
+    || normalized.includes('session too long')
+    || normalized.includes('max session duration')
+
+  return isIinkSymbolsSyncError || isIinkActionBoundaryError || isBroadMyScriptCanvasError
 }
 
 const formatClientErrorDetails = (error: GlobalClientErrorState) => {

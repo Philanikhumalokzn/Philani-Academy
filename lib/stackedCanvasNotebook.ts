@@ -3,6 +3,7 @@ export type NotebookStepRecord = {
   symbols: any[]
   jiix?: string | null
   rawStrokes?: any[]
+  strokeGroups?: any[]
   createdAt?: string | number
   updatedAt?: string | number
 }
@@ -162,10 +163,11 @@ export function normalizeNotebookSteps(steps: unknown): NotebookStepRecord[] {
       symbols: Array.isArray(step?.symbols) ? step.symbols : [],
       jiix: typeof step?.jiix === 'string' ? step.jiix : null,
       rawStrokes: Array.isArray(step?.rawStrokes) ? step.rawStrokes : undefined,
+      strokeGroups: Array.isArray(step?.strokeGroups) ? step.strokeGroups : undefined,
       createdAt: step?.createdAt,
       updatedAt: step?.updatedAt,
     }))
-    .filter(step => String(step.latex || '').trim() || step.symbols.length || Boolean(step.jiix) || (Array.isArray(step.rawStrokes) && step.rawStrokes.length))
+    .filter(step => String(step.latex || '').trim() || step.symbols.length || Boolean(step.jiix) || (Array.isArray(step.rawStrokes) && step.rawStrokes.length) || (Array.isArray(step.strokeGroups) && step.strokeGroups.length))
 }
 
 export function extractNotebookStepsFromPayload(payload: unknown): NotebookStepRecord[] {

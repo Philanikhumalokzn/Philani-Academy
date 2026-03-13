@@ -1651,6 +1651,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     await nextAnimationFrame()
   }, [])
 
+  const syncMathEditorGeometryForLocalReload = useCallback(async () => {
+    try {
+      editorInstanceRef.current?.resize?.()
+    } catch {}
+    await nextAnimationFrame()
+
+    const editor = editorInstanceRef.current
+    if (!editor) return
+
+    try {
+      if (typeof editor.waitForIdle === 'function') {
+        await editor.waitForIdle()
+      }
+    } catch {}
+  }, [])
+
   useEffect(() => {
     if (recognitionEngine !== 'mathpix') {
       clearMathpixLocalStrokes()
@@ -2640,6 +2656,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // Load selected step ink.
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
     await clearMathEditorForLocalReload()
+    if (useStackedStudentLayout) {
+      await syncMathEditorGeometryForLocalReload()
+    }
 
     const stepSymbols = adminSteps[index]?.symbols
     const stepLatex = adminSteps[index]?.latex || ''
@@ -2649,6 +2668,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         await editor.importPointEvents(stepSymbols)
         if (typeof editor.waitForIdle === 'function') {
           await editor.waitForIdle()
+        }
+        if (useStackedStudentLayout) {
+          await syncMathEditorGeometryForLocalReload()
         }
       } catch (err) {
         console.warn('Failed to load step ink for editing', err)
@@ -2689,7 +2711,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
     setAdminDraftLatex(stepLatex)
-  }, [adminSteps, clearMathEditorForLocalReload, useAdminStepComposer])
+  }, [adminSteps, clearMathEditorForLocalReload, syncMathEditorGeometryForLocalReload, useAdminStepComposer, useStackedStudentLayout])
 
   const loadStudentStepForEditing = useCallback(async (index: number) => {
     if (index < 0 || index >= studentSteps.length) return
@@ -2702,6 +2724,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
     await clearMathEditorForLocalReload()
+    if (useStackedStudentLayout) {
+      await syncMathEditorGeometryForLocalReload()
+    }
 
     const stepSymbols = studentSteps[index]?.symbols
     const stepLatex = studentSteps[index]?.latex || ''
@@ -2711,6 +2736,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         await editor.importPointEvents(stepSymbols)
         if (typeof editor.waitForIdle === 'function') {
           await editor.waitForIdle()
+        }
+        if (useStackedStudentLayout) {
+          await syncMathEditorGeometryForLocalReload()
         }
       } catch (err) {
         console.warn('Failed to load step ink for editing', err)
@@ -2750,7 +2778,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     setStudentEditIndex(index)
     setLatexOutput(stepLatex)
-  }, [clearMathEditorForLocalReload, studentSteps])
+  }, [clearMathEditorForLocalReload, studentSteps, syncMathEditorGeometryForLocalReload, useStackedStudentLayout])
 
   const loadTopPanelStepForEditing = useCallback(async (index: number) => {
     if (useAdminStepComposer) {

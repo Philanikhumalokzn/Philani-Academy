@@ -3859,48 +3859,48 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }, []).slice(0, 8)
 
     return (
-      <section className="space-y-0">
-        <div className="border-y border-white/8 bg-transparent">
-          <div className="overflow-x-auto px-2 py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
-            <div className="flex gap-3">
+      <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
+        <div className="border-b border-black/10 bg-white">
+          <div className="overflow-x-auto py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="flex gap-2.5 px-3">
               <button
                 type="button"
-                className="flex w-[94px] shrink-0 flex-col overflow-hidden rounded-[18px] bg-white/4 text-left"
+                className="flex w-[94px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[#dfe3ee] text-left"
                 onClick={openCreateChallengeComposer}
               >
-                <div className="relative h-[122px] bg-[linear-gradient(180deg,rgba(24,119,242,0.45),rgba(6,19,59,0.28))]">
+                <div className="relative h-[122px] bg-[linear-gradient(180deg,#60a5fa,#1877f2)]">
                   {effectiveAvatarUrl ? (
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover opacity-80" />
                   ) : null}
-                  <span className="absolute bottom-3 left-1/2 inline-flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border-4 border-[#031641] bg-[#1877f2] text-white shadow-[0_10px_24px_rgba(24,119,242,0.45)]">
+                  <span className="absolute bottom-3 left-1/2 inline-flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border-4 border-white bg-[#1877f2] text-white shadow-[0_10px_24px_rgba(24,119,242,0.28)]">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
                     </svg>
                   </span>
                 </div>
-                <div className="px-2 pb-3 pt-6 text-center text-xs font-semibold text-white">Create</div>
+                <div className="px-2 pb-3 pt-6 text-center text-xs font-semibold text-[#1c1e21]">Create</div>
               </button>
 
               {storyEntries.map((story) => (
                 <button
                   key={story.key}
                   type="button"
-                  className="relative flex h-[168px] w-[106px] shrink-0 overflow-hidden rounded-[18px] border border-white/8 bg-white/4 text-left"
+                  className="relative flex h-[168px] w-[106px] shrink-0 overflow-hidden rounded-2xl bg-[#dfe3ee] text-left"
                   onClick={() => openStudentQuickOverlay('discover')}
                 >
                   {story.avatar ? (
                     <img src={story.avatar} alt={story.name} className="h-full w-full object-cover" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,rgba(24,119,242,0.28),rgba(6,19,59,0.68))] text-3xl font-semibold text-white/88">
+                    <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,#93c5fd,#1877f2)] text-3xl font-semibold text-white">
                       {story.name.slice(0, 1).toUpperCase()}
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.02),rgba(2,6,23,0.72))]" />
-                  <div className="absolute left-2 top-2 inline-flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#1877f2] bg-[#031641]">
+                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.04),rgba(15,23,42,0.6))]" />
+                  <div className="absolute left-2 top-2 inline-flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#1877f2] bg-white">
                     {story.avatar ? (
                       <img src={story.avatar} alt={story.name} className="h-full w-full rounded-full object-cover" />
                     ) : (
-                      <span className="text-sm font-semibold text-white">{story.name.slice(0, 1).toUpperCase()}</span>
+                      <span className="text-sm font-semibold text-[#1877f2]">{story.name.slice(0, 1).toUpperCase()}</span>
                     )}
                   </div>
                   <div className="absolute inset-x-0 bottom-0 p-2 text-xs font-semibold leading-tight text-white">{story.name}</div>
@@ -3926,18 +3926,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           })()}
         >
           <div ref={currentLessonCardRef}>
-            <div className="border-b border-white/8 bg-transparent px-4 py-4 space-y-3">
+            <div className="border-b border-black/10 bg-white px-0 py-0 space-y-0">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Live now</div>
-                  <div className="mt-1 font-semibold text-white">Current lesson</div>
+                <div className="px-3 pt-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Live now</div>
+                  <div className="mt-1 font-semibold text-[#1c1e21]">Current lesson</div>
                 </div>
                 {sessionCanOrchestrateLessons ? (
-                  <div className="flex items-center gap-1 text-xs font-semibold text-white/70">
+                  <div className="flex items-center gap-1 px-3 pt-3 text-xs font-semibold text-[#65676b]">
                     <span>Grade</span>
                     <button
                       type="button"
-                      className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-full border border-white/15 bg-white/10 backdrop-blur hover:bg-white/15 text-white touch-none"
+                      className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-xl border border-black/10 bg-[#f0f2f5] text-[#1c1e21] touch-none"
                       onPointerDown={(e) => {
                         // Touch/pen: allow press + slide to select in one gesture.
                         if ((e as any).pointerType === 'mouse') return
@@ -3986,7 +3986,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 ) : (
                   <button
                     type="button"
-                    className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50 justify-self-end"
+                    className="justify-self-end px-3 pt-3 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21] disabled:opacity-50"
                     onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
                     disabled={sessionsLoading || !selectedGrade}
                   >
@@ -3996,19 +3996,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
 
               {!resolvedCurrentLesson ? (
-                <div className="text-sm text-white/70">No current lesson right now.</div>
+                <div className="px-3 pb-3 text-sm text-[#65676b]">No current lesson right now.</div>
               ) : (
-                <div className="space-y-3 overflow-hidden">
+                <div className="space-y-0 overflow-hidden">
                   {lessonThumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={lessonThumb} alt="Lesson thumbnail" className="-mx-4 h-52 w-[calc(100%+2rem)] object-cover" />
+                    <img src={lessonThumb} alt="Lesson thumbnail" className="h-52 w-full object-cover" />
                   ) : null}
 
-                  <div className="space-y-2">
+                  <div className="space-y-3 px-3 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-medium text-white break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
+                      <div className="font-medium text-[#1c1e21] break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
                       {resolvedCurrentLesson.startsAt ? (
-                        <div className="text-xs text-white/60">
+                        <div className="text-xs text-[#65676b]">
                           {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
                         </div>
                       ) : null}
@@ -4016,7 +4016,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(24,119,242,0.35)]"
+                        className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1877f2] px-5 text-sm font-semibold text-white"
                         onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
                         disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
@@ -4025,7 +4025,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                       <button
                         type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-sm font-semibold text-white/82 hover:text-white disabled:opacity-50"
+                        className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
                         onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
                         disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
@@ -4034,7 +4034,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                       <button
                         type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-sm font-semibold text-white/82 hover:text-white disabled:opacity-50"
+                        className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
                         onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
                         disabled={isSubscriptionBlocked}
                       >
@@ -4065,15 +4065,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )}
             </div>
 
-            <div className="border-b border-white/8 bg-transparent px-4 py-4">
+            <div className="border-b border-black/10 bg-white px-3 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">History</div>
-                  <div className="mt-1 font-semibold text-white">Past lessons</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">History</div>
+                  <div className="mt-1 font-semibold text-[#1c1e21]">Past lessons</div>
                 </div>
                 <button
                   type="button"
-                  className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-xs font-semibold text-white/80"
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-xs font-semibold text-[#1c1e21]"
                   onClick={() => openPastSessionsList(pastSessionIds)}
                   disabled={pastSessionIds.length === 0}
                 >
@@ -4081,9 +4081,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
               </div>
               {pastSessionIds.length === 0 ? (
-                <div className="mt-2 text-sm text-white/70">No past lessons yet.</div>
+                <div className="mt-2 text-sm text-[#65676b]">No past lessons yet.</div>
               ) : (
-                <div className="mt-2 text-sm text-white/70">
+                <div className="mt-2 text-sm text-[#65676b]">
                   {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
                 </div>
               )}
@@ -4091,23 +4091,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </div>
 
-        <div className="border-b border-white/8 bg-transparent px-4 py-4">
+        <div className="border-b border-black/10 bg-white px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Posting</div>
-              <div className="mt-1 font-semibold text-white">Your challenges</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Posting</div>
+              <div className="mt-1 font-semibold text-[#1c1e21]">Your challenges</div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-xs font-semibold text-white/82"
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-xs font-semibold text-[#1c1e21]"
                 onClick={() => setTimelineOpen(true)}
               >
                 My posts
               </button>
               <button
                 type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-transparent text-white/82"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] text-[#1c1e21]"
                 aria-label="Upload screenshot"
                 onClick={openCreateChallengeScreenshotPicker}
               >
@@ -4121,11 +4121,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         {studentFeedLoading ? (
-          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-white/70">Loading...</div>
+          <div className="border-b border-black/10 bg-white px-3 py-6 text-sm text-[#65676b]">Loading...</div>
         ) : studentFeedError ? (
-          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-red-400">{studentFeedError}</div>
+          <div className="border-b border-black/10 bg-white px-3 py-6 text-sm text-red-500">{studentFeedError}</div>
         ) : studentFeedPosts.length === 0 ? (
-          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-white/70">No posts yet.</div>
+          <div className="border-b border-black/10 bg-white px-3 py-6 text-sm text-[#65676b]">No posts yet.</div>
         ) : (
           <ul className="space-y-0">
             {studentFeedPosts.slice(0, 15).map((p: any) => {
@@ -4151,18 +4151,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
 
                 return (
-                  <li key={String(p?.id || title)} className="border-b border-white/8 bg-transparent px-4 py-4">
+                  <li key={String(p?.id || title)} className="border-b border-black/10 bg-white px-3 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
                           <UserLink userId={authorId} className="shrink-0" title="View profile">
                             <div className="relative overflow-visible">
-                              <div className="h-9 w-9 aspect-square rounded-full border border-white/10 bg-white/5 overflow-hidden flex items-center justify-center profile-avatar-container">
+                              <div className="h-9 w-9 aspect-square rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center profile-avatar-container">
                                 {authorAvatar ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img src={authorAvatar} alt={authorName} className="h-full w-full object-cover" />
                                 ) : (
-                                  <span className="text-xs font-semibold text-white">{authorName.slice(0, 1).toUpperCase()}</span>
+                                  <span className="text-xs font-semibold text-[#1c1e21]">{authorName.slice(0, 1).toUpperCase()}</span>
                                 )}
                               </div>
                               {showAuthorAvatarTick ? (
@@ -4180,7 +4180,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </UserLink>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <UserLink userId={authorId} className="text-sm font-semibold text-white hover:underline truncate" title="View profile">
+                              <UserLink userId={authorId} className="text-sm font-semibold text-[#1c1e21] hover:underline truncate" title="View profile">
                                 {authorName}
                               </UserLink>
                               {showAuthorNameTick ? (
@@ -4194,14 +4194,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 </span>
                               ) : null}
                             </div>
-                            {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+                            {createdAt ? <div className="text-xs text-[#65676b]">{createdAt}</div> : null}
                           </div>
                         </div>
 
-                        <div className="mt-2 font-medium text-white break-words">{title}</div>
-                        {prompt ? <div className="mt-1 text-sm leading-relaxed text-white/72 break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '-' : ''}</div> : null}
+                        <div className="mt-2 font-medium text-[#1c1e21] break-words">{title}</div>
+                        {prompt ? <div className="mt-1 text-sm leading-relaxed text-[#1c1e21] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
                         {imageUrl ? (
-                          <div className="-mx-4 mt-3">
+                          <div className="-mx-3 mt-3">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={imageUrl}
@@ -4215,7 +4215,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         isOwner ? (
                           <button
                             type="button"
-                            className="inline-flex shrink-0 h-10 items-center justify-center rounded-full bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                            className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
                             onClick={() => {
                               setSelectedChallengeId(String(p.id))
                               setChallengeGradingOverlayOpen(true)
@@ -4226,13 +4226,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         ) : (
                           <div className="flex flex-col items-end gap-2 shrink-0">
                             {canAttempt ? (
-                              <Link href={href} className="inline-flex shrink-0 h-10 items-center justify-center rounded-full bg-[#1877f2] px-4 text-sm font-semibold text-white">
+                              <Link href={href} className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white">
                                 Attempt
                               </Link>
                             ) : hasAttempted ? (
                               <button
                                 type="button"
-                                className="inline-flex shrink-0 h-10 items-center justify-center rounded-full bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                                className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
                                 onClick={() => {
                                   setSelectedChallengeResponseId(String(p.id))
                                   setChallengeResponseOverlayOpen(true)
@@ -4249,7 +4249,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {hasAttempted && canAttempt ? (
                               <button
                                 type="button"
-                                className="text-xs font-semibold text-white/70 shrink-0"
+                                className="text-xs font-semibold text-[#65676b] shrink-0"
                                 onClick={() => {
                                   setSelectedChallengeResponseId(String(p.id))
                                   setChallengeResponseOverlayOpen(true)
@@ -4272,7 +4272,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const renderStudentTimelinePanel = () => (
-    <div className="space-y-3">
+    <div className="space-y-0">
       {renderStudentHomeFeed()}
     </div>
   )
@@ -9763,7 +9763,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             className="w-full flex-none snap-start"
             style={{ scrollSnapStop: 'always' }}
           >
-            <div className="space-y-4 pb-2">
+            <div className="space-y-0 pb-20">
               {renderStudentTimelinePanel()}
             </div>
           </div>

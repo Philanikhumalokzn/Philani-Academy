@@ -3859,8 +3859,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     return (
       <section className="space-y-0">
-        <div className="-mx-3 border-y border-white/8 bg-[rgba(4,15,46,0.55)]">
-          <div className="overflow-x-auto px-3 py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="border-y border-white/8 bg-[rgba(4,15,46,0.55)]">
+          <div className="overflow-x-auto px-1.5 py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -3925,7 +3925,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           })()}
         >
           <div ref={currentLessonCardRef}>
-            <div className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.44)] px-4 py-4 space-y-3">
+            <div className="border-b border-white/8 bg-[rgba(4,15,46,0.44)] px-4 py-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Live now</div>
@@ -4064,7 +4064,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )}
             </div>
 
-            <div className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-4">
+            <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">History</div>
@@ -4090,7 +4090,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </div>
 
-        <div className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.5)] px-4 py-4">
+        <div className="border-b border-white/8 bg-[rgba(4,15,46,0.5)] px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Posting</div>
@@ -4120,11 +4120,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         {studentFeedLoading ? (
-          <div className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-white/70">Loading…</div>
+          <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-white/70">Loading…</div>
         ) : studentFeedError ? (
-          <div className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-red-400">{studentFeedError}</div>
+          <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-red-400">{studentFeedError}</div>
         ) : studentFeedPosts.length === 0 ? (
-          <div className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-white/70">No posts yet.</div>
+          <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-white/70">No posts yet.</div>
         ) : (
           <ul className="space-y-0">
             {studentFeedPosts.slice(0, 15).map((p: any) => {
@@ -4150,7 +4150,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
 
                 return (
-                  <li key={String(p?.id || title)} className="-mx-3 border-b border-white/8 bg-[rgba(4,15,46,0.34)] px-4 py-4">
+                  <li key={String(p?.id || title)} className="border-b border-white/8 bg-[rgba(4,15,46,0.34)] px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
@@ -9627,7 +9627,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     return (
-      <div className="flex-1 flex flex-col pb-24 pt-3">
+      <div className="flex-1 flex flex-col pb-24 pt-0">
         {mobilePanels.announcements && (
           <FullScreenGlassOverlay
             title="Announcements"
@@ -9644,9 +9644,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </FullScreenGlassOverlay>
         )}
 
-        <div className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(2,12,44,0.9)] backdrop-blur-xl">
-          <div className="px-3 pb-2 pt-2">
-            <div className="flex items-center justify-between gap-3 px-1 py-1.5">
+        <div className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(2,12,44,0.94)] backdrop-blur-xl">
+          <div className="px-0 pb-2 pt-2">
+            <div className="flex items-center justify-between gap-3 px-3 py-1.5">
               <BrandLogo height={34} className="drop-shadow-[0_16px_34px_rgba(3,5,20,0.46)]" />
               <div className="flex items-center gap-2">
                 <button
@@ -9685,7 +9685,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             </div>
 
-            <div className="px-0 pb-1 pt-1">
+            <div className="px-3 pb-1 pt-1">
               <button
                 type="button"
                 className="flex w-full items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-2.5 text-left"
@@ -9708,7 +9708,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </span>
               </button>
 
-              <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="mt-2 flex items-center gap-2 overflow-x-auto px-0 pb-1">
                 <button
                   type="button"
                   className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'timeline' ? 'bg-[#1877f2] text-white' : 'border border-white/10 bg-white/4 text-white/78'}`}
@@ -9759,7 +9759,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             ref={el => {
               studentMobilePanelRefs.current.timeline = el
             }}
-            className="w-full flex-none snap-start px-3"
+            className="w-full flex-none snap-start"
             style={{ scrollSnapStop: 'always' }}
           >
             <div className="space-y-4 pb-2">
@@ -9771,7 +9771,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             ref={el => {
               studentMobilePanelRefs.current.sessions = el
             }}
-            className="w-full flex-none snap-start px-3"
+            className="w-full flex-none snap-start"
             style={{ scrollSnapStop: 'always' }}
           >
             <div className="space-y-4 pb-2">
@@ -9783,7 +9783,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             ref={el => {
               studentMobilePanelRefs.current.groups = el
             }}
-            className="w-full flex-none snap-start px-3"
+            className="w-full flex-none snap-start"
             style={{ scrollSnapStop: 'always' }}
           >
             <div className="space-y-4 pb-2">
@@ -9795,7 +9795,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             ref={el => {
               studentMobilePanelRefs.current.discover = el
             }}
-            className="w-full flex-none snap-start px-3"
+            className="w-full flex-none snap-start"
             style={{ scrollSnapStop: 'always' }}
           >
             <div className="space-y-4 pb-2">
@@ -9805,7 +9805,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         {status === 'authenticated' && (
-          <div className="px-3 pb-2 pt-1 flex justify-center">
+          <div className="px-0 pb-2 pt-1 flex justify-center">
             <button
               type="button"
               className="bg-transparent border-0 p-2 text-sm font-semibold text-white/65 hover:text-white focus:outline-none focus-visible:underline"
@@ -9816,9 +9816,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         )}
 
-        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-          <div className="rounded-[26px] border border-white/10 bg-[rgba(5,15,46,0.92)] p-2 shadow-[0_22px_60px_rgba(2,6,23,0.42)] backdrop-blur-xl">
-            <div className={`grid gap-1 ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-[rgba(5,15,46,0.96)] px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
+          <div className={`grid gap-1 ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
               <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'timeline' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={jumpHome}>Home</button>
               <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'sessions' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={() => switchMobileTab('sessions')}>Sessions</button>
               <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => setCreateOverlayOpen(true)}>Create</button>
@@ -9827,7 +9826,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               {isAdmin ? (
                 <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('admin')}>Admin</button>
               ) : null}
-            </div>
           </div>
         </div>
       </div>

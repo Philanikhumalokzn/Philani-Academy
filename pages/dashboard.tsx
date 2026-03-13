@@ -3859,12 +3859,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     return (
       <section className="space-y-0">
-        <div className="border-y border-white/8 bg-[rgba(4,15,46,0.55)]">
-          <div className="overflow-x-auto px-1.5 py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="border-y border-white/8 bg-transparent">
+          <div className="overflow-x-auto px-2 py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
             <div className="flex gap-3">
               <button
                 type="button"
-                className="flex w-[92px] shrink-0 flex-col overflow-hidden rounded-[22px] bg-white/6 text-left"
+                className="flex w-[94px] shrink-0 flex-col overflow-hidden rounded-[18px] bg-white/4 text-left"
                 onClick={openCreateChallengeComposer}
               >
                 <div className="relative h-[122px] bg-[linear-gradient(180deg,rgba(24,119,242,0.45),rgba(6,19,59,0.28))]">
@@ -3884,7 +3884,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <button
                   key={story.key}
                   type="button"
-                  className="relative flex h-[164px] w-[104px] shrink-0 overflow-hidden rounded-[22px] border border-white/8 bg-white/6 text-left"
+                  className="relative flex h-[168px] w-[106px] shrink-0 overflow-hidden rounded-[18px] border border-white/8 bg-white/4 text-left"
                   onClick={() => openStudentQuickOverlay('discover')}
                 >
                   {story.avatar ? (
@@ -3925,7 +3925,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           })()}
         >
           <div ref={currentLessonCardRef}>
-            <div className="border-b border-white/8 bg-[rgba(4,15,46,0.44)] px-4 py-4 space-y-3">
+            <div className="border-b border-white/8 bg-transparent px-4 py-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Live now</div>
@@ -4000,7 +4000,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <div className="space-y-3 overflow-hidden">
                   {lessonThumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={lessonThumb} alt="Lesson thumbnail" className="-mx-4 h-44 w-[calc(100%+2rem)] object-cover" />
+                    <img src={lessonThumb} alt="Lesson thumbnail" className="-mx-4 h-52 w-[calc(100%+2rem)] object-cover" />
                   ) : null}
 
                   <div className="space-y-2">
@@ -4024,7 +4024,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                       <button
                         type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/6 px-4 text-sm font-semibold text-white/82 hover:text-white disabled:opacity-50"
+                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-sm font-semibold text-white/82 hover:text-white disabled:opacity-50"
                         onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
                         disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
                       >
@@ -4033,7 +4033,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                       <button
                         type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/6 px-4 text-sm font-semibold text-white/82 hover:text-white disabled:opacity-50"
+                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-sm font-semibold text-white/82 hover:text-white disabled:opacity-50"
                         onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
                         disabled={isSubscriptionBlocked}
                       >
@@ -4064,7 +4064,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )}
             </div>
 
-            <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-4">
+            <div className="border-b border-white/8 bg-transparent px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">History</div>
@@ -4072,7 +4072,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
                 <button
                   type="button"
-                  className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/6 px-4 text-xs font-semibold text-white/80"
+                  className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-xs font-semibold text-white/80"
                   onClick={() => openPastSessionsList(pastSessionIds)}
                   disabled={pastSessionIds.length === 0}
                 >
@@ -4090,7 +4090,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </div>
 
-        <div className="border-b border-white/8 bg-[rgba(4,15,46,0.5)] px-4 py-4">
+        <div className="border-b border-white/8 bg-transparent px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">Posting</div>
@@ -4099,14 +4099,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/6 px-4 text-xs font-semibold text-white/82"
+                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-transparent px-4 text-xs font-semibold text-white/82"
                 onClick={() => setTimelineOpen(true)}
               >
                 My posts
               </button>
               <button
                 type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/6 text-white/82"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-transparent text-white/82"
                 aria-label="Upload screenshot"
                 onClick={openCreateChallengeScreenshotPicker}
               >
@@ -4120,11 +4120,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         {studentFeedLoading ? (
-          <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-white/70">Loading…</div>
+          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-white/70">Loading…</div>
         ) : studentFeedError ? (
-          <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-red-400">{studentFeedError}</div>
+          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-red-400">{studentFeedError}</div>
         ) : studentFeedPosts.length === 0 ? (
-          <div className="border-b border-white/8 bg-[rgba(4,15,46,0.36)] px-4 py-6 text-sm text-white/70">No posts yet.</div>
+          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-white/70">No posts yet.</div>
         ) : (
           <ul className="space-y-0">
             {studentFeedPosts.slice(0, 15).map((p: any) => {
@@ -4150,7 +4150,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
 
                 return (
-                  <li key={String(p?.id || title)} className="border-b border-white/8 bg-[rgba(4,15,46,0.34)] px-4 py-4">
+                  <li key={String(p?.id || title)} className="border-b border-white/8 bg-transparent px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
@@ -4205,7 +4205,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <img
                               src={imageUrl}
                               alt="Post screenshot"
-                              className="max-h-[380px] w-full object-cover"
+                              className="max-h-[420px] w-full object-cover"
                             />
                           </div>
                         ) : null}
@@ -9644,14 +9644,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </FullScreenGlassOverlay>
         )}
 
-        <div className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(2,12,44,0.94)] backdrop-blur-xl">
-          <div className="px-0 pb-2 pt-2">
+        <div className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(2,12,44,0.98)] backdrop-blur-xl">
+          <div className="px-0 pb-0 pt-2">
             <div className="flex items-center justify-between gap-3 px-3 py-1.5">
               <BrandLogo height={34} className="drop-shadow-[0_16px_34px_rgba(3,5,20,0.46)]" />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/4 text-white/88"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-transparent text-white/88"
                   onClick={() => openStudentQuickOverlay('discover')}
                   aria-label="Search and discover"
                 >
@@ -9662,7 +9662,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/4 text-white/88"
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-transparent text-white/88"
                   onClick={openNotificationsOverlay}
                   aria-label="Notifications"
                 >
@@ -9675,7 +9675,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </span>
                   )}
                 </button>
-                <Link href="/profile" className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/4">
+                <Link href="/profile" className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-transparent">
                   {effectiveAvatarUrl ? (
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
                   ) : (
@@ -9685,13 +9685,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             </div>
 
-            <div className="px-3 pb-1 pt-1">
+            <div className="border-t border-white/8 px-3 pb-0 pt-2">
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-2.5 text-left"
+                className="flex w-full items-center gap-3 rounded-full border border-white/10 bg-transparent px-3 py-2.5 text-left"
                 onClick={() => setCreateOverlayOpen(true)}
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/10 text-sm font-semibold text-white">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">
                   {effectiveAvatarUrl ? (
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
                   ) : (
@@ -9708,38 +9708,38 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </span>
               </button>
 
-              <div className="mt-2 flex items-center gap-2 overflow-x-auto px-0 pb-1">
+              <div className="mt-2 grid grid-cols-5 border-t border-white/8">
                 <button
                   type="button"
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'timeline' ? 'bg-[#1877f2] text-white' : 'border border-white/10 bg-white/4 text-white/78'}`}
+                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
                   onClick={() => switchMobileTab('timeline')}
                 >
                   Home
                 </button>
                 <button
                   type="button"
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'sessions' ? 'bg-[#1877f2] text-white' : 'border border-white/10 bg-white/4 text-white/78'}`}
+                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
                   onClick={() => switchMobileTab('sessions')}
                 >
                   Sessions
                 </button>
                 <button
                   type="button"
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'groups' ? 'bg-[#1877f2] text-white' : 'border border-white/10 bg-white/4 text-white/78'}`}
+                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'groups' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
                   onClick={() => switchMobileTab('groups')}
                 >
                   Groups
                 </button>
                 <button
                   type="button"
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'discover' ? 'bg-[#1877f2] text-white' : 'border border-white/10 bg-white/4 text-white/78'}`}
+                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
                   onClick={() => switchMobileTab('discover')}
                 >
                   Discover
                 </button>
                 <button
                   type="button"
-                  className="shrink-0 rounded-full border border-white/10 bg-white/4 px-4 py-2 text-xs font-semibold text-white/78"
+                  className="min-w-0 border-b-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72 transition"
                   onClick={openBooksOverlay}
                 >
                   Library
@@ -9816,15 +9816,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         )}
 
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-[rgba(5,15,46,0.96)] px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
-          <div className={`grid gap-1 ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
-              <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'timeline' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={jumpHome}>Home</button>
-              <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'sessions' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={() => switchMobileTab('sessions')}>Sessions</button>
-              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => setCreateOverlayOpen(true)}>Create</button>
-              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={openNotificationsOverlay}>Alerts</button>
-              <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'discover' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={() => switchMobileTab('discover')}>Discover</button>
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-[rgba(5,15,46,0.98)] pb-[max(6px,env(safe-area-inset-bottom))] backdrop-blur-xl">
+          <div className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
+              <button type="button" className={`min-w-0 border-t-2 px-1 py-3 text-center text-[13px] font-semibold ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`} onClick={jumpHome}>Home</button>
+              <button type="button" className={`min-w-0 border-t-2 px-1 py-3 text-center text-[13px] font-semibold ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`} onClick={() => switchMobileTab('sessions')}>Sessions</button>
+              <button type="button" className="min-w-0 border-t-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72" onClick={() => setCreateOverlayOpen(true)}>Create</button>
+              <button type="button" className="min-w-0 border-t-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72" onClick={openNotificationsOverlay}>Alerts</button>
+              <button type="button" className={`min-w-0 border-t-2 px-1 py-3 text-center text-[13px] font-semibold ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`} onClick={() => switchMobileTab('discover')}>Discover</button>
               {isAdmin ? (
-                <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('admin')}>Admin</button>
+                <button type="button" className="min-w-0 border-t-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72" onClick={() => openStudentQuickOverlay('admin')}>Admin</button>
               ) : null}
           </div>
         </div>

@@ -2484,6 +2484,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     topPanelSelectedStepRef.current = topPanelSelectedStep
   }, [topPanelSelectedStep])
+  const activeStepEditBaselineRef = useRef<{
+    symbols: any[] | null
+    jiix: string | null
+    rawStrokes: any[] | null
+    strokeGroups: any[] | null
+  } | null>(null)
   const resyncLatexPreviewFromEditorRef = useRef<null | (() => Promise<void>)>(null)
   const [mobileTopPanelActionStepIndex, setMobileTopPanelActionStepIndex] = useState<number | null>(null)
 
@@ -2544,6 +2550,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [])
 
   const clearTopPanelSelection = useCallback(() => {
+    activeStepEditBaselineRef.current = null
     setTopPanelSelectedStep(null)
   }, [])
 
@@ -2713,6 +2720,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return { rawStrokes, strokeGroups }
   }, [])
 
+  const mergeSerializedStepSymbols = useCallback((baselineSymbols: any[] | null | undefined, currentSymbols: any[] | null | undefined) => {
+    const baseline = Array.isArray(baselineSymbols) ? baselineSymbols : []
+    const current = Array.isArray(currentSymbols) ? currentSymbols : []
+    if (!baseline.length) return current.length ? JSON.parse(JSON.stringify(current)) : null
+    if (!current.length) return JSON.parse(JSON.stringify(baseline))
+    return JSON.parse(JSON.stringify([...baseline, ...current]))
+  }, [])
+
   const loadAdminStepForEditing = useCallback(async (index: number) => {
     if (!useAdminStepComposer) return
     if (index < 0 || index >= adminSteps.length) return
@@ -2733,6 +2748,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const stepSymbols = adminSteps[index]?.symbols
     const stepJiix = adminSteps[index]?.jiix || null
     const stepLatex = adminSteps[index]?.latex || ''
+    activeStepEditBaselineRef.current = {
+      symbols: Array.isArray(stepSymbols) ? JSON.parse(JSON.stringify(stepSymbols)) : null,
+      jiix: stepJiix,
+      rawStrokes: Array.isArray(adminSteps[index]?.rawStrokes) ? JSON.parse(JSON.stringify(adminSteps[index]?.rawStrokes)) : null,
+      strokeGroups: Array.isArray(adminSteps[index]?.strokeGroups) ? JSON.parse(JSON.stringify(adminSteps[index]?.strokeGroups)) : null,
+    }
     let symbolCount = 0
     try {
       symbolCount = await importStoredStepInk(adminSteps[index])
@@ -2794,6 +2815,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const stepSymbols = studentSteps[index]?.symbols
     const stepJiix = studentSteps[index]?.jiix || null
     const stepLatex = studentSteps[index]?.latex || ''
+    activeStepEditBaselineRef.current = {
+      symbols: Array.isArray(stepSymbols) ? JSON.parse(JSON.stringify(stepSymbols)) : null,
+      jiix: stepJiix,
+      rawStrokes: Array.isArray(studentSteps[index]?.rawStrokes) ? JSON.parse(JSON.stringify(studentSteps[index]?.rawStrokes)) : null,
+      strokeGroups: Array.isArray(studentSteps[index]?.strokeGroups) ? JSON.parse(JSON.stringify(studentSteps[index]?.strokeGroups)) : null,
+    }
     let symbolCount = 0
     try {
       symbolCount = await importStoredStepInk(studentSteps[index])
@@ -2857,6 +2884,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const startNewTopPanelStepDraft = useCallback(async () => {
     if (!useAdminStepComposer && !useStudentStepComposer) return
     if (lockedOutRef.current) return
+    activeStepEditBaselineRef.current = null
 
     if (useAdminStepComposer) {
       setAdminEditIndex(null)
@@ -2877,6 +2905,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       : (useStudentStepComposer ? studentSteps[index] : null)
     if (!sourceStep) return
     if (lockedOutRef.current) return
+    activeStepEditBaselineRef.current = null
 
     if (useAdminStepComposer) {
       setAdminEditIndex(null)
@@ -10888,13 +10917,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         snapshot: SnapshotPayload | null,
       ) => {
         const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
+        const baseline = activeStepEditBaselineRef.current
+        const shouldMergeSerializedBaseline = Boolean(
+          studentEditIndex !== null
+          && baseline
+          && !baseline.rawStrokes?.length
+          && (baseline.jiix || (Array.isArray(baseline.symbols) && baseline.symbols.length))
+        )
+        const storedSymbols = shouldMergeSerializedBaseline
+          ? mergeSerializedStepSymbols(baseline?.symbols, symbols)
+          : symbols
+        const storedJiix = shouldMergeSerializedBaseline ? null : jiix
+        const storedRawStrokes = shouldMergeSerializedBaseline ? null : rawStrokes
+        const storedStrokeGroups = shouldMergeSerializedBaseline ? null : strokeGroups
         let nextCombined = ''
         setStudentSteps(prev => {
           const next = [...prev]
           if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
-            next[studentEditIndex] = { latex: cleanedStep, symbols, jiix, rawStrokes, strokeGroups }
+            next[studentEditIndex] = { latex: cleanedStep, symbols: storedSymbols, jiix: storedJiix, rawStrokes: storedRawStrokes, strokeGroups: storedStrokeGroups }
           } else {
-            next.push({ latex: cleanedStep, symbols, jiix, rawStrokes, strokeGroups })
+            next.push({ latex: cleanedStep, symbols: storedSymbols, jiix: storedJiix, rawStrokes: storedRawStrokes, strokeGroups: storedStrokeGroups })
           }
           nextCombined = next.map(s => s.latex).filter(Boolean).join(' \\\\ ')
           return next
@@ -10903,6 +10945,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         quizHasCommittedRef.current = true
         setStudentCommittedLatex(nextCombined)
         setStudentEditIndex(null)
+        activeStepEditBaselineRef.current = null
         clearTopPanelSelection()
       }
 
@@ -11255,9 +11298,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (!step) return
 
       const snapshot = await captureSettledCommitSnapshot(step)
-      const symbols = snapshot?.symbols ?? null
-      const jiix = snapshot?.jiix ?? null
+      const baseline = activeStepEditBaselineRef.current
+      const shouldMergeSerializedBaseline = Boolean(
+        adminEditIndex !== null
+        && baseline
+        && !baseline.rawStrokes?.length
+        && (baseline.jiix || (Array.isArray(baseline.symbols) && baseline.symbols.length))
+      )
+      const symbols = shouldMergeSerializedBaseline
+        ? mergeSerializedStepSymbols(baseline?.symbols, snapshot?.symbols ?? null)
+        : (snapshot?.symbols ?? null)
+      const jiix = shouldMergeSerializedBaseline ? null : (snapshot?.jiix ?? null)
       const strokeState = extractEditorStrokeState()
+      const storedRawStrokes = shouldMergeSerializedBaseline ? null : strokeState.rawStrokes
+      const storedStrokeGroups = shouldMergeSerializedBaseline ? null : strokeState.strokeGroups
       const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
       setAdminSteps(prev => {
         const next = [...prev]
@@ -11266,22 +11320,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             latex: cleanedStep,
             symbols,
             jiix,
-            rawStrokes: strokeState.rawStrokes,
-            strokeGroups: strokeState.strokeGroups,
+            rawStrokes: storedRawStrokes,
+            strokeGroups: storedStrokeGroups,
           }
         } else {
           next.push({
             latex: cleanedStep,
             symbols,
             jiix,
-            rawStrokes: strokeState.rawStrokes,
-            strokeGroups: strokeState.strokeGroups,
+            rawStrokes: storedRawStrokes,
+            strokeGroups: storedStrokeGroups,
           })
         }
         return next
       })
       setAdminDraftLatex('')
       setAdminEditIndex(null)
+      activeStepEditBaselineRef.current = null
       setLatexOutput('')
 
       // Clear handwriting for next step without broadcasting a global clear.

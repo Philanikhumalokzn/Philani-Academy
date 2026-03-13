@@ -9593,6 +9593,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       closeDashboardOverlay()
       setActiveSection('overview')
       setStudentMobileTab('timeline')
+      scrollStudentPanelsToTab('timeline')
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    }
+
+    const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+      setStudentMobileTab(tab)
+      scrollStudentPanelsToTab(tab)
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
@@ -9658,126 +9667,60 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div className="px-3 pb-3">
-              <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                <div className="flex items-start gap-3">
-                  <button
-                    type="button"
-                    className="relative inline-flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/10 text-lg font-semibold text-white"
-                    onClick={() => {
-                      setAvatarEditArmed(false)
-                      avatarInputRef.current?.click()
-                    }}
-                    disabled={avatarUploading}
-                    aria-label="Update avatar"
-                  >
-                    {effectiveAvatarUrl ? (
-                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-                    ) : (
-                      <span>{learnerInitials}</span>
-                    )}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="truncate text-base font-semibold text-white">{learnerName}</div>
-                      {isVerifiedAccount && (
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#1877f2] text-white" aria-label="Verified" title="Verified">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1 text-xs text-blue-100/72">{roleFlagText}</div>
-                    <div className="mt-2">
-                      {statusBioEditing ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={statusBioDraft}
-                            maxLength={100}
-                            disabled={statusBioSaving}
-                            autoFocus
-                            onChange={(e) => setStatusBioDraft(e.target.value)}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                const ok = await saveStatusBio(statusBioDraft)
-                                if (ok) setStatusBioEditing(false)
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setStatusBioDraft(profileStatusBio || '')
-                                setStatusBioEditing(false)
-                              }
-                            }}
-                            onBlur={async () => {
-                              const ok = await saveStatusBio(statusBioDraft)
-                              if (ok) setStatusBioEditing(false)
-                            }}
-                            className="w-full rounded-2xl border border-white/12 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-white/20"
-                            placeholder="Set a short status…"
-                            aria-label="Status or short bio"
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-left text-sm leading-relaxed text-white/82"
-                          onClick={() => {
-                            setStatusBioDraft(profileStatusBio || '')
-                            setStatusBioEditing(true)
-                          }}
-                          aria-label="Edit status"
-                        >
-                          {profileStatusBio ? profileStatusBio : <span className="text-white/50">Share a short status with your class…</span>}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] px-3 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                onClick={() => setCreateOverlayOpen(true)}
+              >
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/10 text-sm font-semibold text-white">
+                  {effectiveAvatarUrl ? (
+                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span>{learnerInitials}</span>
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/8 px-4 py-3 text-sm text-white/62">
+                  What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
+                </span>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#0f172a] shadow-[0_12px_24px_rgba(255,255,255,0.18)]">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </span>
+              </button>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex h-11 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#0f172a] shadow-[0_14px_30px_rgba(255,255,255,0.18)]"
-                    onClick={() => setCreateOverlayOpen(true)}
-                  >
-                    Create Post
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white/88"
-                    onClick={() => openStudentQuickOverlay('sessions')}
-                  >
-                    View Sessions
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-4 gap-2">
+              <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
                 <button
                   type="button"
-                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
-                  onClick={jumpHome}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'timeline' ? 'bg-[#1877f2] text-white shadow-[0_12px_24px_rgba(24,119,242,0.35)]' : 'border border-white/10 bg-white/6 text-white/78'}`}
+                  onClick={() => switchMobileTab('timeline')}
                 >
                   Home
                 </button>
                 <button
                   type="button"
-                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
-                  onClick={() => openStudentQuickOverlay('groups')}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'sessions' ? 'bg-[#1877f2] text-white shadow-[0_12px_24px_rgba(24,119,242,0.35)]' : 'border border-white/10 bg-white/6 text-white/78'}`}
+                  onClick={() => switchMobileTab('sessions')}
+                >
+                  Sessions
+                </button>
+                <button
+                  type="button"
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'groups' ? 'bg-[#1877f2] text-white shadow-[0_12px_24px_rgba(24,119,242,0.35)]' : 'border border-white/10 bg-white/6 text-white/78'}`}
+                  onClick={() => switchMobileTab('groups')}
                 >
                   Groups
                 </button>
                 <button
                   type="button"
-                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
-                  onClick={() => openStudentQuickOverlay('discover')}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${studentMobileTab === 'discover' ? 'bg-[#1877f2] text-white shadow-[0_12px_24px_rgba(24,119,242,0.35)]' : 'border border-white/10 bg-white/6 text-white/78'}`}
+                  onClick={() => switchMobileTab('discover')}
                 >
                   Discover
                 </button>
                 <button
                   type="button"
-                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
+                  className="shrink-0 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-semibold text-white/78"
                   onClick={openBooksOverlay}
                 >
                   Library
@@ -9787,29 +9730,81 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </div>
 
-        <div className="px-3 space-y-4">
-          {renderStudentTimelinePanel()}
-          {status === 'authenticated' && (
-            <div className="flex justify-center pb-2 pt-1">
-              <button
-                type="button"
-                className="bg-transparent border-0 p-2 text-sm font-semibold text-white/65 hover:text-white focus:outline-none focus-visible:underline"
-                onClick={() => signOut({ callbackUrl: '/' })}
-              >
-                Sign out
-              </button>
+        <div
+          ref={studentMobilePanelsRef}
+          onScroll={onStudentPanelsScroll}
+          className="mobile-row-width flex w-full flex-1 overflow-x-auto snap-x snap-mandatory"
+          style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
+        >
+          <div
+            ref={el => {
+              studentMobilePanelRefs.current.timeline = el
+            }}
+            className="w-full flex-none snap-start px-3"
+            style={{ scrollSnapStop: 'always' }}
+          >
+            <div className="space-y-4 pb-2">
+              {renderStudentTimelinePanel()}
             </div>
-          )}
+          </div>
+
+          <div
+            ref={el => {
+              studentMobilePanelRefs.current.sessions = el
+            }}
+            className="w-full flex-none snap-start px-3"
+            style={{ scrollSnapStop: 'always' }}
+          >
+            <div className="space-y-4 pb-2">
+              {renderSection('sessions')}
+            </div>
+          </div>
+
+          <div
+            ref={el => {
+              studentMobilePanelRefs.current.groups = el
+            }}
+            className="w-full flex-none snap-start px-3"
+            style={{ scrollSnapStop: 'always' }}
+          >
+            <div className="space-y-4 pb-2">
+              {renderSection('groups')}
+            </div>
+          </div>
+
+          <div
+            ref={el => {
+              studentMobilePanelRefs.current.discover = el
+            }}
+            className="w-full flex-none snap-start px-3"
+            style={{ scrollSnapStop: 'always' }}
+          >
+            <div className="space-y-4 pb-2">
+              {renderSection('discover')}
+            </div>
+          </div>
         </div>
+
+        {status === 'authenticated' && (
+          <div className="px-3 pb-2 pt-1 flex justify-center">
+            <button
+              type="button"
+              className="bg-transparent border-0 p-2 text-sm font-semibold text-white/65 hover:text-white focus:outline-none focus-visible:underline"
+              onClick={() => signOut({ callbackUrl: '/' })}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
 
         <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
           <div className="rounded-[26px] border border-white/10 bg-[rgba(5,15,46,0.92)] p-2 shadow-[0_22px_60px_rgba(2,6,23,0.42)] backdrop-blur-xl">
             <div className={`grid gap-1 ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
-              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/88" onClick={jumpHome}>Home</button>
-              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('sessions')}>Sessions</button>
+              <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'timeline' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={jumpHome}>Home</button>
+              <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'sessions' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={() => switchMobileTab('sessions')}>Sessions</button>
               <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => setCreateOverlayOpen(true)}>Create</button>
               <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={openNotificationsOverlay}>Alerts</button>
-              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('discover')}>Discover</button>
+              <button type="button" className={`flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium ${studentMobileTab === 'discover' ? 'bg-white text-[#0f172a]' : 'text-white/72'}`} onClick={() => switchMobileTab('discover')}>Discover</button>
               {isAdmin ? (
                 <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('admin')}>Admin</button>
               ) : null}

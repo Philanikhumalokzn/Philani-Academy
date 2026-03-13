@@ -2669,9 +2669,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         if (typeof editor.waitForIdle === 'function') {
           await editor.waitForIdle()
         }
-        if (useStackedStudentLayout) {
-          await syncMathEditorGeometryForLocalReload()
-        }
       } catch (err) {
         console.warn('Failed to load step ink for editing', err)
       }
@@ -2736,9 +2733,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         await editor.importPointEvents(stepSymbols)
         if (typeof editor.waitForIdle === 'function') {
           await editor.waitForIdle()
-        }
-        if (useStackedStudentLayout) {
-          await syncMathEditorGeometryForLocalReload()
         }
       } catch (err) {
         console.warn('Failed to load step ink for editing', err)

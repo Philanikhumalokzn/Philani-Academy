@@ -9605,12 +9605,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
+  const renderMobileActivePanel = () => {
+    if (studentMobileTab === 'sessions') {
+      return <div className="pb-24">{renderSection('sessions')}</div>
+    }
+    if (studentMobileTab === 'groups') {
+      return <div className="pb-24">{renderSection('groups')}</div>
+    }
+    if (studentMobileTab === 'discover') {
+      return <div className="pb-24">{renderSection('discover')}</div>
+    }
+    return <div className="pb-24">{renderStudentTimelinePanel()}</div>
+  }
+
   const renderMobileFeedShell = () => {
     const jumpHome = () => {
       closeDashboardOverlay()
       setActiveSection('overview')
       setStudentMobileTab('timeline')
-      scrollStudentPanelsToTab('timeline')
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
@@ -9618,7 +9630,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
       setStudentMobileTab(tab)
-      scrollStudentPanelsToTab(tab)
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
@@ -9642,8 +9653,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </FullScreenGlassOverlay>
         )}
 
-        <div className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(2,12,44,0.98)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3 px-4 py-2">
+        <div className="sticky top-0 z-30 bg-[rgba(2,12,44,0.98)] backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-2">
               <BrandLogo height={34} className="drop-shadow-[0_16px_34px_rgba(3,5,20,0.46)]" />
               <div className="flex items-center gap-2">
                 <button
@@ -9682,7 +9693,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             </div>
 
-            <div className="border-t border-white/8">
+            <div>
               <button
                 type="button"
                 className="flex w-full items-center gap-3 border-b border-white/8 bg-transparent px-4 py-3 text-left"
@@ -9705,7 +9716,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </span>
               </button>
 
-              <div className="grid grid-cols-5">
+              <div className="grid grid-cols-5 border-b border-white/8">
                 <button
                   type="button"
                   className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
@@ -9745,59 +9756,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
         </div>
 
-        <div
-          ref={studentMobilePanelsRef}
-          onScroll={onStudentPanelsScroll}
-          className="mobile-row-width flex w-full flex-1 overflow-x-auto snap-x snap-mandatory"
-          style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
-        >
-          <div
-            ref={el => {
-              studentMobilePanelRefs.current.timeline = el
-            }}
-            className="w-full flex-none snap-start"
-            style={{ scrollSnapStop: 'always' }}
-          >
-            <div className="space-y-0 pb-20">
-              {renderStudentTimelinePanel()}
-            </div>
-          </div>
-
-          <div
-            ref={el => {
-              studentMobilePanelRefs.current.sessions = el
-            }}
-            className="w-full flex-none snap-start"
-            style={{ scrollSnapStop: 'always' }}
-          >
-            <div className="space-y-4 pb-2">
-              {renderSection('sessions')}
-            </div>
-          </div>
-
-          <div
-            ref={el => {
-              studentMobilePanelRefs.current.groups = el
-            }}
-            className="w-full flex-none snap-start"
-            style={{ scrollSnapStop: 'always' }}
-          >
-            <div className="space-y-4 pb-2">
-              {renderSection('groups')}
-            </div>
-          </div>
-
-          <div
-            ref={el => {
-              studentMobilePanelRefs.current.discover = el
-            }}
-            className="w-full flex-none snap-start"
-            style={{ scrollSnapStop: 'always' }}
-          >
-            <div className="space-y-4 pb-2">
-              {renderSection('discover')}
-            </div>
-          </div>
+        <div className="flex-1">
+          {renderMobileActivePanel()}
         </div>
 
         {status === 'authenticated' && (
@@ -9834,7 +9794,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ref={dashboardMainRef}
         className={
           isMobile
-            ? 'mobile-dashboard-theme relative bg-[#f0f2f5] text-[#1c1e21] overflow-x-hidden min-h-[100dvh]'
+            ? 'mobile-dashboard-theme mobile-dashboard-edge relative overflow-x-hidden min-h-[100dvh]'
             : 'deep-page min-h-screen pb-16'
         }
       >

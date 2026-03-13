@@ -556,6 +556,62 @@ body{
   box-shadow:0 25px 45px rgba(2,8,32,0.45);
 }
 
+.mobile-dashboard-edge{
+  background:#f0f2f5;
+  color:#1c1e21;
+}
+
+.mobile-dashboard-edge .card,
+.mobile-dashboard-edge .dashboard-card,
+.mobile-dashboard-edge .container-card{
+  background:#ffffff;
+  color:#1c1e21;
+  border:0;
+  border-radius:0 !important;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+
+.mobile-dashboard-edge .card .card,
+.mobile-dashboard-edge .card .dashboard-card,
+.mobile-dashboard-edge .dashboard-card .card,
+.mobile-dashboard-edge .dashboard-card .dashboard-card{
+  margin-left:0;
+  margin-right:0;
+  padding:0;
+  background:transparent;
+  box-shadow:none;
+  border:0;
+}
+
+.mobile-dashboard-edge .muted,
+.mobile-dashboard-edge .card .muted,
+.mobile-dashboard-edge .dashboard-card .muted{
+  color:#65676b;
+}
+
+.mobile-dashboard-edge .btn-ghost,
+.mobile-dashboard-edge .btn-secondary{
+  background:#f0f2f5;
+  border:1px solid rgba(15,23,42,0.1);
+  color:#1c1e21;
+  box-shadow:none;
+}
+
+.mobile-dashboard-edge .btn-primary{
+  box-shadow:none;
+}
+
+.mobile-dashboard-edge .input{
+  background:#ffffff;
+  color:#1c1e21;
+  border:1px solid rgba(15,23,42,0.14);
+}
+
+.mobile-dashboard-edge .input::placeholder{
+  color:#65676b;
+}
+
 .mobile-dashboard-theme .card .muted,
 .mobile-dashboard-theme .muted{
   color:rgba(226,232,255,0.75);

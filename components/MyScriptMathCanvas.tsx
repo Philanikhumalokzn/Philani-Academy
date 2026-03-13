@@ -2445,7 +2445,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
 
-  type AdminStep = { latex: string; symbols: any[] | null }
+  type AdminStep = { latex: string; symbols: any[] | null; jiix?: string | null }
   const [adminSteps, setAdminSteps] = useState<AdminStep[]>([])
   const [adminDraftLatex, setAdminDraftLatex] = useState('')
   const [adminSendingStep, setAdminSendingStep] = useState(false)
@@ -2465,7 +2465,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [])
 
-  type StudentStep = { latex: string; symbols: any[] | null }
+  type StudentStep = { latex: string; symbols: any[] | null; jiix?: string | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
   const [studentEditIndex, setStudentEditIndex] = useState<number | null>(null)
   const studentEditIndexRef = useRef<number | null>(null)
@@ -2644,6 +2644,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignmentSubmission?.initialLatex, initialQuiz, canOrchestrateLesson, isQuizMode, playSnapSound, setQuizActiveState])
 
+  const importStoredStepInk = useCallback(async (step: { symbols?: any[] | null; jiix?: string | null } | null | undefined) => {
+    const editor = editorInstanceRef.current
+    if (!editor) return 0
+
+    const stepJiix = typeof step?.jiix === 'string' ? step.jiix.trim() : ''
+    if (stepJiix && typeof editor.import_ === 'function') {
+      try {
+        await nextAnimationFrame()
+        await editor.import_(stepJiix, 'application/vnd.myscript.jiix')
+        if (typeof editor.waitForIdle === 'function') {
+          await editor.waitForIdle()
+        }
+        const model = editor.model ?? {}
+        return countSymbols((model as any).symbols)
+      } catch (err) {
+        console.warn('Failed to import stored JIIX for editing; falling back to point events', err)
+      }
+    }
+
+    const stepSymbols = step?.symbols
+    if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
+      await nextAnimationFrame()
+      await editor.importPointEvents(stepSymbols)
+      if (typeof editor.waitForIdle === 'function') {
+        await editor.waitForIdle()
+      }
+      return stepSymbols.length
+    }
+
+    return 0
+  }, [])
+
   const loadAdminStepForEditing = useCallback(async (index: number) => {
     if (!useAdminStepComposer) return
     if (index < 0 || index >= adminSteps.length) return
@@ -2662,20 +2694,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const stepSymbols = adminSteps[index]?.symbols
+    const stepJiix = adminSteps[index]?.jiix || null
     const stepLatex = adminSteps[index]?.latex || ''
-    if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
-      try {
-        await nextAnimationFrame()
-        await editor.importPointEvents(stepSymbols)
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-      } catch (err) {
-        console.warn('Failed to load step ink for editing', err)
-      }
+    let symbolCount = 0
+    try {
+      symbolCount = await importStoredStepInk(adminSteps[index])
+    } catch (err) {
+      console.warn('Failed to load step ink for editing', err)
     }
-
-    const symbolCount = Array.isArray(stepSymbols) ? stepSymbols.length : 0
     lastSymbolCountRef.current = symbolCount
     lastBroadcastBaseCountRef.current = symbolCount
 
@@ -2686,7 +2712,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       symbols: Array.isArray(stepSymbols) ? stepSymbols : null,
       rawInk: null,
       latex: stepLatex,
-      jiix: null,
+      jiix: stepJiix,
       version: localVersionRef.current,
       snapshotId: `${clientIdRef.current}-${Date.now()}-step-edit-${index}`,
       baseSymbolCount: -1,
@@ -2711,7 +2737,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
     setAdminDraftLatex(stepLatex)
-  }, [adminSteps, clearMathEditorForLocalReload, syncMathEditorGeometryForLocalReload, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminSteps, clearMathEditorForLocalReload, importStoredStepInk, syncMathEditorGeometryForLocalReload, useAdminStepComposer, useStackedStudentLayout])
 
   const loadStudentStepForEditing = useCallback(async (index: number) => {
     if (index < 0 || index >= studentSteps.length) return
@@ -2729,20 +2755,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const stepSymbols = studentSteps[index]?.symbols
+    const stepJiix = studentSteps[index]?.jiix || null
     const stepLatex = studentSteps[index]?.latex || ''
-    if (stepSymbols && Array.isArray(stepSymbols) && stepSymbols.length) {
-      try {
-        await nextAnimationFrame()
-        await editor.importPointEvents(stepSymbols)
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-      } catch (err) {
-        console.warn('Failed to load step ink for editing', err)
-      }
+    let symbolCount = 0
+    try {
+      symbolCount = await importStoredStepInk(studentSteps[index])
+    } catch (err) {
+      console.warn('Failed to load step ink for editing', err)
     }
-
-    const symbolCount = Array.isArray(stepSymbols) ? stepSymbols.length : 0
     lastSymbolCountRef.current = symbolCount
     lastBroadcastBaseCountRef.current = symbolCount
 
@@ -2753,7 +2773,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       symbols: Array.isArray(stepSymbols) ? stepSymbols : null,
       rawInk: null,
       latex: stepLatex,
-      jiix: null,
+      jiix: stepJiix,
       version: localVersionRef.current,
       snapshotId: `${clientIdRef.current}-${Date.now()}-step-edit-${index}`,
       baseSymbolCount: -1,
@@ -2777,7 +2797,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     setStudentEditIndex(index)
     setLatexOutput(stepLatex)
-  }, [clearMathEditorForLocalReload, studentSteps, syncMathEditorGeometryForLocalReload, useStackedStudentLayout])
+  }, [clearMathEditorForLocalReload, importStoredStepInk, studentSteps, syncMathEditorGeometryForLocalReload, useStackedStudentLayout])
 
   const loadTopPanelStepForEditing = useCallback(async (index: number) => {
     if (useAdminStepComposer) {
@@ -2833,17 +2853,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setLatexOutput(sourceStep.latex || '')
     await clearTopPanelComposerCanvas()
 
-    if (Array.isArray(sourceStep.symbols) && sourceStep.symbols.length) {
+    if ((Array.isArray(sourceStep.symbols) && sourceStep.symbols.length) || sourceStep.jiix) {
       try {
-        await nextAnimationFrame()
-        await editorInstanceRef.current?.importPointEvents?.(sourceStep.symbols)
-        lastSymbolCountRef.current = sourceStep.symbols.length
-        lastBroadcastBaseCountRef.current = sourceStep.symbols.length
+        const importedCount = await importStoredStepInk(sourceStep)
+        lastSymbolCountRef.current = importedCount
+        lastBroadcastBaseCountRef.current = importedCount
       } catch (err) {
         console.warn('Failed to duplicate step ink into composer', err)
       }
     }
-  }, [adminSteps, clearTopPanelComposerCanvas, studentSteps, useAdminStepComposer, useStudentStepComposer])
+  }, [adminSteps, clearTopPanelComposerCanvas, importStoredStepInk, studentSteps, useAdminStepComposer, useStudentStepComposer])
 
   const deleteTopPanelStep = useCallback(async (index: number) => {
     const sourceSteps = useAdminStepComposer ? adminSteps : (useStudentStepComposer ? studentSteps : [])
@@ -6557,7 +6576,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const computedLine = `=${formatComputedValue(value)}`
     if (useAdminStepComposerRef.current) {
-      setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null }])
+      setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null, jiix: null }])
     } else {
       setLatexDisplayState(prev => {
         const existing = (prev.latex || '').trim()
@@ -10809,15 +10828,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return step
       }
 
-      const applyStudentStepCommit = (step: string, symbols: any[] | null, snapshot: SnapshotPayload | null) => {
+      const applyStudentStepCommit = (step: string, symbols: any[] | null, jiix: string | null, snapshot: SnapshotPayload | null) => {
         const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
         let nextCombined = ''
         setStudentSteps(prev => {
           const next = [...prev]
           if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
-            next[studentEditIndex] = { latex: cleanedStep, symbols }
+            next[studentEditIndex] = { latex: cleanedStep, symbols, jiix }
           } else {
-            next.push({ latex: cleanedStep, symbols })
+            next.push({ latex: cleanedStep, symbols, jiix })
           }
           nextCombined = next.map(s => s.latex).filter(Boolean).join(' \\\\ ')
           return next
@@ -10834,7 +10853,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const step = await getStepLatex()
         if (!step) return
         const commitSnapshot = await captureSettledCommitSnapshot(step)
-        applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot ?? snap)
+        applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot?.jiix ?? null, commitSnapshot ?? snap)
 
         invalidatePendingLatexPreviewWork()
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -10854,7 +10873,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const step = await getStepLatex()
         if (step) {
           const commitSnapshot = await captureSettledCommitSnapshot(step)
-          applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot ?? snap)
+          applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot?.jiix ?? null, commitSnapshot ?? snap)
         }
       }
 
@@ -11163,13 +11182,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
       const snapshot = await captureSettledCommitSnapshot(step)
       const symbols = snapshot?.symbols ?? null
+      const jiix = snapshot?.jiix ?? null
       const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
       setAdminSteps(prev => {
         const next = [...prev]
         if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
-          next[adminEditIndex] = { latex: cleanedStep, symbols }
+          next[adminEditIndex] = { latex: cleanedStep, symbols, jiix }
         } else {
-          next.push({ latex: cleanedStep, symbols })
+          next.push({ latex: cleanedStep, symbols, jiix })
         }
         return next
       })
@@ -12160,9 +12180,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
       const steps = (Array.isArray(options.stepsOverride) ? options.stepsOverride : adminSteps
         .filter(s => s && typeof s === 'object')
-        .map(s => ({ latex: normalizeStepLatex((s as any).latex || ''), symbols: Array.isArray((s as any).symbols) ? (s as any).symbols : [] })))
-        .map(s => ({ latex: normalizeStepLatex((s as any)?.latex || ''), symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [] }))
-        .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
+        .map(s => ({
+          latex: normalizeStepLatex((s as any).latex || ''),
+          symbols: Array.isArray((s as any).symbols) ? (s as any).symbols : [],
+          jiix: typeof (s as any).jiix === 'string' ? (s as any).jiix : null,
+        })))
+        .map(s => ({
+          latex: normalizeStepLatex((s as any)?.latex || ''),
+          symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [],
+          jiix: typeof (s as any)?.jiix === 'string' ? (s as any).jiix : null,
+        }))
+        .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length) || Boolean(s.jiix))
 
       if (!steps.length) {
         setLatexSaveError('Nothing to save yet.')
@@ -12234,12 +12262,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const stepsFromAdmin = adminSteps
       .filter(s => s && typeof s === 'object')
-      .map(s => ({ latex: normalizeStepLatex((s as any)?.latex || ''), symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [] }))
-      .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length))
+      .map(s => ({
+        latex: normalizeStepLatex((s as any)?.latex || ''),
+        symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [],
+        jiix: typeof (s as any)?.jiix === 'string' ? (s as any).jiix : null,
+      }))
+      .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length) || Boolean(s.jiix))
 
     const snapshotLatexRaw = latestSnapshotRef.current?.snapshot?.latex
     const snapshotLatex = normalizeStepLatex(typeof snapshotLatexRaw === 'string' ? snapshotLatexRaw : '')
     const snapshotSymbols = latestSnapshotRef.current?.snapshot?.symbols
+    const snapshotJiix = latestSnapshotRef.current?.snapshot?.jiix ?? null
 
     const displayedLatex = normalizeStepLatex(typeof latexOutput === 'string' ? latexOutput : '')
     const remoteLatex = displayedLatex || snapshotLatex
@@ -12250,13 +12283,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         : []
 
     const stepsForSave = remotePresenterActive
-      ? ((remoteLatex || remoteSymbols.length)
-        ? [{ latex: remoteLatex, symbols: remoteSymbols }]
+      ? ((remoteLatex || remoteSymbols.length || snapshotJiix)
+        ? [{ latex: remoteLatex, symbols: remoteSymbols, jiix: snapshotJiix }]
         : [])
       : (stepsFromAdmin.length
         ? stepsFromAdmin
-        : ((remoteLatex || remoteSymbols.length)
-          ? [{ latex: remoteLatex, symbols: remoteSymbols }]
+        : ((remoteLatex || remoteSymbols.length || snapshotJiix)
+          ? [{ latex: remoteLatex, symbols: remoteSymbols, jiix: snapshotJiix }]
           : []))
 
     // Only enforce the "empty bottom canvas" rule when we're saving teacher-authored steps.
@@ -12278,7 +12311,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const normalizedLatexParts = stepsForSave.map(s => normalizeStepLatex(s.latex || '')).filter(Boolean)
     const hash = normalizedLatexParts.length
       ? normalizedLatexParts.join('\n')
-      : `symbols:${stepsForSave.reduce((acc, step) => acc + (Array.isArray((step as any).symbols) ? (step as any).symbols.length : 0), 0)}`
+      : `symbols:${stepsForSave.reduce((acc, step) => acc + (Array.isArray((step as any).symbols) ? (step as any).symbols.length : 0), 0)}:jiix:${stepsForSave.reduce((acc, step) => acc + (typeof (step as any).jiix === 'string' && (step as any).jiix ? 1 : 0), 0)}`
     if (lastAutoQuestionNotesHashRef.current === hash) return latestContinuitySaveRef.current
     lastAutoQuestionNotesHashRef.current = hash
 

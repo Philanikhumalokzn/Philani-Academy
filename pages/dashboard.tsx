@@ -9352,6 +9352,242 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
+  const renderDesktopFeedShell = () => {
+    const shortcutSections = availableSections.filter(section => section.id !== 'overview')
+    const discoverAvailable = shortcutSections.some(section => section.id === 'discover')
+    const announcementsAvailable = shortcutSections.some(section => section.id === 'announcements')
+
+    return (
+      <div className="space-y-6">
+        <div className="sticky top-4 z-20">
+          <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,18,56,0.94),rgba(6,15,46,0.9))] shadow-[0_24px_60px_rgba(2,6,23,0.42)] backdrop-blur-xl">
+            <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+              <div className="flex items-center gap-4 min-w-0">
+                <BrandLogo height={42} className="shrink-0 drop-shadow-[0_14px_34px_rgba(3,5,20,0.5)]" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (discoverAvailable) {
+                      openDashboardOverlay('discover')
+                    }
+                  }}
+                  className="group flex min-w-[280px] max-w-[520px] flex-1 items-center gap-3 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-left text-sm text-white/72 transition hover:border-white/20 hover:bg-white/10"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white/55 group-hover:text-white/80">
+                    <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="2" />
+                    <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <span className="truncate">Search learners, groups, sessions, and shared resources</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 lg:gap-3">
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
+                  onClick={openBooksOverlay}
+                >
+                  <span>Library</span>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
+                  onClick={() => setCreateOverlayOpen(true)}
+                >
+                  <span>Create</span>
+                </button>
+                <button
+                  type="button"
+                  className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/88 transition hover:border-white/20 hover:bg-white/10"
+                  onClick={openNotificationsOverlay}
+                  aria-label="Open notifications"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+                  </svg>
+                  {unreadNotificationsCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-[#1877f2] px-1.5 text-center text-[10px] font-semibold leading-5 text-white shadow-[0_8px_18px_rgba(24,119,242,0.45)]">
+                      {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                    </span>
+                  )}
+                </button>
+                <Link
+                  href="/profile"
+                  className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/6 px-2 py-2 text-white/90 transition hover:border-white/20 hover:bg-white/10"
+                >
+                  <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10 text-sm font-semibold text-white">
+                    {effectiveAvatarUrl ? (
+                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </span>
+                  <span className="hidden pr-2 text-sm font-medium lg:inline">{learnerName}</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[250px_minmax(0,1fr)_320px]">
+          <aside className="space-y-4 xl:sticky xl:top-28 self-start">
+            <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-4 shadow-[0_16px_45px_rgba(2,6,23,0.24)] backdrop-blur-xl">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/45">Navigation</div>
+              <div className="mt-3 space-y-2">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-2xl border border-[#1877f2]/30 bg-[#1877f2]/18 px-4 py-3 text-left text-white shadow-[0_12px_28px_rgba(24,119,242,0.18)]"
+                  onClick={() => {
+                    closeDashboardOverlay()
+                    setActiveSection('overview')
+                  }}
+                >
+                  <span>
+                    <span className="block text-sm font-semibold">Home Feed</span>
+                    <span className="block text-xs text-white/65">Your class stream and live activity</span>
+                  </span>
+                  <span className="text-xs text-white/70">Live</span>
+                </button>
+                {shortcutSections.map(section => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-white/86 transition hover:border-white/20 hover:bg-white/8"
+                    onClick={() => openDashboardOverlay(section.id as OverlaySectionId)}
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold">{section.label}</span>
+                      <span className="block text-xs text-white/55">{section.description}</span>
+                    </span>
+                    <span className="text-white/35">›</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_16px_45px_rgba(2,6,23,0.24)] backdrop-blur-xl">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/45">Workspace</div>
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="text-sm font-semibold text-white">{status === 'authenticated' ? activeGradeLabel : 'Guest workspace'}</div>
+                <div className="mt-1 text-xs leading-relaxed text-white/55">Switch sections, open materials, and jump into the live board from here.</div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
+                    onClick={openBooksOverlay}
+                  >
+                    Books
+                  </button>
+                  {announcementsAvailable && (
+                    <button
+                      type="button"
+                      className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
+                      onClick={() => openDashboardOverlay('announcements')}
+                    >
+                      Updates
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <section className="min-w-0 space-y-4">
+            <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(135deg,rgba(8,24,74,0.92),rgba(11,35,94,0.78))] px-6 py-5 shadow-[0_18px_50px_rgba(2,6,23,0.35)]">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-200/65">For You</div>
+                  <h1 className="mt-2 text-[2rem] font-semibold tracking-[-0.03em] text-white">Welcome back, {String(learnerName || 'Learner').split(' ')[0]}</h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-blue-50/72">A feed-first home for class activity, live lessons, quizzes, announcements, and the work your circle is sharing right now.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#0f172a] shadow-[0_14px_32px_rgba(255,255,255,0.18)] transition hover:bg-blue-50"
+                    onClick={() => setCreateOverlayOpen(true)}
+                  >
+                    Create Post
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center rounded-full border border-white/14 bg-white/8 px-5 text-sm font-medium text-white transition hover:bg-white/12"
+                    onClick={() => openDashboardOverlay('sessions')}
+                  >
+                    Browse Sessions
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {renderStudentTimelinePanel()}
+          </section>
+
+          <aside className="space-y-4 xl:sticky xl:top-28 self-start">
+            <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] shadow-[0_18px_50px_rgba(2,6,23,0.32)] backdrop-blur-xl">
+              <div className="bg-[radial-gradient(circle_at_top,rgba(24,119,242,0.35),rgba(24,119,242,0)_62%)] px-5 pb-5 pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="relative shrink-0">
+                    <div className="h-16 w-16 overflow-hidden rounded-full border border-white/15 bg-white/10">
+                      {effectiveAvatarUrl ? (
+                        <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xl font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</div>
+                      )}
+                    </div>
+                    {isVerifiedAccount && (
+                      <span className="absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/35 bg-[#1877f2] text-white shadow-[0_10px_22px_rgba(24,119,242,0.38)]" aria-label="Verified" title="Verified">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-lg font-semibold text-white">{learnerName}</div>
+                    <div className="mt-1 text-sm text-white/62">{roleFlagText}</div>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/15 p-4">
+                  <div className="text-sm leading-relaxed text-white/82">{profileStatusBio || 'Keep your classmates and teachers updated with a short status.'}</div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Workspace</div>
+                    <div className="mt-2 text-sm font-semibold text-white">{status === 'authenticated' ? activeGradeLabel : 'Guest'}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/8"
+                    onClick={openNotificationsOverlay}
+                  >
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Alerts</div>
+                    <div className="mt-2 text-sm font-semibold text-white">{unreadNotificationsCount > 0 ? `${unreadNotificationsCount} unread` : 'All caught up'}</div>
+                  </button>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Link href="/profile" className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12">
+                    View Profile
+                  </Link>
+                  <button
+                    type="button"
+                    className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12"
+                    onClick={() => setAccountSnapshotOverlayOpen(true)}
+                  >
+                    Snapshot
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {renderTimelineCard()}
+            {renderAccountSnapshotCard()}
+            {isAdmin ? renderAdminToolsQuickPanel() : null}
+          </aside>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <main
@@ -9996,30 +10232,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           )
         ) : (
           <>
-            <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-2">
-                <BrandLogo height={56} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                <div>
-                  <h1 className="text-3xl font-bold">Dashboard</h1>
-                  <p className="text-sm muted">Manage your classes, communicate with learners, and handle billing from one place.</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {session ? (
-                  <div className="text-sm muted">Signed in as <span className="font-medium text-white">{session.user?.email}</span></div>
-                ) : (
-                  <Link href="/api/auth/signin" className="btn btn-primary">Sign in</Link>
-                )}
-              </div>
-            </header>
-
-            {renderTimelineCard()}
-
-            <SectionNav />
-
-            <section className="min-w-0 space-y-6">
-              <OverviewSection />
-            </section>
+            {renderDesktopFeedShell()}
           </>
         )}
       </div>

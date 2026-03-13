@@ -5567,6 +5567,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         } catch {}
       }
 
+      if (editor && typeof editor.export_ === 'function') {
+        try {
+          await editor.export_(['application/x-latex', 'application/vnd.myscript.jiix'])
+        } catch {}
+      }
+
       await nextAnimationFrame()
 
       const currentSnapshot = captureFullSnapshot()
@@ -7270,6 +7276,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             },
             recognition: {
               type: 'MATH',
+              import: {
+                jiix: true,
+              },
+              export: {
+                jiix: {
+                  strokes: true,
+                },
+              },
               gesture: {
                 enable: false,
               },
@@ -15374,7 +15388,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         diagramDrawingRef.current = true
                         diagramPointerIdRef.current = e.pointerId
                         try {
-                          ;(e.currentTarget as any).setPointerCapture?.(e.pointerId)
+                         ;(e.currentTarget as any).setPointerCapture?.(e.pointerId)
                         } catch {}
 
                         if (tool === 'arrow') {

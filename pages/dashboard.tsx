@@ -9588,6 +9588,238 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
+  const renderMobileFeedShell = () => {
+    const jumpHome = () => {
+      closeDashboardOverlay()
+      setActiveSection('overview')
+      setStudentMobileTab('timeline')
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    }
+
+    return (
+      <div className="flex-1 flex flex-col pb-24 pt-3">
+        {mobilePanels.announcements && (
+          <FullScreenGlassOverlay
+            title="Announcements"
+            onClose={closeMobileAnnouncements}
+            onBackdropClick={closeMobileAnnouncements}
+            zIndexClassName="z-50"
+            className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+            panelClassName="rounded-3xl bg-[#06184a]"
+            contentClassName="p-0"
+          >
+            <div className="p-4">
+              <AnnouncementsSection />
+            </div>
+          </FullScreenGlassOverlay>
+        )}
+
+        <div className="sticky top-0 z-30 px-3 pb-3">
+          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(6,19,59,0.94),rgba(5,15,46,0.9))] shadow-[0_24px_60px_rgba(2,6,23,0.34)] backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <BrandLogo height={34} className="drop-shadow-[0_16px_34px_rgba(3,5,20,0.46)]" />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/8 text-white/88"
+                  onClick={() => openStudentQuickOverlay('discover')}
+                  aria-label="Search and discover"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="2" />
+                    <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/8 text-white/88"
+                  onClick={openNotificationsOverlay}
+                  aria-label="Notifications"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
+                  </svg>
+                  {unreadNotificationsCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-[#1877f2] px-1.5 text-center text-[10px] font-semibold leading-5 text-white shadow-[0_8px_18px_rgba(24,119,242,0.45)]">
+                      {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                    </span>
+                  )}
+                </button>
+                <Link href="/profile" className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/8">
+                  {effectiveAvatarUrl ? (
+                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                  )}
+                </Link>
+              </div>
+            </div>
+
+            <div className="px-3 pb-3">
+              <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    className="relative inline-flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/10 text-lg font-semibold text-white"
+                    onClick={() => {
+                      setAvatarEditArmed(false)
+                      avatarInputRef.current?.click()
+                    }}
+                    disabled={avatarUploading}
+                    aria-label="Update avatar"
+                  >
+                    {effectiveAvatarUrl ? (
+                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{learnerInitials}</span>
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="truncate text-base font-semibold text-white">{learnerName}</div>
+                      {isVerifiedAccount && (
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#1877f2] text-white" aria-label="Verified" title="Verified">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-xs text-blue-100/72">{roleFlagText}</div>
+                    <div className="mt-2">
+                      {statusBioEditing ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={statusBioDraft}
+                            maxLength={100}
+                            disabled={statusBioSaving}
+                            autoFocus
+                            onChange={(e) => setStatusBioDraft(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                const ok = await saveStatusBio(statusBioDraft)
+                                if (ok) setStatusBioEditing(false)
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault()
+                                setStatusBioDraft(profileStatusBio || '')
+                                setStatusBioEditing(false)
+                              }
+                            }}
+                            onBlur={async () => {
+                              const ok = await saveStatusBio(statusBioDraft)
+                              if (ok) setStatusBioEditing(false)
+                            }}
+                            className="w-full rounded-2xl border border-white/12 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-white/20"
+                            placeholder="Set a short status…"
+                            aria-label="Status or short bio"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-left text-sm leading-relaxed text-white/82"
+                          onClick={() => {
+                            setStatusBioDraft(profileStatusBio || '')
+                            setStatusBioEditing(true)
+                          }}
+                          aria-label="Edit status"
+                        >
+                          {profileStatusBio ? profileStatusBio : <span className="text-white/50">Share a short status with your class…</span>}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#0f172a] shadow-[0_14px_30px_rgba(255,255,255,0.18)]"
+                    onClick={() => setCreateOverlayOpen(true)}
+                  >
+                    Create Post
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white/88"
+                    onClick={() => openStudentQuickOverlay('sessions')}
+                  >
+                    View Sessions
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
+                  onClick={jumpHome}
+                >
+                  Home
+                </button>
+                <button
+                  type="button"
+                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
+                  onClick={() => openStudentQuickOverlay('groups')}
+                >
+                  Groups
+                </button>
+                <button
+                  type="button"
+                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
+                  onClick={() => openStudentQuickOverlay('discover')}
+                >
+                  Discover
+                </button>
+                <button
+                  type="button"
+                  className="rounded-2xl border border-white/10 bg-white/6 px-3 py-3 text-center text-xs font-medium text-white/82"
+                  onClick={openBooksOverlay}
+                >
+                  Library
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-3 space-y-4">
+          {renderStudentTimelinePanel()}
+          {status === 'authenticated' && (
+            <div className="flex justify-center pb-2 pt-1">
+              <button
+                type="button"
+                className="bg-transparent border-0 p-2 text-sm font-semibold text-white/65 hover:text-white focus:outline-none focus-visible:underline"
+                onClick={() => signOut({ callbackUrl: '/' })}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+          <div className="rounded-[26px] border border-white/10 bg-[rgba(5,15,46,0.92)] p-2 shadow-[0_22px_60px_rgba(2,6,23,0.42)] backdrop-blur-xl">
+            <div className={`grid gap-1 ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
+              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/88" onClick={jumpHome}>Home</button>
+              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('sessions')}>Sessions</button>
+              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => setCreateOverlayOpen(true)}>Create</button>
+              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={openNotificationsOverlay}>Alerts</button>
+              <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('discover')}>Discover</button>
+              {isAdmin ? (
+                <button type="button" className="flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-white/72" onClick={() => openStudentQuickOverlay('admin')}>Admin</button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <main
@@ -9677,559 +9909,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }
       >
         {isMobile ? (
-          isAdmin ? (
-            <div className="flex-1 flex flex-col py-4">
-              <div className="fixed inset-x-0 mobile-rail-fixed top-[0.9rem] z-30">
-                <div className="relative">
-                  <section
-                  data-mobile-chrome-ignore
-                  className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
-                  onDragEnter={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(true)
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(true)
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(false)
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    setMobileHeroBgDragActive(false)
-                    const file = e.dataTransfer?.files?.[0]
-                    if (file) applyMobileHeroBackgroundFile(file)
-                  }}
-                  onClickCapture={(e) => {
-                    const target = e.target as HTMLElement | null
-                    if (!target) return
-                    const tag = target.tagName?.toLowerCase()
-                    if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                    showMobileHeroEdit()
-                  }}
-                >
-                  <div
-                    className="absolute inset-0"
-                    style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                    aria-hidden="true"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
-                  <input
-                    ref={heroBgInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) applyMobileHeroBackgroundFile(file)
-                      e.target.value = ''
-                    }}
-                  />
-                  <input
-                    ref={themeBgInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) applyMobileThemeBackgroundFile(file)
-                      e.target.value = ''
-                    }}
-                  />
-
-                  <button
-                    type="button"
-                    aria-label="Edit theme background"
-                    className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      themeBgInputRef.current?.click()
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                    </svg>
-                  </button>
-
-                  <button
-                    type="button"
-                    aria-label="Edit background"
-                    className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      heroBgInputRef.current?.click()
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                    </svg>
-                  </button>
-                  <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                    <div className="relative group w-20 h-20" data-avatar-edit-container="1">
-                      <button
-                        type="button"
-                        className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                        onClick={() => setAvatarEditArmed(v => !v)}
-                        disabled={avatarUploading}
-                        aria-label="Edit avatar"
-                      >
-                        {effectiveAvatarUrl ? (
-                          <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                        ) : (
-                          <span>{learnerInitials}</span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Update avatar"
-                        className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setAvatarEditArmed(false)
-                          avatarInputRef.current?.click()
-                        }}
-                        disabled={avatarUploading}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="pb-1">
-                      <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                      <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
-                        <span>{roleFlagText}</span>
-                        {isVerifiedAccount && (
-                          <span
-                            className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
-                            aria-label="Verified"
-                            title="Verified"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                              <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                            </svg>
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-1">
-                        {statusBioEditing ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              value={statusBioDraft}
-                              maxLength={100}
-                              disabled={statusBioSaving}
-                              autoFocus
-                              onChange={(e) => setStatusBioDraft(e.target.value)}
-                              onKeyDown={async (e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  const ok = await saveStatusBio(statusBioDraft)
-                                  if (ok) setStatusBioEditing(false)
-                                }
-                                if (e.key === 'Escape') {
-                                  e.preventDefault()
-                                  setStatusBioDraft(profileStatusBio || '')
-                                  setStatusBioEditing(false)
-                                }
-                              }}
-                              onBlur={async () => {
-                                const ok = await saveStatusBio(statusBioDraft)
-                                if (ok) setStatusBioEditing(false)
-                              }}
-                              className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
-                              placeholder="Set a short status…"
-                              aria-label="Status or short bio"
-                            />
-                            <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="text-left text-sm text-white/85 hover:text-white"
-                            onClick={() => {
-                              setStatusBioDraft(profileStatusBio || '')
-                              setStatusBioEditing(true)
-                            }}
-                            aria-label="Edit status"
-                          >
-                            {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
-                    <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                    <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
-                      <span className="tracking-[0.10em]">P H I L A N I</span>
-                      <span className="tracking-[0.10em]">A C A D E M Y</span>
-                    </div>
-                  </div>
-                  </section>
-                </div>
-              </div>
-
-              <div
-                className="pt-[244px] space-y-5"
-                style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskSize: '100% 100%',
-                  maskSize: '100% 100%',
-                }}
-              >
-                {renderStudentQuickActionsRow()}
-
-                <div
-                  ref={studentMobilePanelsRef}
-                  onScroll={onStudentPanelsScroll}
-                  className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory"
-                  style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
-                >
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.timeline = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderStudentTimelinePanel()}
-                  </div>
-
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.sessions = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderSection('sessions')}
-                  </div>
-
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.groups = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderSection('groups')}
-                  </div>
-
-                  <div
-                    ref={el => {
-                      studentMobilePanelRefs.current.discover = el
-                    }}
-                    className="w-full flex-none snap-start"
-                    style={{ scrollSnapStop: 'always' }}
-                  >
-                    {renderSection('discover')}
-                  </div>
-                </div>
-
-                {status === 'authenticated' && (
-                  <div className="pt-2 flex justify-center">
-                    <button
-                      type="button"
-                      className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
-                      onClick={() => signOut({ callbackUrl: '/' })}
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col py-4">
-              {mobilePanels.announcements && (
-                <FullScreenGlassOverlay
-                  title="Announcements"
-                  onClose={closeMobileAnnouncements}
-                  onBackdropClick={closeMobileAnnouncements}
-                  zIndexClassName="z-50"
-                  className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                  panelClassName="rounded-3xl bg-[#06184a]"
-                  contentClassName="p-0"
-                >
-                  <div className="p-4">
-                    <AnnouncementsSection />
-                  </div>
-                </FullScreenGlassOverlay>
-              )}
-
-              <div className="fixed inset-x-0 mobile-rail-fixed top-[0.9rem] z-30">
-              <div className="relative">
-              <section
-                data-mobile-chrome-ignore
-                className={`relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 text-center shadow-2xl h-[236px] ${mobileHeroBgDragActive ? 'ring-2 ring-white/40' : ''}`}
-                onDragEnter={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(true)
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(true)
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(false)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setMobileHeroBgDragActive(false)
-                  const file = e.dataTransfer?.files?.[0]
-                  if (file) applyMobileHeroBackgroundFile(file)
-                }}
-                onClickCapture={(e) => {
-                  const target = e.target as HTMLElement | null
-                  if (!target) return
-                  const tag = target.tagName?.toLowerCase()
-                  if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') return
-                  showMobileHeroEdit()
-                }}
-              >
-                <div
-                  className="absolute inset-0"
-                  style={{ backgroundImage: `url(${mobileHeroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-                  aria-hidden="true"
-                />
-                <div className="absolute inset-0 bg-gradient-to-br from-[#020b35]/80 via-[#041448]/70 to-[#031641]/80" aria-hidden="true" />
-                <input
-                  ref={heroBgInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) applyMobileHeroBackgroundFile(file)
-                    e.target.value = ''
-                  }}
-                />
-                <input
-                  ref={themeBgInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) applyMobileThemeBackgroundFile(file)
-                    e.target.value = ''
-                  }}
-                />
-
-                <button
-                  type="button"
-                  aria-label="Edit theme background"
-                  className={`absolute top-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    themeBgInputRef.current?.click()
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                  </svg>
-                </button>
-
-                <button
-                  type="button"
-                  aria-label="Edit background"
-                  className={`absolute bottom-3 right-3 inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${mobileHeroBgEditVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    heroBgInputRef.current?.click()
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                  </svg>
-                </button>
-                <div className="absolute left-5 bottom-5 z-10 flex items-end gap-3 text-left">
-                  <div className="relative group w-20 h-20" data-avatar-edit-container="1">
-                    <button
-                      type="button"
-                      className="w-20 h-20 rounded-full border border-white/25 bg-white/5 flex items-center justify-center text-2xl font-semibold text-white overflow-hidden"
-                      onClick={() => setAvatarEditArmed(v => !v)}
-                      disabled={avatarUploading}
-                      aria-label="Edit avatar"
-                    >
-                      {effectiveAvatarUrl ? (
-                        <img src={effectiveAvatarUrl} alt={learnerName} className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{learnerInitials}</span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Update avatar"
-                      className={`absolute -bottom-1 -right-1 inline-flex items-center justify-center h-9 w-9 rounded-xl border border-white/20 bg-white/10 backdrop-blur transition-opacity ${avatarUploading || avatarEditArmed ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto'}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setAvatarEditArmed(false)
-                        avatarInputRef.current?.click()
-                      }}
-                      disabled={avatarUploading}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1 1 0 0 0 0-1.41l-1.34-1.34a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75L21 5.75Z" fill="currentColor" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="pb-1">
-                    <p className="text-xl font-semibold leading-tight">{learnerName}</p>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-blue-100/80">
-                      <span>{roleFlagText}</span>
-                      {isVerifiedAccount && (
-                        <span
-                          className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white"
-                          aria-label="Verified"
-                          title="Verified"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-1">
-                      {statusBioEditing ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={statusBioDraft}
-                            maxLength={100}
-                            disabled={statusBioSaving}
-                            autoFocus
-                            onChange={(e) => setStatusBioDraft(e.target.value)}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                const ok = await saveStatusBio(statusBioDraft)
-                                if (ok) setStatusBioEditing(false)
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault()
-                                setStatusBioDraft(profileStatusBio || '')
-                                setStatusBioEditing(false)
-                              }
-                            }}
-                            onBlur={async () => {
-                              const ok = await saveStatusBio(statusBioDraft)
-                              if (ok) setStatusBioEditing(false)
-                            }}
-                            className="w-full max-w-[240px] rounded-xl border border-white/15 bg-white/10 backdrop-blur px-3 py-2 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/20"
-                            placeholder="Set a short status…"
-                            aria-label="Status or short bio"
-                          />
-                          <span className="text-xs text-white/60 tabular-nums">{Math.min(statusBioDraft.length, 100)}/100</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-left text-sm text-white/85 hover:text-white"
-                          onClick={() => {
-                            setStatusBioDraft(profileStatusBio || '')
-                            setStatusBioEditing(true)
-                          }}
-                          aria-label="Edit status"
-                        >
-                          {profileStatusBio ? profileStatusBio : <span className="text-white/60">Set a short status…</span>}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute inset-x-0 top-3 z-10 flex flex-col items-center justify-center px-5">
-                  <BrandLogo height={44} className="drop-shadow-[0_20px_45px_rgba(3,5,20,0.6)]" />
-                  <div className="mt-1 flex items-center justify-center gap-6 whitespace-nowrap text-center text-[20px] font-medium leading-none text-white/95">
-                    <span className="tracking-[0.10em]">P H I L A N I</span>
-                    <span className="tracking-[0.10em]">A C A D E M Y</span>
-                  </div>
-                </div>
-              </section>
-              </div>
-              </div>
-
-              <div
-                className="pt-[244px] space-y-5"
-                style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 200px, rgba(0,0,0,1) 300px)',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskSize: '100% 100%',
-                  maskSize: '100% 100%',
-                }}
-              >
-              {renderStudentQuickActionsRow()}
-
-              <div
-                ref={studentMobilePanelsRef}
-                onScroll={onStudentPanelsScroll}
-                className="mobile-row-width w-full flex overflow-x-auto snap-x snap-mandatory"
-                style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
-              >
-                <div
-                  ref={el => {
-                    studentMobilePanelRefs.current.timeline = el
-                  }}
-                  className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
-                >
-                  {renderStudentTimelinePanel()}
-                </div>
-
-                <div
-                  ref={el => {
-                    studentMobilePanelRefs.current.sessions = el
-                  }}
-                  className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
-                >
-                  {renderSection('sessions')}
-                </div>
-
-                <div
-                  ref={el => {
-                    studentMobilePanelRefs.current.groups = el
-                  }}
-                  className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
-                >
-                  {renderSection('groups')}
-                </div>
-
-                <div
-                  ref={el => {
-                    studentMobilePanelRefs.current.discover = el
-                  }}
-                  className="w-full flex-none snap-start"
-                  style={{ scrollSnapStop: 'always' }}
-                >
-                  {renderSection('discover')}
-                </div>
-              </div>
-
-              {status === 'authenticated' && (
-                <div className="pt-2 flex justify-center">
-                  <button
-                    type="button"
-                    className="bg-transparent border-0 p-2 text-sm font-semibold text-white/70 hover:text-white focus:outline-none focus-visible:underline"
-                    onClick={() => signOut({ callbackUrl: '/' })}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
-              </div>
-            </div>
-          )
+          renderMobileFeedShell()
         ) : (
           <>
             {renderDesktopFeedShell()}

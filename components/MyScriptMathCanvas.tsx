@@ -5531,6 +5531,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return { ...snapshot, baseSymbolCount: -1 }
   }, [collectEditorSnapshot])
 
+  const captureSettledCommitSnapshot = useCallback(async (expectedLatex?: string): Promise<SnapshotPayload | null> => {
+    const editor = editorInstanceRef.current
+    const normalizeForCommitSnapshot = (value: string) => String(value || '')
+      .trim()
+      .replace(/^\s*\\begin\{aligned\}/, '')
+      .replace(/\\end\{aligned\}\s*$/, '')
+      .trim()
+    const normalizedExpected = normalizeForCommitSnapshot(expectedLatex || '')
+    let bestSnapshot: SnapshotPayload | null = null
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (editor && typeof editor.waitForIdle === 'function') {
+        try {
+          await editor.waitForIdle()
+        } catch {}
+      }
+
+      await nextAnimationFrame()
+
+      const currentSnapshot = captureFullSnapshot()
+      const latestSnapshot = cloneSnapshotPayload(latestSnapshotRef.current?.snapshot ?? null)
+      const candidates = [currentSnapshot, latestSnapshot].filter((candidate): candidate is SnapshotPayload => Boolean(candidate))
+
+      for (const candidate of candidates) {
+        const normalizedCandidate = normalizeForCommitSnapshot(candidate.latex || '')
+        const symbolCount = countSymbols(candidate.symbols)
+
+        if (!bestSnapshot || symbolCount > countSymbols(bestSnapshot.symbols)) {
+          bestSnapshot = candidate
+        }
+
+        if (!normalizedExpected) {
+          if (symbolCount > 0) return candidate
+          continue
+        }
+
+        if (normalizedCandidate === normalizedExpected) {
+          if (!bestSnapshot || symbolCount >= countSymbols(bestSnapshot.symbols)) {
+            bestSnapshot = candidate
+          }
+          if (symbolCount > 0) {
+            return candidate
+          }
+        }
+      }
+
+      if (attempt < 3) {
+        await new Promise<void>(resolve => setTimeout(resolve, 80))
+      }
+    }
+
+    return bestSnapshot ?? captureFullSnapshot()
+  }, [captureFullSnapshot])
+
   const applyPageSnapshot = useCallback(
     async (snapshot: SnapshotPayload | null) => {
       const mode = getSnapshotMode(snapshot)
@@ -10779,7 +10833,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         // First-stage send: commit this line into combined latex and clear bottom canvas.
         const step = await getStepLatex()
         if (!step) return
-        applyStudentStepCommit(step, snap?.symbols ?? null, snap)
+        const commitSnapshot = await captureSettledCommitSnapshot(step)
+        applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot ?? snap)
 
         invalidatePendingLatexPreviewWork()
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -10798,7 +10853,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (hasInk && forceSubmit) {
         const step = await getStepLatex()
         if (step) {
-          applyStudentStepCommit(step, snap?.symbols ?? null, snap)
+          const commitSnapshot = await captureSettledCommitSnapshot(step)
+          applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot ?? snap)
         }
       }
 
@@ -11105,7 +11161,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       // If still empty (e.g., everything scratched away), do not commit.
       if (!step) return
 
-      const snapshot = captureFullSnapshot()
+      const snapshot = await captureSettledCommitSnapshot(step)
       const symbols = snapshot?.symbols ?? null
       const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
       setAdminSteps(prev => {
@@ -11158,6 +11214,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     adminSendingStep,
     adminSteps,
     captureFullSnapshot,
+    captureSettledCommitSnapshot,
     cacheModeSnapshotForPage,
     exportLatexFromEngine,
     finishQuestionNoteId,

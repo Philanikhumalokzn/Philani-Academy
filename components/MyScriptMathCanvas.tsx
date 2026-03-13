@@ -845,12 +845,6 @@ type TopPanelRenderPayload = {
   style: CSSProperties
 }
 
-type TopPanelRenderFrame = {
-  key: number
-  markup: string
-  style: CSSProperties
-}
-
 type LatexDisplayState = {
   enabled: boolean
   latex: string
@@ -9510,131 +9504,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setDebugTopPanelHasMarkup(Boolean(topPanelRenderPayload.markup))
   }, [topPanelPayload.latex, topPanelRenderPayload.markup])
 
-  const TOP_PANEL_MARKUP_FADE_MS = 180
-  const topPanelRenderFrameSeqRef = useRef(0)
-  const topPanelRenderFadeRafRef = useRef<number | null>(null)
-  const topPanelRenderFadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [topPanelAnimatedRender, setTopPanelAnimatedRender] = useState<{
-    current: TopPanelRenderFrame | null
-    previous: TopPanelRenderFrame | null
-    currentVisible: boolean
-  }>({ current: null, previous: null, currentVisible: true })
-  const topPanelAnimatedRenderRef = useRef(topPanelAnimatedRender)
-
-  useEffect(() => {
-    topPanelAnimatedRenderRef.current = topPanelAnimatedRender
-  }, [topPanelAnimatedRender])
-
-  useEffect(() => {
-    if (topPanelRenderFadeTimeoutRef.current) {
-      clearTimeout(topPanelRenderFadeTimeoutRef.current)
-      topPanelRenderFadeTimeoutRef.current = null
-    }
-    if (topPanelRenderFadeRafRef.current !== null && typeof window !== 'undefined') {
-      window.cancelAnimationFrame(topPanelRenderFadeRafRef.current)
-      topPanelRenderFadeRafRef.current = null
-    }
-
-    const current = topPanelAnimatedRenderRef.current.current
-    const nextMarkup = topPanelRenderPayload.markup
-    const nextStyle = topPanelRenderPayload.style
-    const sameCurrent = current
-      && current.markup === nextMarkup
-      && current.style.fontSize === nextStyle.fontSize
-      && current.style.textAlign === nextStyle.textAlign
-
-    if (sameCurrent) return
-
-    const nextFrame = nextMarkup
-      ? {
-          key: ++topPanelRenderFrameSeqRef.current,
-          markup: nextMarkup,
-          style: nextStyle,
-        }
-      : null
-
-    const shouldAnimate = Boolean(useStackedStudentLayout && current?.markup && nextFrame?.markup)
-    const nextState = {
-      current: nextFrame,
-      previous: shouldAnimate ? current : null,
-      currentVisible: !shouldAnimate,
-    }
-
-    topPanelAnimatedRenderRef.current = nextState
-    setTopPanelAnimatedRender(nextState)
-
-    if (!shouldAnimate) return
-
-    if (typeof window !== 'undefined') {
-      const frameKey = nextFrame?.key ?? 0
-      topPanelRenderFadeRafRef.current = window.requestAnimationFrame(() => {
-        topPanelRenderFadeRafRef.current = null
-        setTopPanelAnimatedRender(prev => {
-          if (prev.current?.key !== frameKey) return prev
-          return { ...prev, currentVisible: true }
-        })
-      })
-    } else {
-      setTopPanelAnimatedRender(prev => ({ ...prev, currentVisible: true }))
-    }
-
-    topPanelRenderFadeTimeoutRef.current = setTimeout(() => {
-      topPanelRenderFadeTimeoutRef.current = null
-      setTopPanelAnimatedRender(prev => ({ ...prev, previous: null }))
-    }, TOP_PANEL_MARKUP_FADE_MS)
-  }, [TOP_PANEL_MARKUP_FADE_MS, topPanelRenderPayload.markup, topPanelRenderPayload.style, useStackedStudentLayout])
-
-  useEffect(() => {
-    return () => {
-      if (topPanelRenderFadeTimeoutRef.current) {
-        clearTimeout(topPanelRenderFadeTimeoutRef.current)
-        topPanelRenderFadeTimeoutRef.current = null
-      }
-      if (topPanelRenderFadeRafRef.current !== null && typeof window !== 'undefined') {
-        window.cancelAnimationFrame(topPanelRenderFadeRafRef.current)
-        topPanelRenderFadeRafRef.current = null
-      }
-    }
-  }, [])
-
-  const renderTopPanelMarkup = useCallback((className: string) => {
-    if (useStackedStudentLayout) {
-      const current = topPanelAnimatedRender.current
-      if (!current?.markup) return null
-
-      return (
-        <div className="relative">
-          {topPanelAnimatedRender.previous?.markup ? (
-            <div
-              className={`${className} pointer-events-none absolute inset-0`}
-              style={topPanelAnimatedRender.previous.style}
-              dangerouslySetInnerHTML={{ __html: topPanelAnimatedRender.previous.markup }}
-            />
-          ) : null}
-          <div
-            key={current.key}
-            className={`${className} relative`}
-            style={{
-              ...current.style,
-              opacity: topPanelAnimatedRender.currentVisible ? 1 : 0,
-              transition: topPanelAnimatedRender.previous ? `opacity ${TOP_PANEL_MARKUP_FADE_MS}ms ease-out` : undefined,
-            }}
-            dangerouslySetInnerHTML={{ __html: current.markup }}
-          />
-        </div>
-      )
-    }
-
-    if (!topPanelRenderPayload.markup) return null
-    return (
-      <div
-        className={className}
-        style={topPanelRenderPayload.style}
-        dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
-      />
-    )
-  }, [TOP_PANEL_MARKUP_FADE_MS, topPanelAnimatedRender, topPanelRenderPayload, useStackedStudentLayout])
-
   const adminTopPanelStepItems = useMemo(() => {
     if (!useAdminStepComposer) return [] as TopPanelStepItem[]
     if (!topPanelEditingMode) return [] as TopPanelStepItem[]
@@ -13929,7 +13798,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         </div>
                       )
                     ) : topPanelRenderPayload.markup ? (
-                      renderTopPanelMarkup('text-slate-900 leading-relaxed')
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={topPanelRenderPayload.style}
+                        dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <p className="text-slate-500 text-sm text-center">Convert to notes to preview the typeset LaTeX here.</p>
@@ -13946,7 +13819,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       {!hasWriteAccess && quizActive && !isAssignmentView ? (
                         <>
                           {topPanelRenderPayload.markup ? (
-                            renderTopPanelMarkup('text-slate-700 font-semibold leading-relaxed')
+                            <div
+                              className="text-slate-700 font-semibold leading-relaxed"
+                              style={topPanelRenderPayload.style}
+                              dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
+                            />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <p className="text-slate-500 text-sm text-center">Write your answer below to see your LaTeX here.</p>
@@ -13954,7 +13831,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           )}
                         </>
                           ) : topPanelRenderPayload.markup ? (
-                        renderTopPanelMarkup('text-slate-900 leading-relaxed')
+                        <div
+                          className="text-slate-900 leading-relaxed"
+                              style={topPanelRenderPayload.style}
+                              dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
+                        />
                       ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
@@ -13963,7 +13844,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     </div>
                   ) : latexDisplayState.enabled ? (
                     topPanelRenderPayload.markup ? (
-                      renderTopPanelMarkup('text-slate-900 leading-relaxed')
+                      <div
+                        className="text-slate-900 leading-relaxed"
+                        style={topPanelRenderPayload.style}
+                        dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
@@ -14341,30 +14226,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       <button
                         type="button"
                         className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
-                    title="Compute answer"
-                    onClick={() => runCanvasAction(appendComputedLineFromLastStep)}
-                    disabled={Boolean(fatalError)}
-                  >
-                    <span className="sr-only">Compute</span>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      width="18"
-                      height="18"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-slate-700"
-                      aria-hidden="true"
-                    >
-                      <path d="M12 4v16" />
-                      <path d="M4 12h16" />
-                      <path d="m16 8 4 4-4 4" />
-                      <path d="M8 8h4v8H8" />
-                    </svg>
-                  </button>
+                        title="Compute answer"
+                        onClick={() => runCanvasAction(appendComputedLineFromLastStep)}
+                        disabled={Boolean(fatalError)}
+                      >
+                        <span className="sr-only">Compute</span>
+                        <span className="text-[18px] font-semibold leading-none text-slate-700" aria-hidden="true">=</span>
+                      </button>
                 </div>
                 )}
 

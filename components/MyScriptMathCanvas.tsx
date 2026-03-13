@@ -737,8 +737,6 @@ type SnapshotPayload = {
   rawInk?: RawInkPayload | null
   latex?: string
   jiix?: string | null
-  mathRawStrokes?: any[] | null
-  mathStrokeGroups?: any[] | null
   version: number
   snapshotId: string
   baseSymbolCount?: number
@@ -2447,7 +2445,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [latexProjectionOptions, setLatexProjectionOptions] = useState<LatexDisplayOptions>(DEFAULT_LATEX_OPTIONS)
   const [stackedNotesState, setStackedNotesState] = useState<StackedNotesState>({ latex: '', options: DEFAULT_LATEX_OPTIONS, ts: 0 })
 
-  type AdminStep = { latex: string; symbols: any[] | null; jiix?: string | null; mathRawStrokes?: any[] | null; mathStrokeGroups?: any[] | null }
+  type AdminStep = { latex: string; symbols: any[] | null; jiix?: string | null }
   const [adminSteps, setAdminSteps] = useState<AdminStep[]>([])
   const [adminDraftLatex, setAdminDraftLatex] = useState('')
   const [adminSendingStep, setAdminSendingStep] = useState(false)
@@ -2467,7 +2465,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [])
 
-  type StudentStep = { latex: string; symbols: any[] | null; jiix?: string | null; mathRawStrokes?: any[] | null; mathStrokeGroups?: any[] | null }
+  type StudentStep = { latex: string; symbols: any[] | null; jiix?: string | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
   const [studentEditIndex, setStudentEditIndex] = useState<number | null>(null)
   const studentEditIndexRef = useRef<number | null>(null)
@@ -2650,30 +2648,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const editor = editorInstanceRef.current
     if (!editor) return 0
 
-    const cloneCollection = <T,>(value: T): T => {
-      try {
-        if (typeof structuredClone === 'function') return structuredClone(value)
-      } catch {}
-      return JSON.parse(JSON.stringify(value))
-    }
-
-    const rawStrokes = Array.isArray((step as any)?.mathRawStrokes) ? cloneCollection((step as any).mathRawStrokes) : null
-    const strokeGroups = Array.isArray((step as any)?.mathStrokeGroups) ? cloneCollection((step as any).mathStrokeGroups) : null
-    if (rawStrokes && rawStrokes.length && strokeGroups && typeof editor.reDraw === 'function') {
-      try {
-        await nextAnimationFrame()
-        editor.reDraw(rawStrokes, strokeGroups)
-        if (typeof editor.waitForIdle === 'function') {
-          await editor.waitForIdle()
-        }
-        const model = editor.model ?? {}
-        const rawModelStrokes = Array.isArray((model as any).rawStrokes) ? (model as any).rawStrokes : []
-        return rawModelStrokes.length
-      } catch (err) {
-        console.warn('Failed to restore stored raw stroke state for editing; falling back to JIIX/point events', err)
-      }
-    }
-
     const stepJiix = typeof step?.jiix === 'string' ? step.jiix.trim() : ''
     if (stepJiix && typeof editor.import_ === 'function') {
       try {
@@ -2702,26 +2676,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return 0
   }, [])
 
-  const extractEditorStrokeState = useCallback(() => {
-    const editor = editorInstanceRef.current
-    if (!editor) {
-      return { mathRawStrokes: null, mathStrokeGroups: null }
-    }
-
-    const model = editor.model ?? {}
-    const rawStrokes = Array.isArray((model as any).rawStrokes)
-      ? JSON.parse(JSON.stringify((model as any).rawStrokes))
-      : null
-    const strokeGroups = Array.isArray((model as any).strokeGroups)
-      ? JSON.parse(JSON.stringify((model as any).strokeGroups))
-      : null
-
-    return {
-      mathRawStrokes: rawStrokes,
-      mathStrokeGroups: strokeGroups,
-    }
-  }, [])
-
   const loadAdminStepForEditing = useCallback(async (index: number) => {
     if (!useAdminStepComposer) return
     if (index < 0 || index >= adminSteps.length) return
@@ -2742,8 +2696,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const stepSymbols = adminSteps[index]?.symbols
     const stepJiix = adminSteps[index]?.jiix || null
     const stepLatex = adminSteps[index]?.latex || ''
-    const stepRawStrokes = Array.isArray(adminSteps[index]?.mathRawStrokes) ? adminSteps[index]?.mathRawStrokes : null
-    const stepStrokeGroups = Array.isArray(adminSteps[index]?.mathStrokeGroups) ? adminSteps[index]?.mathStrokeGroups : null
     let symbolCount = 0
     try {
       symbolCount = await importStoredStepInk(adminSteps[index])
@@ -2761,8 +2713,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       rawInk: null,
       latex: stepLatex,
       jiix: stepJiix,
-      mathRawStrokes: stepRawStrokes,
-      mathStrokeGroups: stepStrokeGroups,
       version: localVersionRef.current,
       snapshotId: `${clientIdRef.current}-${Date.now()}-step-edit-${index}`,
       baseSymbolCount: -1,
@@ -2807,8 +2757,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const stepSymbols = studentSteps[index]?.symbols
     const stepJiix = studentSteps[index]?.jiix || null
     const stepLatex = studentSteps[index]?.latex || ''
-    const stepRawStrokes = Array.isArray(studentSteps[index]?.mathRawStrokes) ? studentSteps[index]?.mathRawStrokes : null
-    const stepStrokeGroups = Array.isArray(studentSteps[index]?.mathStrokeGroups) ? studentSteps[index]?.mathStrokeGroups : null
     let symbolCount = 0
     try {
       symbolCount = await importStoredStepInk(studentSteps[index])
@@ -2826,8 +2774,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       rawInk: null,
       latex: stepLatex,
       jiix: stepJiix,
-      mathRawStrokes: stepRawStrokes,
-      mathStrokeGroups: stepStrokeGroups,
       version: localVersionRef.current,
       snapshotId: `${clientIdRef.current}-${Date.now()}-step-edit-${index}`,
       baseSymbolCount: -1,
@@ -10896,15 +10842,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return step
       }
 
-      const applyStudentStepCommit = (step: string, symbols: any[] | null, jiix: string | null, strokeState: { mathRawStrokes: any[] | null; mathStrokeGroups: any[] | null }, snapshot: SnapshotPayload | null) => {
+      const applyStudentStepCommit = (step: string, symbols: any[] | null, jiix: string | null, snapshot: SnapshotPayload | null) => {
         const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
         let nextCombined = ''
         setStudentSteps(prev => {
           const next = [...prev]
           if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
-            next[studentEditIndex] = { latex: cleanedStep, symbols, jiix, ...strokeState }
+            next[studentEditIndex] = { latex: cleanedStep, symbols, jiix }
           } else {
-            next.push({ latex: cleanedStep, symbols, jiix, ...strokeState })
+            next.push({ latex: cleanedStep, symbols, jiix })
           }
           nextCombined = next.map(s => s.latex).filter(Boolean).join(' \\\\ ')
           return next
@@ -10921,8 +10867,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const step = await getStepLatex()
         if (!step) return
         const commitSnapshot = await captureSettledCommitSnapshot(step)
-        const strokeState = extractEditorStrokeState()
-        applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot?.jiix ?? null, strokeState, commitSnapshot ?? snap)
+        applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot?.jiix ?? null, commitSnapshot ?? snap)
 
         invalidatePendingLatexPreviewWork()
         suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -10942,8 +10887,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const step = await getStepLatex()
         if (step) {
           const commitSnapshot = await captureSettledCommitSnapshot(step)
-          const strokeState = extractEditorStrokeState()
-          applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot?.jiix ?? null, strokeState, commitSnapshot ?? snap)
+          applyStudentStepCommit(step, commitSnapshot?.symbols ?? null, commitSnapshot?.jiix ?? null, commitSnapshot ?? snap)
         }
       }
 
@@ -11253,14 +11197,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const snapshot = await captureSettledCommitSnapshot(step)
       const symbols = snapshot?.symbols ?? null
       const jiix = snapshot?.jiix ?? null
-      const strokeState = extractEditorStrokeState()
       const cleanedStep = cleanupStepLatexWithJiix(step, snapshot)
       setAdminSteps(prev => {
         const next = [...prev]
         if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
-          next[adminEditIndex] = { latex: cleanedStep, symbols, jiix, ...strokeState }
+          next[adminEditIndex] = { latex: cleanedStep, symbols, jiix }
         } else {
-          next.push({ latex: cleanedStep, symbols, jiix, ...strokeState })
+          next.push({ latex: cleanedStep, symbols, jiix })
         }
         return next
       })
@@ -12255,17 +12198,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           latex: normalizeStepLatex((s as any).latex || ''),
           symbols: Array.isArray((s as any).symbols) ? (s as any).symbols : [],
           jiix: typeof (s as any).jiix === 'string' ? (s as any).jiix : null,
-          mathRawStrokes: Array.isArray((s as any).mathRawStrokes) ? (s as any).mathRawStrokes : null,
-          mathStrokeGroups: Array.isArray((s as any).mathStrokeGroups) ? (s as any).mathStrokeGroups : null,
         })))
         .map(s => ({
           latex: normalizeStepLatex((s as any)?.latex || ''),
           symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [],
           jiix: typeof (s as any)?.jiix === 'string' ? (s as any).jiix : null,
-          mathRawStrokes: Array.isArray((s as any)?.mathRawStrokes) ? (s as any).mathRawStrokes : null,
-          mathStrokeGroups: Array.isArray((s as any)?.mathStrokeGroups) ? (s as any).mathStrokeGroups : null,
         }))
-        .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length) || Boolean(s.jiix) || (Array.isArray(s.mathRawStrokes) && s.mathRawStrokes.length))
+        .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length) || Boolean(s.jiix))
 
       if (!steps.length) {
         setLatexSaveError('Nothing to save yet.')
@@ -12341,10 +12280,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         latex: normalizeStepLatex((s as any)?.latex || ''),
         symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [],
         jiix: typeof (s as any)?.jiix === 'string' ? (s as any).jiix : null,
-        mathRawStrokes: Array.isArray((s as any)?.mathRawStrokes) ? (s as any).mathRawStrokes : null,
-        mathStrokeGroups: Array.isArray((s as any)?.mathStrokeGroups) ? (s as any).mathStrokeGroups : null,
       }))
-      .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length) || Boolean(s.jiix) || (Array.isArray(s.mathRawStrokes) && s.mathRawStrokes.length))
+      .filter(s => String(s.latex || '').trim() || (Array.isArray(s.symbols) && s.symbols.length) || Boolean(s.jiix))
 
     const snapshotLatexRaw = latestSnapshotRef.current?.snapshot?.latex
     const snapshotLatex = normalizeStepLatex(typeof snapshotLatexRaw === 'string' ? snapshotLatexRaw : '')

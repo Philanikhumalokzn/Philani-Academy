@@ -6372,14 +6372,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const raw = normalizeStepLatex(value)
     if (!raw) return 'Notes'
 
-    const simplified = raw
+    const firstLine = raw.split(/\\\\/).map(part => part.trim()).filter(Boolean)[0] || raw
+    const simplified = firstLine
       .replace(/\$\$?/g, '')
       .replace(/\\\(|\\\)/g, '')
       .replace(/\\begin\{[^}]+\}|\\end\{[^}]+\}/g, '')
       .replace(/\\(left|right)/g, '')
+      .replace(/\\text\s*\{([^}]*)\}/g, ' $1 ')
+      .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '$1 over $2')
+      .replace(/\\sqrt\s*\{([^{}]+)\}/g, 'sqrt $1')
+      .replace(/\\(cdot|times)/g, ' x ')
+      .replace(/\\pm/g, ' plus or minus ')
+      .replace(/\\geq/g, ' >= ')
+      .replace(/\\leq/g, ' <= ')
+      .replace(/\\neq/g, ' != ')
+      .replace(/\\to/g, ' -> ')
+      .replace(/[_^]\{([^}]*)\}/g, ' $1 ')
+      .replace(/[_^]([A-Za-z0-9])/g, ' $1 ')
       .replace(/&/g, ' ')
+      .replace(/[{}]/g, ' ')
       .replace(/\\{2,}/g, ' ')
       .replace(/\\(quad|qquad|,|;|:|!)/g, ' ')
+      .replace(/\\[A-Za-z]+/g, ' ')
+      .replace(/\s*([=+\-*/()\[\],])\s*/g, ' $1 ')
       .replace(/\s+/g, ' ')
       .trim()
 
@@ -9719,6 +9734,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return ''
     }
   }, [])
+
+  const finishQuestionSourceLatex = useMemo(() => {
+    return normalizeStepLatex(adminSteps[0]?.latex || '')
+  }, [adminSteps, normalizeStepLatex])
+
+  const finishQuestionSourcePreviewHtml = useMemo(() => {
+    return renderLatexStepInline(finishQuestionSourceLatex)
+  }, [finishQuestionSourceLatex, renderLatexStepInline])
+
+  const finishQuestionSuggestedTitle = useMemo(() => {
+    return prettyPrintTitleFromLatex(finishQuestionSourceLatex)
+  }, [finishQuestionSourceLatex, prettyPrintTitleFromLatex])
 
   const studentQuizLatexPreviewMarkup = useMemo(() => {
     if (canOrchestrateLesson) return ''
@@ -16216,71 +16243,115 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onBackdropClick={() => setFinishQuestionModalOpen(false)}
           closeDisabled={isSavingLatex}
           frameClassName="absolute inset-0 flex items-center justify-center p-3"
-          panelClassName="w-[min(560px,calc(100vw-24px))] rounded-lg"
-          contentClassName="p-0"
+          panelClassName="w-[min(720px,calc(100vw-24px))] overflow-hidden rounded-[28px] border border-white/60 bg-white/90 shadow-[0_30px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl"
+          contentClassName="overflow-hidden p-0"
         >
           <form
-            className="p-4"
+            className="relative overflow-hidden"
             onSubmit={(e) => {
               e.preventDefault()
               void confirmFinishQuestionSave()
             }}
           >
-            <div className="rounded-md border border-slate-200 bg-white p-3">
-              <label className="block text-xs font-medium text-slate-700">Title</label>
-              <input
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-                value={finishQuestionTitle}
-                onChange={(e) => setFinishQuestionTitle(e.target.value)}
-                autoFocus
-                placeholder="e.g. Solve for x"
-              />
-              {finishQuestionNoteId && (
-                <div className="mt-2 text-[11px] text-slate-500">
-                  Internal ID saved (hidden): <span className="font-mono">{finishQuestionNoteId}</span>
+            <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-cyan-200/45 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-12 -left-10 h-36 w-36 rounded-full bg-amber-200/50 blur-3xl" />
+            <div className="relative p-4 sm:p-6">
+              <div className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.93))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Question Preview</div>
+                    <div className="mt-1 text-sm text-slate-600">Readable title, typeset math, and clearer save choices.</div>
+                  </div>
+                  <div className="inline-flex items-center rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+                    {adminSteps.length} step{adminSteps.length === 1 ? '' : 's'}
+                  </div>
                 </div>
-              )}
-              <div className="mt-2 text-[11px] text-slate-500">
-                Save draft updates this solution and keeps it on the board. Save as new forks a new solution lineage from the current board. Save final stores the current solution as finished and clears the canvas for the next question.
+
+                <div className="mt-4 rounded-[20px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(240,249,255,0.95),rgba(255,255,255,0.92)_55%,rgba(248,250,252,0.96))] px-4 py-3 shadow-sm">
+                  {finishQuestionSourcePreviewHtml ? (
+                    <div
+                      className="min-h-[52px] text-base leading-relaxed text-slate-900 [&_.katex]:text-base [&_.katex-display]:my-0 [&_.katex-display]:text-left"
+                      dangerouslySetInnerHTML={{ __html: finishQuestionSourcePreviewHtml }}
+                    />
+                  ) : (
+                    <div className="min-h-[52px] text-sm text-slate-500">No rendered preview available yet.</div>
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Title</label>
+                    <input
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-200/70"
+                      value={finishQuestionTitle}
+                      onChange={(e) => setFinishQuestionTitle(e.target.value)}
+                      autoFocus
+                      placeholder="e.g. Solve for x"
+                    />
+                    <div className="mt-2 text-[11px] text-slate-500">The title is plain language. The math is preserved in the saved steps and preview.</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-[50px] items-center justify-center rounded-2xl border border-slate-200 bg-white/92 px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => setFinishQuestionTitle(finishQuestionSuggestedTitle || 'Untitled question')}
+                    disabled={isSavingLatex || !finishQuestionSuggestedTitle || finishQuestionTitle.trim() === (finishQuestionSuggestedTitle || '').trim()}
+                  >
+                    Use Suggestion
+                  </button>
+                </div>
+
+                {finishQuestionNoteId && (
+                  <div className="mt-3 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
+                    Internal ID: <span className="ml-1 font-mono text-slate-700">{finishQuestionNoteId}</span>
+                  </div>
+                )}
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    className="rounded-[22px] border border-slate-200 bg-white/84 p-4 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => { void confirmFinishQuestionDraftSave() }}
+                    disabled={isSavingLatex || !finishQuestionNoteId}
+                  >
+                    <div className="text-sm font-semibold text-slate-900">{isSavingLatex ? 'Saving…' : 'Save Draft'}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-slate-500">Update this solution and keep working on the same board state.</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,245,249,0.96))] p-4 text-left shadow-sm transition hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-md disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => { void confirmFinishQuestionForkSave() }}
+                    disabled={isSavingLatex || !finishQuestionNoteId}
+                  >
+                    <div className="text-sm font-semibold text-slate-900">{isSavingLatex ? 'Saving…' : 'Save As New'}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-slate-500">Fork a new solution lineage from the work currently on the board.</div>
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-[22px] border border-slate-900/10 bg-[linear-gradient(135deg,#0f172a,#1e293b)] p-4 text-left text-white shadow-[0_12px_30px_rgba(15,23,42,0.22)] transition hover:-translate-y-[1px] hover:shadow-[0_16px_36px_rgba(15,23,42,0.28)] disabled:transform-none disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSavingLatex || !finishQuestionNoteId}
+                  >
+                    <div className="text-sm font-semibold">{isSavingLatex ? 'Saving…' : 'Save Final'}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-slate-300">Finish this question, save it cleanly, and clear the board for the next one.</div>
+                  </button>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200/80 pt-4">
+                  <div className="text-[11px] leading-relaxed text-slate-500">
+                    Draft keeps continuity. New branches. Final closes the question.
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => setFinishQuestionModalOpen(false)}
+                    disabled={isSavingLatex}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
-            </div>
-
-            {latexSaveError && (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{latexSaveError}</div>
-            )}
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setFinishQuestionModalOpen(false)}
-                disabled={isSavingLatex}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => { void confirmFinishQuestionDraftSave() }}
-                disabled={isSavingLatex || !finishQuestionNoteId}
-              >
-                {isSavingLatex ? 'Saving…' : 'Save Draft'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => { void confirmFinishQuestionForkSave() }}
-                disabled={isSavingLatex || !finishQuestionNoteId}
-              >
-                {isSavingLatex ? 'Saving…' : 'Save As New'}
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary btn-sm"
-                disabled={isSavingLatex || !finishQuestionNoteId}
-              >
-                {isSavingLatex ? 'Saving…' : 'Save Final'}
-              </button>
+              {latexSaveError && (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-xs text-red-700 shadow-sm">{latexSaveError}</div>
+              )}
             </div>
           </form>
         </FullScreenGlassOverlay>

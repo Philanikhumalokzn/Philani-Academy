@@ -9479,7 +9479,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <span className="block text-sm font-semibold">{section.label}</span>
                       <span className="block text-xs text-white/55">{section.description}</span>
                     </span>
-                    <span className="text-white/35">></span>
+                    <span className="text-white/35">{'>'}</span>
                   </button>
                 ))}
               </div>

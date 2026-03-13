@@ -1634,6 +1634,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setMathpixLocalPointCount(null)
   }, [])
 
+  const clearMathEditorForLocalReload = useCallback(async () => {
+    const editor = editorInstanceRef.current
+    if (!editor) return
+
+    try {
+      editor.clear?.()
+    } catch {}
+
+    try {
+      if (typeof editor.waitForIdle === 'function') {
+        await editor.waitForIdle()
+      }
+    } catch {}
+
+    await nextAnimationFrame()
+  }, [])
+
   useEffect(() => {
     if (recognitionEngine !== 'mathpix') {
       clearMathpixLocalStrokes()
@@ -2622,9 +2639,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     // Load selected step ink.
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
-    try {
-      editor.clear?.()
-    } catch {}
+    await clearMathEditorForLocalReload()
 
     const stepSymbols = adminSteps[index]?.symbols
     const stepLatex = adminSteps[index]?.latex || ''
@@ -2674,7 +2689,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // Mark this step as the active edit target (so the next send overwrites it).
     setAdminEditIndex(index)
     setAdminDraftLatex(stepLatex)
-  }, [adminSteps, useAdminStepComposer])
+  }, [adminSteps, clearMathEditorForLocalReload, useAdminStepComposer])
 
   const loadStudentStepForEditing = useCallback(async (index: number) => {
     if (index < 0 || index >= studentSteps.length) return
@@ -2686,9 +2701,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setTopPanelSelectedStep(index)
 
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
-    try {
-      editor.clear?.()
-    } catch {}
+    await clearMathEditorForLocalReload()
 
     const stepSymbols = studentSteps[index]?.symbols
     const stepLatex = studentSteps[index]?.latex || ''
@@ -2737,7 +2750,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     setStudentEditIndex(index)
     setLatexOutput(stepLatex)
-  }, [studentSteps])
+  }, [clearMathEditorForLocalReload, studentSteps])
 
   const loadTopPanelStepForEditing = useCallback(async (index: number) => {
     if (useAdminStepComposer) {
@@ -2751,13 +2764,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const clearTopPanelComposerCanvas = useCallback(async () => {
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
-    try {
-      editorInstanceRef.current?.clear?.()
-    } catch {}
+    await clearMathEditorForLocalReload()
     clearMathpixLocalStrokes()
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
-  }, [clearMathpixLocalStrokes])
+  }, [clearMathEditorForLocalReload, clearMathpixLocalStrokes])
 
   const startNewTopPanelStepDraft = useCallback(async () => {
     if (!useAdminStepComposer && !useStudentStepComposer) return
@@ -11079,9 +11090,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       // Clear handwriting for next step without broadcasting a global clear.
       invalidatePendingLatexPreviewWork()
       suppressBroadcastUntilTsRef.current = Date.now() + 1200
-      try {
-        editor.clear?.()
-      } catch {}
+      await clearMathEditorForLocalReload()
       clearMathpixLocalStrokes()
       lastSymbolCountRef.current = 0
       lastBroadcastBaseCountRef.current = 0
@@ -11122,6 +11131,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     canOrchestrateLesson,
     isAssignmentSolutionAuthoring,
     clearTopPanelSelection,
+    clearMathEditorForLocalReload,
     isCurrentLineEmptyNow,
     isEditorEmptyNow,
     invalidatePendingLatexPreviewWork,

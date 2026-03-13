@@ -2484,6 +2484,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     topPanelSelectedStepRef.current = topPanelSelectedStep
   }, [topPanelSelectedStep])
+  const resyncLatexPreviewFromEditorRef = useRef<null | (() => Promise<void>)>(null)
   const [mobileTopPanelActionStepIndex, setMobileTopPanelActionStepIndex] = useState<number | null>(null)
 
   useEffect(() => {
@@ -2678,6 +2679,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     lastSymbolCountRef.current = symbolCount
     lastBroadcastBaseCountRef.current = symbolCount
 
+    await resyncLatexPreviewFromEditorRef.current?.()
+
     const recalledSnapshot = cloneSnapshotPayload({
       mode: 'math',
       symbols: Array.isArray(stepSymbols) ? stepSymbols : null,
@@ -2742,6 +2745,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const symbolCount = Array.isArray(stepSymbols) ? stepSymbols.length : 0
     lastSymbolCountRef.current = symbolCount
     lastBroadcastBaseCountRef.current = symbolCount
+
+    await resyncLatexPreviewFromEditorRef.current?.()
 
     const recalledSnapshot = cloneSnapshotPayload({
       mode: 'math',
@@ -6961,6 +6966,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setAdminDraftLatex(normalizeStepLatex(latexValue))
     }
   }, [exportLatexFromEngine, extractEditorSymbols, getLatexFromEngineModel, hasControllerRights, invalidatePendingLatexPreviewWork, normalizeStepLatex, requestMathpixLatex])
+
+  useEffect(() => {
+    resyncLatexPreviewFromEditorRef.current = resyncLatexPreviewFromEditor
+    return () => {
+      resyncLatexPreviewFromEditorRef.current = null
+    }
+  }, [resyncLatexPreviewFromEditor])
 
   // Used to safely re-initialize the iink editor when admin layout switches on mobile.
   // Learners always use the stacked layout, so we avoid coupling re-init to isCompactViewport for them.

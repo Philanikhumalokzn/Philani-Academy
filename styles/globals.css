@@ -516,6 +516,7 @@ body{
   .container-card{padding:0.75rem}
   .max-w-6xl{padding-left:1rem;padding-right:1rem}
   main{padding:1rem}
+  main.mobile-dashboard-edge{padding:0 !important}
   .btn{width:auto}
   .btn.w-full{width:100%}
   .canvas-toolbar{padding:1rem}

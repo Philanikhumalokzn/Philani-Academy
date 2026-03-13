@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
@@ -16,12 +16,12 @@ import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
+import { toDisplayFileName } from '../lib/fileName'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
-import { toDisplayFileName } from '../lib/fileName'
 import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole, type LessonRoleProfile } from '../lib/lessonAccessControl'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
@@ -132,6 +132,7 @@ type LiveWindowConfig = {
   roomIdOverride?: string
   boardIdOverride?: string
   roleProfileOverride?: LessonRoleProfile
+  isAdminOverride?: boolean
   quizMode?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpenDiagramTray?: boolean
@@ -319,7 +320,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const formatSessionRange = useCallback((start: unknown, end?: unknown) => {
     const startLabel = formatSessionDate(start)
     const endLabel = formatSessionDate(end ?? start)
-    if (startLabel && endLabel) return `${startLabel} → ${endLabel}`
+    if (startLabel && endLabel) return `${startLabel} -> ${endLabel}`
     return startLabel || endLabel
   }, [formatSessionDate])
   const router = useRouter()
@@ -1848,7 +1849,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        alert(data?.message || (Array.isArray(data?.errors) ? data.errors.join(' • ') : `Failed to save status (${res.status})`))
+        alert(data?.message || (Array.isArray(data?.errors) ? data.errors.join(' - ') : `Failed to save status (${res.status})`))
         return false
       }
       const saved = typeof data?.statusBio === 'string' ? data.statusBio.trim() : next
@@ -2641,7 +2642,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     ? (userGrade ? gradeToLabel(userGrade) : 'Unassigned')
     : 'N/A'
   const formatPhoneDisplay = (value?: string | null) => {
-    if (!value) return '—'
+    if (!value) return '-'
     if (value.startsWith('+27') && value.length === 12) return `0${value.slice(3)}`
     if (value.startsWith('27') && value.length === 11) return `0${value.slice(2)}`
     return value
@@ -3978,7 +3979,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     >
                       {(() => {
                         const g = gradeWorkspaceSelectorPreview ?? selectedGrade
-                        return g ? String(g).replace('GRADE_', '') : '—'
+                        return g ? String(g).replace('GRADE_', '') : '-'
                       })()}
                     </button>
                   </div>
@@ -3989,7 +3990,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
                     disabled={sessionsLoading || !selectedGrade}
                   >
-                    {sessionsLoading ? 'Refreshing…' : 'Refresh'}
+                    {sessionsLoading ? 'Refreshing...' : 'Refresh'}
                   </button>
                 )}
               </div>
@@ -4120,7 +4121,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         {studentFeedLoading ? (
-          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-white/70">Loading…</div>
+          <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-white/70">Loading...</div>
         ) : studentFeedError ? (
           <div className="border-b border-white/8 bg-transparent px-4 py-6 text-sm text-red-400">{studentFeedError}</div>
         ) : studentFeedPosts.length === 0 ? (
@@ -4198,7 +4199,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
 
                         <div className="mt-2 font-medium text-white break-words">{title}</div>
-                        {prompt ? <div className="mt-1 text-sm leading-relaxed text-white/72 break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '…' : ''}</div> : null}
+                        {prompt ? <div className="mt-1 text-sm leading-relaxed text-white/72 break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '-' : ''}</div> : null}
                         {imageUrl ? (
                           <div className="-mx-4 mt-3">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -6482,7 +6483,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       <div className="space-y-6">
         <div className="card space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-lg font-semibold">Live class — {activeGradeLabel}</h2>
+            <h2 className="text-lg font-semibold">Live class - {activeGradeLabel}</h2>
           </div>
           <div className="text-sm muted">{liveStatusMessage()}</div>
         </div>
@@ -6522,7 +6523,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       )}
 
       <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Grade updates — {activeGradeLabel}</h2>
+        <h2 className="text-lg font-semibold">Grade updates - {activeGradeLabel}</h2>
         {status !== 'authenticated' ? (
           <div className="text-sm muted">Please sign in to view announcements.</div>
         ) : !selectedGrade ? (
@@ -6558,7 +6559,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
                         <div className="text-xs muted">
                           {new Date(a.createdAt).toLocaleString()}
-                          {a.createdBy ? ` • ${a.createdBy}` : ''}
+                          {a.createdBy ? ` - ${a.createdBy}` : ''}
                         </div>
                       </div>
                       <div className="shrink-0 text-sm muted">
@@ -6630,7 +6631,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return (
       <div className="space-y-6">
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold text-center">Current lesson — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold text-center">Current lesson - {activeGradeLabel}</h2>
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>
           ) : sortedSessions.length === 0 ? (
@@ -6789,7 +6790,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                         <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
                           <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold">Lesson thumbnail — optional</p>
+                            <p className="text-sm font-semibold">Lesson thumbnail - optional</p>
                             <div className="flex items-center gap-2">
                               <input
                                 ref={sessionThumbnailInputRef}
@@ -6810,7 +6811,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 onClick={() => sessionThumbnailInputRef.current?.click()}
                                 disabled={sessionThumbnailUploading}
                               >
-                                {sessionThumbnailUploading ? 'Uploading…' : 'Upload'}
+                                {sessionThumbnailUploading ? 'Uploading...' : 'Upload'}
                               </button>
                               <button
                                 type="button"
@@ -6839,7 +6840,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
 
                             <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-3">
-                              <p className="text-sm font-semibold">Lesson script (5E) — optional</p>
+                              <p className="text-sm font-semibold">Lesson script (5E) - optional</p>
                               <p className="text-xs muted">Phases contain Points. Each Point can include up to 3 modules: Text, Diagram, LaTeX. Leave a module blank to omit it.</p>
 
                               {([
@@ -6914,7 +6915,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                               }}
                                               disabled={!canAuthorLessonModules || diagramUploading}
                                             >
-                                              {diagramUploading && diagramUploadTarget?.pointId === point.id ? 'Uploading…' : 'Open diagram module'}
+                                              {diagramUploading && diagramUploadTarget?.pointId === point.id ? 'Uploading...' : 'Open diagram module'}
                                             </button>
                                             <button
                                               type="button"
@@ -6969,7 +6970,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                           </div>
                                         </div>
                                         <div className="text-xs muted">
-                                          {point.latex ? `Saved: ${(point.latex || '').slice(0, 80)}${point.latex.length > 80 ? '…' : ''}` : 'No LaTeX saved to this point yet.'}
+                                          {point.latex ? `Saved: ${(point.latex || '').slice(0, 80)}${point.latex.length > 80 ? '-' : ''}` : 'No LaTeX saved to this point yet.'}
                                         </div>
                                       </div>
                                     </div>
@@ -7116,7 +7117,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         )}
 
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold text-center">Scheduled lesson — {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold text-center">Scheduled lesson - {activeGradeLabel}</h2>
           {isAdmin && (
             <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
               <div className="font-medium">Subscription gating</div>
@@ -7130,7 +7131,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <span>Require an active subscription for learners to join sessions and view assignments</span>
               </label>
               {subscriptionGatingEnabled === null && (
-                <div className="text-xs muted">Loading current setting…</div>
+                <div className="text-xs muted">Loading current setting...</div>
               )}
               {subscriptionGatingError && (
                 <div className="text-sm text-red-600">{subscriptionGatingError}</div>
@@ -7313,7 +7314,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <FullScreenGlassOverlay
               title={
                 sessionDetailsView === 'pastList'
-                  ? `Past sessions — ${activeGradeLabel}`
+                  ? `Past sessions - ${activeGradeLabel}`
                   : (sessionDetailsSession?.title || 'Session details')
               }
               subtitle={
@@ -7413,7 +7414,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }}
                             disabled={updatingSessionThumbnailBusy}
                           >
-                            {updatingSessionThumbnailBusy ? 'Updating…' : 'Upload / Update'}
+                            {updatingSessionThumbnailBusy ? 'Updating...' : 'Upload / Update'}
                           </button>
                         </div>
                       </div>
@@ -7472,7 +7473,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }}
                             disabled={assignmentsLoading}
                           >
-                            {assignmentsLoading ? 'Refreshing…' : 'Refresh'}
+                            {assignmentsLoading ? 'Refreshing...' : 'Refresh'}
                           </button>
                         )}
                       </div>
@@ -7485,7 +7486,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         })
 
                         if (assignmentsError) return <div className="text-sm text-red-600">{assignmentsError}</div>
-                        if (assignmentsLoading) return <div className="text-sm muted">Loading assignments…</div>
+                        if (assignmentsLoading) return <div className="text-sm muted">Loading assignments...</div>
                         if (sorted.length === 0) return <div className="text-sm muted">No assignments yet.</div>
 
                         return (
@@ -7508,7 +7509,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                     <div className="font-medium break-words">{a.title || 'Assignment'}</div>
                                     <div className="text-xs muted">
                                       {a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}
-                                      {typeof a?._count?.questions === 'number' ? ` • ${a._count.questions} questions` : ''}
+                                      {typeof a?._count?.questions === 'number' ? ` - ${a._count.questions} questions` : ''}
                                     </div>
                                   </button>
                                   <div className="shrink-0">
@@ -7602,7 +7603,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 disabled={assignmentImporting || !assignmentFile}
                                 onClick={() => importAssignment(expandedSessionId)}
                               >
-                                {assignmentImporting ? 'Importing…' : 'Import with Gemini'}
+                                {assignmentImporting ? 'Importing...' : 'Import with Gemini'}
                               </button>
                             </div>
                           </div>
@@ -7620,7 +7621,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             onClick={() => fetchMyResponses(expandedSessionId)}
                             disabled={myResponsesLoading}
                           >
-                            {myResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                            {myResponsesLoading ? 'Refreshing...' : 'Refresh'}
                           </button>
                         )}
                       </div>
@@ -7628,7 +7629,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {myResponsesError ? (
                         <div className="text-sm text-red-600">{myResponsesError}</div>
                       ) : myResponsesLoading ? (
-                        <div className="text-sm muted">Loading responses…</div>
+                        <div className="text-sm muted">Loading responses...</div>
                       ) : myResponses.length === 0 ? (
                         <div className="text-sm muted">No responses submitted yet.</div>
                       ) : (
@@ -7735,7 +7736,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     {selectedAssignmentError ? (
                       <div className="text-sm text-red-600">{selectedAssignmentError}</div>
                     ) : selectedAssignmentLoading ? (
-                      <div className="text-sm muted">Loading assignment…</div>
+                      <div className="text-sm muted">Loading assignment...</div>
                     ) : !selectedAssignment ? (
                       <div className="text-sm muted">No assignment selected.</div>
                     ) : (
@@ -7772,7 +7773,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                             parts.push(answered ? 'Answered' : 'Not answered')
                                             if (correctness) parts.push(correctness === 'correct' ? 'Correct' : 'Incorrect')
                                             if (typeof earned === 'number' && typeof total === 'number') parts.push(`${earned}/${total}`)
-                                            return parts.join(' • ')
+                                            return parts.join(' - ')
                                           })()}
                                         </div>
                                       ) : null}
@@ -7796,7 +7797,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   disabled={assignmentResponsesLoading}
                                   onClick={() => fetchAssignmentResponses(expandedSessionId, String(selectedAssignment.id))}
                                 >
-                                  {assignmentResponsesLoading ? 'Refreshing…' : 'Refresh'}
+                                  {assignmentResponsesLoading ? 'Refreshing...' : 'Refresh'}
                                 </button>
                                 <button
                                   type="button"
@@ -7825,7 +7826,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {assignmentGradeError ? <div className="text-sm text-red-600">{assignmentGradeError}</div> : null}
                             {assignmentSubmittedAt ? (
                               assignmentGradeLoading ? (
-                                <div className="text-sm muted">Loading grade…</div>
+                                <div className="text-sm muted">Loading grade...</div>
                               ) : assignmentGradeSummary ? (
                                 <div className="text-sm">
                                   Grade: <span className="font-medium">{assignmentGradeSummary.earnedPoints}/{assignmentGradeSummary.totalPoints}</span>{' '}
@@ -7848,7 +7849,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 disabled={adminAssignmentSubmissionsLoading}
                                 onClick={() => fetchAdminAssignmentSubmissions(expandedSessionId, String(selectedAssignment.id))}
                               >
-                                {adminAssignmentSubmissionsLoading ? 'Refreshing…' : 'Refresh'}
+                                {adminAssignmentSubmissionsLoading ? 'Refreshing...' : 'Refresh'}
                               </button>
                             </div>
 
@@ -7874,7 +7875,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                       <div className="text-xs muted">
                                         {row?.submittedAt ? new Date(row.submittedAt).toLocaleString() : ''}
                                         {row?.grade
-                                          ? ` • ${row.grade.earnedPoints}/${row.grade.totalPoints} (${Math.round(row.grade.percentage)}%)`
+                                          ? ` - ${row.grade.earnedPoints}/${row.grade.totalPoints} (${Math.round(row.grade.percentage)}%)`
                                           : ''}
                                       </div>
                                     </button>
@@ -7909,7 +7910,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               disabled={assignmentSubmitting}
                               onClick={() => submitAssignment(expandedSessionId, String(selectedAssignment.id))}
                             >
-                              {assignmentSubmitting ? 'Submitting…' : (assignmentSubmittedAt ? 'Resubmit Assignment' : 'Submit Assignment')}
+                              {assignmentSubmitting ? 'Submitting...' : (assignmentSubmittedAt ? 'Resubmit Assignment' : 'Submit Assignment')}
                             </button>
                           </div>
                         ) : null}
@@ -7984,7 +7985,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   >
                                     {assignmentMasterGradingPrompt?.trim()
                                       ? renderTextWithKatex(String(assignmentMasterGradingPrompt || ''))
-                                      : <span className="text-xs muted">Click to edit…</span>}
+                                      : <span className="text-xs muted">Click to edit...</span>}
                                   </div>
                                 )}
                                 <div>
@@ -7994,7 +7995,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                     disabled={assignmentGradingPromptSavingScope === 'assignment'}
                                     onClick={() => saveAssignmentGradingPrompt(expandedSessionId, String(selectedAssignment.id), String(assignmentMasterGradingPrompt || ''))}
                                   >
-                                    {assignmentGradingPromptSavingScope === 'assignment' ? 'Saving…' : 'Save assignment prompt'}
+                                    {assignmentGradingPromptSavingScope === 'assignment' ? 'Saving...' : 'Save assignment prompt'}
                                   </button>
                                 </div>
                               </div>
@@ -8059,7 +8060,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   >
                                     {String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? '').trim()
                                       ? renderTextWithKatex(String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] ?? ''))
-                                      : <span className="text-xs muted">Click to edit…</span>}
+                                      : <span className="text-xs muted">Click to edit...</span>}
                                   </div>
                                 )}
                                 <div className="flex flex-wrap gap-2">
@@ -8069,7 +8070,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                     disabled={assignmentSolutionMarkingPlanGeneratingQuestionId === qid}
                                     onClick={() => void generateAssignmentSolutionMarkingPlan(expandedSessionId, String(selectedAssignment.id), qid)}
                                   >
-                                    {assignmentSolutionMarkingPlanGeneratingQuestionId === qid ? 'Generating…' : 'Generate with Gemini'}
+                                    {assignmentSolutionMarkingPlanGeneratingQuestionId === qid ? 'Generating...' : 'Generate with Gemini'}
                                   </button>
                                   <button
                                     type="button"
@@ -8080,7 +8081,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                       void saveAssignmentSolutionMarkingPlan(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionMarkingPlanDraftByQuestionId?.[qid] || ''))
                                     }}
                                   >
-                                    {assignmentSolutionMarkingPlanSavingQuestionId === qid ? 'Saving…' : 'Save marking plan'}
+                                    {assignmentSolutionMarkingPlanSavingQuestionId === qid ? 'Saving...' : 'Save marking plan'}
                                   </button>
                                 </div>
                               </div>
@@ -8111,7 +8112,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   >
                                     {String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? '').trim()
                                       ? renderTextWithKatex(String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] ?? ''))
-                                      : <span className="text-xs muted">Click to edit…</span>}
+                                      : <span className="text-xs muted">Click to edit...</span>}
                                   </div>
                                 )}
                                 <div className="flex flex-wrap gap-2">
@@ -8121,7 +8122,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                     disabled={assignmentSolutionWorkedSolutionGeneratingQuestionId === qid}
                                     onClick={() => void generateAssignmentSolutionWorkedSolution(expandedSessionId, String(selectedAssignment.id), qid)}
                                   >
-                                    {assignmentSolutionWorkedSolutionGeneratingQuestionId === qid ? 'Generating…' : 'Generate worked solution'}
+                                    {assignmentSolutionWorkedSolutionGeneratingQuestionId === qid ? 'Generating...' : 'Generate worked solution'}
                                   </button>
                                   <button
                                     type="button"
@@ -8132,7 +8133,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                       void saveAssignmentSolutionWorkedSolution(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentSolutionWorkedSolutionDraftByQuestionId?.[qid] || ''))
                                     }}
                                   >
-                                    {assignmentSolutionWorkedSolutionSavingQuestionId === qid ? 'Saving…' : 'Save worked solution'}
+                                    {assignmentSolutionWorkedSolutionSavingQuestionId === qid ? 'Saving...' : 'Save worked solution'}
                                   </button>
                                 </div>
                               </div>
@@ -8163,7 +8164,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   >
                                     {String(assignmentGradingPromptByQuestionId?.[qid] || '').trim()
                                       ? renderTextWithKatex(String(assignmentGradingPromptByQuestionId?.[qid] || ''))
-                                      : <span className="text-xs muted">Click to edit…</span>}
+                                      : <span className="text-xs muted">Click to edit...</span>}
                                   </div>
                                 )}
                                 <div>
@@ -8176,7 +8177,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                       void saveQuestionGradingPrompt(expandedSessionId, String(selectedAssignment.id), qid, String(assignmentGradingPromptByQuestionId?.[qid] || ''))
                                     }}
                                   >
-                                    {assignmentGradingPromptSavingScope === `q:${qid}` ? 'Saving…' : 'Save grading prompt'}
+                                    {assignmentGradingPromptSavingScope === `q:${qid}` ? 'Saving...' : 'Save grading prompt'}
                                   </button>
                                 </div>
                               </div>
@@ -8207,7 +8208,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                                   <div className="font-semibold text-sm">Grade</div>
                                   {assignmentGradeLoading ? (
-                                    <div className="text-sm muted">Loading grade…</div>
+                                    <div className="text-sm muted">Loading grade...</div>
                                   ) : (
                                     <>
                                       {(() => {
@@ -8220,7 +8221,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                         return (
                                           <div className="text-sm">
                                             {correctness ? `Result: ${correctness}` : null}
-                                            {correctness && (typeof earned === 'number' || typeof total === 'number') ? ' • ' : null}
+                                            {correctness && (typeof earned === 'number' || typeof total === 'number') ? ' - ' : null}
                                             {typeof earned === 'number' && typeof total === 'number' ? `Marks: ${earned}/${total}` : null}
                                           </div>
                                         )
@@ -8400,16 +8401,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   meta={adminSelectedSubmissionDetail ? (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/80">
                       <span className="font-medium text-white">{user?.name || user?.email || 'Learner'}</span>
-                      {submission?.submittedAt ? <span>• {new Date(submission.submittedAt).toLocaleString()}</span> : null}
+                      {submission?.submittedAt ? <span>- {new Date(submission.submittedAt).toLocaleString()}</span> : null}
                       {typeof detail?.grade?.percentage === 'number' ? (
                         <span>
-                          • <span className="font-medium text-white">{detail.grade.earnedPoints}/{detail.grade.totalPoints}</span> ({Math.round(detail.grade.percentage)}%)
+                          - <span className="font-medium text-white">{detail.grade.earnedPoints}/{detail.grade.totalPoints}</span> ({Math.round(detail.grade.percentage)}%)
                         </span>
                       ) : null}
                     </div>
                   ) : null}
                   loading={adminSelectedSubmissionLoading}
-                  loadingText="Loading submission…"
+                  loadingText="Loading submission..."
                   emptyState={<div className="text-sm text-white/70">No submission selected.</div>}
                   questions={questions}
                   responsesByQuestionId={byQuestionId || {}}
@@ -8454,13 +8455,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {assignmentSubmittedAt ? <span>Submitted: {new Date(assignmentSubmittedAt).toLocaleString()}</span> : <span>Not submitted yet.</span>}
                       {assignmentGradeSummary ? (
                         <span>
-                          • Grade: {Math.trunc(assignmentGradeSummary.earnedPoints)}/{Math.trunc(assignmentGradeSummary.totalPoints)} ({Math.round(assignmentGradeSummary.percentage)}%)
+                          - Grade: {Math.trunc(assignmentGradeSummary.earnedPoints)}/{Math.trunc(assignmentGradeSummary.totalPoints)} ({Math.round(assignmentGradeSummary.percentage)}%)
                         </span>
                       ) : null}
                     </div>
                   }
                   loading={Boolean(assignmentResponsesLoading || assignmentGradeLoading)}
-                  loadingText="Loading…"
+                  loadingText="Loading..."
                   emptyState={<div className="text-sm text-white/70">No questions found.</div>}
                   questions={qs}
                   responsesByQuestionId={assignmentResponsesByQuestionId || {}}
@@ -8491,7 +8492,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="btn btn-ghost text-sm justify-between"
         onClick={() => setUsersFiltersOpen(v => !v)}
       >
-        Filters {usersFiltersOpen ? '▾' : '▸'}
+        Filters {usersFiltersOpen ? 'v' : '>'}
       </button>
 
       {usersFiltersOpen ? (
@@ -8570,7 +8571,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               disabled={bulkVerifyLoading || unverifiedCount === 0}
               title="Skip verification for all unverified users"
             >
-              {bulkVerifyLoading ? 'Verifying…' : 'Skip verification for all'}
+              {bulkVerifyLoading ? 'Verifying...' : 'Skip verification for all'}
             </button>
           </div>
         )
@@ -8581,7 +8582,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="btn btn-ghost text-sm justify-between"
         onClick={() => setUsersCreateOpen(v => !v)}
       >
-        Create user {usersCreateOpen ? '▾' : '▸'}
+        Create user {usersCreateOpen ? 'v' : '>'}
       </button>
 
       {usersCreateOpen ? (
@@ -8653,7 +8654,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="btn btn-ghost text-sm justify-between"
         onClick={() => setUsersListOpen(v => !v)}
       >
-        Users list {usersListOpen ? '▾' : '▸'}
+        Users list {usersListOpen ? 'v' : '>'}
       </button>
 
       {usersListOpen ? (
@@ -8712,10 +8713,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <td className="px-2 py-2 align-top text-xs text-white/60">{idx + 1}</td>
                   <td className="px-2 py-2 align-top">
                     <UserLink userId={u.id} className="font-medium hover:underline" title="View profile">
-                      {u.firstName || u.name || '—'} {u.lastName || ''}
+                      {u.firstName || u.name || '-'} {u.lastName || ''}
                     </UserLink>
                     <div className="text-xs muted">Grade: {u.grade ? gradeToLabel(u.grade) : 'Unassigned'}</div>
-                    <div className="text-xs muted">School: {u.schoolName || '—'}</div>
+                    <div className="text-xs muted">School: {u.schoolName || '-'}</div>
                   </td>
                   <td className="px-2 py-2 align-top">
                     {u.emailVerifiedAt ? (
@@ -8857,7 +8858,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   className="input"
                   value={createGroupName}
                   onChange={(e) => setCreateGroupName(e.target.value)}
-                  placeholder="e.g. Grade 12 Maths — Study Group"
+                  placeholder="e.g. Grade 12 Maths - Study Group"
                   maxLength={80}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -8881,7 +8882,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   disabled={createGroupBusy || !createGroupName.trim()}
                   onClick={createGroup}
                 >
-                  {createGroupBusy ? 'Creating…' : 'Create group'}
+                  {createGroupBusy ? 'Creating...' : 'Create group'}
                 </button>
                 <div className="text-xs muted">Students can create groups for their grade or below. Instructors/admin can create any.</div>
               </div>
@@ -8898,7 +8899,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   maxLength={16}
                 />
                 <button type="button" className="btn btn-secondary" disabled={joinBusy || !joinCode.trim()} onClick={joinGroupByCode}>
-                  {joinBusy ? 'Joining…' : 'Join'}
+                  {joinBusy ? 'Joining...' : 'Join'}
                 </button>
               </div>
             </section>
@@ -8912,7 +8913,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
 
               {myGroupsLoading ? (
-                <div className="text-sm muted">Loading…</div>
+                <div className="text-sm muted">Loading...</div>
               ) : myGroupsError ? (
                 <div className="text-sm text-red-200">{myGroupsError}</div>
               ) : myGroups.length === 0 ? (
@@ -8931,8 +8932,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <div className="font-semibold text-white break-words">{row.group.name}</div>
                           <div className="text-xs muted">
                             {row.group.type.replace('_', ' ')}
-                            {row.group.grade ? ` • ${gradeToLabel(row.group.grade as GradeValue)}` : ''}
-                            {` • ${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`}
+                            {row.group.grade ? ` - ${gradeToLabel(row.group.grade as GradeValue)}` : ''}
+                            {` - ${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`}
                           </div>
                         </div>
                         <div className="text-xs muted">{row.memberRole}</div>
@@ -8981,14 +8982,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               Copy
                             </button>
                             <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
-                              {regenerateJoinCodeBusy ? 'Regenerating…' : 'Regenerate'}
+                              {regenerateJoinCodeBusy ? 'Regenerating...' : 'Regenerate'}
                             </button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
                             <div className="text-sm muted flex-1">Join code hidden for members.</div>
                             <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
-                              {regenerateJoinCodeBusy ? 'Regenerating…' : 'Regenerate'}
+                              {regenerateJoinCodeBusy ? 'Regenerating...' : 'Regenerate'}
                             </button>
                           </div>
                         )}
@@ -9008,7 +9009,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }}
                           />
                           <button type="button" className="btn btn-secondary" disabled={inviteBusy || !inviteEmail.trim()} onClick={() => void sendSelectedGroupInvite()}>
-                            {inviteBusy ? 'Sending…' : 'Invite'}
+                            {inviteBusy ? 'Sending...' : 'Invite'}
                           </button>
                         </div>
 
@@ -9020,7 +9021,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <div className="card p-3 space-y-2">
                         <div className="text-sm font-semibold text-white">Join requests</div>
                         {notificationsLoading ? (
-                          <div className="text-sm muted">Loading…</div>
+                          <div className="text-sm muted">Loading...</div>
                         ) : pendingForGroup.length === 0 ? (
                           <div className="text-sm muted">No pending requests.</div>
                         ) : (
@@ -9062,7 +9063,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-white">Members</div>
-                  {selectedGroupLoading && <div className="text-xs muted">Loading…</div>}
+                  {selectedGroupLoading && <div className="text-xs muted">Loading...</div>}
                 </div>
                 {selectedGroupMembers.length === 0 ? (
                   <div className="text-sm muted">No members found.</div>
@@ -9116,7 +9117,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 ) : null}
                               </div>
                               <div className="text-xs muted truncate inline-flex items-center gap-1">
-                                <span className="truncate">{label}{m.user.statusBio ? ` • ${m.user.statusBio}` : ''}</span>
+                                <span className="truncate">{label}{m.user.statusBio ? ` - ${m.user.statusBio}` : ''}</span>
                                 {showRoleTick ? (
                                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -9166,7 +9167,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             learnerGradeLabel: profilePeek.grade ? gradeToLabel(profilePeek.grade as GradeValue) : '',
                             variant: 'dashboard',
                           })}
-                          {profilePeek.schoolName ? ` • ${profilePeek.schoolName}` : ''}
+                          {profilePeek.schoolName ? ` - ${profilePeek.schoolName}` : ''}
                           {profilePeek.verified ? (
                             <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -9208,13 +9209,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   disabled={discoverLoading}
                   onClick={() => void searchDiscover(discoverQuery)}
                 >
-                  {discoverLoading ? 'Searching…' : 'Search'}
+                  {discoverLoading ? 'Searching...' : 'Search'}
                 </button>
               </div>
               {discoverError && <div className="text-sm text-red-200">{discoverError}</div>}
 
               {discoverLoading && discoverResults.length === 0 ? (
-                <div className="text-sm muted">Loading recommendations…</div>
+                <div className="text-sm muted">Loading recommendations...</div>
               ) : discoverResults.length === 0 ? (
                 <div className="text-sm muted">Start typing a name, or browse recommended classmates and groupmates.</div>
               ) : (
@@ -9290,7 +9291,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 </div>
                               ) : null}
                             </div>
-                            <div className="text-xs muted truncate">{u.schoolName ? `${u.schoolName} • ` : ''}{u.statusBio || ''}</div>
+                            <div className="text-xs muted truncate">{u.schoolName ? `${u.schoolName} - ` : ''}{u.statusBio || ''}</div>
                           </div>
                         </div>
                       </UserLink>
@@ -9478,7 +9479,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <span className="block text-sm font-semibold">{section.label}</span>
                       <span className="block text-xs text-white/55">{section.description}</span>
                     </span>
-                    <span className="text-white/35">›</span>
+                    <span className="text-white/35">></span>
                   </button>
                 ))}
               </div>
@@ -9838,7 +9839,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ref={dashboardMainRef}
         className={
           isMobile
-            ? 'mobile-dashboard-theme relative text-white overflow-x-hidden min-h-[100dvh]'
+            ? 'mobile-dashboard-theme relative bg-[#f0f2f5] text-[#1c1e21] overflow-x-hidden min-h-[100dvh]'
             : 'deep-page min-h-screen pb-16'
         }
       >
@@ -9902,17 +9903,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }}
         style={{ display: 'none' }}
       />
-      {isMobile && (
-        <>
-          <div
-            className="fixed inset-0 opacity-30 scale-110"
-            style={{ backgroundImage: `url(${mobileThemeBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-            aria-hidden="true"
-          />
-          <div className="fixed inset-0 bg-gradient-to-b from-[#020b35]/40 via-[#041448]/30 to-[#031641]/45" aria-hidden="true" />
-          <div className="fixed inset-x-0 top-0 z-20 h-[280px] bg-gradient-to-b from-[#020b35]/70 via-[#041448]/35 to-transparent pointer-events-none" aria-hidden="true" />
-        </>
-      )}
       <div
         className={
           isMobile
@@ -9943,13 +9933,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               onClick={() => void fetchBooksForGrade()}
               disabled={booksLoading}
             >
-              {booksLoading ? 'Loading…' : 'Refresh'}
+              {booksLoading ? 'Loading...' : 'Refresh'}
             </button>
           }
         >
           <div className="space-y-3">
             {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
-            {booksLoading ? <div className="text-sm muted">Loading…</div> : null}
+            {booksLoading ? <div className="text-sm muted">Loading...</div> : null}
             {!booksLoading && !booksError && booksItems.length === 0 ? (
               <div className="text-sm muted">No materials available yet.</div>
             ) : null}
@@ -9985,7 +9975,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </a>
                         )}
                         <div className="text-xs muted truncate">
-                          {item.tag ? `${item.tag} • ` : ''}
+                          {item.tag ? `${item.tag} - ` : ''}
                           {gradeToLabel(item.grade)}
                         </div>
                         {offlineError ? <div className="text-xs text-amber-200 mt-1">{offlineError}</div> : null}
@@ -10007,7 +9997,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               onClick={() => void saveDocOffline(item)}
                               disabled={savingOffline}
                             >
-                              {savingOffline ? 'Saving…' : 'Save offline'}
+                              {savingOffline ? 'Saving...' : 'Save offline'}
                             </button>
                           )}
                         </div>
@@ -10139,7 +10129,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                     <textarea
                       className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none"
-                      placeholder="Write the question (LaTeX supported)… or attach a screenshot below"
+                      placeholder="Write the question (LaTeX supported)... or attach a screenshot below"
                       value={challengePromptDraft}
                       onChange={(e) => setChallengePromptDraft(e.target.value)}
                     />
@@ -10186,7 +10176,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     onClick={() => challengeUploadInputRef.current?.click()}
                     disabled={challengeUploading}
                     aria-label={challengeUploading ? 'Uploading screenshot' : 'Upload screenshot'}
-                    title={challengeUploading ? 'Uploading…' : 'Upload screenshot'}
+                    title={challengeUploading ? 'Uploading...' : 'Upload screenshot'}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path d="M4 7a2 2 0 0 1 2-2h2l1-1h6l1 1h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" strokeWidth="2" />
@@ -10344,7 +10334,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     disabled={challengePosting || challengeUploading}
                     onClick={() => void postChallenge()}
                   >
-                    {challengePosting ? (editingChallengeId ? 'Saving…' : 'Posting…') : (editingChallengeId ? 'Save' : 'Post')}
+                    {challengePosting ? (editingChallengeId ? 'Saving...' : 'Posting...') : (editingChallengeId ? 'Save' : 'Post')}
                   </button>
                 </div>
               </div>
@@ -10375,7 +10365,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               {timelineChallengesError ? (
                 <div className="text-sm text-red-400">{timelineChallengesError}</div>
               ) : timelineChallengesLoading ? (
-                <div className="text-sm text-white/70">Loading…</div>
+                <div className="text-sm text-white/70">Loading...</div>
               ) : timelineChallenges.length === 0 ? (
                 <div className="text-sm text-white/70">No quizzes yet.</div>
               ) : (
@@ -10639,7 +10629,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   onClick={() => setLessonAuthoringDiagramCloseSignal(v => v + 1)}
                   aria-label="Close diagram editor"
                 >
-                  ×
+                  x
                 </button>
               </div>
             </div>
@@ -10677,7 +10667,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-semibold text-sm">Actions</div>
                         <div className="text-xs text-white/60">
-                          {challengeDeleting ? 'Working…' : selectedChallengeData ? 'Ready' : 'Loading…'}
+                          {challengeDeleting ? 'Working...' : selectedChallengeData ? 'Ready' : 'Loading...'}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -10711,7 +10701,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           disabled={challengeSubmissionsLoading}
                           onClick={() => fetchChallengeSubmissions(selectedChallengeId)}
                         >
-                          {challengeSubmissionsLoading ? 'Refreshing…' : 'Refresh'}
+                          {challengeSubmissionsLoading ? 'Refreshing...' : 'Refresh'}
                         </button>
                       </div>
 
@@ -10727,7 +10717,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <div className="font-medium break-words">{row?.name || 'User'}</div>
                                 <div className="text-xs muted">
                                   {row?.lastSubmittedAt ? new Date(row.lastSubmittedAt).toLocaleString() : ''}
-                                  {row?.submissions ? ` • ${row.submissions} submission${row.submissions > 1 ? 's' : ''}` : ''}
+                                  {row?.submissions ? ` - ${row.submissions} submission${row.submissions > 1 ? 's' : ''}` : ''}
                                 </div>
                               </div>
                               <button
@@ -10765,7 +10755,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {selectedSubmissionError ? (
                           <div className="text-sm text-red-600">{selectedSubmissionError}</div>
                         ) : selectedSubmissionLoading ? (
-                          <div className="text-sm muted">Loading responses…</div>
+                          <div className="text-sm muted">Loading responses...</div>
                         ) : (
                           <div className="space-y-2">
                             {Array.isArray(selectedSubmissionDetail?.responses) &&
@@ -10991,7 +10981,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                             aria-label="Green tick"
                                             title="Correct"
                                           >
-                                            <span role="img" aria-hidden="true">✅</span>
+                                            <span role="img" aria-hidden="true">X</span>
                                           </button>
                                           <button
                                             type="button"
@@ -11001,7 +10991,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                             aria-label="Green dot"
                                             title="Correct (0 marks)"
                                           >
-                                            <span role="img" aria-hidden="true">🟢</span>
+                                            <span role="img" aria-hidden="true">o</span>
                                           </button>
                                           <button
                                             type="button"
@@ -11011,7 +11001,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                             aria-label="Red cross"
                                             title="Incorrect (significant)"
                                           >
-                                            <span role="img" aria-hidden="true">❌</span>
+                                            <span role="img" aria-hidden="true">X</span>
                                           </button>
                                           <button
                                             type="button"
@@ -11021,7 +11011,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                             aria-label="Red dot"
                                             title="Incorrect (insignificant)"
                                           >
-                                            <span role="img" aria-hidden="true">🔴</span>
+                                            <span role="img" aria-hidden="true">o</span>
                                           </button>
                                         </div>
 
@@ -11080,7 +11070,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               Cancel
                             </button>
                             <button type="button" className="btn btn-primary" onClick={saveChallengeGrading} disabled={challengeGradingSaving}>
-                              {challengeGradingSaving ? 'Saving…' : 'Save grading'}
+                              {challengeGradingSaving ? 'Saving...' : 'Save grading'}
                             </button>
                           </div>
                         </div>
@@ -11132,7 +11122,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="space-y-3">
               {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
               {challengeResponseLoading ? (
-                <div className="text-sm muted">Loading your feedback…</div>
+                <div className="text-sm muted">Loading your feedback...</div>
               ) : (
                 <>
                   {(() => {
@@ -11356,16 +11346,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-2">
                 <div className="text-sm text-white/80">Name</div>
                 <div className="font-semibold">
-                  {selectedUserDetail.firstName || selectedUserDetail.name || '—'} {selectedUserDetail.lastName || ''}
+                  {selectedUserDetail.firstName || selectedUserDetail.name || '-'} {selectedUserDetail.lastName || ''}
                 </div>
                 <div className="text-sm text-white/80">Email</div>
                 <div className="font-medium">{selectedUserDetail.email}</div>
                 <div className="text-sm text-white/80">Grade</div>
                 <div>{selectedUserDetail.grade ? gradeToLabel(selectedUserDetail.grade) : 'Unassigned'}</div>
                 <div className="text-sm text-white/80">School</div>
-                <div>{selectedUserDetail.schoolName || '—'}</div>
+                <div>{selectedUserDetail.schoolName || '-'}</div>
                 <div className="text-sm text-white/80">Joined</div>
-                <div>{selectedUserDetail.createdAt ? new Date(selectedUserDetail.createdAt).toLocaleString() : '—'}</div>
+                <div>{selectedUserDetail.createdAt ? new Date(selectedUserDetail.createdAt).toLocaleString() : '-'}</div>
               </div>
 
               <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
@@ -11384,7 +11374,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     onClick={() => markUserVerified(String(selectedUserDetail.id))}
                     disabled={userDetailLoading}
                   >
-                    {userDetailLoading ? 'Working…' : 'Skip verification'}
+                    {userDetailLoading ? 'Working...' : 'Skip verification'}
                   </button>
                 ) : null}
               </div>
@@ -11398,7 +11388,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   onClick={() => generateTempPassword(String(selectedUserDetail.id))}
                   disabled={userDetailLoading}
                 >
-                  {userDetailLoading ? 'Generating…' : 'Generate password'}
+                  {userDetailLoading ? 'Generating...' : 'Generate password'}
                 </button>
                 {userTempPassword ? (
                   <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm font-mono">
@@ -11450,3 +11440,4 @@ export async function getServerSideProps(context: any) {
       : /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini|IEMobile/i.test(ua)
   return { props: { session, initialIsMobile } }
 }
+

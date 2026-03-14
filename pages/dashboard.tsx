@@ -6872,119 +6872,92 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
 
+    const renderSessionFocusCard = (session: any, accentLabel = 'Live now') => {
+      const isJoinDisabled = !canLaunchCanvasOverlay || isSubscriptionBlocked
+
+      return (
+        <div className="session-focus-card rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80">
+                  {accentLabel}
+                </span>
+                {session.startsAt ? (
+                  <span className="session-focus-meta inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/62">
+                    {formatSessionRange(session.startsAt, (session as any).endsAt || session.startsAt)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="session-focus-title text-base font-semibold leading-snug break-words text-white">
+                {session.title}
+              </div>
+            </div>
+            {isAdmin && (
+              <button
+                type="button"
+                className="btn btn-secondary shrink-0"
+                onClick={() => openEditSession(String(session.id))}
+              >
+                Edit
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <button
+              type="button"
+              className="btn btn-primary w-full"
+              onClick={() => showCanvasWindow(String(session.id), { quizMode: false })}
+              disabled={isJoinDisabled}
+            >
+              Enter class
+            </button>
+            <div className="session-focus-secondary grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="btn btn-ghost session-focus-secondary-button"
+                onClick={() => openSessionDetails([String(session.id)], 0, 'responses')}
+                disabled={isJoinDisabled}
+              >
+                Quizzes
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost session-focus-secondary-button"
+                onClick={() => openSessionDetails([String(session.id)], 0, 'assignments')}
+                disabled={isSubscriptionBlocked}
+              >
+                Assignments
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="space-y-6">
-        <div className="card space-y-3">
-          <h2 className="text-lg font-semibold text-center">Current lesson - {activeGradeLabel}</h2>
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="session-focus-heading text-base font-semibold text-white">Current lesson</h2>
+              <div className="session-focus-subtitle text-xs muted">{activeGradeLabel}</div>
+            </div>
+            {resolvedCurrentLesson ? <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80">Now</span> : null}
+          </div>
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>
           ) : sortedSessions.length === 0 ? (
-            <div className="text-sm muted">No sessions scheduled for this grade yet.</div>
+            <div className="text-sm muted">No lessons scheduled yet.</div>
           ) : resolvedCurrentLesson ? (
-            <div className="p-3 border rounded space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-medium leading-snug break-words">{resolvedCurrentLesson.title}</div>
-                    {resolvedCurrentLesson.startsAt ? (
-                      <div className="text-xs muted">
-                        {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
-                      </div>
-                    ) : null}
-                  </div>
-                  {liveOverrideSessionId ? (
-                    null
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-4">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
-                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                  >
-                    Enter class
-                  </button>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => openEditSession(String(resolvedCurrentLesson.id))}
-                    >
-                      Edit
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
-                    disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                  >
-                    Quizzes
-                  </button>
-                  <button
-                    type="button"
-                    className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                    onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
-                    disabled={isSubscriptionBlocked}
-                  >
-                    Assignments
-                  </button>
-                </div>
-              </div>
-            </div>
+            renderSessionFocusCard(resolvedCurrentLesson)
           ) : currentSessions.length === 0 ? (
-            <div className="text-sm muted">No current session right now (outside all scheduled time windows).</div>
+            <div className="text-sm muted">Nothing is live right now.</div>
           ) : (
             <ul className="space-y-3">
               {currentSessions.map(s => (
-                <li key={s.id} className="p-3 border rounded">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-medium leading-snug break-words">{s.title}</div>
-                        <div className="text-xs muted">
-                          {formatSessionRange(s.startsAt, s.endsAt || s.startsAt)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-4">
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => showCanvasWindow(s.id, { quizMode: false })}
-                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                      >
-                        Enter class
-                      </button>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => openEditSession(String(s.id))}
-                        >
-                          Edit
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                        onClick={() => openSessionDetails([String(s.id)], 0, 'responses')}
-                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                      >
-                        Quizzes
-                      </button>
-                      <button
-                        type="button"
-                        className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                        onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
-                        disabled={isSubscriptionBlocked}
-                      >
-                        Assignments
-                      </button>
-                    </div>
-                  </div>
-                </li>
+                <li key={s.id}>{renderSessionFocusCard(s, 'In progress')}</li>
               ))}
             </ul>
           )}
@@ -9094,9 +9067,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return renderSessionsSection()
       case 'groups':
         return (
-          <div className="space-y-4 p-3">
-            <section className="card p-3 space-y-2">
-              <div className="text-sm font-semibold text-white">Create a group</div>
+          <div className="space-y-3 p-1">
+            <section className="group-surface-card card p-4 space-y-3">
+              <div className="group-surface-heading text-sm font-semibold text-white">New group</div>
               <div className="grid gap-2">
                 <input
                   className="input"
@@ -9122,18 +9095,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-secondary w-full sm:w-auto"
                   disabled={createGroupBusy || !createGroupName.trim()}
                   onClick={createGroup}
                 >
                   {createGroupBusy ? 'Creating...' : 'Create group'}
                 </button>
-                <div className="text-xs muted">Students can create groups for their grade or below. Instructors/admin can create any.</div>
+                <div className="group-surface-note text-xs muted">Learners can create groups for their grade or below.</div>
               </div>
             </section>
 
-            <section className="card p-3 space-y-2">
-              <div className="text-sm font-semibold text-white">Join with code</div>
+            <section className="group-surface-card card p-4 space-y-3">
+              <div className="group-surface-heading text-sm font-semibold text-white">Join group</div>
               <div className="flex items-center gap-2">
                 <input
                   className="input flex-1"
@@ -9148,9 +9121,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             </section>
 
-            <section className="card p-3 space-y-2">
+            <section className="group-surface-card card p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-white">Your groups</div>
+                <div className="group-surface-heading text-sm font-semibold text-white">Groups</div>
                 <button type="button" className="btn btn-ghost" onClick={() => void loadMyGroups()}>
                   Refresh
                 </button>
@@ -9168,7 +9141,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <button
                       key={row.group.id}
                       type="button"
-                      className={`card p-3 text-left ${selectedGroupId === row.group.id ? 'border-white/25 bg-white/10' : ''}`}
+                      className={`group-surface-item card p-3 text-left ${selectedGroupId === row.group.id ? 'group-surface-item-active' : ''}`}
                       onClick={() => void loadGroupMembers(row.group.id)}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -9189,7 +9162,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </section>
 
             {selectedGroupId && (
-              <section className="card p-3 space-y-2">
+              <section className="group-surface-card card p-4 space-y-3">
                 {(() => {
                   const myId = (session as any)?.user?.id as string | undefined
                   const membership = myGroups.find((g) => g.group.id === selectedGroupId)
@@ -9207,7 +9180,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   return (
                     <>
                       <div className="card p-3 space-y-3">
-                        <div className="text-sm font-semibold text-white">Join code</div>
+                        <div className="group-surface-heading text-sm font-semibold text-white">Code</div>
                         {selectedGroupJoinCode ? (
                           <div className="flex items-center gap-2">
                             <input className="input flex-1" value={selectedGroupJoinCode} readOnly />
@@ -9231,14 +9204,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
-                            <div className="text-sm muted flex-1">Join code hidden for members.</div>
+                            <div className="text-sm muted flex-1">Members do not see the code.</div>
                             <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
                               {regenerateJoinCodeBusy ? 'Regenerating...' : 'Regenerate'}
                             </button>
                           </div>
                         )}
 
-                        <div className="text-sm font-semibold text-white">Invite by email</div>
+                        <div className="group-surface-heading text-sm font-semibold text-white">Invite</div>
                         <div className="flex items-center gap-2">
                           <input
                             className="input flex-1"
@@ -9258,12 +9231,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
 
                         {selectedGroupAllowJoinRequests && (
-                          <div className="text-xs muted">Learners can also request to join from Discover (if your profile is discoverable).</div>
+                          <div className="group-surface-note text-xs muted">Requests can also come from Discover.</div>
                         )}
                       </div>
 
                       <div className="card p-3 space-y-2">
-                        <div className="text-sm font-semibold text-white">Join requests</div>
+                        <div className="group-surface-heading text-sm font-semibold text-white">Requests</div>
                         {notificationsLoading ? (
                           <div className="text-sm muted">Loading...</div>
                         ) : pendingForGroup.length === 0 ? (
@@ -9306,7 +9279,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 })()}
 
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-white">Members</div>
+                  <div className="group-surface-heading text-sm font-semibold text-white">Members</div>
                   {selectedGroupLoading && <div className="text-xs muted">Loading...</div>}
                 </div>
                 {selectedGroupMembers.length === 0 ? (

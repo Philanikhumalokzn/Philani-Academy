@@ -4061,7 +4061,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : null}
                     </div>
 
-                    <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -4080,48 +4080,46 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         >
                           Quizzes
                         </button>
+
+                        <button
+                          type="button"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
+                          onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
+                          disabled={isSubscriptionBlocked}
+                        >
+                          Assignments
+                        </button>
+                        {(() => {
+                          const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
+                          const canManage = sessionCanOrchestrateLessons && isOwner
+                          if (!canManage) return null
+                          return (
+                            <TaskManageMenu
+                              actions={[
+                                {
+                                  label: 'Manage assignments',
+                                  onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments'),
+                                },
+                                {
+                                  label: 'Manage quizzes',
+                                  onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses'),
+                                },
+                              ]}
+                            />
+                          )
+                        })()}
                       </div>
 
-                      <div className="ml-auto flex min-w-[170px] flex-col items-end gap-2">
-                        {resolvedCurrentLesson.startsAt ? (
+                      {resolvedCurrentLesson.startsAt ? (
+                        <div className="flex justify-end">
                           <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 text-[11px] leading-4 text-[#65676b]">
                             <span className="font-semibold text-[#4b5563]">Start:</span>
                             <span>{formatCompactLessonMoment(resolvedCurrentLesson.startsAt)}</span>
                             <span className="font-semibold text-[#4b5563]">End:</span>
                             <span>{formatCompactLessonMoment((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}</span>
                           </div>
-                        ) : null}
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
-                            onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
-                            disabled={isSubscriptionBlocked}
-                          >
-                            Assignments
-                          </button>
-                          {(() => {
-                            const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
-                            const canManage = sessionCanOrchestrateLessons && isOwner
-                            if (!canManage) return null
-                            return (
-                              <TaskManageMenu
-                                actions={[
-                                  {
-                                    label: 'Manage assignments',
-                                    onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments'),
-                                  },
-                                  {
-                                    label: 'Manage quizzes',
-                                    onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses'),
-                                  },
-                                ]}
-                              />
-                            )
-                          })()}
                         </div>
-                      </div>
+                      ) : null}
                     </div>
 
                     <div className="border-t border-black/10 pt-2 text-[#65676b]">

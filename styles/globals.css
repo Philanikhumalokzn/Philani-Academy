@@ -1643,6 +1643,61 @@ td{color:#f8fafc;}
   overflow: hidden;
 }
 
+/* Final precedence fix: light feed surfaces inside mobile dashboard tabs must override
+   the later deep-blue mobile theme rules above. */
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-stack,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-header{
+  color:#1c1e21;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .muted,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .card .muted,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .dashboard-card .muted{
+  color:#65676b !important;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .input{
+  background:#f0f2f5 !important;
+  border:1px solid rgba(15,23,42,0.12) !important;
+  color:#1c1e21 !important;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .input::placeholder{
+  color:#65676b !important;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .btn-ghost,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .btn-secondary{
+  background:#eef2f7 !important;
+  border:1px solid rgba(15,23,42,0.12) !important;
+  color:#1c1e21 !important;
+  box-shadow:none !important;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/95,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/90,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/88,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/85,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/80{
+  color:#1c1e21 !important;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/70,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/62,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/60,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/55,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/50{
+  color:#65676b !important;
+}
+
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .bg-white\/5,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .bg-white\/8,
+.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .bg-white\/10{
+  background:#f7f8fa !important;
+}
+
 .profile-avatar-container img {
   display: block;
   width: 100%;

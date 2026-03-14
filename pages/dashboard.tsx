@@ -336,6 +336,30 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }).format(dt).replace(/,/g, '')
   }, [])
 
+  const formatCompactLessonMoment = useCallback((value: unknown) => {
+    if (!value) return ''
+    const raw = value instanceof Date ? value.toISOString() : String(value)
+    const dt = value instanceof Date ? value : new Date(raw)
+    if (Number.isNaN(dt.getTime())) return ''
+
+    const datePart = new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: '2-digit',
+    }).format(dt).replace(/,/g, '')
+
+    const hasExplicitTime = value instanceof Date || /(?:T|\s)\d{1,2}:\d{2}/.test(raw)
+    if (!hasExplicitTime) return datePart
+
+    const timePart = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(dt)
+
+    return `${datePart}, ${timePart}`
+  }, [])
+
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
   const { queueRestore, discardRestore, popRestore, hasRestore } = useOverlayRestore()
@@ -4037,52 +4061,67 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : null}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1877f2] px-5 text-sm font-semibold text-white"
-                        onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
-                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                      >
-                        Enter class
-                      </button>
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1877f2] px-5 text-sm font-semibold text-white"
+                          onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
+                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                        >
+                          Enter class
+                        </button>
 
-                      <button
-                        type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
-                        onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
-                        disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                      >
-                        Quizzes
-                      </button>
+                        <button
+                          type="button"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
+                          onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
+                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                        >
+                          Quizzes
+                        </button>
+                      </div>
 
-                      <button
-                        type="button"
-                        className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
-                        onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
-                        disabled={isSubscriptionBlocked}
-                      >
-                        Assignments
-                      </button>
-                      {(() => {
-                        const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
-                        const canManage = sessionCanOrchestrateLessons && isOwner
-                        if (!canManage) return null
-                        return (
-                          <TaskManageMenu
-                            actions={[
-                              {
-                                label: 'Manage assignments',
-                                onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments'),
-                              },
-                              {
-                                label: 'Manage quizzes',
-                                onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses'),
-                              },
-                            ]}
-                          />
-                        )
-                      })()}
+                      <div className="ml-auto flex min-w-[170px] flex-col items-end gap-2">
+                        {resolvedCurrentLesson.startsAt ? (
+                          <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 text-[11px] leading-4 text-[#65676b]">
+                            <span className="font-semibold text-[#4b5563]">Start:</span>
+                            <span>{formatCompactLessonMoment(resolvedCurrentLesson.startsAt)}</span>
+                            <span className="font-semibold text-[#4b5563]">End:</span>
+                            <span>{formatCompactLessonMoment((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}</span>
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
+                            onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
+                            disabled={isSubscriptionBlocked}
+                          >
+                            Assignments
+                          </button>
+                          {(() => {
+                            const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
+                            const canManage = sessionCanOrchestrateLessons && isOwner
+                            if (!canManage) return null
+                            return (
+                              <TaskManageMenu
+                                actions={[
+                                  {
+                                    label: 'Manage assignments',
+                                    onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments'),
+                                  },
+                                  {
+                                    label: 'Manage quizzes',
+                                    onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses'),
+                                  },
+                                ]}
+                              />
+                            )
+                          })()}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="border-t border-black/10 pt-2 text-[#65676b]">
@@ -4126,18 +4165,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </div>
                     </div>
 
-                    {resolvedCurrentLesson.startsAt ? (
-                      <div className="flex justify-end">
-                        <details className="relative">
-                          <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-full border border-black/10 bg-[#f0f2f5] text-[#65676b] transition hover:bg-[#e4e6eb] [&::-webkit-details-marker]:hidden">
-                            <span className="text-sm font-semibold leading-none">i</span>
-                          </summary>
-                          <div className="absolute bottom-10 right-0 z-10 w-[220px] rounded-2xl border border-black/10 bg-white px-3 py-2 text-[12px] font-medium leading-5 text-[#334155] shadow-[0_18px_38px_rgba(15,23,42,0.16)]">
-                            {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
-                          </div>
-                        </details>
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               )}

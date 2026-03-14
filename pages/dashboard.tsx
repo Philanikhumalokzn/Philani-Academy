@@ -1067,6 +1067,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
+  const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
+  const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
+  const socialShareResetTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -1086,6 +1089,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       cancelled = true
     }
   }, [status])
+
+  useEffect(() => {
+    const cached = readLocalCache<Record<string, boolean>>('dashboard-social-liked-items-v1')
+    if (cached?.data && typeof cached.data === 'object') {
+      setSocialLikedItems(cached.data)
+    }
+  }, [])
+
+  useEffect(() => {
+    writeLocalCache('dashboard-social-liked-items-v1', socialLikedItems)
+  }, [socialLikedItems])
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return
+      if (socialShareResetTimeoutRef.current !== null) {
+        window.clearTimeout(socialShareResetTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
@@ -3826,6 +3849,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (status !== 'authenticated') return null
     if (!isRecognizedLessonParticipantRole(sessionRole)) return null
 
+    const renderSocialActionButton = (opts: {
+      label: string
+      statusLabel?: string
+      active?: boolean
+      onClick: () => void
+      icon: React.ReactNode
+      disabled?: boolean
+    }) => (
+      <button
+        type="button"
+        className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+        onClick={opts.onClick}
+        disabled={opts.disabled}
+      >
+        <span className="shrink-0">{opts.icon}</span>
+        <span>{opts.statusLabel || opts.label}</span>
+      </button>
+    )
+
     const nowMs = Date.now()
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
     const getEndMs = (s: any) => {
@@ -3855,6 +3897,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
     const lessonThumb = typeof (resolvedCurrentLesson as any)?.thumbnailUrl === 'string' ? (resolvedCurrentLesson as any).thumbnailUrl : ''
+    const currentLessonPostKey = resolvedCurrentLesson ? `lesson:${String(resolvedCurrentLesson.id)}` : ''
+    const currentLessonIsOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
+    const currentLessonAuthorName = currentLessonIsOwner ? 'You' : 'Admin'
+    const currentLessonDate = resolvedCurrentLesson
+      ? formatFeedPostDate((resolvedCurrentLesson as any)?.startsAt || (resolvedCurrentLesson as any)?.createdAt)
+      : ''
+    const currentLessonDescription = String((resolvedCurrentLesson as any)?.description || '').trim()
     const storyEntries = studentFeedPosts.reduce((acc: Array<{ key: string; name: string; avatar: string; verified: boolean }>, post: any) => {
       const authorId = String(post?.createdBy?.id || post?.createdById || post?.id || '')
       if (!authorId || acc.some(entry => entry.key === authorId)) return acc
@@ -4015,14 +4064,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   ) : null}
 
                   <div className="space-y-3 px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-medium text-[#1c1e21] break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-sm font-semibold text-white shadow-[0_10px_24px_rgba(24,119,242,0.2)]">
+                        {currentLessonAuthorName.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Live now</div>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <div className="truncate text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{currentLessonAuthorName}</div>
+                          {currentLessonDate ? <div className="text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{currentLessonDate}</div> : null}
+                        </div>
+                        <div className="text-[13px] text-[#65676b]">Current lesson</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[16px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
+                      {currentLessonDescription ? (
+                        <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{currentLessonDescription.slice(0, 220)}{currentLessonDescription.length > 220 ? '...' : ''}</div>
+                      ) : null}
                       {resolvedCurrentLesson.startsAt ? (
-                        <div className="text-xs text-[#65676b]">
+                        <div className="mt-1.5 text-[13px] font-medium text-[#65676b]">
                           {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
                         </div>
                       ) : null}
                     </div>
+
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -4070,12 +4137,53 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         )
                       })()}
                     </div>
+
+                    <div className="border-t border-black/10 pt-2 text-[#65676b]">
+                      <div className="flex items-center gap-1">
+                        {renderSocialActionButton({
+                          label: 'Like',
+                          active: Boolean(socialLikedItems[currentLessonPostKey]),
+                          onClick: () => toggleSocialLike(currentLessonPostKey),
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        })}
+                        {renderSocialActionButton({
+                          label: 'Comment',
+                          onClick: () => openLessonCommentThread(String(resolvedCurrentLesson.id)),
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        })}
+                        {renderSocialActionButton({
+                          label: 'Share',
+                          statusLabel: lastSharedSocialItemKey === currentLessonPostKey ? 'Copied' : undefined,
+                          onClick: () => shareDashboardItem({
+                            itemKey: currentLessonPostKey,
+                            title: resolvedCurrentLesson.title || 'Current lesson',
+                            text: 'Open this lesson in Philani Academy.',
+                            path: `/dashboard?section=live&lessonSessionId=${encodeURIComponent(String(resolvedCurrentLesson.id))}&lessonTab=responses`,
+                          }),
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="px-4 py-3">
+            <div className="border-t border-black/10 px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">History</div>
@@ -4157,7 +4265,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const isOwner = viewerId && p?.createdById && String(p.createdById) === String(viewerId)
                 const hasAttempted = myAttemptCount > 0
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
-                const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
+                const challengeId = p?.id ? String(p.id) : ''
+                const socialItemKey = challengeId ? `challenge:${challengeId}` : `challenge:${title}`
+                const href = challengeId ? `/challenges/${encodeURIComponent(challengeId)}` : '#'
 
                 return (
                   <li key={String(p?.id || title)} className="border-b border-black/10 bg-white px-4 py-3">
@@ -4275,26 +4385,44 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                     <div className="mt-3 border-t border-black/10 pt-2 text-[#65676b]">
                       <div className="flex items-center gap-1">
-                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em]">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                            <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          <span>Like</span>
-                        </div>
-                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em]">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          <span>Comment</span>
-                        </div>
-                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em]">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                            <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          <span>Share</span>
-                        </div>
+                        {renderSocialActionButton({
+                          label: 'Like',
+                          active: Boolean(socialLikedItems[socialItemKey]),
+                          onClick: () => toggleSocialLike(socialItemKey),
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        })}
+                        {renderSocialActionButton({
+                          label: 'Comment',
+                          onClick: () => openChallengeCommentThread(challengeId),
+                          disabled: !challengeId,
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        })}
+                        {renderSocialActionButton({
+                          label: 'Share',
+                          statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
+                          onClick: () => shareDashboardItem({
+                            itemKey: socialItemKey,
+                            title,
+                            text: prompt || title,
+                            path: href,
+                          }),
+                          disabled: !challengeId,
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        })}
                       </div>
                     </div>
                   </li>
@@ -5635,8 +5763,93 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setSessionDetailsOpen(true)
   }, [])
 
+  const toggleSocialLike = useCallback((itemKey: string) => {
+    if (!itemKey) return
+    setSocialLikedItems(prev => ({
+      ...prev,
+      [itemKey]: !prev[itemKey],
+    }))
+  }, [])
+
+  const markSocialShareHandled = useCallback((itemKey: string) => {
+    if (!itemKey) return
+    setLastSharedSocialItemKey(itemKey)
+    if (typeof window === 'undefined') return
+    if (socialShareResetTimeoutRef.current !== null) {
+      window.clearTimeout(socialShareResetTimeoutRef.current)
+    }
+    socialShareResetTimeoutRef.current = window.setTimeout(() => {
+      setLastSharedSocialItemKey(current => (current === itemKey ? null : current))
+      socialShareResetTimeoutRef.current = null
+    }, 1800)
+  }, [])
+
+  const shareDashboardItem = useCallback(async (opts: { itemKey: string; title: string; path: string; text?: string }) => {
+    const { itemKey, title, path, text } = opts
+    if (!itemKey || !path) return
+
+    const absoluteUrl = typeof window === 'undefined'
+      ? path
+      : new URL(path, window.location.origin).toString()
+
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ title, text, url: absoluteUrl })
+        markSocialShareHandled(itemKey)
+        return
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(absoluteUrl)
+        markSocialShareHandled(itemKey)
+        alert('Link copied')
+        return
+      }
+
+      if (typeof window !== 'undefined') {
+        window.prompt('Copy this link', absoluteUrl)
+        markSocialShareHandled(itemKey)
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return
+      alert(err?.message || 'Failed to share')
+    }
+  }, [markSocialShareHandled])
+
+  const openChallengeCommentThread = useCallback((challengeId: string) => {
+    if (!challengeId) return
+    void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
+  }, [router])
+
+  const openLessonCommentThread = useCallback((sessionId: string) => {
+    if (!sessionId) return
+    openSessionDetails([sessionId], 0, 'responses')
+  }, [openSessionDetails])
+
   const sessionDetailsSessionId = sessionDetailsIds[sessionDetailsIndex] || null
   const sessionDetailsSession = sessionDetailsSessionId ? sessionById.get(sessionDetailsSessionId) : null
+
+  useEffect(() => {
+    const targetLessonSessionId = typeof router.query.lessonSessionId === 'string' ? router.query.lessonSessionId : ''
+    const targetLessonTab = typeof router.query.lessonTab === 'string' && router.query.lessonTab === 'assignments'
+      ? 'assignments'
+      : 'responses'
+    if (!targetLessonSessionId) return
+
+    const alreadyOpen =
+      sessionDetailsOpen &&
+      sessionDetailsSessionId === targetLessonSessionId &&
+      sessionDetailsTab === targetLessonTab
+
+    if (!alreadyOpen) {
+      openSessionDetails([targetLessonSessionId], 0, targetLessonTab)
+    }
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.lessonSessionId
+    delete nextQuery.lessonTab
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [router, router.query, router.pathname, sessionDetailsOpen, sessionDetailsSessionId, sessionDetailsTab, openSessionDetails])
 
   useEffect(() => {
     const targetSessionId = typeof router.query.assignmentSessionId === 'string' ? router.query.assignmentSessionId : ''

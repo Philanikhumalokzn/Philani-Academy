@@ -323,6 +323,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (startLabel && endLabel) return `${startLabel} -> ${endLabel}`
     return startLabel || endLabel
   }, [formatSessionDate])
+
+  const formatFeedPostDate = useCallback((value: unknown) => {
+    if (!value) return ''
+    const dt = value instanceof Date ? value : new Date(String(value))
+    if (Number.isNaN(dt.getTime())) return ''
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: '2-digit',
+    }).format(dt).replace(/,/g, '')
+  }, [])
+
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
   const { queueRestore, discardRestore, popRestore, hasRestore } = useOverlayRestore()
@@ -4127,7 +4139,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <ul className="space-y-0">
             {studentFeedPosts.slice(0, 15).map((p: any) => {
                 const title = (p?.title || '').trim() || 'Quiz'
-                const createdAt = p?.createdAt ? new Date(p.createdAt).toLocaleString() : ''
+                const createdAt = p?.createdAt ? formatFeedPostDate(p.createdAt) : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
                 const authorId = p?.createdBy?.id ? String(p.createdBy.id) : null
                 const authorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
@@ -4177,7 +4189,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </UserLink>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <UserLink userId={authorId} className="text-sm font-semibold text-[#1c1e21] hover:underline truncate" title="View profile">
+                              <UserLink userId={authorId} className="truncate text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21] hover:underline" title="View profile">
                                 {authorName}
                               </UserLink>
                               {showAuthorNameTick ? (
@@ -4191,14 +4203,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 </span>
                               ) : null}
                             </div>
-                            {createdAt ? <div className="text-xs text-[#65676b]">{createdAt}</div> : null}
+                            {createdAt ? <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{createdAt}</div> : null}
                           </div>
                         </div>
 
-                        <div className="mt-2 font-medium text-[#1c1e21] break-words">{title}</div>
-                        {prompt ? <div className="mt-1 text-sm leading-relaxed text-[#1c1e21] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
+                        <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
+                        {prompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
                         {imageUrl ? (
-                          <div className="mt-3">
+                          <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={imageUrl}
@@ -4207,6 +4219,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             />
                           </div>
                         ) : null}
+
                       </div>
                       {p?.id ? (
                         isOwner ? (
@@ -4258,6 +4271,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         )
                       ) : null}
+                    </div>
+
+                    <div className="mt-3 border-t border-black/10 pt-2 text-[#65676b]">
+                      <div className="flex items-center gap-1">
+                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em]">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                            <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span>Like</span>
+                        </div>
+                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em]">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span>Comment</span>
+                        </div>
+                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em]">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                            <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span>Share</span>
+                        </div>
+                      </div>
                     </div>
                   </li>
                 )

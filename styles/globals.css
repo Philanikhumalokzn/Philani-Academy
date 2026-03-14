@@ -545,7 +545,7 @@ body{
 }
 .nav-link:hover::after{background:rgba(255,255,255,0.6);}
 
-.mobile-dashboard-theme{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge){
   color:#f8fafc;
 }
 
@@ -554,7 +554,7 @@ body{
   background: rgba(8,14,30,0.65);
 }
 
-.mobile-dashboard-theme .card{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .card{
   background:rgba(255,255,255,0.08);
   border:1px solid rgba(255,255,255,0.1);
   color:#f8fafc;
@@ -789,38 +789,38 @@ body{
   color:#65676b !important;
 }
 
-.mobile-dashboard-theme .card .muted,
-.mobile-dashboard-theme .muted{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .card .muted,
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .muted{
   color:rgba(226,232,255,0.75);
 }
 
-.mobile-dashboard-theme .btn-primary{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .btn-primary{
   background:linear-gradient(135deg,#4c6ef5,#1d4ed8);
   color:#f8fafc;
   box-shadow:0 12px 24px rgba(76,110,245,0.35);
 }
 
-.mobile-dashboard-theme .btn{border-radius:999px;}
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .btn{border-radius:999px;}
 .student-mobile-panels{
   overflow-y:hidden;
   touch-action:pan-x;
   overscroll-behavior-x:contain;
   overscroll-behavior-y:contain;
 }
-.mobile-dashboard-theme .input{border-radius:10px;}
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .input{border-radius:10px;}
 
-.mobile-dashboard-theme .input{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .input{
   background:rgba(255,255,255,0.12);
   border-color:rgba(255,255,255,0.2);
   color:#f8fafc;
 }
 
-.mobile-dashboard-theme .input::placeholder{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .input::placeholder{
   color:rgba(248,250,252,0.6);
 }
 
 @media (max-width: 768px) {
-  .mobile-dashboard-theme .philani-overlay-panel{
+  .mobile-dashboard-theme:not(.mobile-dashboard-edge) .philani-overlay-panel{
     width:calc(100vw - 1rem);
     max-width:calc(100vw - 1rem);
     margin-left:auto;
@@ -828,7 +828,7 @@ body{
   }
 }
 
-.mobile-dashboard-theme .dashboard-shell{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .dashboard-shell{
   background:transparent;
   border:0;
   box-shadow:none;
@@ -1592,40 +1592,40 @@ td{color:#f8fafc;}
 }
 
 /* Mobile dashboard deep-blue treatment */
-.mobile-dashboard-theme{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge){
   color:#f8fafc;
 }
 
-.mobile-dashboard-theme .card{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .card{
   background:rgba(255,255,255,0.08);
   border:1px solid rgba(255,255,255,0.1);
   color:#f8fafc;
   box-shadow:0 25px 45px rgba(2,8,32,0.45);
 }
 
-.mobile-dashboard-theme .card .muted,
-.mobile-dashboard-theme .muted{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .card .muted,
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .muted{
   color:rgba(226,232,255,0.75);
 }
 
-.mobile-dashboard-theme .btn-primary{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .btn-primary{
   background:linear-gradient(135deg,#4c6ef5,#1d4ed8);
   color:#f8fafc;
   box-shadow:0 12px 24px rgba(76,110,245,0.35);
 }
 
-.mobile-dashboard-theme .btn,
-.mobile-dashboard-theme .input{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .btn,
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .input{
   border-radius:999px;
 }
 
-.mobile-dashboard-theme .input{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .input{
   background:rgba(255,255,255,0.12);
   border-color:rgba(255,255,255,0.2);
   color:#f8fafc;
 }
 
-.mobile-dashboard-theme .input::placeholder{
+.mobile-dashboard-theme:not(.mobile-dashboard-edge) .input::placeholder{
   color:rgba(248,250,252,0.6);
 }
 
@@ -1641,61 +1641,6 @@ td{color:#f8fafc;}
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   overflow: hidden;
-}
-
-/* Final precedence fix: light feed surfaces inside mobile dashboard tabs must override
-   the later deep-blue mobile theme rules above. */
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-stack,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-header{
-  color:#1c1e21;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .muted,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .card .muted,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .dashboard-card .muted{
-  color:#65676b !important;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .input{
-  background:#f0f2f5 !important;
-  border:1px solid rgba(15,23,42,0.12) !important;
-  color:#1c1e21 !important;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .input::placeholder{
-  color:#65676b !important;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .btn-ghost,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .btn-secondary{
-  background:#eef2f7 !important;
-  border:1px solid rgba(15,23,42,0.12) !important;
-  color:#1c1e21 !important;
-  box-shadow:none !important;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/95,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/90,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/88,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/85,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/80{
-  color:#1c1e21 !important;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/70,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/62,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/60,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/55,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .text-white\/50{
-  color:#65676b !important;
-}
-
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .bg-white\/5,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .bg-white\/8,
-.mobile-dashboard-theme.mobile-dashboard-edge .student-surface-frame .bg-white\/10{
-  background:#f7f8fa !important;
 }
 
 .profile-avatar-container img {

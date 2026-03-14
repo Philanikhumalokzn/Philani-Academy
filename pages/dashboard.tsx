@@ -9587,15 +9587,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     return (
       <div className="student-surface-frame min-h-full bg-[#f0f2f5] text-[#1c1e21]">
-        <section className="student-surface-header border-b border-black/10 bg-white px-4 pb-4 pt-5">
+        <section className="student-surface-header border-b border-black/10 bg-white px-4 py-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#e7f0ff] text-[#1877f2]">
+              <div className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_10px_24px_rgba(24,119,242,0.18)]">
                 {renderStudentSurfaceIcon(id)}
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#1877f2]">{meta.eyebrow}</div>
-                <h2 className="mt-1 text-[1.65rem] font-semibold tracking-[-0.03em] text-[#111827]">{meta.title}</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div>
+                <div className="mt-1 font-semibold text-[#1c1e21]">{meta.title}</div>
                 <p className="mt-1 text-sm leading-6 text-[#65676b]">{meta.subtitle}</p>
               </div>
             </div>
@@ -10279,6 +10279,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           variant={isMobile ? 'light' : undefined}
           panelClassName={isMobile ? 'bg-[#f0f2f5]' : undefined}
           contentClassName={isMobile ? 'p-0' : undefined}
+          hideHeader={isMobile}
           rightActions={
             <button
               type="button"
@@ -10929,6 +10930,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           variant={studentQuickOverlay === 'timeline' || studentQuickOverlay === 'admin' ? undefined : 'light'}
           panelClassName={studentQuickOverlay === 'timeline' || studentQuickOverlay === 'admin' ? undefined : 'bg-[#f0f2f5]'}
           contentClassName={studentQuickOverlay === 'timeline' || studentQuickOverlay === 'admin' ? undefined : 'p-0'}
+          hideHeader={studentQuickOverlay !== 'timeline' && studentQuickOverlay !== 'admin'}
         >
           <div className="space-y-3">
             {studentQuickOverlay === 'timeline'
@@ -10962,6 +10964,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           variant="light"
           panelClassName="bg-[#f0f2f5]"
           contentClassName="p-0"
+          hideHeader
         >
           {renderStudentSurfaceSection('sessions')}
         </FullScreenGlassOverlay>

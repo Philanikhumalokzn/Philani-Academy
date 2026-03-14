@@ -3861,7 +3861,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return (
       <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
         <div className="overflow-x-auto border-b border-black/10 bg-white py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <div className="flex w-max gap-2.5">
+          <div className="flex w-max gap-2.5 px-8">
               <button
                 type="button"
                 className="flex w-[94px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[#dfe3ee] text-left"
@@ -3925,7 +3925,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           })()}
         >
             <div className="space-y-0">
-              <div className="flex items-center justify-between gap-3 px-0 pt-3">
+              <div className="flex items-center justify-between gap-3 px-8 pt-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Live now</div>
                   <div className="mt-1 font-semibold text-[#1c1e21]">Current lesson</div>
@@ -3994,7 +3994,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
 
               {!resolvedCurrentLesson ? (
-                <div className="px-0 pb-3 pt-2 text-sm text-[#65676b]">No current lesson right now.</div>
+                <div className="px-8 pb-3 pt-2 text-sm text-[#65676b]">No current lesson right now.</div>
               ) : (
                 <div className="space-y-0 overflow-hidden">
                   {lessonThumb ? (
@@ -4002,7 +4002,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <img src={lessonThumb} alt="Lesson thumbnail" className="h-52 w-full object-cover" />
                   ) : null}
 
-                  <div className="space-y-3 px-0 py-3">
+                  <div className="space-y-3 px-8 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="font-medium text-[#1c1e21] break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
                       {resolvedCurrentLesson.startsAt ? (
@@ -4063,7 +4063,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )}
             </div>
 
-            <div className="px-0 py-3">
+            <div className="px-8 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">History</div>
@@ -4088,7 +4088,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
         </section>
 
-        <section className="border-b border-black/10 bg-white px-0 py-3">
+        <section className="border-b border-black/10 bg-white px-8 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Posting</div>
@@ -4118,11 +4118,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </section>
 
         {studentFeedLoading ? (
-          <div className="border-b border-black/10 bg-white px-0 py-6 text-sm text-[#65676b]">Loading...</div>
+          <div className="border-b border-black/10 bg-white px-8 py-6 text-sm text-[#65676b]">Loading...</div>
         ) : studentFeedError ? (
-          <div className="border-b border-black/10 bg-white px-0 py-6 text-sm text-red-500">{studentFeedError}</div>
+          <div className="border-b border-black/10 bg-white px-8 py-6 text-sm text-red-500">{studentFeedError}</div>
         ) : studentFeedPosts.length === 0 ? (
-          <div className="border-b border-black/10 bg-white px-0 py-6 text-sm text-[#65676b]">No posts yet.</div>
+          <div className="border-b border-black/10 bg-white px-8 py-6 text-sm text-[#65676b]">No posts yet.</div>
         ) : (
           <ul className="space-y-0">
             {studentFeedPosts.slice(0, 15).map((p: any) => {
@@ -4148,7 +4148,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
 
                 return (
-                  <li key={String(p?.id || title)} className="border-b border-black/10 bg-white px-0 py-3">
+                  <li key={String(p?.id || title)} className="border-b border-black/10 bg-white px-8 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
@@ -9654,7 +9654,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         )}
 
         <div className="sticky top-0 z-30 bg-[rgba(2,12,44,0.98)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-0 py-2">
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-8 py-2">
               <BrandLogo height={34} className="drop-shadow-[0_16px_34px_rgba(3,5,20,0.46)]" />
               <div className="flex items-center gap-2">
                 <button
@@ -9696,7 +9696,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 border-b border-white/8 bg-transparent px-0 py-3 text-left"
+                className="flex w-full items-center gap-3 border-b border-white/8 bg-transparent px-8 py-3 text-left"
                 onClick={() => setCreateOverlayOpen(true)}
               >
                 <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">

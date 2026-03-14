@@ -4083,11 +4083,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {currentLessonDescription ? (
                         <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{currentLessonDescription.slice(0, 220)}{currentLessonDescription.length > 220 ? '...' : ''}</div>
                       ) : null}
-                      {resolvedCurrentLesson.startsAt ? (
-                        <div className="mt-1.5 text-[13px] font-medium text-[#65676b]">
-                          {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
-                        </div>
-                      ) : null}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -4178,6 +4173,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         })}
                       </div>
                     </div>
+
+                    {resolvedCurrentLesson.startsAt ? (
+                      <div className="flex justify-end">
+                        <details className="relative">
+                          <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-full border border-black/10 bg-[#f0f2f5] text-[#65676b] transition hover:bg-[#e4e6eb] [&::-webkit-details-marker]:hidden">
+                            <span className="text-sm font-semibold leading-none">i</span>
+                          </summary>
+                          <div className="absolute bottom-10 right-0 z-10 w-[220px] rounded-2xl border border-black/10 bg-white px-3 py-2 text-[12px] font-medium leading-5 text-[#334155] shadow-[0_18px_38px_rgba(15,23,42,0.16)]">
+                            {formatSessionRange(resolvedCurrentLesson.startsAt, (resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}
+                          </div>
+                        </details>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -9856,18 +9864,54 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
-  const renderMobileActivePanel = () => {
-    if (studentMobileTab === 'sessions') {
-      return <div className="pb-24">{renderSection('sessions')}</div>
-    }
-    if (studentMobileTab === 'groups') {
-      return <div className="pb-24">{renderSection('groups')}</div>
-    }
-    if (studentMobileTab === 'discover') {
-      return <div className="pb-24">{renderSection('discover')}</div>
-    }
-    return <div className="pb-24">{renderStudentTimelinePanel()}</div>
-  }
+  const renderMobileActivePanel = () => (
+    <div
+      ref={studentMobilePanelsRef}
+      onScroll={onStudentPanelsScroll}
+      className="flex w-full flex-1 overflow-x-auto snap-x snap-mandatory"
+      style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
+    >
+      <div
+        ref={el => {
+          studentMobilePanelRefs.current.timeline = el
+        }}
+        className="w-full flex-none snap-start"
+        style={{ scrollSnapStop: 'always' }}
+      >
+        <div className="pb-24">{renderStudentTimelinePanel()}</div>
+      </div>
+
+      <div
+        ref={el => {
+          studentMobilePanelRefs.current.sessions = el
+        }}
+        className="w-full flex-none snap-start"
+        style={{ scrollSnapStop: 'always' }}
+      >
+        <div className="pb-24">{renderSection('sessions')}</div>
+      </div>
+
+      <div
+        ref={el => {
+          studentMobilePanelRefs.current.groups = el
+        }}
+        className="w-full flex-none snap-start"
+        style={{ scrollSnapStop: 'always' }}
+      >
+        <div className="pb-24">{renderSection('groups')}</div>
+      </div>
+
+      <div
+        ref={el => {
+          studentMobilePanelRefs.current.discover = el
+        }}
+        className="w-full flex-none snap-start"
+        style={{ scrollSnapStop: 'always' }}
+      >
+        <div className="pb-24">{renderSection('discover')}</div>
+      </div>
+    </div>
+  )
 
   const renderMobileFeedShell = () => {
     const jumpHome = () => {
@@ -9945,65 +9989,92 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div>
+              <div className="grid grid-cols-5 border-b border-white/8">
+                <button
+                  type="button"
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  onClick={() => switchMobileTab('timeline')}
+                  aria-label="Home"
+                  title="Home"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 10.5L12 4L20 10.5V20H14.5V14.5H9.5V20H4V10.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  onClick={() => switchMobileTab('sessions')}
+                  aria-label="Sessions"
+                  title="Sessions"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.9" />
+                    <path d="M8 3V7M16 3V7M4 10H20" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'groups' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  onClick={() => switchMobileTab('groups')}
+                  aria-label="Groups"
+                  title="Groups"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M9 11C10.6569 11 12 9.65685 12 8C12 6.34315 10.6569 5 9 5C7.34315 5 6 6.34315 6 8C6 9.65685 7.34315 11 9 11Z" stroke="currentColor" strokeWidth="1.9" />
+                    <path d="M15.5 10C16.8807 10 18 8.88071 18 7.5C18 6.11929 16.8807 5 15.5 5C14.1193 5 13 6.11929 13 7.5C13 8.88071 14.1193 10 15.5 10Z" stroke="currentColor" strokeWidth="1.9" />
+                    <path d="M4.5 18C4.5 15.7909 6.29086 14 8.5 14H9.5C11.7091 14 13.5 15.7909 13.5 18" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M13 18C13 16.3431 14.3431 15 16 15H16.5C18.1569 15 19.5 16.3431 19.5 18" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  onClick={() => switchMobileTab('discover')}
+                  aria-label="Discover"
+                  title="Discover"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.9" />
+                    <path d="M14.8 9.2L13.3 13.3L9.2 14.8L10.7 10.7L14.8 9.2Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center justify-center border-b-2 border-transparent px-1 py-3 text-white/72 transition"
+                  onClick={openBooksOverlay}
+                  aria-label="Library"
+                  title="Library"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                    <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
               <button
                 type="button"
-                className="flex w-full items-center gap-3 border-b border-white/8 bg-transparent px-4 py-3 text-left"
+                className="flex w-full items-center gap-3 border-b border-white/8 bg-transparent px-4 py-2.5 text-left"
                 onClick={() => setCreateOverlayOpen(true)}
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">
                   {effectiveAvatarUrl ? (
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
                   ) : (
                     <span>{learnerInitials}</span>
                   )}
                 </span>
-                <span className="min-w-0 flex-1 text-[15px] text-white/62">
+                <span className="min-w-0 flex-1 text-[14px] text-white/62">
                   What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
                 </span>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#0f172a]">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#0f172a]">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 </span>
               </button>
-
-              <div className="grid grid-cols-5 border-b border-white/8">
-                <button
-                  type="button"
-                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
-                  onClick={() => switchMobileTab('timeline')}
-                >
-                  Home
-                </button>
-                <button
-                  type="button"
-                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
-                  onClick={() => switchMobileTab('sessions')}
-                >
-                  Sessions
-                </button>
-                <button
-                  type="button"
-                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'groups' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
-                  onClick={() => switchMobileTab('groups')}
-                >
-                  Groups
-                </button>
-                <button
-                  type="button"
-                  className={`min-w-0 border-b-2 px-1 py-3 text-center text-[13px] font-semibold transition ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
-                  onClick={() => switchMobileTab('discover')}
-                >
-                  Discover
-                </button>
-                <button
-                  type="button"
-                  className="min-w-0 border-b-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72 transition"
-                  onClick={openBooksOverlay}
-                >
-                  Library
-                </button>
-              </div>
             </div>
         </div>
 

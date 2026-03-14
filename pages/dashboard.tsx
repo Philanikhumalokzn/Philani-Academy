@@ -1150,6 +1150,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
@@ -2783,6 +2784,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const closeStudentQuickOverlay = useCallback(() => {
     setStudentQuickOverlay(null)
+  }, [])
+
+  const closeMobileMenu = useCallback(() => {
+    setMobileMenuOpen(false)
   }, [])
 
   const isPdfResource = useCallback((item: ResourceBankItem) => {
@@ -9966,7 +9971,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderStudentTimelinePanel()}</div>
+        <div className="pb-8">{renderStudentTimelinePanel()}</div>
       </div>
 
       <div
@@ -9976,7 +9981,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderStudentSurfaceSection('sessions')}</div>
+        <div className="pb-8">{renderStudentSurfaceSection('sessions')}</div>
       </div>
 
       <div
@@ -9986,7 +9991,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderStudentSurfaceSection('groups')}</div>
+        <div className="pb-8">{renderStudentSurfaceSection('groups')}</div>
       </div>
 
       <div
@@ -9996,16 +10001,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderStudentSurfaceSection('discover')}</div>
+        <div className="pb-8">{renderStudentSurfaceSection('discover')}</div>
       </div>
     </div>
   )
 
   const renderMobileFeedShell = () => {
+    const mobilePrimarySections = availableSections.filter(section =>
+      section.id === 'announcements' || section.id === 'sessions' || section.id === 'groups' || section.id === 'discover'
+    )
+    const mobileAdminSections = availableSections.filter(section =>
+      section.id === 'live' || section.id === 'users' || section.id === 'billing'
+    )
+
     const jumpHome = () => {
       closeDashboardOverlay()
       setActiveSection('overview')
       setStudentMobileTab('timeline')
+      closeMobileMenu()
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
@@ -10013,13 +10026,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
       setStudentMobileTab(tab)
+      closeMobileMenu()
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
     }
 
     return (
-      <div className="flex-1 flex flex-col pb-24 pt-0">
+      <div className="flex-1 flex flex-col pb-8 pt-0">
         {mobilePanels.announcements && (
           <FullScreenGlassOverlay
             title="Announcements"
@@ -10038,7 +10052,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div className="sticky top-0 z-30 bg-[rgba(255,255,255,0.98)] backdrop-blur-xl">
             <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-2">
-              <BrandLogo height={34} className="drop-shadow-none" />
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
+                  onClick={() => setMobileMenuOpen(true)}
+                  aria-label="Open menu"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 7H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M5 17H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <BrandLogo height={34} className="drop-shadow-none shrink-0" />
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -10149,30 +10177,161 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           {renderMobileActivePanel()}
         </div>
 
-        {status === 'authenticated' && (
-          <div className="px-0 pb-2 pt-1 flex justify-center">
-            <button
-              type="button"
-              className="bg-transparent border-0 p-2 text-sm font-semibold text-white/65 hover:text-white focus:outline-none focus-visible:underline"
-              onClick={() => signOut({ callbackUrl: '/' })}
-            >
-              Sign out
-            </button>
-          </div>
-        )}
+        {mobileMenuOpen && (
+          <FullScreenGlassOverlay
+            title="Menu"
+            onClose={closeMobileMenu}
+            onBackdropClick={closeMobileMenu}
+            zIndexClassName="z-50"
+            className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+            variant="light"
+            panelClassName="bg-[#f8fafc]"
+          >
+            <div className="mobile-menu-sheet space-y-4">
+              <section className="mobile-menu-section">
+                <button type="button" className="mobile-menu-item mobile-menu-item-active" onClick={jumpHome}>
+                  <span>
+                    <span className="mobile-menu-label">Home</span>
+                    <span className="mobile-menu-copy">Feed, live class, and class activity.</span>
+                  </span>
+                  <span className="mobile-menu-trail">Now</span>
+                </button>
+                {mobilePrimarySections.map(section => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className="mobile-menu-item"
+                    onClick={() => {
+                      if (section.id === 'sessions' || section.id === 'groups' || section.id === 'discover') {
+                        switchMobileTab(section.id as 'sessions' | 'groups' | 'discover')
+                        return
+                      }
+                      closeMobileMenu()
+                      openDashboardOverlay(section.id as OverlaySectionId)
+                    }}
+                  >
+                    <span>
+                      <span className="mobile-menu-label">{section.label}</span>
+                      <span className="mobile-menu-copy">{section.description}</span>
+                    </span>
+                    <span className="mobile-menu-trail">Open</span>
+                  </button>
+                ))}
+              </section>
 
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-[rgba(5,15,46,0.98)] pb-[max(6px,env(safe-area-inset-bottom))] backdrop-blur-xl">
-          <div className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
-              <button type="button" className={`min-w-0 border-t-2 px-1 py-3 text-center text-[13px] font-semibold ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`} onClick={jumpHome}>Home</button>
-              <button type="button" className={`min-w-0 border-t-2 px-1 py-3 text-center text-[13px] font-semibold ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`} onClick={() => switchMobileTab('sessions')}>Sessions</button>
-              <button type="button" className="min-w-0 border-t-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72" onClick={() => setCreateOverlayOpen(true)}>Create</button>
-              <button type="button" className="min-w-0 border-t-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72" onClick={openNotificationsOverlay}>Alerts</button>
-              <button type="button" className={`min-w-0 border-t-2 px-1 py-3 text-center text-[13px] font-semibold ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`} onClick={() => switchMobileTab('discover')}>Discover</button>
-              {isAdmin ? (
-                <button type="button" className="min-w-0 border-t-2 border-transparent px-1 py-3 text-center text-[13px] font-semibold text-white/72" onClick={() => openStudentQuickOverlay('admin')}>Admin</button>
-              ) : null}
-          </div>
-        </div>
+              <section className="mobile-menu-section">
+                <button
+                  type="button"
+                  className="mobile-menu-item"
+                  onClick={() => {
+                    closeMobileMenu()
+                    openBooksOverlay()
+                  }}
+                >
+                  <span>
+                    <span className="mobile-menu-label">Library</span>
+                    <span className="mobile-menu-copy">Books and shared materials.</span>
+                  </span>
+                  <span className="mobile-menu-trail">Open</span>
+                </button>
+                <button
+                  type="button"
+                  className="mobile-menu-item"
+                  onClick={() => {
+                    closeMobileMenu()
+                    setCreateOverlayOpen(true)
+                  }}
+                >
+                  <span>
+                    <span className="mobile-menu-label">Create</span>
+                    <span className="mobile-menu-copy">Start a post, task, or lesson action.</span>
+                  </span>
+                  <span className="mobile-menu-trail">New</span>
+                </button>
+                <button
+                  type="button"
+                  className="mobile-menu-item"
+                  onClick={() => {
+                    closeMobileMenu()
+                    openNotificationsOverlay()
+                  }}
+                >
+                  <span>
+                    <span className="mobile-menu-label">Alerts</span>
+                    <span className="mobile-menu-copy">Notifications and updates.</span>
+                  </span>
+                  <span className="mobile-menu-trail">{unreadNotificationsCount > 0 ? (unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount) : 'Open'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="mobile-menu-item"
+                  onClick={() => {
+                    closeMobileMenu()
+                    void router.push('/profile')
+                  }}
+                >
+                  <span>
+                    <span className="mobile-menu-label">Profile</span>
+                    <span className="mobile-menu-copy">Your account and public profile.</span>
+                  </span>
+                  <span className="mobile-menu-trail">Open</span>
+                </button>
+                {isAdmin && mobileAdminSections.map(section => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className="mobile-menu-item"
+                    onClick={() => {
+                      closeMobileMenu()
+                      openDashboardOverlay(section.id as OverlaySectionId)
+                    }}
+                  >
+                    <span>
+                      <span className="mobile-menu-label">{section.label}</span>
+                      <span className="mobile-menu-copy">{section.description}</span>
+                    </span>
+                    <span className="mobile-menu-trail">Open</span>
+                  </button>
+                ))}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="mobile-menu-item"
+                    onClick={() => {
+                      closeMobileMenu()
+                      void router.push('/resource-bank')
+                    }}
+                  >
+                    <span>
+                      <span className="mobile-menu-label">Resource Bank</span>
+                      <span className="mobile-menu-copy">Shared uploads and materials.</span>
+                    </span>
+                    <span className="mobile-menu-trail">Open</span>
+                  </button>
+                )}
+              </section>
+
+              {status === 'authenticated' && (
+                <section className="mobile-menu-section">
+                  <button
+                    type="button"
+                    className="mobile-menu-item mobile-menu-item-danger"
+                    onClick={() => {
+                      closeMobileMenu()
+                      void signOut({ callbackUrl: '/' })
+                    }}
+                  >
+                    <span>
+                      <span className="mobile-menu-label">Sign out</span>
+                      <span className="mobile-menu-copy">Leave this workspace.</span>
+                    </span>
+                    <span className="mobile-menu-trail">Exit</span>
+                  </button>
+                </section>
+              )}
+            </div>
+          </FullScreenGlassOverlay>
+        )}
       </div>
     )
   }

@@ -658,7 +658,7 @@ body{
 .mobile-dashboard-edge .student-surface-stack > .dashboard-card{
   margin:0 !important;
   padding:0.9rem 1rem !important;
-  background:transparent !important;
+  background:#ffffff !important;
   border:0 !important;
   border-bottom:2px solid rgba(17,24,39,0.08) !important;
   border-radius:0 !important;
@@ -689,7 +689,7 @@ body{
 .mobile-dashboard-edge .student-surface-frame .space-y-2 > section,
 .mobile-dashboard-edge .student-surface-frame .space-y-3 > section,
 .mobile-dashboard-edge .student-surface-frame .space-y-4 > section{
-  background:#ffffff !important;
+  background:#f7f8fa !important;
   border:1px solid rgba(15,23,42,0.08) !important;
   border-radius:18px !important;
   box-shadow:0 1px 2px rgba(15,23,42,0.04) !important;
@@ -702,7 +702,7 @@ body{
 .mobile-dashboard-edge .student-surface-frame .space-y-3 > .rounded-xl,
 .mobile-dashboard-edge .student-surface-frame .space-y-4 > .rounded-2xl,
 .mobile-dashboard-edge .student-surface-frame .space-y-4 > .rounded-xl{
-  background:#ffffff !important;
+  background:#f7f8fa !important;
   border:1px solid rgba(15,23,42,0.08) !important;
   box-shadow:0 1px 2px rgba(15,23,42,0.04) !important;
 }
@@ -711,14 +711,25 @@ body{
 .mobile-dashboard-edge .student-surface-frame .rounded-xl.border,
 .mobile-dashboard-edge .student-surface-frame .rounded-lg.border,
 .mobile-dashboard-edge .student-surface-frame .rounded-md.border{
-  background:#ffffff !important;
+  background:#f7f8fa !important;
+}
+
+.mobile-dashboard-edge .student-surface-frame .border.rounded,
+.mobile-dashboard-edge .student-surface-frame .border.rounded-xl,
+.mobile-dashboard-edge .student-surface-frame .border.rounded-2xl,
+.mobile-dashboard-edge .student-surface-frame .border.rounded-lg,
+.mobile-dashboard-edge .student-surface-frame .border.rounded-md,
+.mobile-dashboard-edge .student-surface-frame li.border,
+.mobile-dashboard-edge .student-surface-frame li[class*='border rounded']{
+  background:#f7f8fa !important;
+  border-color:rgba(15,23,42,0.08) !important;
 }
 
 .mobile-dashboard-edge .student-surface-frame .grid > .card:hover,
 .mobile-dashboard-edge .student-surface-frame .space-y-2 > .card:hover,
 .mobile-dashboard-edge .student-surface-frame .space-y-3 > .card:hover,
 .mobile-dashboard-edge .student-surface-frame .space-y-4 > .card:hover{
-  background:#fbfcfe !important;
+  background:#eef2f7 !important;
 }
 
 .mobile-dashboard-edge .student-surface-frame .border-white\/10,
@@ -734,7 +745,7 @@ body{
 .mobile-dashboard-edge .student-surface-frame .bg-white\/5,
 .mobile-dashboard-edge .student-surface-frame .bg-white\/8,
 .mobile-dashboard-edge .student-surface-frame .bg-white\/10{
-  background:#eef2f7 !important;
+  background:#f7f8fa !important;
 }
 
 .mobile-dashboard-edge .student-surface-frame .text-white,

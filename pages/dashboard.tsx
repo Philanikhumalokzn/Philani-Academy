@@ -4035,8 +4035,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               ) : (
                 <div className="space-y-0 overflow-hidden">
                   {lessonThumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={lessonThumb} alt="Lesson thumbnail" className="h-52 w-full object-cover" />
+                    <button
+                      type="button"
+                      className="block w-full text-left disabled:cursor-not-allowed"
+                      onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
+                      disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                      aria-label={`Enter class for ${resolvedCurrentLesson.title || 'current lesson'}`}
+                      title={canLaunchCanvasOverlay && !isSubscriptionBlocked ? 'Enter class' : undefined}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={lessonThumb} alt="Lesson thumbnail" className="h-52 w-full object-cover" />
+                    </button>
                   ) : null}
 
                   <div className="space-y-3 px-4 py-3">

@@ -4156,29 +4156,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
         </section>
 
-        <section className="border-b border-black/10 bg-white px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Posting</div>
-              <div className="mt-1 font-semibold text-[#1c1e21]">Your challenges</div>
-              <div className="mt-1 text-sm text-[#65676b]">Open your posts menu to create, review, and manage your challenges.</div>
-            </div>
-            <button
-              type="button"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-[#f0f2f5] text-[#1c1e21]"
-              aria-label="Open posts menu"
-              title="Posts menu"
-              onClick={() => setPostToolsSheetOpen(true)}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </section>
-
         {studentFeedLoading ? (
           <div className="border-b border-black/10 bg-white px-4 py-6 text-sm text-[#65676b]">Loading...</div>
         ) : studentFeedError ? (
@@ -9988,27 +9965,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
               </div>
 
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 border-b border-white/8 bg-transparent px-4 py-2.5 text-left"
-                onClick={() => setCreateOverlayOpen(true)}
-              >
-                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">
-                  {effectiveAvatarUrl ? (
-                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span>{learnerInitials}</span>
-                  )}
-                </span>
-                <span className="min-w-0 flex-1 text-[14px] text-white/62">
-                  What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
-                </span>
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#0f172a]">
+              <div className="flex items-center gap-3 border-b border-white/8 bg-transparent px-4 py-2.5">
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  onClick={() => setCreateOverlayOpen(true)}
+                >
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">
+                    {effectiveAvatarUrl ? (
+                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{learnerInitials}</span>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 text-[14px] text-white/62">
+                    What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 text-white"
+                  onClick={() => setPostToolsSheetOpen(true)}
+                  aria-label="Open posts menu"
+                  title="Posts menu"
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
-                </span>
-              </button>
+                </button>
+              </div>
             </div>
         </div>
 

@@ -12,6 +12,7 @@ import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverl
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
+import BottomSheet from '../components/BottomSheet'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -1029,6 +1030,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [assignmentSolutionWorkedSolutionGeneratingQuestionId, setAssignmentSolutionWorkedSolutionGeneratingQuestionId] = useState<string | null>(null)
 
   const [timelineOpen, setTimelineOpen] = useState(false)
+  const [postToolsSheetOpen, setPostToolsSheetOpen] = useState(false)
   const [timelineChallenges, setTimelineChallenges] = useState<any[]>([])
   const [timelineChallengesLoading, setTimelineChallengesLoading] = useState(false)
   const [timelineChallengesError, setTimelineChallengesError] = useState<string | null>(null)
@@ -3904,71 +3906,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       ? formatFeedPostDate((resolvedCurrentLesson as any)?.startsAt || (resolvedCurrentLesson as any)?.createdAt)
       : ''
     const currentLessonDescription = String((resolvedCurrentLesson as any)?.description || '').trim()
-    const storyEntries = studentFeedPosts.reduce((acc: Array<{ key: string; name: string; avatar: string; verified: boolean }>, post: any) => {
-      const authorId = String(post?.createdBy?.id || post?.createdById || post?.id || '')
-      if (!authorId || acc.some(entry => entry.key === authorId)) return acc
-      const authorName = String(post?.createdBy?.name || 'Learner').trim() || 'Learner'
-      const authorAvatar = typeof post?.createdBy?.avatar === 'string' ? post.createdBy.avatar.trim() : ''
-      const authorRole = String(post?.createdBy?.role || '').toLowerCase()
-      acc.push({
-        key: authorId,
-        name: authorName,
-        avatar: authorAvatar,
-        verified: hasLessonCapabilityForRole(authorRole, 'canOrchestrateLesson'),
-      })
-      return acc
-    }, []).slice(0, 8)
 
     return (
       <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
-        <div className="overflow-x-auto border-b border-black/10 bg-white py-3" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <div className="flex w-max gap-2.5 px-4">
-              <button
-                type="button"
-                className="flex w-[94px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[#dfe3ee] text-left"
-                onClick={openCreateChallengeComposer}
-              >
-                <div className="relative h-[122px] bg-[linear-gradient(180deg,#60a5fa,#1877f2)]">
-                  {effectiveAvatarUrl ? (
-                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover opacity-80" />
-                  ) : null}
-                  <span className="absolute bottom-3 left-1/2 inline-flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border-4 border-white bg-[#1877f2] text-white shadow-[0_10px_24px_rgba(24,119,242,0.28)]">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-                    </svg>
-                  </span>
-                </div>
-                <div className="px-2 pb-3 pt-6 text-center text-xs font-semibold text-[#1c1e21]">Create</div>
-              </button>
-
-              {storyEntries.map((story) => (
-                <button
-                  key={story.key}
-                  type="button"
-                  className="relative flex h-[168px] w-[106px] shrink-0 overflow-hidden rounded-2xl bg-[#dfe3ee] text-left"
-                  onClick={() => openStudentQuickOverlay('discover')}
-                >
-                  {story.avatar ? (
-                    <img src={story.avatar} alt={story.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,#93c5fd,#1877f2)] text-3xl font-semibold text-white">
-                      {story.name.slice(0, 1).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.04),rgba(15,23,42,0.6))]" />
-                  <div className="absolute left-2 top-2 inline-flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#1877f2] bg-white">
-                    {story.avatar ? (
-                      <img src={story.avatar} alt={story.name} className="h-full w-full rounded-full object-cover" />
-                    ) : (
-                      <span className="text-sm font-semibold text-[#1877f2]">{story.name.slice(0, 1).toUpperCase()}</span>
-                    )}
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 p-2 text-xs font-semibold leading-tight text-white">{story.name}</div>
-                </button>
-              ))}
-          </div>
-        </div>
-
         <section
           ref={currentLessonCardRef}
           className="overflow-hidden border-b border-black/10 bg-white"
@@ -4221,27 +4161,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Posting</div>
               <div className="mt-1 font-semibold text-[#1c1e21]">Your challenges</div>
+              <div className="mt-1 text-sm text-[#65676b]">Open your posts menu to create, review, and manage your challenges.</div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-xs font-semibold text-[#1c1e21]"
-                onClick={() => setTimelineOpen(true)}
-              >
-                My posts
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] text-[#1c1e21]"
-                aria-label="Upload screenshot"
-                onClick={openCreateChallengeScreenshotPicker}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path d="M4 7.5C4 6.11929 5.11929 5 6.5 5H8.5L9.2 3.6C9.538 2.924 10.229 2.5 10.985 2.5H13.015C13.771 2.5 14.462 2.924 14.8 3.6L15.5 5H17.5C18.8807 5 20 6.11929 20 7.5V18.5C20 19.8807 18.8807 21 17.5 21H6.5C5.11929 21 4 19.8807 4 18.5V7.5Z" stroke="currentColor" strokeWidth="1.6" />
-                  <path d="M12 17.5C14.2091 17.5 16 15.7091 16 13.5C16 11.2909 14.2091 9.5 12 9.5C9.79086 9.5 8 11.2909 8 13.5C8 15.7091 9.79086 17.5 12 17.5Z" stroke="currentColor" strokeWidth="1.6" />
-                </svg>
-              </button>
-            </div>
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-[#f0f2f5] text-[#1c1e21]"
+              aria-label="Open posts menu"
+              title="Posts menu"
+              onClick={() => setPostToolsSheetOpen(true)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         </section>
 
@@ -10629,6 +10563,82 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         onConfirm={(file: File) => void confirmChallengeImageEdit(file)}
         confirmLabel="Upload"
       />
+
+      {postToolsSheetOpen && (
+        <BottomSheet
+          open
+          backdrop
+          title="Your posts"
+          subtitle="Create and manage your challenge posts"
+          onClose={() => setPostToolsSheetOpen(false)}
+          className="rounded-2xl"
+          style={{ bottom: 80 }}
+        >
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
+              onClick={() => {
+                setPostToolsSheetOpen(false)
+                setTimelineOpen(true)
+              }}
+            >
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">My posts</span>
+                <span className="block text-xs text-slate-500">Open your full post manager, including edit and delete tools.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
+              onClick={() => {
+                setPostToolsSheetOpen(false)
+                openCreateChallengeComposer()
+              }}
+            >
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">Create post</span>
+                <span className="block text-xs text-slate-500">Start a new challenge from text.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
+              onClick={() => {
+                setPostToolsSheetOpen(false)
+                openCreateChallengeScreenshotPicker()
+              }}
+            >
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">Post from screenshot</span>
+                <span className="block text-xs text-slate-500">Upload a screenshot and turn it into a challenge.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+
+            {(challengeTitleDraft.trim() || challengePromptDraft.trim() || challengeImageUrl) ? (
+              <button
+                type="button"
+                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
+                onClick={() => {
+                  setPostToolsSheetOpen(false)
+                  setCreateOverlayOpen(true)
+                }}
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-slate-900">{editingChallengeId ? 'Continue editing' : 'Continue draft'}</span>
+                  <span className="block text-xs text-slate-500">Resume the challenge composer with your current content.</span>
+                </span>
+                <span className="text-slate-400">{'>'}</span>
+              </button>
+            ) : null}
+          </div>
+        </BottomSheet>
+      )}
 
       {timelineOpen && (
         <OverlayPortal>

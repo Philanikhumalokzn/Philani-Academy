@@ -3945,6 +3945,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     return (
       <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
+        <section className="border-b border-black/10 bg-white px-4 py-2.5">
+          <div className="flex items-center gap-3 bg-transparent">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-sm font-semibold text-[#1c1e21]">
+              {effectiveAvatarUrl ? (
+                <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+              ) : (
+                <span>{learnerInitials}</span>
+              )}
+            </span>
+            <div className="flex min-w-0 flex-1 items-center rounded-full border border-black/10 bg-[#f8fafc] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+              <button
+                type="button"
+                className="min-w-0 flex-1 py-2 text-left text-[14px] text-[#65676b]"
+                onClick={() => setCreateOverlayOpen(true)}
+              >
+                What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
+              </button>
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
+              onClick={() => setPostToolsSheetOpen(true)}
+              aria-label="Open posts menu"
+              title="Posts menu"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </section>
+
         <section
           ref={currentLessonCardRef}
           className="overflow-hidden border-b border-black/10 bg-white"
@@ -10011,13 +10045,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </FullScreenGlassOverlay>
         )}
 
-        <div className="sticky top-0 z-30 bg-[rgba(2,12,44,0.98)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-2">
-              <BrandLogo height={34} className="drop-shadow-[0_16px_34px_rgba(3,5,20,0.46)]" />
+        <div className="sticky top-0 z-30 bg-[rgba(255,255,255,0.98)] backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-2">
+              <BrandLogo height={34} className="drop-shadow-none" />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-transparent text-white/88"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
                   onClick={() => openStudentQuickOverlay('discover')}
                   aria-label="Search and discover"
                 >
@@ -10028,7 +10062,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-transparent text-white/88"
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
                   onClick={openNotificationsOverlay}
                   aria-label="Notifications"
                 >
@@ -10041,21 +10075,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </span>
                   )}
                 </button>
-                <Link href="/profile" className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-transparent">
+                <Link href="/profile" className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f8fafc]">
                   {effectiveAvatarUrl ? (
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-sm font-semibold text-white">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                    <span className="text-sm font-semibold text-[#1c1e21]">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
                   )}
                 </Link>
               </div>
             </div>
 
             <div>
-              <div className="grid grid-cols-5 border-b border-white/8">
+              <div className="grid grid-cols-5 border-b border-black/10 bg-white">
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
                   onClick={() => switchMobileTab('timeline')}
                   aria-label="Home"
                   title="Home"
@@ -10066,7 +10100,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
                   onClick={() => switchMobileTab('sessions')}
                   aria-label="Sessions"
                   title="Sessions"
@@ -10078,7 +10112,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'groups' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'groups' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
                   onClick={() => switchMobileTab('groups')}
                   aria-label="Groups"
                   title="Groups"
@@ -10092,7 +10126,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-white' : 'border-transparent text-white/72'}`}
+                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
                   onClick={() => switchMobileTab('discover')}
                   aria-label="Discover"
                   title="Discover"
@@ -10104,7 +10138,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className="flex min-w-0 items-center justify-center border-b-2 border-transparent px-1 py-3 text-white/72 transition"
+                  className="flex min-w-0 items-center justify-center border-b-2 border-transparent px-1 py-3 text-[#65676b] transition"
                   onClick={openBooksOverlay}
                   aria-label="Library"
                   title="Library"
@@ -10117,37 +10151,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
               </div>
 
-              <div className="flex items-center gap-3 border-b border-white/8 bg-transparent px-4 py-2.5">
-                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/8 text-sm font-semibold text-white">
-                  {effectiveAvatarUrl ? (
-                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span>{learnerInitials}</span>
-                  )}
-                </span>
-                <div className="flex min-w-0 flex-1 items-center rounded-full border border-white/12 bg-white/8 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 py-2 text-left text-[14px] text-white/62"
-                    onClick={() => setCreateOverlayOpen(true)}
-                  >
-                    What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 text-white"
-                  onClick={() => setPostToolsSheetOpen(true)}
-                  aria-label="Open posts menu"
-                  title="Posts menu"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
             </div>
         </div>
 

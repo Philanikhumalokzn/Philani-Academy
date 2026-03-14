@@ -10051,7 +10051,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         )}
 
         <div className="sticky top-0 z-30 bg-[rgba(255,255,255,0.98)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-2">
+          <div className="mobile-safe-header-row flex items-center justify-between gap-3 border-b border-black/10 px-4 py-2">
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
@@ -10187,7 +10187,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             variant="light"
             panelClassName="bg-[#f8fafc]"
           >
-            <div className="mobile-menu-sheet space-y-4">
+            <div className="mobile-menu-sheet mobile-safe-menu space-y-4">
               <section className="mobile-menu-section">
                 <button type="button" className="mobile-menu-item mobile-menu-item-active" onClick={jumpHome}>
                   <span>

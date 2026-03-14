@@ -911,6 +911,14 @@ body{
   color:#1c1e21;
 }
 
+.mobile-dashboard-edge .mobile-safe-header-row{
+  padding-top:calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 0.5rem);
+}
+
+.mobile-dashboard-edge .mobile-safe-menu{
+  padding-top:max(0.25rem, calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) * 0.35));
+}
+
 .mobile-dashboard-edge .mobile-menu-section{
   display:grid;
   gap:0.75rem;

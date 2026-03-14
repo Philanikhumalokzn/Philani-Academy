@@ -264,6 +264,10 @@ body{
 .btn-secondary:hover{background:rgba(255,255,255,0.18);}
 .btn:disabled,.btn-secondary:disabled,.btn-primary:disabled{opacity:0.5;cursor:not-allowed;}
 
+.border-b.border-black\/10 {
+  border-bottom-width: 2px;
+}
+
 /* Inputs */
 .input{
   width:100%;

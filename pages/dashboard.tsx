@@ -348,6 +348,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [pullRefreshActive, setPullRefreshActive] = useState(false)
   const [pullRefreshLoading, setPullRefreshLoading] = useState(false)
   const currentLessonCardRef = useRef<HTMLDivElement | null>(null)
+  const currentLessonCardContentRef = useRef<HTMLDivElement | null>(null)
   const [currentLessonCardNaturalHeight, setCurrentLessonCardNaturalHeight] = useState(0)
   const currentLessonCardNaturalHeightRef = useRef(0)
   const [currentLessonCardCollapsePx, setCurrentLessonCardCollapsePx] = useState(0)
@@ -370,11 +371,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (typeof window === 'undefined') return
 
     const measure = () => {
-      const el = currentLessonCardRef.current
+      const el = currentLessonCardContentRef.current
       if (!el) return
       const h = el.getBoundingClientRect().height
       if (!Number.isFinite(h) || h <= 0) return
-      const next = Math.max(currentLessonCardNaturalHeightRef.current || 0, Math.round(h))
+      const next = Math.round(h)
       if (next !== currentLessonCardNaturalHeightRef.current) {
         currentLessonCardNaturalHeightRef.current = next
         setCurrentLessonCardNaturalHeight(next)
@@ -387,8 +388,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     window.requestAnimationFrame(measure)
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          window.requestAnimationFrame(measure)
+        })
+      : null
+    if (resizeObserver && currentLessonCardContentRef.current) {
+      resizeObserver.observe(currentLessonCardContentRef.current)
+    }
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      resizeObserver?.disconnect()
+    }
   }, [])
 
   useEffect(() => {
@@ -3925,7 +3937,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             } as React.CSSProperties
           })()}
         >
-            <div className="space-y-0">
+            <div ref={currentLessonCardContentRef} className="space-y-0">
               <div className="flex items-center justify-between gap-3 px-4 pt-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Live now</div>

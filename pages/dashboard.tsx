@@ -9973,7 +9973,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <span>{learnerInitials}</span>
                   )}
                 </span>
-                <div className="flex min-w-0 flex-1 items-center rounded-full border border-white/12 bg-white/8 pl-4 pr-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="flex min-w-0 flex-1 items-center rounded-full border border-white/12 bg-white/8 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                   <button
                     type="button"
                     className="min-w-0 flex-1 py-2 text-left text-[14px] text-white/62"
@@ -9981,20 +9981,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   >
                     What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
                   </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0f172a]"
-                    onClick={() => setPostToolsSheetOpen(true)}
-                    aria-label="Open posts menu"
-                    title="Posts menu"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 text-white"
+                  onClick={() => setPostToolsSheetOpen(true)}
+                  aria-label="Open posts menu"
+                  title="Posts menu"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
               </div>
             </div>
         </div>

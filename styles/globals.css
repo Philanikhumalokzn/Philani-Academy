@@ -617,6 +617,71 @@ body{
   color:#65676b;
 }
 
+.mobile-dashboard-edge .student-surface-frame{
+  background:#f0f2f5;
+  color:#1c1e21;
+}
+
+.mobile-dashboard-edge .student-surface-header{
+  border-bottom-width:2px;
+}
+
+.mobile-dashboard-edge .student-surface-stack > * + *{
+  margin-top:0 !important;
+}
+
+.mobile-dashboard-edge .student-surface-stack > .card,
+.mobile-dashboard-edge .student-surface-stack > .dashboard-card,
+.mobile-dashboard-edge .student-surface-stack > section,
+.mobile-dashboard-edge .student-surface-stack > div{
+  border-bottom:2px solid rgba(17,24,39,0.08);
+  background:#ffffff;
+}
+
+.mobile-dashboard-edge .student-surface-stack > *:last-child{
+  border-bottom:0;
+}
+
+.mobile-dashboard-edge .student-surface-frame .border-white\/10,
+.mobile-dashboard-edge .student-surface-frame .border-white\/15,
+.mobile-dashboard-edge .student-surface-frame .border-white\/20,
+.mobile-dashboard-edge .student-surface-frame .border-white\/25,
+.mobile-dashboard-edge .student-surface-frame .border-white\/30,
+.mobile-dashboard-edge .student-surface-frame .border-white\/50,
+.mobile-dashboard-edge .student-surface-frame .divide-white\/10 > :not([hidden]) ~ :not([hidden]){
+  border-color:rgba(15,23,42,0.1) !important;
+}
+
+.mobile-dashboard-edge .student-surface-frame .bg-white\/5,
+.mobile-dashboard-edge .student-surface-frame .bg-white\/8,
+.mobile-dashboard-edge .student-surface-frame .bg-white\/10{
+  background:#f7f8fa !important;
+}
+
+.mobile-dashboard-edge .student-surface-frame .text-white,
+.mobile-dashboard-edge .student-surface-frame .text-white\/85,
+.mobile-dashboard-edge .student-surface-frame .text-white\/88,
+.mobile-dashboard-edge .student-surface-frame .text-white\/90{
+  color:#1c1e21 !important;
+}
+
+.mobile-dashboard-edge .student-surface-frame .text-white\/80,
+.mobile-dashboard-edge .student-surface-frame .text-white\/70,
+.mobile-dashboard-edge .student-surface-frame .text-white\/62,
+.mobile-dashboard-edge .student-surface-frame .text-white\/60,
+.mobile-dashboard-edge .student-surface-frame .text-white\/55,
+.mobile-dashboard-edge .student-surface-frame .text-white\/50{
+  color:#65676b !important;
+}
+
+.mobile-dashboard-edge .student-surface-frame .text-red-200{
+  color:#b91c1c !important;
+}
+
+.mobile-dashboard-edge .student-surface-frame .text-amber-200{
+  color:#b45309 !important;
+}
+
 .mobile-dashboard-theme .card .muted,
 .mobile-dashboard-theme .muted{
   color:rgba(226,232,255,0.75);

@@ -9521,6 +9521,115 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const renderStudentSurfaceIcon = (id: 'sessions' | 'groups' | 'discover' | 'books') => {
+    switch (id) {
+      case 'sessions':
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.9" />
+            <path d="M8 3V7M16 3V7M4 10H20" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+          </svg>
+        )
+      case 'groups':
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9 11C10.6569 11 12 9.65685 12 8C12 6.34315 10.6569 5 9 5C7.34315 5 6 6.34315 6 8C6 9.65685 7.34315 11 9 11Z" stroke="currentColor" strokeWidth="1.9" />
+            <path d="M15.5 10C16.8807 10 18 8.88071 18 7.5C18 6.11929 16.8807 5 15.5 5C14.1193 5 13 6.11929 13 7.5C13 8.88071 14.1193 10 15.5 10Z" stroke="currentColor" strokeWidth="1.9" />
+            <path d="M4.5 18C4.5 15.7909 6.29086 14 8.5 14H9.5C11.7091 14 13.5 15.7909 13.5 18" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+            <path d="M13 18C13 16.3431 14.3431 15 16 15H16.5C18.1569 15 19.5 16.3431 19.5 18" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+          </svg>
+        )
+      case 'discover':
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.9" />
+            <path d="M14.8 9.2L13.3 13.3L9.2 14.8L10.7 10.7L14.8 9.2Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+          </svg>
+        )
+      case 'books':
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+            <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+            <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+          </svg>
+        )
+    }
+  }
+
+  const renderStudentSurfaceFrame = (
+    id: 'sessions' | 'groups' | 'discover' | 'books',
+    children: React.ReactNode,
+    action?: React.ReactNode
+  ) => {
+    const meta = {
+      sessions: {
+        eyebrow: 'Learning Flow',
+        title: 'Sessions',
+        subtitle: 'Join live lessons, review upcoming classes, and keep the classroom rhythm aligned with the home feed.'
+      },
+      groups: {
+        eyebrow: 'Your Circle',
+        title: 'Groups',
+        subtitle: 'Create, join, and manage class communities with the same clean feed-first structure used on Home.'
+      },
+      discover: {
+        eyebrow: 'Search & Connect',
+        title: 'Discover',
+        subtitle: 'Search people, inspect profiles, and find relevant classmates without dropping out of the shared dashboard language.'
+      },
+      books: {
+        eyebrow: 'Study Shelf',
+        title: 'Books & Materials',
+        subtitle: 'Open grade resources, save them offline, and keep library browsing visually aligned with the rest of the mobile dashboard.'
+      }
+    }[id]
+
+    return (
+      <div className="student-surface-frame min-h-full bg-[#f0f2f5] text-[#1c1e21]">
+        <section className="student-surface-header border-b border-black/10 bg-white px-4 pb-4 pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#e7f0ff] text-[#1877f2]">
+                {renderStudentSurfaceIcon(id)}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#1877f2]">{meta.eyebrow}</div>
+                <h2 className="mt-1 text-[1.65rem] font-semibold tracking-[-0.03em] text-[#111827]">{meta.title}</h2>
+                <p className="mt-1 text-sm leading-6 text-[#65676b]">{meta.subtitle}</p>
+              </div>
+            </div>
+            {action ? <div className="shrink-0">{action}</div> : null}
+          </div>
+        </section>
+        <div className="student-surface-stack pb-6">{children}</div>
+      </div>
+    )
+  }
+
+  const renderStudentSurfaceSection = (id: 'sessions' | 'groups' | 'discover') => {
+    const action =
+      id === 'sessions' ? (
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+          onClick={openBooksOverlay}
+        >
+          Library
+        </button>
+      ) : id === 'groups' ? (
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+          onClick={() => void loadMyGroups()}
+        >
+          Refresh
+        </button>
+      ) : null
+
+    return renderStudentSurfaceFrame(id, renderSection(id), action)
+  }
+
   const SectionNav = () => {
     if (availableSections.length <= 1) return null
 
@@ -9842,7 +9951,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderSection('sessions')}</div>
+        <div className="pb-24">{renderStudentSurfaceSection('sessions')}</div>
       </div>
 
       <div
@@ -9852,7 +9961,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderSection('groups')}</div>
+        <div className="pb-24">{renderStudentSurfaceSection('groups')}</div>
       </div>
 
       <div
@@ -9862,7 +9971,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         className="w-full flex-none snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
-        <div className="pb-24">{renderSection('discover')}</div>
+        <div className="pb-24">{renderStudentSurfaceSection('discover')}</div>
       </div>
     </div>
   )
@@ -10167,6 +10276,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           onClose={() => setBooksOverlayOpen(false)}
           onBackdropClick={() => setBooksOverlayOpen(false)}
           zIndexClassName="z-50"
+          variant={isMobile ? 'light' : undefined}
+          panelClassName={isMobile ? 'bg-[#f0f2f5]' : undefined}
+          contentClassName={isMobile ? 'p-0' : undefined}
           rightActions={
             <button
               type="button"
@@ -10178,77 +10290,156 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </button>
           }
         >
-          <div className="space-y-3">
-            {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
-            {booksLoading ? <div className="text-sm muted">Loading...</div> : null}
-            {!booksLoading && !booksError && booksItems.length === 0 ? (
-              <div className="text-sm muted">No materials available yet.</div>
-            ) : null}
+          {isMobile ? (
+            renderStudentSurfaceFrame(
+              'books',
+              <div>
+                {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
+                {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
+                {!booksLoading && !booksError && booksItems.length === 0 ? (
+                  <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">No materials available yet.</section>
+                ) : null}
 
-            {booksItems.length > 0 ? (
-              <ul className="space-y-2">
-                {booksItems.map((item) => {
-                  const savedOffline = item.url ? isDocSavedOffline(item.url) : false
-                  const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
-                  const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
-                  return (
-                    <li
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
-                    >
-                      <div className="min-w-0">
-                        {isPdfResource(item) ? (
-                          <button
-                            type="button"
-                            className="font-medium text-white text-left hover:underline whitespace-normal break-words block"
-                            onClick={() => openPdfViewer(item)}
-                          >
-                            {item.title}
-                          </button>
-                        ) : (
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-medium text-white hover:underline whitespace-normal break-words block"
-                          >
-                            {item.title}
-                          </a>
-                        )}
-                        <div className="text-xs muted truncate">
-                          {item.tag ? `${item.tag} - ` : ''}
-                          {gradeToLabel(item.grade)}
-                        </div>
-                        {offlineError ? <div className="text-xs text-amber-200 mt-1">{offlineError}</div> : null}
-                      </div>
-                      {item.url ? (
-                        <div className="flex items-center gap-2">
-                          {savedOffline ? (
+                {booksItems.length > 0 ? (
+                  <ul>
+                    {booksItems.map((item) => {
+                      const savedOffline = item.url ? isDocSavedOffline(item.url) : false
+                      const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
+                      const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
+                      return (
+                        <li
+                          key={item.id}
+                          className="border-b border-black/10 bg-white px-4 py-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              {isPdfResource(item) ? (
+                                <button
+                                  type="button"
+                                  className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                                  onClick={() => openPdfViewer(item)}
+                                >
+                                  {item.title}
+                                </button>
+                              ) : (
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                                >
+                                  {item.title}
+                                </a>
+                              )}
+                              <div className="mt-1 text-xs text-[#65676b]">
+                                {item.tag ? `${item.tag} - ` : ''}
+                                {gradeToLabel(item.grade)}
+                              </div>
+                              {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
+                            </div>
+                            {item.url ? (
+                              <div className="flex items-center gap-2">
+                                {savedOffline ? (
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                                    onClick={() => void removeDocOffline(item)}
+                                  >
+                                    Remove offline
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                                    onClick={() => void saveDocOffline(item)}
+                                    disabled={savingOffline}
+                                  >
+                                    {savingOffline ? 'Saving...' : 'Save offline'}
+                                  </button>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+              </div>
+            )
+          ) : (
+            <div className="space-y-3">
+              {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
+              {booksLoading ? <div className="text-sm muted">Loading...</div> : null}
+              {!booksLoading && !booksError && booksItems.length === 0 ? (
+                <div className="text-sm muted">No materials available yet.</div>
+              ) : null}
+
+              {booksItems.length > 0 ? (
+                <ul className="space-y-2">
+                  {booksItems.map((item) => {
+                    const savedOffline = item.url ? isDocSavedOffline(item.url) : false
+                    const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
+                    const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
+                    return (
+                      <li
+                        key={item.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3"
+                      >
+                        <div className="min-w-0">
+                          {isPdfResource(item) ? (
                             <button
                               type="button"
-                              className="btn btn-ghost text-xs"
-                              onClick={() => void removeDocOffline(item)}
+                              className="font-medium text-white text-left hover:underline whitespace-normal break-words block"
+                              onClick={() => openPdfViewer(item)}
                             >
-                              Remove offline
+                              {item.title}
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              className="btn btn-ghost text-xs"
-                              onClick={() => void saveDocOffline(item)}
-                              disabled={savingOffline}
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium text-white hover:underline whitespace-normal break-words block"
                             >
-                              {savingOffline ? 'Saving...' : 'Save offline'}
-                            </button>
+                              {item.title}
+                            </a>
                           )}
+                          <div className="text-xs muted truncate">
+                            {item.tag ? `${item.tag} - ` : ''}
+                            {gradeToLabel(item.grade)}
+                          </div>
+                          {offlineError ? <div className="text-xs text-amber-200 mt-1">{offlineError}</div> : null}
                         </div>
-                      ) : null}
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : null}
-          </div>
+                        {item.url ? (
+                          <div className="flex items-center gap-2">
+                            {savedOffline ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => void removeDocOffline(item)}
+                              >
+                                Remove offline
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-ghost text-xs"
+                                onClick={() => void saveDocOffline(item)}
+                                disabled={savingOffline}
+                              >
+                                {savingOffline ? 'Saving...' : 'Save offline'}
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
+            </div>
+          )}
         </FullScreenGlassOverlay>
       )}
 
@@ -10735,13 +10926,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           onBackdropClick={closeStudentQuickOverlay}
           zIndexClassName="z-50"
           className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          variant={studentQuickOverlay === 'timeline' || studentQuickOverlay === 'admin' ? undefined : 'light'}
+          panelClassName={studentQuickOverlay === 'timeline' || studentQuickOverlay === 'admin' ? undefined : 'bg-[#f0f2f5]'}
+          contentClassName={studentQuickOverlay === 'timeline' || studentQuickOverlay === 'admin' ? undefined : 'p-0'}
         >
           <div className="space-y-3">
             {studentQuickOverlay === 'timeline'
               ? renderTimelineCard()
               : studentQuickOverlay === 'admin'
                 ? renderAdminToolsQuickPanel()
-                : renderSection(studentQuickOverlay)}
+                : renderStudentSurfaceSection(studentQuickOverlay)}
           </div>
         </FullScreenGlassOverlay>
       )}
@@ -10765,8 +10959,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           onBackdropClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
           zIndexClassName="z-50"
           className={`transition-opacity duration-200 ${topStackOverlayOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          variant="light"
+          panelClassName="bg-[#f0f2f5]"
+          contentClassName="p-0"
         >
-          {renderSessionsSection()}
+          {renderStudentSurfaceSection('sessions')}
         </FullScreenGlassOverlay>
       )}
       </main>

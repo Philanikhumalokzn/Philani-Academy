@@ -9433,7 +9433,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return (
           <div className="space-y-3">
             <section className="card p-3 space-y-3">
-              <div className="text-sm font-semibold text-white">Discover</div>
+              <div className="text-sm font-semibold text-white">Search people</div>
               <div className="flex items-center gap-2">
                 <input
                   className="input flex-1"
@@ -9461,7 +9461,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               {discoverLoading && discoverResults.length === 0 ? (
                 <div className="text-sm muted">Loading recommendations...</div>
               ) : discoverResults.length === 0 ? (
-                <div className="text-sm muted">Start typing a name, or browse recommended classmates and groupmates.</div>
+                <div className="text-sm muted">Search classmates and groupmates.</div>
               ) : (
                 <div className="grid gap-2">
                   {discoverResults.map((u: any) => {
@@ -9600,37 +9600,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       sessions: {
         eyebrow: 'Learning Flow',
         title: 'Sessions',
-        subtitle: 'Join live lessons, review upcoming classes, and keep the classroom rhythm aligned with the home feed.'
+        subtitle: 'Lessons and schedule'
       },
       groups: {
         eyebrow: 'Your Circle',
         title: 'Groups',
-        subtitle: 'Create, join, and manage class communities with the same clean feed-first structure used on Home.'
+        subtitle: 'Study circles'
       },
       discover: {
         eyebrow: 'Search & Connect',
         title: 'Discover',
-        subtitle: 'Search people, inspect profiles, and find relevant classmates without dropping out of the shared dashboard language.'
+        subtitle: 'Find people'
       },
       books: {
         eyebrow: 'Study Shelf',
         title: 'Books & Materials',
-        subtitle: 'Open grade resources, save them offline, and keep library browsing visually aligned with the rest of the mobile dashboard.'
+        subtitle: 'Learning resources'
       }
     }[id]
 
     return (
       <div className="student-surface-frame min-h-full bg-[#f0f2f5] text-[#1c1e21]">
         <section className="student-surface-header border-b border-black/10 bg-white px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_10px_24px_rgba(24,119,242,0.18)]">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#1877f2]">
                 {renderStudentSurfaceIcon(id)}
               </div>
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div>
                 <div className="mt-1 font-semibold text-[#1c1e21]">{meta.title}</div>
-                <p className="mt-1 text-sm leading-6 text-[#65676b]">{meta.subtitle}</p>
+                <div className="text-[12px] text-[#65676b]">{meta.subtitle}</div>
               </div>
             </div>
             {action ? <div className="shrink-0">{action}</div> : null}

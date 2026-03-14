@@ -1387,6 +1387,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [discoverLoading, setDiscoverLoading] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [discoverResults, setDiscoverResults] = useState<any[]>([])
+  const [discoverRecommendations, setDiscoverRecommendations] = useState<any[]>([])
   const discoverLiveSearchTimeoutRef = useRef<number | null>(null)
 
   const discoverCacheKey = useMemo(() => {
@@ -1622,12 +1623,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const res = await fetch(url, { credentials: 'same-origin' })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.message || 'Search failed')
-      setDiscoverResults(Array.isArray(data) ? data : [])
+      const parsed = Array.isArray(data) ? data : []
+
+      if (q.length >= 1) {
+        setDiscoverResults(parsed)
+      } else {
+        setDiscoverRecommendations(parsed)
+        setDiscoverResults([])
+      }
 
       try {
         if (typeof window !== 'undefined') {
           if (q.length >= 1) window.localStorage.setItem(discoverLastQueryKey, q)
-          if (q.length === 0) window.localStorage.setItem(discoverCacheKey, JSON.stringify(Array.isArray(data) ? data : []))
+          if (q.length === 0) window.localStorage.setItem(discoverCacheKey, JSON.stringify(parsed))
         }
       } catch {
         // ignore
@@ -1661,14 +1669,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const raw = window.localStorage.getItem(discoverCacheKey)
         if (raw) {
           const parsed = JSON.parse(raw)
-          if (Array.isArray(parsed)) setDiscoverResults(parsed)
+          if (Array.isArray(parsed)) setDiscoverRecommendations(parsed)
         } else {
-          setDiscoverResults([])
+          setDiscoverRecommendations([])
         }
       }
     } catch {
-      setDiscoverResults([])
+      setDiscoverRecommendations([])
     }
+    setDiscoverResults([])
   }, [discoverCacheKey, discoverPanelActive])
 
   useEffect(() => {
@@ -9403,6 +9412,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         )
       case 'discover':
+        const trimmedDiscoverQuery = discoverQuery.trim()
+        const showingSearchResults = trimmedDiscoverQuery.length > 0 && discoverResults.length > 0
+        const showingFallbackSuggestions = trimmedDiscoverQuery.length > 0 && !discoverLoading && discoverResults.length === 0
+        const activeDiscoverCards = showingSearchResults ? discoverResults : discoverRecommendations
+
         return (
           <div className="space-y-3">
             <section className="card p-3 space-y-3">
@@ -9431,13 +9445,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
               {discoverError && <div className="text-sm text-red-200">{discoverError}</div>}
 
-              {discoverLoading && discoverResults.length === 0 ? (
+              {showingFallbackSuggestions ? (
+                <div className="text-xs muted">No exact matches. Showing likely people instead.</div>
+              ) : null}
+
+              {discoverLoading && activeDiscoverCards.length === 0 ? (
                 <div className="text-sm muted">Loading recommendations...</div>
-              ) : discoverResults.length === 0 ? (
-                <div className="text-sm muted">Search classmates and groupmates.</div>
+              ) : activeDiscoverCards.length === 0 ? (
+                <div className="text-sm muted">People will appear here.</div>
               ) : (
-                <div className="grid gap-2">
-                  {discoverResults.map((u: any) => {
+                <div className="discover-results-scroll grid gap-2 overflow-y-auto pr-1">
+                  {activeDiscoverCards.map((u: any) => {
                     const sharedGroupsCount = typeof u?.sharedGroupsCount === 'number' ? u.sharedGroupsCount : 0
                     const chips: string[] = []
                     if (sharedGroupsCount > 0) chips.push(sharedGroupsCount === 1 ? '1 shared group' : `${sharedGroupsCount} shared groups`)

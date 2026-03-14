@@ -281,8 +281,10 @@ export async function getDiscoverRecommendations(params: {
   })
 
   if (scored.length === 0) {
-    const adminFallback = await prisma.user.findMany({
-      where: { id: { not: requesterId }, role: 'admin' },
+    const alphabeticalFallback = await prisma.user.findMany({
+      where: {
+        ...baseWhere,
+      },
       select: {
         id: true,
         name: true,
@@ -298,10 +300,23 @@ export async function getDiscoverRecommendations(params: {
         profileCoverUrl: true,
         profileThemeBgUrl: true,
       },
-      take: Math.max(5, limit),
+      take: Math.max(24, limit * 2),
+      orderBy: [
+        { name: 'asc' },
+        { email: 'asc' },
+      ],
     })
 
-    for (const u of adminFallback as any as TargetInfo[]) {
+    for (const u of alphabeticalFallback as any as TargetInfo[]) {
+      const sharedGroupsCount = sharedCounts.get(u.id) || 0
+      const allowed = canViewOrDiscoverTarget({
+        requester: requesterInfo,
+        target: u,
+        sharedGroupsCount,
+        isPrivileged,
+      })
+      if (!allowed) continue
+
       scored.push({
         id: u.id,
         name: u.name || u.email,
@@ -310,12 +325,14 @@ export async function getDiscoverRecommendations(params: {
         avatar: u.avatar,
         statusBio: u.statusBio,
         schoolName: u.schoolName,
-        verified: true,
+        verified: u.role === 'admin' || u.role === 'teacher',
         profileCoverUrl: u.profileCoverUrl,
         profileThemeBgUrl: u.profileThemeBgUrl,
-        score: 100,
-        sharedGroupsCount: 0,
+        score: 0,
+        sharedGroupsCount,
       })
+
+      if (scored.length >= limit) break
     }
   }
 

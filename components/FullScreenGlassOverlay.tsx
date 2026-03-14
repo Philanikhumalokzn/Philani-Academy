@@ -128,7 +128,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closeDisabled, handleRequestClose])
 
-  const overlayVariant = variant || 'light'
+  const overlayVariant = variant || 'dark'
   const rootPosition = position || 'fixed'
   const shouldShowCloseButton = _showCloseButton !== undefined ? _showCloseButton : true
   const panelSizing = panelSize || 'auto'

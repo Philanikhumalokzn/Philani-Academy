@@ -4148,7 +4148,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const href = p?.id ? `/challenges/${encodeURIComponent(String(p.id))}` : '#'
 
                 return (
-                  <li key={String(p?.id || title)} className="border-b border-black/10 bg-white px-4 py-3">
+                  <li key={String(p?.id || title)} className="border-b-2 border-black/10 bg-white px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">

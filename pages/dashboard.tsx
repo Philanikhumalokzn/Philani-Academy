@@ -163,6 +163,26 @@ type LocalCacheEntry<T> = {
   data: T
 }
 
+type DashboardCreateKind = 'quiz' | 'post'
+
+const getDashboardItemKind = (item: any): 'challenge' | 'post' => {
+  return String(item?.kind || '').toLowerCase() === 'post' ? 'post' : 'challenge'
+}
+
+const getDashboardItemKey = (item: any) => {
+  const kind = getDashboardItemKind(item)
+  const id = String(item?.id || '').trim()
+  return id ? `${kind}:${id}` : `${kind}:unknown`
+}
+
+const sortDashboardItemsByCreatedAt = (items: any[]) => {
+  return [...items].sort((a, b) => {
+    const aTs = a?.createdAt ? new Date(a.createdAt).getTime() : 0
+    const bTs = b?.createdAt ? new Date(b.createdAt).getTime() : 0
+    return bTs - aTs
+  })
+}
+
 const readLocalCache = <T,>(key: string): LocalCacheEntry<T> | null => {
   if (typeof window === 'undefined') return null
   try {
@@ -516,8 +536,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lessonAuthoringDiagramCloseSignal, setLessonAuthoringDiagramCloseSignal] = useState(0)
 
   const [createOverlayOpen, setCreateOverlayOpen] = useState(false)
-  const [createKind, setCreateKind] = useState<'quiz'>('quiz')
+  const [createKind, setCreateKind] = useState<DashboardCreateKind>('quiz')
   const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null)
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [challengeAudiencePickerOpen, setChallengeAudiencePickerOpen] = useState(false)
   const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
   const [challengePromptDraft, setChallengePromptDraft] = useState('')
@@ -720,12 +741,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const closeCreateOverlay = useCallback(() => {
     setCreateOverlayOpen(false)
     setEditingChallengeId(null)
+    setEditingPostId(null)
     setChallengeAudiencePickerOpen(false)
   }, [])
 
+    const [viewerId, setViewerId] = useState<string | null>(null)
+
   const postChallenge = useCallback(async () => {
     if (status !== 'authenticated') return
-    if (createKind !== 'quiz') return
 
     const title = challengeTitleDraft.trim()
     const prompt = challengePromptDraft.trim()
@@ -739,10 +762,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const maxAttempts = challengeMaxAttempts === 'unlimited' ? null : parseInt(challengeMaxAttempts, 10)
     setChallengePosting(true)
     try {
-      const isEditing = Boolean(editingChallengeId)
+      const isQuiz = createKind === 'quiz'
+      const isEditing = isQuiz ? Boolean(editingChallengeId) : Boolean(editingPostId)
       const endpoint = isEditing
-        ? `/api/challenges/${encodeURIComponent(editingChallengeId as string)}`
-        : '/api/challenges'
+        ? isQuiz
+          ? `/api/challenges/${encodeURIComponent(editingChallengeId as string)}`
+          : `/api/posts/${encodeURIComponent(editingPostId as string)}`
+        : isQuiz
+          ? '/api/challenges'
+          : '/api/posts'
       const res = await fetch(endpoint, {
         method: isEditing ? 'PATCH' : 'POST',
         credentials: 'same-origin',
@@ -752,7 +780,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           prompt,
           imageUrl: challengeImageUrl,
           audience,
-          maxAttempts,
+          ...(isQuiz ? { maxAttempts } : {}),
           ...(isEditing ? {} : { grade }),
         }),
       })
@@ -761,23 +789,42 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return alert(data?.message || `Failed to ${isEditing ? 'save' : 'post'} (${res.status})`)
       }
 
-      if (isEditing && editingChallengeId) {
-        const id = String(editingChallengeId)
+      if (isEditing && (editingChallengeId || editingPostId)) {
+        const id = String(isQuiz ? editingChallengeId : editingPostId)
         const patch = {
           id,
+          kind: isQuiz ? 'challenge' : 'post',
           title,
           prompt,
           imageUrl: challengeImageUrl,
           audience,
-          maxAttempts,
+          ...(isQuiz ? { maxAttempts } : {}),
         }
-        setSelectedChallengeData((prev: any) => (prev && String(prev?.id) === id ? { ...prev, ...patch } : prev))
-        setTimelineChallenges((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
-        setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (String((p as any)?.id) === id ? { ...(p as any), ...patch } : p)) : prev))
+        if (isQuiz) {
+          setSelectedChallengeData((prev: any) => (prev && String(prev?.id) === id ? { ...prev, ...patch } : prev))
+        }
+        setTimelineChallenges((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `${isQuiz ? 'challenge' : 'post'}:${id}` ? { ...(p as any), ...patch } : p)) : prev))
+        setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `${isQuiz ? 'challenge' : 'post'}:${id}` ? { ...(p as any), ...patch } : p)) : prev))
+      } else {
+        const createdItem = {
+          ...(data || {}),
+          kind: isQuiz ? 'challenge' : 'post',
+          createdBy: {
+            id: String((session as any)?.user?.id || viewerId || ''),
+            name: String(session?.user?.name || session?.user?.email || 'You'),
+            avatar: String((session as any)?.user?.avatar || ''),
+            role: String((session as any)?.user?.role || ''),
+          },
+          createdById: String((data as any)?.createdById || (session as any)?.user?.id || viewerId || ''),
+          threadKey: isQuiz ? undefined : `post:${String((data as any)?.id || '')}`,
+        }
+        setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+        setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
       }
 
       discardRestore()
       closeCreateOverlay()
+      setCreateKind('quiz')
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
       setChallengeAudienceDraft('public')
@@ -786,13 +833,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setChallengeImageSourceFile(null)
       setChallengeParsedJsonText(null)
       setChallengeParsedOpen(false)
-      alert(editingChallengeId ? 'Saved' : 'Posted')
+      alert(isEditing ? 'Saved' : 'Posted')
     } catch (err: any) {
-      alert(err?.message || `Failed to ${editingChallengeId ? 'save' : 'post'}`)
+      alert(err?.message || `Failed to ${(editingChallengeId || editingPostId) ? 'save' : 'post'}`)
     } finally {
       setChallengePosting(false)
     }
-  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, closeCreateOverlay, discardRestore])
+  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, editingPostId, closeCreateOverlay, discardRestore, viewerId])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)
@@ -901,6 +948,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
+  const [postSolveOverlay, setPostSolveOverlay] = useState<null | { postId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
+  const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
+  const [postSolveError, setPostSolveError] = useState<string | null>(null)
+  const [postThreadOverlay, setPostThreadOverlay] = useState<null | { postId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null }>(null)
+  const [postThreadLoading, setPostThreadLoading] = useState(false)
+  const [postThreadError, setPostThreadError] = useState<string | null>(null)
+  const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
@@ -1082,8 +1136,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [timelineUserId, setTimelineUserId] = useState<string | null>(null)
   const timelineFetchedOnceRef = useRef(false)
   const [readTimelinePostIds, setReadTimelinePostIds] = useState<string[]>([])
-  
-  const [viewerId, setViewerId] = useState<string | null>(null)
+
   const [challengeGradingOverlayOpen, setChallengeGradingOverlayOpen] = useState(false)
   const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(null)
   const [selectedChallengeData, setSelectedChallengeData] = useState<any | null>(null)
@@ -2071,7 +2124,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (!timelineChallenges || timelineChallenges.length === 0) return 0
     let count = 0
     for (const c of timelineChallenges) {
-      if (c?.id && !readTimelinePostSet.has(String(c.id))) count += 1
+      if (c?.id && !readTimelinePostSet.has(getDashboardItemKey(c))) count += 1
     }
     return count
   }, [timelineChallenges, readTimelinePostSet])
@@ -3083,6 +3136,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPdfViewerOpen(false)
     setCreateKind('quiz')
     setEditingChallengeId(null)
+    setEditingPostId(null)
     setChallengeAudiencePickerOpen(false)
     setChallengeImageUrl(null)
     setChallengeImageSourceFile(null)
@@ -3179,16 +3233,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setStudentFeedError(null)
     void (async () => {
       try {
-        const res = await fetch('/api/challenges/feed', { credentials: 'same-origin' })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
+        const [challengeRes, postRes] = await Promise.all([
+          fetch('/api/challenges/feed', { credentials: 'same-origin' }),
+          fetch('/api/posts/feed', { credentials: 'same-origin' }),
+        ])
+        const challengeData = await challengeRes.json().catch(() => ({}))
+        const postData = await postRes.json().catch(() => ({}))
+        if (!challengeRes.ok && !postRes.ok) {
           if (!cancelled) {
-            setStudentFeedError(data?.message || `Unable to load posts (${res.status})`)
+            setStudentFeedError(challengeData?.message || postData?.message || `Unable to load posts (${challengeRes.status}/${postRes.status})`)
             setStudentFeedPosts([])
           }
           return
         }
-        const posts = Array.isArray(data?.posts) ? data.posts : []
+        const posts = sortDashboardItemsByCreatedAt([
+          ...(Array.isArray(challengeData?.posts) ? challengeData.posts.map((item: any) => ({ ...item, kind: 'challenge' })) : []),
+          ...(Array.isArray(postData?.posts) ? postData.posts.map((item: any) => ({ ...item, kind: 'post' })) : []),
+        ])
         if (!cancelled) setStudentFeedPosts(posts)
       } catch (err: any) {
         if (!cancelled) {
@@ -3348,6 +3409,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setCreateKind('quiz')
     setEditingChallengeId(id)
+    setEditingPostId(null)
     setChallengeTitleDraft(String(c?.title || ''))
     setChallengePromptDraft(String(c?.prompt || ''))
     setChallengeAudienceDraft(audience)
@@ -3361,6 +3423,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setSelectedSubmissionDetail(null)
     setCreateOverlayOpen(true)
   }, [selectedChallengeData, selectedChallengeId])
+
+  const openEditPostComposer = useCallback((post: any) => {
+    const id = post?.id ? String(post.id) : ''
+    if (!id) return
+
+    const audienceRaw = typeof post?.audience === 'string' ? post.audience : 'public'
+    const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
+
+    setCreateKind('post')
+    setEditingChallengeId(null)
+    setEditingPostId(id)
+    setChallengeTitleDraft(String(post?.title || ''))
+    setChallengePromptDraft(String(post?.prompt || ''))
+    setChallengeAudienceDraft(audience)
+    setChallengeMaxAttempts('unlimited')
+    setChallengeImageUrl(typeof post?.imageUrl === 'string' ? post.imageUrl : null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
+    setCreateOverlayOpen(true)
+  }, [])
 
   const deleteChallenge = useCallback(async (challengeId: string) => {
     const id = challengeId ? String(challengeId) : ''
@@ -3392,6 +3474,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setSelectedSubmissionUserId(null)
       setSelectedSubmissionDetail(null)
 
+      alert('Deleted')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete')
+    } finally {
+      setChallengeDeleting(false)
+    }
+  }, [])
+
+  const deletePost = useCallback(async (postId: string) => {
+    const id = postId ? String(postId) : ''
+    if (!id) return
+
+    const ok = typeof window !== 'undefined'
+      ? window.confirm('Delete this post? This will remove it from your timeline and delete its public solutions thread.')
+      : false
+    if (!ok) return
+
+    setChallengeDeleting(true)
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to delete (${res.status})`)
+        return
+      }
+
+      setTimelineChallenges(prev => (Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev))
+      setStudentFeedPosts(prev => (Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev))
+      setPostThreadOverlay((prev) => (prev?.postId === id ? null : prev))
+      setPostSolveOverlay((prev) => (prev?.postId === id ? null : prev))
       alert('Deleted')
     } catch (err: any) {
       alert(err?.message || 'Failed to delete')
@@ -3678,14 +3793,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         setTimelineUserId(userId)
         setViewerId(userId)
 
-        const res = await fetch(`/api/profile/view/${encodeURIComponent(userId)}/challenges`, { credentials: 'same-origin' })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          setTimelineChallengesError(data?.message || `Unable to load timeline (${res.status})`)
+        const [challengeRes, postRes] = await Promise.all([
+          fetch(`/api/profile/view/${encodeURIComponent(userId)}/challenges`, { credentials: 'same-origin' }),
+          fetch(`/api/profile/view/${encodeURIComponent(userId)}/posts`, { credentials: 'same-origin' }),
+        ])
+        const challengeData = await challengeRes.json().catch(() => ({}))
+        const postData = await postRes.json().catch(() => ({}))
+        if (!challengeRes.ok && !postRes.ok) {
+          setTimelineChallengesError(challengeData?.message || postData?.message || `Unable to load timeline (${challengeRes.status}/${postRes.status})`)
           setTimelineChallenges([])
           return
         }
-        const items = Array.isArray(data?.challenges) ? data.challenges : []
+        const items = sortDashboardItemsByCreatedAt([
+          ...(Array.isArray(challengeData?.challenges) ? challengeData.challenges.map((item: any) => ({ ...item, kind: 'challenge' })) : []),
+          ...(Array.isArray(postData?.posts) ? postData.posts.map((item: any) => ({ ...item, kind: 'post' })) : []),
+        ])
         setTimelineChallenges(items)
       } catch (err: any) {
         setTimelineChallengesError(err?.message || 'Unable to load timeline')
@@ -3700,18 +3822,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (!timelineOpen) return
     if (timelineChallengesLoading || timelineChallengesError) return
     if (!timelineChallenges || timelineChallenges.length === 0) return
-    const ids = timelineChallenges.map((c: any) => String(c?.id || '')).filter(Boolean)
+    const ids = timelineChallenges.map((c: any) => getDashboardItemKey(c)).filter(Boolean)
     markTimelinePostsRead(ids)
   }, [timelineOpen, timelineChallengesLoading, timelineChallengesError, timelineChallenges, markTimelinePostsRead])
 
   const renderTimelineItems = (items: any[]) => (
     <ul className="space-y-2">
       {items.map((c: any) => {
-        const title = (c?.title || '').trim() || 'Quiz'
+        const kind = getDashboardItemKind(c)
+        const isPost = kind === 'post'
+        const title = (c?.title || '').trim() || (isPost ? 'Post' : 'Quiz')
         const createdAt = c?.createdAt ? new Date(c.createdAt).toLocaleString() : ''
         const myAttemptCount = typeof c?.myAttemptCount === 'number' ? c.myAttemptCount : 0
         const maxAttempts = typeof c?.maxAttempts === 'number' ? c.maxAttempts : null
         const attemptsOpen = c?.attemptsOpen !== false
+        const prompt = typeof c?.prompt === 'string' ? c.prompt.trim() : ''
 
         const isOwner = viewerId && c?.createdById && String(c.createdById) === String(viewerId)
         const hasAttempted = myAttemptCount > 0
@@ -3719,14 +3844,52 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
 
         return (
-          <li key={String(c?.id || title)} className="rounded-xl border border-white/10 bg-white/5 p-3">
+          <li key={getDashboardItemKey(c)} className="rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="font-medium text-white break-words">{title}</div>
                 {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
+                {prompt ? <div className="mt-1 text-sm text-white/75 break-words">{prompt.slice(0, 140)}{prompt.length > 140 ? '...' : ''}</div> : null}
               </div>
               {c?.id ? (
-                isOwner ? (
+                isPost ? (
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    {isOwner ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-primary shrink-0"
+                          onClick={() => openEditPostComposer(c)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost text-xs shrink-0"
+                          onClick={() => void deletePost(String(c.id))}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary shrink-0"
+                        onClick={() => openPostSolveComposer(c)}
+                      >
+                        {c?.hasOwnResponse ? 'Edit solution' : 'Solve'}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs shrink-0"
+                      onClick={() => openPostThread(c)}
+                    >
+                      Solutions
+                    </button>
+                  </div>
+                ) : isOwner ? (
                   <button
                     type="button"
                     className="btn btn-primary shrink-0"
@@ -4382,7 +4545,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : (
           <ul className="space-y-0">
             {studentFeedPosts.slice(0, 15).map((p: any) => {
-                const title = (p?.title || '').trim() || 'Quiz'
+                const kind = getDashboardItemKind(p)
+                const isPost = kind === 'post'
+                const title = (p?.title || '').trim() || (isPost ? 'Post' : 'Quiz')
                 const createdAt = p?.createdAt ? formatFeedPostDate(p.createdAt) : ''
                 const authorName = (p?.createdBy?.name || '').trim() || 'Learner'
                 const authorId = p?.createdBy?.id ? String(p.createdBy.id) : null
@@ -4401,12 +4566,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const isOwner = viewerId && p?.createdById && String(p.createdById) === String(viewerId)
                 const hasAttempted = myAttemptCount > 0
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
-                const challengeId = p?.id ? String(p.id) : ''
-                const socialItemKey = challengeId ? `challenge:${challengeId}` : `challenge:${title}`
-                const href = challengeId ? `/challenges/${encodeURIComponent(challengeId)}` : '#'
+                const itemId = p?.id ? String(p.id) : ''
+                const socialItemKey = itemId ? `${kind}:${itemId}` : `${kind}:${title}`
+                const href = !isPost && itemId ? `/challenges/${encodeURIComponent(itemId)}` : '#'
 
                 return (
-                  <li key={String(p?.id || title)} className="border-b border-black/10 bg-white px-4 py-3">
+                  <li key={getDashboardItemKey(p)} className="border-b border-black/10 bg-white px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-3">
@@ -4468,7 +4633,43 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                       </div>
                       {p?.id ? (
-                        isOwner ? (
+                        isPost ? (
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            {isOwner ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                                  onClick={() => openEditPostComposer(p)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-[#65676b] shrink-0"
+                                  onClick={() => void deletePost(String(p.id))}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                                onClick={() => openPostSolveComposer(p)}
+                              >
+                                {p?.hasOwnResponse ? 'Edit solution' : 'Solve'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-[#65676b] shrink-0"
+                              onClick={() => openPostThread(p)}
+                            >
+                              Solutions
+                            </button>
+                          </div>
+                        ) : isOwner ? (
                           <button
                             type="button"
                             className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
@@ -4533,9 +4734,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                         {renderSocialActionButton({
-                          label: 'Solve',
-                          onClick: () => openChallengeCommentThread(challengeId),
-                          disabled: !challengeId,
+                          label: isPost ? (p?.hasOwnResponse ? 'Edit solve' : 'Solve') : 'Solve',
+                          onClick: () => {
+                            if (isPost) {
+                              void openPostSolveComposer(p)
+                              return
+                            }
+                            openChallengeCommentThread(itemId)
+                          },
+                          disabled: !itemId,
                           icon: (
                             <span className="flex items-center gap-1" aria-hidden="true">
                               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
@@ -4548,6 +4755,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </span>
                           ),
                         })}
+                        {isPost ? renderSocialActionButton({
+                          label: 'Solutions',
+                          onClick: () => {
+                            void openPostThread(p)
+                          },
+                          disabled: !itemId,
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M4 6.5C4 5.11929 5.11929 4 6.5 4H17.5C18.8807 4 20 5.11929 20 6.5V14.5C20 15.8807 18.8807 17 17.5 17H9L4 20V6.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ),
+                        }) : null}
                         {renderSocialActionButton({
                           label: 'Share',
                           statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
@@ -4555,9 +4774,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             itemKey: socialItemKey,
                             title,
                             text: prompt || title,
-                            path: href,
+                            path: isPost ? `/dashboard?postId=${encodeURIComponent(itemId)}` : href,
                           }),
-                          disabled: !challengeId,
+                          disabled: !itemId,
                           icon: (
                             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
                               <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -5963,6 +6182,123 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (!challengeId) return
     void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
   }, [router])
+
+  const fetchPublicThreadResponses = useCallback(async (threadKey: string) => {
+    if (!threadKey) return []
+    const res = await fetch(`/api/threads/${encodeURIComponent(threadKey)}/responses`, { credentials: 'same-origin' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data?.message || `Failed to load solutions (${res.status})`)
+    }
+    const responses = Array.isArray(data?.responses) ? data.responses : []
+    return responses.slice().sort((a: any, b: any) => {
+      const aTs = Math.max(a?.updatedAt ? new Date(a.updatedAt).getTime() : 0, a?.createdAt ? new Date(a.createdAt).getTime() : 0)
+      const bTs = Math.max(b?.updatedAt ? new Date(b.updatedAt).getTime() : 0, b?.createdAt ? new Date(b.createdAt).getTime() : 0)
+      return bTs - aTs
+    })
+  }, [])
+
+  const openPostThread = useCallback(async (post: any) => {
+    const postId = String(post?.id || '')
+    const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
+    if (!postId || !threadKey) return
+
+    setPostThreadOverlay({
+      postId,
+      threadKey,
+      title: String(post?.title || 'Post'),
+      prompt: String(post?.prompt || ''),
+      imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
+    })
+    setPostThreadLoading(true)
+    setPostThreadError(null)
+    try {
+      const responses = await fetchPublicThreadResponses(threadKey)
+      setPostThreadResponses(responses)
+    } catch (err: any) {
+      setPostThreadResponses([])
+      setPostThreadError(err?.message || 'Failed to load solutions')
+    } finally {
+      setPostThreadLoading(false)
+    }
+  }, [fetchPublicThreadResponses])
+
+  const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null }) => {
+    const postId = String(post?.id || '')
+    const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
+    if (!postId || !threadKey) return
+
+    setPostSolveError(null)
+    let initialScene = options?.initialScene ?? null
+    if (!initialScene) {
+      try {
+        const responses = await fetchPublicThreadResponses(threadKey)
+        const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+        const mine = responses.find((response: any) => String(response?.userId || '') === effectiveCurrentUserId)
+        initialScene = mine?.excalidrawScene || null
+      } catch {
+        // ignore prefill failures and still open the composer
+      }
+    }
+
+    setPostSolveOverlay({
+      postId,
+      threadKey,
+      title: String(post?.title || 'Post'),
+      prompt: String(post?.prompt || 'Share your solution for this post.'),
+      imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
+      initialScene,
+    })
+  }, [currentUserId, fetchPublicThreadResponses, viewerId])
+
+  const submitPostSolve = useCallback(async (scene: any) => {
+    if (!postSolveOverlay?.postId || !postSolveOverlay?.threadKey) return
+    setPostSolveSubmitting(true)
+    setPostSolveError(null)
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(postSolveOverlay.threadKey)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex: '',
+          quizId: postSolveOverlay.threadKey,
+          quizLabel: postSolveOverlay.title,
+          prompt: postSolveOverlay.prompt,
+          excalidrawScene: scene,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
+      }
+
+      setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
+        ? prev.map((item) => getDashboardItemKey(item) === `post:${postSolveOverlay.postId}`
+          ? { ...(item as any), hasOwnResponse: true, ownResponse: data || (item as any)?.ownResponse || null }
+          : item)
+        : prev))
+      setTimelineChallenges((prev: any[]) => (Array.isArray(prev)
+        ? prev.map((item) => getDashboardItemKey(item) === `post:${postSolveOverlay.postId}`
+          ? { ...(item as any), hasOwnResponse: true, ownResponse: data || (item as any)?.ownResponse || null }
+          : item)
+        : prev))
+
+      const overlayPost = {
+        id: postSolveOverlay.postId,
+        threadKey: postSolveOverlay.threadKey,
+        title: postSolveOverlay.title,
+        prompt: postSolveOverlay.prompt,
+        imageUrl: postSolveOverlay.imageUrl || null,
+      }
+      setPostSolveOverlay(null)
+      await openPostThread(overlayPost)
+    } catch (err: any) {
+      setPostSolveError(err?.message || 'Failed to submit solve')
+    } finally {
+      setPostSolveSubmitting(false)
+    }
+  }, [openPostThread, postSolveOverlay])
 
   const openLessonSolveComposer = useCallback((sessionId: string, options?: { initialScene?: any | null }) => {
     if (!sessionId) return
@@ -10869,7 +11205,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       {createOverlayOpen && (
         <OverlayPortal>
           <FullScreenGlassOverlay
-            title={editingChallengeId ? 'Challenge' : 'Challenge'}
+            title={createKind === 'post' ? 'Post' : 'Challenge'}
             onClose={closeCreateOverlay}
             onBackdropClick={closeCreateOverlay}
             zIndexClassName="z-[70]"
@@ -10899,7 +11235,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm text-white/90 font-semibold">Post a challenge</div>
+                    <div className="text-sm text-white/90 font-semibold">{createKind === 'post' ? 'Share a post' : 'Post a challenge'}</div>
                   </div>
                 </div>
 
@@ -10922,10 +11258,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         value={createKind}
                         onChange={(e) => setCreateKind(e.target.value as any)}
                       >
+                        <option value="post">Post</option>
                         <option value="quiz">Quiz</option>
                       </select>
                     </div>
 
+                    {createKind === 'quiz' ? (
                     <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white/80">
                         <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -10944,6 +11282,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <option value="10">10</option>
                       </select>
                     </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -10953,7 +11292,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                     <textarea
                       className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none"
-                      placeholder="Write the question (LaTeX supported)... or attach a screenshot below"
+                      placeholder={createKind === 'post' ? 'Share what you are working on, stuck on, or proud of... or attach a screenshot below' : 'Write the question (LaTeX supported)... or attach a screenshot below'}
                       value={challengePromptDraft}
                       onChange={(e) => setChallengePromptDraft(e.target.value)}
                     />
@@ -11158,7 +11497,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     disabled={challengePosting || challengeUploading}
                     onClick={() => void postChallenge()}
                   >
-                    {challengePosting ? (editingChallengeId ? 'Saving...' : 'Posting...') : (editingChallengeId ? 'Save' : 'Post')}
+                    {challengePosting ? ((editingChallengeId || editingPostId) ? 'Saving...' : 'Posting...') : ((editingChallengeId || editingPostId) ? 'Save' : 'Post')}
                   </button>
                 </div>
               </div>
@@ -11208,12 +11547,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
               onClick={() => {
                 setPostToolsSheetOpen(false)
+                setCreateKind('post')
                 openCreateChallengeComposer()
               }}
             >
               <span>
                 <span className="block text-sm font-semibold text-slate-900">Create post</span>
-                <span className="block text-xs text-slate-500">Start a new challenge from text.</span>
+                <span className="block text-xs text-slate-500">Start a new text or image post for the public feed.</span>
               </span>
               <span className="text-slate-400">{'>'}</span>
             </button>
@@ -11223,12 +11563,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
               onClick={() => {
                 setPostToolsSheetOpen(false)
+                setCreateKind('post')
                 openCreateChallengeScreenshotPicker()
               }}
             >
               <span>
                 <span className="block text-sm font-semibold text-slate-900">Post from screenshot</span>
-                <span className="block text-xs text-slate-500">Upload a screenshot and turn it into a challenge.</span>
+                <span className="block text-xs text-slate-500">Upload a screenshot and turn it into a post or a quiz.</span>
               </span>
               <span className="text-slate-400">{'>'}</span>
             </button>
@@ -11243,8 +11584,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 }}
               >
                 <span>
-                  <span className="block text-sm font-semibold text-slate-900">{editingChallengeId ? 'Continue editing' : 'Continue draft'}</span>
-                  <span className="block text-xs text-slate-500">Resume the challenge composer with your current content.</span>
+                  <span className="block text-sm font-semibold text-slate-900">{(editingChallengeId || editingPostId) ? 'Continue editing' : 'Continue draft'}</span>
+                  <span className="block text-xs text-slate-500">Resume the composer with your current content.</span>
                 </span>
                 <span className="text-slate-400">{'>'}</span>
               </button>
@@ -11267,7 +11608,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               ) : timelineChallengesLoading ? (
                 <div className="text-sm text-white/70">Loading...</div>
               ) : timelineChallenges.length === 0 ? (
-                <div className="text-sm text-white/70">No quizzes yet.</div>
+                <div className="text-sm text-white/70">No posts yet.</div>
               ) : (
                 renderTimelineItems(timelineChallenges)
               )}
@@ -12270,6 +12611,125 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             ) : null}
           </div>
+        </OverlayPortal>
+      )}
+
+      {postSolveOverlay && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-2 sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Post solve canvas"
+          >
+            <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-white shadow-[0_30px_80px_rgba(2,6,23,0.32)]">
+              <PublicSolveComposer
+                title={postSolveOverlay.title}
+                prompt={postSolveOverlay.prompt}
+                imageUrl={postSolveOverlay.imageUrl || null}
+                initialScene={postSolveOverlay.initialScene || null}
+                submitting={postSolveSubmitting}
+                onCancel={() => {
+                  if (postSolveSubmitting) return
+                  setPostSolveOverlay(null)
+                  setPostSolveError(null)
+                }}
+                onSubmit={submitPostSolve}
+              />
+            </div>
+            {postSolveError ? (
+              <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
+                {postSolveError}
+              </div>
+            ) : null}
+          </div>
+        </OverlayPortal>
+      )}
+
+      {postThreadOverlay && (
+        <OverlayPortal>
+          <FullScreenGlassOverlay
+            title={postThreadOverlay.title || 'Solutions'}
+            subtitle="Public solutions thread"
+            zIndexClassName="z-[67]"
+            onClose={() => {
+              setPostThreadOverlay(null)
+              setPostThreadError(null)
+              setPostThreadResponses([])
+            }}
+            onBackdropClick={() => {
+              setPostThreadOverlay(null)
+              setPostThreadError(null)
+              setPostThreadResponses([])
+            }}
+            rightActions={
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  const ownResponse = postThreadResponses.find((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || ''))
+                  void openPostSolveComposer(postThreadOverlay, { initialScene: ownResponse?.excalidrawScene || null })
+                }}
+              >
+                {postThreadResponses.some((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || '')) ? 'Edit solution' : 'Share solution'}
+              </button>
+            }
+          >
+            <div className="space-y-4">
+              {postThreadOverlay.prompt ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+                  {postThreadOverlay.prompt}
+                </div>
+              ) : null}
+              {postThreadOverlay.imageUrl ? (
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                  <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
+                </div>
+              ) : null}
+              {postThreadError ? (
+                <div className="rounded-2xl border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{postThreadError}</div>
+              ) : postThreadLoading ? (
+                <div className="text-sm text-white/70">Loading solutions...</div>
+              ) : postThreadResponses.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">No solutions yet.</div>
+              ) : (
+                <div className="space-y-3">
+                  {postThreadResponses.map((response: any) => {
+                    const responseUserName = String(response?.user?.name || response?.user?.email || 'Learner')
+                    const responseUserId = response?.user?.id ? String(response.user.id) : null
+                    const responseCreatedAt = response?.updatedAt || response?.createdAt
+                    const isMine = String(response?.userId || '') === String(currentUserId || viewerId || '')
+                    return (
+                      <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
+                              {responseUserName}
+                            </UserLink>
+                            {responseCreatedAt ? <div className="text-xs text-white/55">{formatFeedPostDate(responseCreatedAt)}</div> : null}
+                          </div>
+                          {isMine ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost text-xs"
+                              onClick={() => void openPostSolveComposer(postThreadOverlay, { initialScene: response?.excalidrawScene || null })}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
+                        {response?.excalidrawScene ? (
+                          <PublicSolveCanvasViewer scene={response.excalidrawScene} />
+                        ) : (
+                          <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       )}
 

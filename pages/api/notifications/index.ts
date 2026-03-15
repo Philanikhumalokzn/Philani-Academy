@@ -64,6 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (type === 'challenge_graded') return data.gradedById
       if (type === 'assignment_graded') return data.gradedById
       if (type === 'new_challenge') return data.createdById
+      if (type === 'new_post') return data.createdById
       if (type === 'group_invite') return data.invitedById
       if (type === 'group_invite_response') return data.invitedUserId
       if (type === 'group_join_request') return data.requestedById

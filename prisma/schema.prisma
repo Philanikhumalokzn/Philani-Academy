@@ -75,6 +75,7 @@ model User {
   groupJoinRequests GroupJoinRequest[] @relation("GroupJoinRequestedBy")
   notifications Notification[]
   challenges UserChallenge[]
+  socialPosts SocialPost[]
 
   followers UserFollow[] @relation("UserFollowers")
   following UserFollow[] @relation("UserFollowing")
@@ -572,6 +573,24 @@ model UserChallenge {
   closedAt        DateTime?
   revealedAt      DateTime?
 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById, createdAt])
+  @@index([grade, createdAt])
+  @@index([audience, createdAt])
+}
+
+model SocialPost {
+  id          String   @id @default(cuid())
+  createdById String
+  title       String   @default("")
+  prompt      String   @db.Text
+  imageUrl    String?
+  grade       Grade?
+  audience    String   @default("public")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

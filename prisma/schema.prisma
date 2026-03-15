@@ -533,6 +533,7 @@ model LearnerResponse {
   prompt     String?
   latex      String
   studentText String?
+  excalidrawScene Json?
 
   gradingJson Json?
   feedback    String?

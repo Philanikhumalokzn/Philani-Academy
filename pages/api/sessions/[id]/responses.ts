@@ -10,6 +10,7 @@ const MAX_QUIZ_ID_LENGTH = 80
 const MAX_QUIZ_LABEL_LENGTH = 40
 const MAX_PHASE_KEY_LENGTH = 20
 const MAX_POINT_ID_LENGTH = 80
+const MAX_EXCALIDRAW_SCENE_LENGTH = 2_000_000
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionKeyParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
@@ -93,6 +94,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
+    if (!isChallengeSession) {
+      const records = await learnerResponse.findMany({
+        where: { sessionKey },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })
+      return res.status(200).json({
+        responses: records.map((record: any) => ({
+          ...record,
+          userName: String(record?.user?.name || record?.user?.email || 'Learner'),
+          userAvatar: record?.user?.avatar || null,
+        })),
+      })
+    }
+
     const records = await learnerResponse.findMany({
       where: { sessionKey, userId },
       orderBy: { createdAt: 'desc' },
@@ -149,12 +175,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex } = req.body || {}
-    if (!latex || typeof latex !== 'string') {
-      return res.status(400).json({ message: 'Latex is required' })
-    }
-    if (latex.length > MAX_LATEX_LENGTH) {
+    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex, excalidrawScene } = req.body || {}
+    const safeLatex = typeof latex === 'string' ? latex : ''
+    if (safeLatex.length > MAX_LATEX_LENGTH) {
       return res.status(400).json({ message: 'Latex is too large' })
+    }
+
+    let safeExcalidrawScene: Record<string, any> | null = null
+    if (excalidrawScene && typeof excalidrawScene === 'object') {
+      try {
+        const sceneJson = JSON.stringify(excalidrawScene)
+        if (sceneJson.length > MAX_EXCALIDRAW_SCENE_LENGTH) {
+          return res.status(400).json({ message: 'Canvas response is too large' })
+        }
+        safeExcalidrawScene = JSON.parse(sceneJson)
+      } catch {
+        return res.status(400).json({ message: 'Canvas response is invalid' })
+      }
+    }
+
+    if (!safeLatex.trim() && !safeExcalidrawScene) {
+      return res.status(400).json({ message: 'A typed or canvas response is required' })
     }
 
     const safeStudentText = (typeof studentText === 'string' && studentText.trim().length > 0)
@@ -233,8 +274,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           quizPhaseKey: safeQuizPhaseKey,
           quizPointId: safeQuizPointId,
           quizPointIndex: safeQuizPointIndex,
-          latex,
+          latex: safeLatex,
           studentText: safeStudentText,
+          excalidrawScene: safeExcalidrawScene,
         },
       })
     }
@@ -250,8 +292,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const updated = await learnerResponse.update({
             where: { id: existing.id },
             data: {
-              latex,
+              latex: safeLatex,
               studentText: safeStudentText,
+              excalidrawScene: safeExcalidrawScene,
               userEmail,
               quizId: safeQuizId,
               prompt: safePrompt,
@@ -307,8 +350,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const updated = await learnerResponse.update({
               where: { id: existing.id },
               data: {
-                latex,
+                latex: safeLatex,
                 studentText: safeStudentText,
+                excalidrawScene: safeExcalidrawScene,
                 userEmail,
                 quizId: safeQuizId,
                 prompt: safePrompt,

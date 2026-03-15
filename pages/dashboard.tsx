@@ -11,6 +11,7 @@ import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import AppFooter from '../components/AppFooter'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
+import { PublicSolveCanvasViewer, PublicSolveComposer } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import BottomSheet from '../components/BottomSheet'
@@ -897,6 +898,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myResponses, setMyResponses] = useState<any[]>([])
   const [myResponsesLoading, setMyResponsesLoading] = useState(false)
   const [myResponsesError, setMyResponsesError] = useState<string | null>(null)
+  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; title: string; prompt: string; imageUrl?: string | null }>(null)
+  const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
+  const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
@@ -5957,8 +5961,47 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const openLessonCommentThread = useCallback((sessionId: string) => {
     if (!sessionId) return
-    openSessionDetails([sessionId], 0, 'responses')
-  }, [openSessionDetails])
+    const sessionRecord = sessionById.get(String(sessionId))
+    setLessonSolveError(null)
+    setLessonSolveOverlay({
+      sessionId: String(sessionId),
+      title: String(sessionRecord?.title || 'Lesson'),
+      prompt: String((sessionRecord as any)?.description || sessionRecord?.title || 'Share your solve for this lesson.'),
+      imageUrl: null,
+    })
+  }, [sessionById])
+
+  const submitLessonSolve = useCallback(async (scene: any) => {
+    if (!lessonSolveOverlay?.sessionId) return
+    setLessonSolveSubmitting(true)
+    setLessonSolveError(null)
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(lessonSolveOverlay.sessionId)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex: '',
+          studentText: null,
+          excalidrawScene: scene,
+          quizId: `lesson:${lessonSolveOverlay.sessionId}`,
+          quizLabel: lessonSolveOverlay.title,
+          prompt: lessonSolveOverlay.prompt,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
+      }
+      await fetchMyResponses(lessonSolveOverlay.sessionId)
+      setLessonSolveOverlay(null)
+      openSessionDetails([lessonSolveOverlay.sessionId], 0, 'responses')
+    } catch (err: any) {
+      setLessonSolveError(err?.message || 'Failed to submit solve')
+    } finally {
+      setLessonSolveSubmitting(false)
+    }
+  }, [fetchMyResponses, lessonSolveOverlay, openSessionDetails])
 
   const sessionDetailsSessionId = sessionDetailsIds[sessionDetailsIndex] || null
   const sessionDetailsSession = sessionDetailsSessionId ? sessionById.get(sessionDetailsSessionId) : null
@@ -7994,6 +8037,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               {r?.updatedAt ? (
                                 <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
                               ) : null}
+                              {r?.userName ? (
+                                <div className="text-sm font-semibold text-slate-900">{String(r.userName)}</div>
+                              ) : null}
                               {r?.quizLabel ? (
                                 <div className="text-sm font-semibold text-slate-900">{String(r.quizLabel)}</div>
                               ) : null}
@@ -8002,8 +8048,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   {renderTextWithKatex(r.prompt)}
                                 </div>
                               ) : null}
+                              {r?.excalidrawScene ? (
+                                <PublicSolveCanvasViewer scene={r.excalidrawScene} className="mt-2" emptyLabel="No canvas submitted yet." />
+                              ) : null}
                               {(() => {
                                 const html = renderKatexDisplayHtml(r?.latex)
+                                if (!String(r?.latex || '').trim() && r?.excalidrawScene) {
+                                  return null
+                                }
                                 if (html) {
                                   return (
                                     <div
@@ -11583,6 +11635,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   </div>
                                   <div className="text-sm">
                                     <strong>Response:</strong>
+                                    {resp?.excalidrawScene ? (
+                                      <PublicSolveCanvasViewer scene={resp.excalidrawScene} className="mt-2" emptyLabel="No canvas submitted yet." />
+                                    ) : null}
                                     {(() => {
                                       const latex = String(resp.latex || '')
                                       const steps = splitLatexIntoSteps(latex)
@@ -11596,6 +11651,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                       }
                                       const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                                       if (!latex.trim()) {
+                                        if (resp?.excalidrawScene) return null
                                         return (
                                           <div className="mt-2 text-white/80 whitespace-pre-wrap break-words">
                                             (empty)
@@ -12013,10 +12069,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
                               {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
 
+                              {resp?.excalidrawScene ? (
+                                <PublicSolveCanvasViewer scene={resp.excalidrawScene} className="mt-1" emptyLabel="No canvas submitted yet." />
+                              ) : null}
+
                               {!grade ? (
                                 <div>
                                   <div className="text-xs muted mb-1">Your answer</div>
-                                  {latex.trim() ? (
+                                  {!latex.trim() && resp?.excalidrawScene ? null : latex.trim() ? (
                                     html ? (
                                       <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
                                     ) : (
@@ -12138,6 +12198,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )}
             </div>
           </FullScreenGlassOverlay>
+        </OverlayPortal>
+      )}
+
+      {lessonSolveOverlay && (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-2 sm:p-4">
+            <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-white shadow-[0_30px_80px_rgba(2,6,23,0.32)]">
+              <PublicSolveComposer
+                title={lessonSolveOverlay.title}
+                prompt={lessonSolveOverlay.prompt}
+                imageUrl={lessonSolveOverlay.imageUrl || null}
+                submitting={lessonSolveSubmitting}
+                onCancel={() => {
+                  if (lessonSolveSubmitting) return
+                  setLessonSolveOverlay(null)
+                  setLessonSolveError(null)
+                }}
+                onSubmit={submitLessonSolve}
+              />
+            </div>
+            {lessonSolveError ? (
+              <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
+                {lessonSolveError}
+              </div>
+            ) : null}
+          </div>
         </OverlayPortal>
       )}
 

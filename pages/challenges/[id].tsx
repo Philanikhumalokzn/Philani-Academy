@@ -3,13 +3,11 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
-import dynamic from 'next/dynamic'
 import katex from 'katex'
 
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
+import { PublicSolveCanvasViewer, PublicSolveComposer, normalizePublicSolveScene } from '../../components/PublicSolveCanvas'
 import useRedirectToDashboardOnReload from '../../lib/useRedirectToDashboardOnReload'
-
-const StackedCanvasWindow = dynamic(() => import('../../components/StackedCanvasWindow'), { ssr: false })
 
 type Challenge = {
   id: string
@@ -28,7 +26,7 @@ type Challenge = {
   closedAt?: string | null
   revealedAt?: string | null
   takers?: Array<{ userId: string; name: string; avatar: string | null; lastSubmittedAt: string; submissions: number }>
-  attempts?: Array<{ id: string; userId: string; name: string; avatar: string | null; createdAt: string; latex: string; studentText?: string | null }>
+  attempts?: Array<{ id: string; userId: string; name: string; avatar: string | null; createdAt: string; latex: string; studentText?: string | null; excalidrawScene?: any | null }>
   createdBy?: { id?: string; name?: string; avatar?: string | null } | null
 }
 
@@ -132,8 +130,16 @@ function OwnerAttemptCard(props: {
 
       <div className="text-sm">
         <strong>Response:</strong>
+        {normalizePublicSolveScene(resp?.excalidrawScene) ? (
+          <PublicSolveCanvasViewer
+            scene={resp?.excalidrawScene}
+            className="mt-2"
+            emptyLabel="No canvas submitted yet."
+          />
+        ) : null}
         {(() => {
           const latex = String(resp.latex || '')
+          const hasCanvas = Boolean(normalizePublicSolveScene(resp?.excalidrawScene))
           const steps = splitLatexIntoSteps(latex)
           const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
           const stepGradeByIndex = new Map<number, any>()
@@ -145,6 +151,7 @@ function OwnerAttemptCard(props: {
           }
           const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
           if (!latex.trim()) {
+            if (hasCanvas) return null
             return (
               <div className="mt-2 text-white/80 whitespace-pre-wrap break-words">
                 (empty)
@@ -560,6 +567,8 @@ export default function ChallengeAttemptPage() {
   const [error, setError] = useState<string | null>(null)
   const [challenge, setChallenge] = useState<Challenge | null>(null)
   const [savingState, setSavingState] = useState(false)
+  const [submittingSolve, setSubmittingSolve] = useState(false)
+  const [solveSubmitError, setSolveSubmitError] = useState<string | null>(null)
   const [myResponses, setMyResponses] = useState<any[]>([])
   const [viewMode, setViewMode] = useState<'attempt' | 'view'>('attempt')
 
@@ -805,6 +814,38 @@ export default function ChallengeAttemptPage() {
     setViewMode(myAttemptCount > 0 && !canAttempt ? 'view' : 'attempt')
   }, [id, router.query.view])
 
+  const submitSolve = useCallback(async (scene: any) => {
+    if (!id || !challenge) return
+    setSubmittingSolve(true)
+    setSolveSubmitError(null)
+    try {
+      const sessionKey = `challenge:${id}`
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex: '',
+          studentText: null,
+          excalidrawScene: scene,
+          quizId: `challenge:${id}`,
+          quizLabel: (challenge.title || '').trim() || 'Challenge',
+          prompt: String(challenge.prompt || '').trim() || null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
+      }
+      await refreshChallenge()
+      setViewMode('view')
+    } catch (err: any) {
+      setSolveSubmitError(err?.message || 'Failed to submit solve')
+    } finally {
+      setSubmittingSolve(false)
+    }
+  }, [challenge, id, refreshChallenge])
+
   const closeAttempts = useCallback(async () => {
     if (!id) return
     setSavingState(true)
@@ -876,14 +917,6 @@ export default function ChallengeAttemptPage() {
 
     void router.replace(`/dashboard?manageChallenge=${encodeURIComponent(String(id))}`)
   }, [challenge, id, router, viewerId])
-
-  const initialQuiz = useMemo(() => {
-    if (!challenge?.id) return null
-    const quizId = `challenge:${String(challenge.id)}`
-    const quizLabel = (challenge.title || '').trim() ? String(challenge.title) : 'Challenge'
-    const prompt = String(challenge.prompt || '').trim() || 'See attached image.'
-    return { quizId, quizLabel, prompt }
-  }, [challenge])
 
   if (status === 'loading') return null
 
@@ -1013,8 +1046,16 @@ export default function ChallengeAttemptPage() {
                     </div>
                     <div className="text-sm">
                       <strong>Response:</strong>
+                      {normalizePublicSolveScene(resp?.excalidrawScene) ? (
+                        <PublicSolveCanvasViewer
+                          scene={resp?.excalidrawScene}
+                          className="mt-2"
+                          emptyLabel="No canvas submitted yet."
+                        />
+                      ) : null}
                       {(() => {
                         const latex = String(resp.latex || '')
+                        const hasCanvas = Boolean(normalizePublicSolveScene(resp?.excalidrawScene))
                         const steps = splitLatexIntoSteps(latex)
                         const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
                         const stepGradeByIndex = new Map<number, any>()
@@ -1026,6 +1067,7 @@ export default function ChallengeAttemptPage() {
                         }
                         const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                         if (!latex.trim()) {
+                          if (hasCanvas) return null
                           return (
                             <div className="mt-2 text-white/80 whitespace-pre-wrap break-words">
                               (empty)
@@ -1141,97 +1183,23 @@ export default function ChallengeAttemptPage() {
         </div>
       ) : (
         <>
-          {initialQuiz ? (
-            <div
-              className="absolute inset-0"
-              onClick={e => {
-                // Only show badge if not already visible and tap is not on the info button
-                if (!metaVisible && e.target === e.currentTarget) setMetaVisible(true)
-              }}
-            >
-              {(() => {
-                const realtimeScopeId = `challenge:${id}:u:${effectiveViewerId || 'anon'}`
-                const boardId = `challenge:${id}`
-                const canAdmin = Boolean(challenge?.isOwner)
-                return (
-                  <StackedCanvasWindow
-                    gradeLabel={challenge?.grade ? String(challenge.grade).replace('GRADE_', 'Grade ') : null}
-                    roomId={`challenge-${id}-u-${effectiveViewerId || 'anon'}`}
-                    boardId={boardId}
-                    realtimeScopeId={realtimeScopeId}
-                    userId={effectiveViewerId || 'anon'}
-                    userDisplayName={userDisplayName}
-                    canOrchestrateLesson={canAdmin}
-                    forceEditable
-                    quizMode
-                    initialQuiz={initialQuiz}
-                    isVisible
-                    defaultOrientation="portrait"
-                  />
-                )
-              })()}
-            </div>
-          ) : null}
-
-          {/* Info badge logic adapted from assignments */}
-          {challenge && metaVisible ? (
-            <div className="absolute top-3 left-3 right-3 z-50">
-              <div
-                className="rounded-2xl backdrop-blur-md px-4 py-3 flex items-start justify-between gap-3 relative"
-                style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-                role="button"
-                tabIndex={0}
-                onClick={() => setMetaVisible(false)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') setMetaVisible(false)
-                }}
-              >
-                <div className="min-w-0">
-                  <div className="text-xs text-white/80 flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-white">{(challenge.title || '').trim() ? challenge.title : 'Challenge'}</span>
-                    {challenge.createdBy?.name ? <span className="text-white/70">• {challenge.createdBy.name}</span> : null}
-                  </div>
-                  {challenge.prompt ? <div className="mt-2 text-sm text-white">{renderTextWithKatex(challenge.prompt)}</div> : null}
-                  {challenge.imageUrl ? (
-                    <div className="mt-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={challenge.imageUrl}
-                        alt="Challenge"
-                        className="max-h-[240px] rounded border border-white/10 object-contain cursor-zoom-in"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openImageViewer(challenge.imageUrl as string)
-                        }}
-                      />
-                    </div>
-                  ) : null}
+          {challenge ? (
+            <div className="absolute inset-0">
+              <PublicSolveComposer
+                title={(challenge.title || '').trim() || 'Challenge'}
+                prompt={String(challenge.prompt || '').trim() || 'Solve this and share your approach.'}
+                imageUrl={challenge.imageUrl || null}
+                initialScene={normalizePublicSolveScene(displayResponses[0]?.excalidrawScene) || null}
+                submitting={submittingSolve}
+                onCancel={() => void router.push('/dashboard')}
+                onSubmit={submitSolve}
+              />
+              {solveSubmitError ? (
+                <div className="pointer-events-none absolute left-4 right-4 top-4 z-50 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
+                  {solveSubmitError}
                 </div>
-                <button
-                  type="button"
-                  className="absolute top-2 right-2 h-8 w-8 rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40"
-                  aria-label="Close"
-                  onClick={e => {
-                    e.stopPropagation()
-                    void router.push('/dashboard')
-                  }}
-                >
-                  ×
-                </button>
-              </div>
+              ) : null}
             </div>
-          ) : null}
-          {/* Show info button if badge is hidden */}
-          {challenge && !metaVisible ? (
-            <button
-              type="button"
-              className="absolute top-3 left-3 z-50 btn btn-ghost btn-xs"
-              style={{ minWidth: 0, padding: '2px 8px', fontSize: 12 }}
-              aria-label="Show info"
-              onClick={() => setMetaVisible(true)}
-            >
-              <span className="material-icons" style={{ fontSize: 16, verticalAlign: 'middle' }}>info</span>
-            </button>
           ) : null}
 
           {imageViewerOpen && imageViewerSrc ? (

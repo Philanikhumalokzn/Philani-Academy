@@ -1265,8 +1265,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     discover: HTMLDivElement | null
   }>({ timeline: null, sessions: null, groups: null, discover: null })
   const [studentMobileActivePanelHeight, setStudentMobileActivePanelHeight] = useState<number | null>(null)
-  const studentMobileScrollRafRef = useRef<number | null>(null)
-  const studentMobileScrollEndTimeoutRef = useRef<number | null>(null)
+  const [studentMobileCarouselWidth, setStudentMobileCarouselWidth] = useState(0)
+  const [studentMobileDragOffsetPx, setStudentMobileDragOffsetPx] = useState(0)
+  const [studentMobileIsDragging, setStudentMobileIsDragging] = useState(false)
+  const studentMobileSwipeStateRef = useRef<{
+    pointerId: number | null
+    startX: number
+    startY: number
+    dragX: number
+    axis: 'x' | 'y' | null
+    startIndex: number
+    width: number
+  }>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    dragX: 0,
+    axis: null,
+    startIndex: 0,
+    width: 0,
+  })
 
   const [sessionThumbnailUrlDraft, setSessionThumbnailUrlDraft] = useState<string | null>(null)
   const [sessionThumbnailUploading, setSessionThumbnailUploading] = useState(false)
@@ -2748,36 +2766,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return 3
   }
 
-  const scrollStudentPanelsToTab = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
-    const el = studentMobilePanelsRef.current
-    if (!el) return
-    const panel = studentMobilePanelRefs.current[tab]
-    if (panel) {
-      const elRect = el.getBoundingClientRect()
-      const panelRect = panel.getBoundingClientRect()
-      const targetLeft = el.scrollLeft + (panelRect.left - elRect.left)
-      if (typeof el.scrollTo === 'function') {
-        el.scrollTo({ left: targetLeft, behavior: 'smooth' })
-      } else {
-        el.scrollLeft = targetLeft
-      }
-      return
-    }
-    const width = el.clientWidth || 0
-    if (!width) {
-      if (typeof window !== 'undefined') {
-        window.requestAnimationFrame(() => scrollStudentPanelsToTab(tab))
-      }
-      return
-    }
-    const idx = studentMobileTabIndex(tab)
-    const left = idx * width
-    if (typeof el.scrollTo === 'function') {
-      el.scrollTo({ left, behavior: 'smooth' })
-    } else {
-      el.scrollLeft = left
-    }
-  }, [studentMobileTabIndex])
+  const studentMobileTabForIndex = (idx: number) =>
+    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
+      | 'timeline'
+      | 'sessions'
+      | 'groups'
+      | 'discover'
+
+  const studentMobileActiveIndex = studentMobileTabIndex(studentMobileTab)
+  const studentMobileVisualIndex = studentMobileCarouselWidth > 0
+    ? Math.max(0, Math.min(3, studentMobileActiveIndex - (studentMobileDragOffsetPx / studentMobileCarouselWidth)))
+    : studentMobileActiveIndex
 
   const measureStudentMobilePanelHeight = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
     const panel = studentMobilePanelRefs.current[tab]
@@ -2787,6 +2786,90 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (!Number.isFinite(nextHeight) || nextHeight <= 0) return
     setStudentMobileActivePanelHeight(prev => (prev === nextHeight ? prev : nextHeight))
   }, [])
+
+  const finishStudentMobileSwipe = useCallback((pointerId?: number) => {
+    const state = studentMobileSwipeStateRef.current
+    if (state.pointerId == null) return
+    if (typeof pointerId === 'number' && state.pointerId !== pointerId) return
+
+    const wasHorizontalSwipe = state.axis === 'x'
+    const width = state.width || studentMobileCarouselWidth || 1
+    const projectedIndex = state.startIndex - (state.dragX / width)
+    let nextIndex = state.startIndex
+
+    if (wasHorizontalSwipe) {
+      nextIndex = Math.round(projectedIndex)
+      nextIndex = Math.max(state.startIndex - 1, Math.min(state.startIndex + 1, nextIndex))
+      nextIndex = Math.max(0, Math.min(3, nextIndex))
+    }
+
+    state.pointerId = null
+    state.axis = null
+    state.dragX = 0
+    state.width = 0
+    setStudentMobileIsDragging(false)
+    setStudentMobileDragOffsetPx(0)
+
+    if (wasHorizontalSwipe) {
+      setStudentMobileTab(studentMobileTabForIndex(nextIndex))
+    }
+  }, [studentMobileCarouselWidth, studentMobileTabForIndex])
+
+  const onStudentMobilePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    const el = studentMobilePanelsRef.current
+    studentMobileSwipeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragX: 0,
+      axis: null,
+      startIndex: studentMobileActiveIndex,
+      width: el?.clientWidth || studentMobileCarouselWidth || 0,
+    }
+    setStudentMobileIsDragging(false)
+    setStudentMobileDragOffsetPx(0)
+  }, [studentMobileActiveIndex, studentMobileCarouselWidth])
+
+  const onStudentMobilePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const state = studentMobileSwipeStateRef.current
+    if (state.pointerId !== event.pointerId) return
+
+    const deltaX = event.clientX - state.startX
+    const deltaY = event.clientY - state.startY
+
+    if (!state.axis) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return
+      state.axis = Math.abs(deltaX) > Math.abs(deltaY) ? 'x' : 'y'
+      if (state.axis !== 'x') return
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      setStudentMobileIsDragging(true)
+    }
+
+    if (state.axis !== 'x') return
+
+    event.preventDefault()
+    let nextOffset = deltaX
+    if ((state.startIndex === 0 && nextOffset > 0) || (state.startIndex === 3 && nextOffset < 0)) {
+      nextOffset *= 0.35
+    }
+    state.dragX = nextOffset
+    setStudentMobileDragOffsetPx(nextOffset)
+  }, [])
+
+  const onStudentMobilePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    finishStudentMobileSwipe(event.pointerId)
+  }, [finishStudentMobileSwipe])
+
+  const onStudentMobilePointerCancel = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    finishStudentMobileSwipe(event.pointerId)
+  }, [finishStudentMobileSwipe])
 
   const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover' | 'admin') => {
     setStudentQuickOverlay(tab)
@@ -3012,9 +3095,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    // Keep scroll position aligned to the active tab.
-    scrollStudentPanelsToTab(studentMobileTab)
-  }, [studentMobileTab, scrollStudentPanelsToTab])
+    const el = studentMobilePanelsRef.current
+    if (!el) return
+
+    let rafId: number | null = null
+    const scheduleMeasure = () => {
+      if (rafId) window.cancelAnimationFrame(rafId)
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null
+        const nextWidth = Math.round(el.getBoundingClientRect().width)
+        if (!Number.isFinite(nextWidth) || nextWidth <= 0) return
+        setStudentMobileCarouselWidth(prev => (prev === nextWidth ? prev : nextWidth))
+      })
+    }
+
+    scheduleMeasure()
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          scheduleMeasure()
+        })
+      : null
+
+    resizeObserver?.observe(el)
+    window.addEventListener('resize', scheduleMeasure)
+
+    return () => {
+      window.removeEventListener('resize', scheduleMeasure)
+      if (rafId) window.cancelAnimationFrame(rafId)
+      resizeObserver?.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3050,51 +3161,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       resizeObserver?.disconnect()
     }
   }, [measureStudentMobilePanelHeight, studentMobileTab])
-
-  const onStudentPanelsScroll = useCallback(() => {
-    const el = studentMobilePanelsRef.current
-    if (!el) return
-    if (typeof window === 'undefined') return
-    if (studentMobileScrollRafRef.current) return
-
-    const tabForIndex = (idx: number) =>
-      (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
-        | 'timeline'
-        | 'sessions'
-        | 'groups'
-        | 'discover'
-
-    studentMobileScrollRafRef.current = window.requestAnimationFrame(() => {
-      studentMobileScrollRafRef.current = null
-      const width = el.clientWidth || 0
-      if (!width) return
-      const thresholdPx = width / 3
-      const rawIdx = Math.floor((el.scrollLeft + thresholdPx) / width)
-      const nextTab = tabForIndex(rawIdx)
-      setStudentMobileTab(prev => {
-        const prevIdx = studentMobileTabIndex(prev)
-        const nextIdx = studentMobileTabIndex(nextTab)
-        if (nextIdx > prevIdx + 1) return tabForIndex(prevIdx + 1)
-        if (nextIdx < prevIdx - 1) return tabForIndex(prevIdx - 1)
-        return prev === nextTab ? prev : nextTab
-      })
-    })
-
-    if (studentMobileScrollEndTimeoutRef.current) {
-      window.clearTimeout(studentMobileScrollEndTimeoutRef.current)
-    }
-    studentMobileScrollEndTimeoutRef.current = window.setTimeout(() => {
-      studentMobileScrollEndTimeoutRef.current = null
-      const width = el.clientWidth || 0
-      if (!width) return
-      const thresholdPx = width / 3
-      const rawIdx = Math.floor((el.scrollLeft + thresholdPx) / width)
-      const currentIdx = studentMobileTabIndex(studentMobileTab)
-      const cappedIdx = rawIdx > currentIdx + 1 ? currentIdx + 1 : rawIdx < currentIdx - 1 ? currentIdx - 1 : rawIdx
-      const tab = tabForIndex(cappedIdx)
-      scrollStudentPanelsToTab(tab)
-    }, 60)
-  }, [scrollStudentPanelsToTab, studentMobileTab, studentMobileTabIndex])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -10012,52 +10078,55 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderMobileActivePanel = () => (
     <div
       ref={studentMobilePanelsRef}
-      onScroll={onStudentPanelsScroll}
-      className="flex w-full items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory transition-[height] duration-200"
+      onPointerDown={onStudentMobilePointerDown}
+      onPointerMove={onStudentMobilePointerMove}
+      onPointerUp={onStudentMobilePointerUp}
+      onPointerCancel={onStudentMobilePointerCancel}
+      className="relative w-full overflow-hidden transition-[height] duration-200"
       style={{
-        WebkitOverflowScrolling: 'touch',
-        overscrollBehaviorX: 'contain',
         height: studentMobileActivePanelHeight ?? undefined,
+        touchAction: 'pan-y',
       }}
     >
       <div
-        ref={el => {
-          studentMobilePanelRefs.current.timeline = el
-        }}
-        className="w-full flex-none self-start snap-start"
-        style={{ scrollSnapStop: 'always' }}
+        className={`flex w-full items-start ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+        style={{ transform: `translate3d(calc(${-100 * studentMobileActiveIndex}% + ${studentMobileDragOffsetPx}px), 0, 0)` }}
       >
-        <div className="pb-8">{renderStudentTimelinePanel()}</div>
-      </div>
+        <div
+          ref={el => {
+            studentMobilePanelRefs.current.timeline = el
+          }}
+          className="w-full flex-none self-start"
+        >
+          <div className="pb-8">{renderStudentTimelinePanel()}</div>
+        </div>
 
-      <div
-        ref={el => {
-          studentMobilePanelRefs.current.sessions = el
-        }}
-        className="w-full flex-none self-start snap-start"
-        style={{ scrollSnapStop: 'always' }}
-      >
-        <div className="pb-8">{renderStudentSurfaceSection('sessions')}</div>
-      </div>
+        <div
+          ref={el => {
+            studentMobilePanelRefs.current.sessions = el
+          }}
+          className="w-full flex-none self-start"
+        >
+          <div className="pb-8">{renderStudentSurfaceSection('sessions')}</div>
+        </div>
 
-      <div
-        ref={el => {
-          studentMobilePanelRefs.current.groups = el
-        }}
-        className="w-full flex-none self-start snap-start"
-        style={{ scrollSnapStop: 'always' }}
-      >
-        <div className="pb-8">{renderStudentSurfaceSection('groups')}</div>
-      </div>
+        <div
+          ref={el => {
+            studentMobilePanelRefs.current.groups = el
+          }}
+          className="w-full flex-none self-start"
+        >
+          <div className="pb-8">{renderStudentSurfaceSection('groups')}</div>
+        </div>
 
-      <div
-        ref={el => {
-          studentMobilePanelRefs.current.discover = el
-        }}
-        className="w-full flex-none self-start snap-start"
-        style={{ scrollSnapStop: 'always' }}
-      >
-        <div className="pb-8">{renderStudentSurfaceSection('discover')}</div>
+        <div
+          ref={el => {
+            studentMobilePanelRefs.current.discover = el
+          }}
+          className="w-full flex-none self-start"
+        >
+          <div className="pb-8">{renderStudentSurfaceSection('discover')}</div>
+        </div>
       </div>
     </div>
   )
@@ -10081,6 +10150,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+      setStudentMobileIsDragging(false)
+      setStudentMobileDragOffsetPx(0)
       setStudentMobileTab(tab)
       closeMobileMenu()
       if (typeof window !== 'undefined') {
@@ -10161,10 +10232,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div>
-              <div className="grid grid-cols-5 border-b border-black/10 bg-white">
+              <div className="relative grid grid-cols-5 border-b border-black/10 bg-white">
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/5 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+                  style={{ transform: `translateX(${studentMobileVisualIndex * 100}%)` }}
+                />
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'timeline' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'timeline' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
                   onClick={() => switchMobileTab('timeline')}
                   aria-label="Home"
                   title="Home"
@@ -10175,7 +10251,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
                   onClick={() => switchMobileTab('sessions')}
                   aria-label="Sessions"
                   title="Sessions"
@@ -10187,7 +10263,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'groups' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'groups' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
                   onClick={() => switchMobileTab('groups')}
                   aria-label="Groups"
                   title="Groups"
@@ -10201,7 +10277,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`flex min-w-0 items-center justify-center border-b-2 px-1 py-3 transition ${studentMobileTab === 'discover' ? 'border-[#1877f2] text-[#1c1e21]' : 'border-transparent text-[#65676b]'}`}
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'discover' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
                   onClick={() => switchMobileTab('discover')}
                   aria-label="Discover"
                   title="Discover"
@@ -10213,7 +10289,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className="flex min-w-0 items-center justify-center border-b-2 border-transparent px-1 py-3 text-[#65676b] transition"
+                  className="relative z-10 flex min-w-0 items-center justify-center px-1 py-3 text-[#65676b] transition"
                   onClick={openBooksOverlay}
                   aria-label="Library"
                   title="Library"

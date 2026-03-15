@@ -4302,12 +4302,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                         {renderSocialActionButton({
-                          label: 'Comment',
+                          label: 'Solve',
                           onClick: () => openLessonCommentThread(String(resolvedCurrentLesson.id)),
                           icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
+                            <span className="flex items-center gap-1" aria-hidden="true">
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                                <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none">
+                                <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </span>
                           ),
                         })}
                         {renderSocialActionButton({
@@ -4519,13 +4525,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                         {renderSocialActionButton({
-                          label: 'Comment',
+                          label: 'Solve',
                           onClick: () => openChallengeCommentThread(challengeId),
                           disabled: !challengeId,
                           icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
+                            <span className="flex items-center gap-1" aria-hidden="true">
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                                <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none">
+                                <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </span>
                           ),
                         })}
                         {renderSocialActionButton({

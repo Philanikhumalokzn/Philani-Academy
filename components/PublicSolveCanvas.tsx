@@ -35,6 +35,8 @@ const PUBLIC_SOLVE_ZOOM_EPSILON = 0.01
 const PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING = 48
 const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
 const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
+const PUBLIC_SOLVE_NORMALIZED_HEIGHT_TOLERANCE_RATIO = 0.08
+const PUBLIC_SOLVE_NORMALIZED_LINE_TOLERANCE_RATIO = 0.12
 
 const PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS = [
   'scrollX',
@@ -184,10 +186,24 @@ const prunePublicSolveSceneMeta = (sceneMeta: PublicSolveSceneMeta, elements: an
   return next
 }
 
-const canNormalizePublicSolveScene = (scene: PublicSolveScene | null | undefined) => {
+const clusterNeedsFullGuideNormalization = (
+  clusterBounds: NonNullable<ReturnType<typeof getElementsBoundingBox>>,
+  guideSpacing: number,
+) => {
+  const safeGuideSpacing = Math.max(guideSpacing, 1)
+  const heightDeltaRatio = Math.abs(clusterBounds.height - safeGuideSpacing) / safeGuideSpacing
+  const nearestLineY = Math.round(clusterBounds.maxY / safeGuideSpacing) * safeGuideSpacing
+  const bottomDeltaRatio = Math.abs(nearestLineY - clusterBounds.maxY) / safeGuideSpacing
+  return heightDeltaRatio > PUBLIC_SOLVE_NORMALIZED_HEIGHT_TOLERANCE_RATIO
+    || bottomDeltaRatio > PUBLIC_SOLVE_NORMALIZED_LINE_TOLERANCE_RATIO
+}
+
+const canNormalizePublicSolveScene = (scene: PublicSolveScene | null | undefined, guideSpacing?: number | null) => {
   const normalized = normalizePublicSolveScene(scene)
   if (!normalized) return false
-  return Array.isArray(normalized.elements) && normalized.elements.some(isTrackableFreedrawElement)
+  const safeGuideSpacing = clampGuideSpacing(guideSpacing) || PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING
+  const clusters = buildFreedrawGlyphClusters(normalized.elements, safeGuideSpacing)
+  return clusters.some((cluster) => cluster.bounds && clusterNeedsFullGuideNormalization(cluster.bounds, safeGuideSpacing))
 }
 
 const getElementNumericBounds = (element: any) => {
@@ -401,6 +417,7 @@ const normalizeElementsToFullGuideHeight = (elements: any[], guideSpacing: numbe
   const replacements = new Map<string, any>()
   for (const cluster of clusters) {
     if (!cluster.bounds) continue
+    if (!clusterNeedsFullGuideNormalization(cluster.bounds, guideSpacing)) continue
     const choice = normalizeClusterToFullGuideHeight(cluster.bounds, guideSpacing)
     const factor = choice.targetHeight / Math.max(cluster.bounds.height, 1)
     const shiftY = choice.targetBottom - cluster.bounds.maxY
@@ -583,7 +600,15 @@ export function PublicSolveComposer({
   const [composerInitialData, setComposerInitialData] = useState(() => buildInitialData(sceneRef.current))
   const [isReady, setIsReady] = useState(false)
   const [hasContent, setHasContent] = useState(publicSolveSceneHasContent(sceneRef.current))
-  const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(canNormalizePublicSolveScene(sceneRef.current))
+  const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(() => {
+    const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
+    const resolvedGuideSpacing = resolveSceneGuideSpacing(
+      sceneRef.current.elements,
+      sceneMeta,
+      getAppStateZoomValue(sceneRef.current.appState),
+    )
+    return canNormalizePublicSolveScene(sceneRef.current, resolvedGuideSpacing)
+  })
   const [guideViewportState, setGuideViewportState] = useState(() => getGuideViewportState(sceneRef.current.appState))
   const [guideSpacing, setGuideSpacing] = useState(() => {
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
@@ -594,7 +619,6 @@ export function PublicSolveComposer({
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
     setHasContent(publicSolveSceneHasContent(normalized))
-    setCanNormalizeCurrentSegment(canNormalizePublicSolveScene(normalized))
     const nextViewport = getGuideViewportState(normalized.appState)
     setGuideViewportState((prev) => (
       prev.zoom === nextViewport.zoom && prev.scrollY === nextViewport.scrollY ? prev : nextViewport
@@ -604,6 +628,7 @@ export function PublicSolveComposer({
       normalizePublicSolveSceneMeta(normalized.sceneMeta),
       getAppStateZoomValue(normalized.appState),
     )
+    setCanNormalizeCurrentSegment(canNormalizePublicSolveScene(normalized, nextGuideSpacing))
     setGuideSpacing((prev) => (prev === nextGuideSpacing ? prev : nextGuideSpacing))
     if (options?.syncApi && excalidrawApiRef.current?.updateScene) {
       excalidrawApiRef.current.updateScene(buildInitialData(normalized))
@@ -628,12 +653,12 @@ export function PublicSolveComposer({
     if (!normalized || !api?.updateScene) return
 
     const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
-    if (!canNormalizePublicSolveScene(normalized)) return
     const resolvedGuideSpacing = resolveSceneGuideSpacing(
       normalized.elements,
       sceneMeta,
       getAppStateZoomValue(normalized.appState) ?? sceneMeta.lastObservedZoom,
     )
+    if (!canNormalizePublicSolveScene(normalized, resolvedGuideSpacing)) return
     const nextElements = normalizeElementsToFullGuideHeight(normalized.elements, resolvedGuideSpacing)
 
     const nowIso = new Date().toISOString()

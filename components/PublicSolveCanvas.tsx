@@ -36,6 +36,7 @@ const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
 const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
 const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
+const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 112
 
 type PublicSolvePromptMode = 'passive' | 'active'
 
@@ -615,21 +616,11 @@ export function PublicSolveComposer({
               </span>
             </div>
             <h1 className="mt-1 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h1>
-            <button
-              type="button"
-              className="mt-2 max-w-3xl rounded-2xl border border-slate-200 bg-white/92 px-3 py-2 text-left shadow-[0_10px_26px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-white"
-              onClick={enterActivePromptMode}
-            >
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Problem prompt</div>
-              {promptSummary ? (
-                <p className="mt-1 text-sm leading-5 text-slate-700">{promptSummary}</p>
-              ) : (
-                <p className="mt-1 text-sm leading-5 text-slate-500">Tap to bring the full prompt in front of the canvas.</p>
-              )}
-              <div className="mt-2 text-[11px] font-medium text-[#1877f2]">
-                Tap here to inspect the full prompt above the canvas.
-              </div>
-            </button>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              {promptMode === 'active'
+                ? 'The prompt layer is in front. Scroll it directly, then drag the bottom handle upward to return to the canvas.'
+                : 'The prompt header is exposed above the canvas. Use the left slider to fade the canvas and reveal the full prompt underneath.'}
+            </p>
           </div>
           {onCancel ? (
             <button
@@ -686,13 +677,33 @@ export function PublicSolveComposer({
             >
               <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
                 <div className="space-y-5">
+                  <button
+                    type="button"
+                    className="block w-full rounded-[28px] border border-slate-200/80 bg-white/94 px-5 py-5 text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-6"
+                    onClick={enterActivePromptMode}
+                    style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1877f2]">Problem prompt</div>
+                        <h2 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
+                        {promptSummary ? (
+                          <p className="mt-2 text-sm leading-6 text-slate-700">{promptSummary}</p>
+                        ) : (
+                          <p className="mt-2 text-sm leading-6 text-slate-500">No prompt text was attached to this solve.</p>
+                        )}
+                      </div>
+                      <div className="shrink-0 rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-3 py-1 text-[11px] font-semibold text-[#176ad8]">
+                        Tap to inspect
+                      </div>
+                    </div>
+                  </button>
+
                   <section className="rounded-[28px] border border-slate-200/80 bg-white/94 px-5 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-6">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1877f2]">Problem prompt</div>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
                     {prompt ? (
-                      <div className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-slate-700">{prompt}</div>
+                      <div className="whitespace-pre-wrap text-[15px] leading-7 text-slate-700">{prompt}</div>
                     ) : (
-                      <div className="mt-4 text-sm leading-6 text-slate-500">No prompt text was attached to this solve.</div>
+                      <div className="text-sm leading-6 text-slate-500">No prompt text was attached to this solve.</div>
                     )}
                   </section>
 
@@ -731,7 +742,12 @@ export function PublicSolveComposer({
 
             <div
               className={`absolute inset-0 ${promptMode === 'active' ? 'z-[2]' : 'z-[4]'}`}
-              style={{ opacity: canvasOpacity, transition: 'opacity 160ms ease', pointerEvents: promptMode === 'active' ? 'none' : 'auto' }}
+              style={{
+                opacity: canvasOpacity,
+                transition: 'opacity 160ms ease',
+                pointerEvents: promptMode === 'active' ? 'none' : 'auto',
+                top: promptMode === 'active' ? 0 : `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px`,
+              }}
             >
               <div className="flex h-full min-h-0 flex-col bg-white/96">
                 <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>

@@ -9617,7 +9617,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }[id]
 
     return (
-      <div className="student-surface-frame min-h-full bg-[#f0f2f5] text-[#1c1e21]">
+      <div className="student-surface-frame bg-[#f0f2f5] text-[#1c1e21]">
         <section className="student-surface-header border-b border-black/10 bg-white px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -10418,7 +10418,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       <div
         className={
           isMobile
-            ? 'relative z-10 w-full px-0 min-h-[100dvh] flex flex-col'
+            ? 'relative z-10 w-full px-0 flex flex-col'
             : 'max-w-6xl mx-auto px-4 lg:px-8 py-8 space-y-6'
         }
       >

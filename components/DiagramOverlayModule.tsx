@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import LessonStyledExcalidraw from './LessonStyledExcalidraw'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { createLessonRoleProfile, type LessonRoleProfile, type PlatformRole } from '../lib/lessonAccessControl'
@@ -14,8 +14,6 @@ import {
   resolveHandoffSelection,
 } from '../lib/presenterControl'
 import { evaluateSwitchingAuthorities } from '../lib/switchingBehavior'
-
-const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw), { ssr: false })
 
 const IMAGE_SPACE = 'image' as const
 const GRID_DIAGRAM_TITLE = 'Grid Background'
@@ -6111,87 +6109,82 @@ export default function DiagramOverlayModule(props: {
             </div>
           )}
           {isGridDiagram ? (
-            <div
-              className="absolute inset-0 philani-excalidraw-bottom-toolbar"
+            <LessonStyledExcalidraw
+              className="absolute inset-0"
               onPointerDownCapture={onGridToolbarPointerDownCapture}
               onPointerMoveCapture={onGridToolbarPointerMoveCapture}
               onPointerUpCapture={onGridToolbarPointerUpCapture}
               onPointerCancelCapture={onGridToolbarPointerUpCapture}
-              style={{
-                ['--philani-exc-top-y' as any]: `${gridToolbarOffsets.top.y}px`,
-                ['--philani-exc-bottom-y' as any]: `${gridToolbarOffsets.bottom.y}px`,
+              topToolbarOffsetY={gridToolbarOffsets.top.y}
+              bottomToolbarOffsetY={gridToolbarOffsets.bottom.y}
+              excalidrawAPI={(api) => {
+                excalidrawApiRef.current = api
+                setGridApiReadyVersion((prev) => prev + 1)
               }}
-            >
-              <Excalidraw
-                excalidrawAPI={(api) => {
-                  excalidrawApiRef.current = api
-                  setGridApiReadyVersion((prev) => prev + 1)
-                }}
-                onChange={(elements: any[], appState: any, files: any) => {
-                  const diagramId = activeDiagram?.id
-                  if (!diagramId) return
-                  if (suppressGridScenePublishRef.current) return
+              onChange={(elements: any[], appState: any, files: any) => {
+                const diagramId = activeDiagram?.id
+                if (!diagramId) return
+                if (suppressGridScenePublishRef.current) return
 
-                  const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
-                  const nextScene: GridSceneState = {
-                    elements: nextElements,
-                    appState: pickPersistedGridAppState(appState),
-                    files: files && typeof files === 'object' ? cloneJsonPayload(files) : undefined,
+                const nextElements = Array.isArray(elements) ? cloneGridElementsPayload(elements) : []
+                const nextScene: GridSceneState = {
+                  elements: nextElements,
+                  appState: pickPersistedGridAppState(appState),
+                  files: files && typeof files === 'object' ? cloneJsonPayload(files) : undefined,
+                }
+                gridSceneByDiagramRef.current.set(diagramId, nextElements)
+                gridPersistedSceneByDiagramRef.current.set(diagramId, nextScene)
+                gridLastDrawingDiagramIdRef.current = diagramId
+                gridLastDrawingElementsRef.current = nextElements
+                gridActiveDrawingRef.current = true
+                queueGridSceneAutosave(diagramId, nextScene)
+
+                if (typeof window !== 'undefined') {
+                  if (gridDrawingIdleTimerRef.current != null) {
+                    window.clearTimeout(gridDrawingIdleTimerRef.current)
                   }
-                  gridSceneByDiagramRef.current.set(diagramId, nextElements)
-                  gridPersistedSceneByDiagramRef.current.set(diagramId, nextScene)
-                  gridLastDrawingDiagramIdRef.current = diagramId
-                  gridLastDrawingElementsRef.current = nextElements
-                  gridActiveDrawingRef.current = true
-                  queueGridSceneAutosave(diagramId, nextScene)
+                  gridDrawingIdleTimerRef.current = window.setTimeout(() => {
+                    gridDrawingIdleTimerRef.current = null
+                    gridActiveDrawingRef.current = false
+                    const flushDiagramId = gridLastDrawingDiagramIdRef.current
+                    const flushElements = gridLastDrawingElementsRef.current
+                    if (!flushDiagramId || !Array.isArray(flushElements)) return
+                    if (!canPresentRef.current) return
+                    const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(flushDiagramId) || []
+                    queueGridSceneDeltaPublish(flushDiagramId, prevForDelta, flushElements)
+                    gridLastDeltaBaseByDiagramRef.current.set(flushDiagramId, cloneGridElementsPayload(flushElements))
+                  }, 280)
+                }
 
-                  if (typeof window !== 'undefined') {
-                    if (gridDrawingIdleTimerRef.current != null) {
-                      window.clearTimeout(gridDrawingIdleTimerRef.current)
-                    }
-                    gridDrawingIdleTimerRef.current = window.setTimeout(() => {
-                      gridDrawingIdleTimerRef.current = null
-                      gridActiveDrawingRef.current = false
-                      const flushDiagramId = gridLastDrawingDiagramIdRef.current
-                      const flushElements = gridLastDrawingElementsRef.current
-                      if (!flushDiagramId || !Array.isArray(flushElements)) return
-                      if (!canPresentRef.current) return
-                      const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(flushDiagramId) || []
-                      queueGridSceneDeltaPublish(flushDiagramId, prevForDelta, flushElements)
-                      gridLastDeltaBaseByDiagramRef.current.set(flushDiagramId, cloneGridElementsPayload(flushElements))
-                    }, 280)
-                  }
-
-                  if (!canPresentRef.current) return
-                  const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(diagramId) || []
-                  queueGridSceneDeltaPublish(diagramId, prevForDelta, nextElements)
-                  gridLastDeltaBaseByDiagramRef.current.set(diagramId, cloneGridElementsPayload(nextElements))
-                }}
-                zenModeEnabled={false}
-                viewModeEnabled={!canPresent}
-                initialData={{
-                  appState: {
-                    currentItemStrokeWidth: 1,
-                  },
-                }}
-                renderTopRightUI={() => (
-                  <button
-                    type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center text-slate-700 hover:text-slate-900 disabled:opacity-50"
-                    onClick={handleClearInk}
-                    disabled={!canPresent}
-                    aria-label="Clear canvas"
-                    title="Clear canvas"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M3 6h18" />
-                      <path d="M8 6V4h8v2" />
-                      <path d="M7 6l1 14h8l1-14" />
-                    </svg>
-                  </button>
-                )}
-              />
-            </div>
+                if (!canPresentRef.current) return
+                const prevForDelta = gridLastDeltaBaseByDiagramRef.current.get(diagramId) || []
+                queueGridSceneDeltaPublish(diagramId, prevForDelta, nextElements)
+                gridLastDeltaBaseByDiagramRef.current.set(diagramId, cloneGridElementsPayload(nextElements))
+              }}
+              zenModeEnabled={false}
+              viewModeEnabled={!canPresent}
+              initialData={{
+                appState: {
+                  currentItemStrokeWidth: 1,
+                },
+              }}
+              renderTopRightUI={() => (
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                  onClick={handleClearInk}
+                  disabled={!canPresent}
+                  aria-label="Clear canvas"
+                  title="Clear canvas"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M7 6l1 14h8l1-14" />
+                  </svg>
+                </button>
+              )}
+            />
           ) : (
             <>
               <img

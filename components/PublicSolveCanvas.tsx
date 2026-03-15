@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
-
-const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw), { ssr: false })
+import LessonStyledExcalidraw from './LessonStyledExcalidraw'
 
 export type PublicSolveScene = {
   elements: any[]
@@ -93,8 +91,9 @@ export function PublicSolveCanvasViewer({
         Submitted canvas
       </div>
       <div className="h-[420px] bg-white">
-        <Excalidraw
+        <LessonStyledExcalidraw
           key={normalizedScene?.updatedAt || 'viewer'}
+          className="h-full"
           initialData={buildInitialData(normalizedScene)}
           viewModeEnabled
           zenModeEnabled
@@ -176,8 +175,9 @@ export function PublicSolveComposer({
             <span className="hidden sm:inline">Submitted canvases are view-only for everyone else.</span>
           </div>
           <div className="min-h-0 flex-1 bg-white">
-            <Excalidraw
+            <LessonStyledExcalidraw
               key={sceneRef.current.updatedAt || 'composer'}
+              className="h-full"
               initialData={buildInitialData(sceneRef.current)}
               UIOptions={editorUiOptions}
               zenModeEnabled={false}

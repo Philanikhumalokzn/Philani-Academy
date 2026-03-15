@@ -419,6 +419,10 @@ export function PublicSolveComposer({
   title,
   prompt,
   imageUrl,
+  authorName,
+  authorAvatarUrl,
+  authorPublishedAt,
+  authorVerified = false,
   initialScene,
   submitLabel = 'Submit solve',
   cancelLabel = 'Back',
@@ -429,6 +433,10 @@ export function PublicSolveComposer({
   title: string
   prompt?: string | null
   imageUrl?: string | null
+  authorName?: string | null
+  authorAvatarUrl?: string | null
+  authorPublishedAt?: string | null
+  authorVerified?: boolean
   initialScene?: PublicSolveScene | null
   submitLabel?: string
   cancelLabel?: string
@@ -457,6 +465,20 @@ export function PublicSolveComposer({
   const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
   const [promptZoom, setPromptZoom] = useState(1)
   const [promptDismissDragOffset, setPromptDismissDragOffset] = useState(0)
+
+  const resolvedAuthorName = useMemo(() => {
+    const normalized = String(authorName || '').trim()
+    return normalized || 'Original post'
+  }, [authorName])
+
+  const resolvedAuthorAvatarUrl = useMemo(() => {
+    const normalized = String(authorAvatarUrl || '').trim()
+    return normalized || ''
+  }, [authorAvatarUrl])
+
+  const resolvedAuthorInitial = useMemo(() => {
+    return resolvedAuthorName.slice(0, 1).toUpperCase() || 'P'
+  }, [resolvedAuthorName])
 
   const canvasOpacity = canvasOpacityPercent / 100
 
@@ -627,43 +649,57 @@ export function PublicSolveComposer({
               style={promptViewportStyle}
             >
               <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
-                <div className="space-y-5">
-                  <button
-                    type="button"
-                    className="block w-full rounded-[24px] border border-slate-200/80 bg-white/94 px-4 py-3 text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5"
-                    onClick={enterActivePromptMode}
-                    style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1877f2]">Problem prompt</div>
-                        <h2 className="mt-1 text-base font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
+                <article
+                  className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+                  onClick={promptMode === 'passive' ? enterActivePromptMode : undefined}
+                  onKeyDown={promptMode === 'passive' ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      enterActivePromptMode()
+                    }
+                  } : undefined}
+                  role={promptMode === 'passive' ? 'button' : undefined}
+                  tabIndex={promptMode === 'passive' ? 0 : undefined}
+                  style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
+                >
+                  <div className="px-4 py-4 sm:px-5">
+                    <div className="flex items-start gap-3">
+                      <div className="relative shrink-0 overflow-visible">
+                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-xs font-semibold text-[#1c1e21]">
+                          {resolvedAuthorAvatarUrl ? (
+                            <img src={resolvedAuthorAvatarUrl} alt={resolvedAuthorName} className="h-full w-full object-cover" />
+                          ) : (
+                            <span>{resolvedAuthorInitial}</span>
+                          )}
+                        </div>
+                        {authorVerified ? (
+                          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/50 bg-blue-500 text-white shadow-md">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                              <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                            </svg>
+                          </span>
+                        ) : null}
                       </div>
-                      <div className="shrink-0 rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-2.5 py-1 text-[10px] font-semibold text-[#176ad8]">
-                        Open
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
+                        {authorPublishedAt ? (
+                          <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{authorPublishedAt}</div>
+                        ) : null}
                       </div>
                     </div>
-                  </button>
 
-                  <section className="rounded-[28px] border border-slate-200/80 bg-white/94 px-5 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-6">
+                    <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
                     {prompt ? (
-                      <div className="whitespace-pre-wrap text-[15px] leading-7 text-slate-700">{prompt}</div>
-                    ) : (
-                      <div className="text-sm leading-6 text-slate-500">No prompt text was attached to this solve.</div>
-                    )}
-                  </section>
+                      <div className="mt-1.5 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
+                    ) : null}
+                  </div>
 
                   {imageUrl ? (
-                    <section className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/94 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-                      <div className="border-b border-slate-200 bg-slate-50/90 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Attached image
-                      </div>
-                      <div className="bg-slate-50 p-4 sm:p-5">
-                        <img src={imageUrl} alt={title} className="max-h-[720px] w-full rounded-[22px] object-contain" />
-                      </div>
-                    </section>
+                    <div className="overflow-hidden border-t border-black/10 bg-[#f8fafc]">
+                      <img src={imageUrl} alt={title} className="max-h-[720px] w-full object-contain" />
+                    </div>
                   ) : null}
-                </div>
+                </article>
               </div>
 
               {promptMode === 'active' ? (

@@ -948,7 +948,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
-  const [postSolveOverlay, setPostSolveOverlay] = useState<null | { postId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
+  const [postSolveOverlay, setPostSolveOverlay] = useState<null | {
+    postId: string
+    threadKey: string
+    title: string
+    prompt: string
+    imageUrl?: string | null
+    authorName?: string | null
+    authorAvatarUrl?: string | null
+    authorPublishedAt?: string | null
+    authorVerified?: boolean
+    initialScene?: any | null
+  }>(null)
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | { postId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null }>(null)
@@ -6392,6 +6403,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
 
+    const authorName = (post?.createdBy?.name || '').trim() || 'Original post'
+    const authorAvatarUrl = typeof post?.createdBy?.avatar === 'string' ? post.createdBy.avatar.trim() : ''
+    const authorRole = String(post?.createdBy?.role || '').toLowerCase()
+    const authorVerified = hasLessonCapabilityForRole(authorRole, 'canOrchestrateLesson')
+    const authorPublishedAt = post?.createdAt ? formatFeedPostDate(post.createdAt) : ''
+
     setPostSolveError(null)
     let initialScene = options?.initialScene ?? null
     if (!initialScene) {
@@ -6411,9 +6428,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       title: String(post?.title || 'Post'),
       prompt: String(post?.prompt || 'Share your solution for this post.'),
       imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
+      authorName,
+      authorAvatarUrl,
+      authorPublishedAt,
+      authorVerified,
       initialScene,
     })
-  }, [currentUserId, fetchPublicThreadResponses, viewerId])
+  }, [currentUserId, fetchPublicThreadResponses, formatFeedPostDate, viewerId])
 
   const submitPostSolve = useCallback(async (scene: any) => {
     if (!postSolveOverlay?.postId || !postSolveOverlay?.threadKey) return
@@ -12725,6 +12746,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 title={postSolveOverlay.title}
                 prompt={postSolveOverlay.prompt}
                 imageUrl={postSolveOverlay.imageUrl || null}
+                authorName={postSolveOverlay.authorName || null}
+                authorAvatarUrl={postSolveOverlay.authorAvatarUrl || null}
+                authorPublishedAt={postSolveOverlay.authorPublishedAt || null}
+                authorVerified={Boolean(postSolveOverlay.authorVerified)}
                 initialScene={postSolveOverlay.initialScene || null}
                 submitting={postSolveSubmitting}
                 onCancel={() => {

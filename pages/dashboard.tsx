@@ -955,6 +955,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postThreadLoading, setPostThreadLoading] = useState(false)
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
+  const [expandedSolutionThreadKey, setExpandedSolutionThreadKey] = useState<string | null>(null)
+  const [expandedSolutionThreadKind, setExpandedSolutionThreadKind] = useState<'post' | 'challenge' | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
@@ -3709,6 +3711,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return myAttemptCount > 0
   }, [challengeResponseChallenge, challengeOwnResponses.length])
 
+  const getThreadResponseTimestamp = useCallback((response: any) => {
+    const updated = response?.updatedAt ? new Date(response.updatedAt).getTime() : 0
+    const created = response?.createdAt ? new Date(response.createdAt).getTime() : 0
+    return Math.max(updated, created)
+  }, [])
+
+  const orderThreadResponsesForFeed = useCallback((responses: any[]) => {
+    const latestByUser = new Map<string, any>()
+    for (const response of Array.isArray(responses) ? responses : []) {
+      const responseUserId = String(response?.userId || response?.user?.id || response?.userEmail || response?.id || '')
+      if (!responseUserId) continue
+      const existing = latestByUser.get(responseUserId)
+      if (!existing || getThreadResponseTimestamp(response) > getThreadResponseTimestamp(existing)) {
+        latestByUser.set(responseUserId, response)
+      }
+    }
+
+    const deduped = Array.from(latestByUser.values()).sort((a, b) => getThreadResponseTimestamp(b) - getThreadResponseTimestamp(a))
+    const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+    if (!effectiveCurrentUserId) return deduped
+
+    const mine = deduped.find((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId)
+    const others = deduped.filter((response: any) => String(response?.userId || response?.user?.id || '') !== effectiveCurrentUserId)
+    return mine ? [mine, ...others] : deduped
+  }, [currentUserId, getThreadResponseTimestamp, viewerId])
+
+  const displayPostThreadResponses = useMemo(() => {
+    return orderThreadResponsesForFeed(postThreadResponses)
+  }, [orderThreadResponsesForFeed, postThreadResponses])
+
+  const displayChallengeThreadResponses = useMemo(() => {
+    return orderThreadResponsesForFeed(challengeThreadResponses)
+  }, [challengeThreadResponses, orderThreadResponsesForFeed])
+
   useEffect(() => {
     if (!challengeGradingOverlayOpen || !selectedChallengeId) return
     void fetchChallengeSubmissions(selectedChallengeId)
@@ -3881,19 +3917,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className="btn btn-primary shrink-0"
-                        onClick={() => openPostSolveComposer(c)}
+                        onClick={() => {
+                          if (c?.hasOwnResponse) {
+                            void openPostThread(c)
+                            return
+                          }
+                          void openPostSolveComposer(c)
+                        }}
                       >
-                        {c?.hasOwnResponse ? 'Edit solution' : 'Solve'}
+                        {c?.hasOwnResponse ? 'Solutions' : 'Solve'}
                       </button>
                     )}
-
-                    <button
-                      type="button"
-                      className="btn btn-ghost text-xs shrink-0"
-                      onClick={() => openPostThread(c)}
-                    >
-                      Solutions
-                    </button>
                   </div>
                 ) : isOwner ? (
                   <div className="flex flex-col items-end gap-2 shrink-0">
@@ -3917,45 +3951,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </div>
                 ) : (
                   <div className="flex flex-col items-end gap-2 shrink-0">
-                    {canAttempt ? (
+                    {canAttempt && !hasAttempted ? (
                       <Link href={href} className="btn btn-primary shrink-0">
-                        Attempt
+                        Solve
                       </Link>
                     ) : hasAttempted ? (
                       <button
                         type="button"
                         className="btn btn-primary shrink-0"
-                                onClick={() => openChallengeCommentThread(String(c.id))}
+                        onClick={() => openChallengeCommentThread(String(c.id))}
                       >
-                        My response
+                        Solutions
                       </button>
                     ) : (
                       <button type="button" className="btn btn-ghost shrink-0" disabled>
                         Closed
                       </button>
                     )}
-
-                    {hasAttempted && canAttempt ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost text-xs shrink-0"
-                        onClick={() => openChallengeCommentThread(String(c.id))}
-                      >
-                        My response
-                      </button>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      className="btn btn-ghost text-xs shrink-0"
-                      onClick={() => openChallengeCommentThread(String(c.id))}
-                    >
-                      Solutions
-                    </button>
                   </div>
                 )
               ) : null}
             </div>
+            {renderInlineSolutionsThread(c, { kind: isPost ? 'post' : 'challenge', canAttempt, href })}
           </li>
         )
       })}
@@ -4673,18 +4690,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <button
                                 type="button"
                                 className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                                onClick={() => openPostSolveComposer(p)}
+                                onClick={() => {
+                                  if (p?.hasOwnResponse) {
+                                    void openPostThread(p)
+                                    return
+                                  }
+                                  void openPostSolveComposer(p)
+                                }}
                               >
-                                {p?.hasOwnResponse ? 'Edit solution' : 'Solve'}
+                                {p?.hasOwnResponse ? 'Solutions' : 'Solve'}
                               </button>
                             )}
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-[#65676b] shrink-0"
-                              onClick={() => openPostThread(p)}
-                            >
-                              Solutions
-                            </button>
                           </div>
                         ) : isOwner ? (
                           <div className="flex flex-col items-end gap-2 shrink-0">
@@ -4708,9 +4724,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         ) : (
                           <div className="flex flex-col items-end gap-2 shrink-0">
-                            {canAttempt ? (
+                            {canAttempt && !hasAttempted ? (
                               <Link href={href} className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white">
-                                Attempt
+                                Solve
                               </Link>
                             ) : hasAttempted ? (
                               <button
@@ -4718,31 +4734,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
                                 onClick={() => openChallengeCommentThread(String(p.id))}
                               >
-                                My response
+                                Solutions
                               </button>
                             ) : (
                               <button type="button" className="btn btn-ghost shrink-0" disabled>
                                 Closed
                               </button>
                             )}
-
-                            {hasAttempted && canAttempt ? (
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-[#65676b] shrink-0"
-                                onClick={() => openChallengeCommentThread(String(p.id))}
-                              >
-                                My response
-                              </button>
-                            ) : null}
-
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-[#65676b] shrink-0"
-                              onClick={() => openChallengeCommentThread(String(p.id))}
-                            >
-                              Solutions
-                            </button>
                           </div>
                         )
                       ) : null}
@@ -4762,13 +4760,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                         {renderSocialActionButton({
-                          label: isPost ? (p?.hasOwnResponse ? 'Edit solve' : 'Solve') : 'Solve',
+                          label: isPost ? (p?.hasOwnResponse ? 'Solutions' : 'Solve') : (hasAttempted ? 'Solutions' : 'Solve'),
                           onClick: () => {
                             if (isPost) {
+                              if (p?.hasOwnResponse) {
+                                void openPostThread(p)
+                                return
+                              }
                               void openPostSolveComposer(p)
                               return
                             }
-                            openChallengeCommentThread(itemId)
+                            if (hasAttempted) {
+                              openChallengeCommentThread(itemId)
+                              return
+                            }
+                            if (href !== '#') {
+                              void router.push(href)
+                            }
                           },
                           disabled: !itemId,
                           icon: (
@@ -4783,18 +4791,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </span>
                           ),
                         })}
-                        {isPost ? renderSocialActionButton({
-                          label: 'Solutions',
-                          onClick: () => {
-                            void openPostThread(p)
-                          },
-                          disabled: !itemId,
-                          icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M4 6.5C4 5.11929 5.11929 4 6.5 4H17.5C18.8807 4 20 5.11929 20 6.5V14.5C20 15.8807 18.8807 17 17.5 17H9L4 20V6.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ),
-                        }) : null}
                         {renderSocialActionButton({
                           label: 'Share',
                           statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
@@ -4813,6 +4809,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                       </div>
+                      {renderInlineSolutionsThread(p, { kind: isPost ? 'post' : 'challenge', canAttempt, href })}
                     </div>
                   </li>
                 )
@@ -4828,6 +4825,123 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       {renderStudentHomeFeed()}
     </div>
   )
+
+  const renderInlineSolutionsThread = (item: any, options: { kind: 'post' | 'challenge'; canAttempt?: boolean; href?: string }) => {
+    const itemId = String(item?.id || '')
+    if (!itemId) return null
+    const itemKey = `${options.kind}:${itemId}`
+    if (expandedSolutionThreadKey !== itemKey || expandedSolutionThreadKind !== options.kind) return null
+
+    const responses = options.kind === 'post' ? displayPostThreadResponses : displayChallengeThreadResponses
+    const loading = options.kind === 'post' ? postThreadLoading : challengeResponseLoading
+    const error = options.kind === 'post' ? postThreadError : challengeResponseError
+    const threadUnlocked = options.kind === 'post' ? true : canViewChallengeThread
+
+    return (
+      <div className="mt-3 border-t border-black/10 pt-3">
+        {loading ? <div className="text-sm text-[#65676b]">Loading solutions...</div> : null}
+        {!loading && error ? <div className="text-sm text-red-500">{error}</div> : null}
+        {!loading && !error && !threadUnlocked ? (
+          <div className="rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">
+            Submit your own solution first, then this thread will expand with your solution pinned on top and everyone else below.
+          </div>
+        ) : null}
+        {!loading && !error && threadUnlocked && responses.length === 0 ? (
+          <div className="rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">No solutions yet.</div>
+        ) : null}
+        {!loading && !error && threadUnlocked && responses.length > 0 ? (
+          <div className="space-y-3">
+            {responses.map((response: any, idx: number) => {
+              const responseUserId = String(response?.userId || response?.user?.id || '')
+              const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
+              const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
+              const responseCreatedAt = response?.updatedAt || response?.createdAt
+              const isMine = responseUserId === String(currentUserId || viewerId || '')
+              const latex = String(response?.latex || '')
+              const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+              const steps = splitLatexIntoSteps(latex)
+              const grade = normalizeChallengeGrade(response?.gradingJson, steps.length)
+
+              return (
+                <div key={String(response?.id || idx)} className="flex items-start gap-3">
+                  <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
+                    <div className="h-8 w-8 rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center">
+                      {responseAvatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
+                  </UserLink>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className={`rounded-2xl px-3 py-3 ${isMine ? 'bg-[#e7f3ff]' : 'bg-[#f0f2f5]'}`}>
+                      <div className="flex flex-wrap items-center gap-2 pb-1">
+                        <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
+                          {responseUserName}
+                        </UserLink>
+                        {isMine ? (
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#1877f2]">
+                            {idx === 0 ? 'Pinned' : 'You'}
+                          </span>
+                        ) : null}
+                        {responseCreatedAt ? <span className="text-[11px] font-medium text-[#65676b]">{formatFeedPostDate(responseCreatedAt)}</span> : null}
+                      </div>
+
+                      {String(response?.studentText || '').trim() ? (
+                        <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
+                      ) : null}
+
+                      {latex.trim() ? (
+                        latexHtml ? (
+                          <div className="pt-2 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                        ) : (
+                          <div className="pt-2 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
+                        )
+                      ) : null}
+
+                      {response?.excalidrawScene ? (
+                        <div className="pt-2">
+                          <PublicSolveCanvasViewer scene={response.excalidrawScene} />
+                        </div>
+                      ) : null}
+
+                      {grade || String(response?.feedback || '').trim() ? (
+                        <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                          {grade ? <div className="font-semibold">Grade: {grade.earnedMarks}/{grade.totalMarks}</div> : null}
+                          {String(response?.feedback || '').trim() ? <div className="mt-1 whitespace-pre-wrap break-words">{String(response.feedback)}</div> : null}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {isMine ? (
+                      options.kind === 'post' ? (
+                        <button
+                          type="button"
+                          className="ml-3 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
+                          onClick={() => void openPostSolveComposer(item, { initialScene: response?.excalidrawScene || null })}
+                        >
+                          Edit solution
+                        </button>
+                      ) : options.canAttempt && options.href ? (
+                        <button
+                          type="button"
+                          className="ml-3 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
+                          onClick={() => void router.push(options.href || '#')}
+                        >
+                          Edit solution
+                        </button>
+                      ) : null
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   useEffect(() => {
     if (availableSections.length === 0) return
@@ -6209,9 +6323,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const openChallengeCommentThread = useCallback((challengeId: string) => {
     const safeChallengeId = String(challengeId || '')
     if (!safeChallengeId) return
-    setSelectedChallengeResponseId(safeChallengeId)
-    setChallengeResponseOverlayOpen(true)
-  }, [])
+    const nextKey = `challenge:${safeChallengeId}`
+    if (expandedSolutionThreadKey === nextKey && expandedSolutionThreadKind === 'challenge') {
+      setExpandedSolutionThreadKey(null)
+      setExpandedSolutionThreadKind(null)
+      setChallengeResponseError(null)
+      return
+    }
+    setExpandedSolutionThreadKey(nextKey)
+    setExpandedSolutionThreadKind('challenge')
+    void fetchChallengeResponseThread(safeChallengeId)
+  }, [expandedSolutionThreadKey, expandedSolutionThreadKind, fetchChallengeResponseThread])
 
   const fetchPublicThreadResponses = useCallback(async (threadKey: string) => {
     if (!threadKey) return []
@@ -6228,18 +6350,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [])
 
-  const openPostThread = useCallback(async (post: any) => {
+  const openPostThread = useCallback(async (post: any, options?: { forceOpen?: boolean }) => {
     const postId = String(post?.id || '')
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
 
-    setPostThreadOverlay({
-      postId,
-      threadKey,
-      title: String(post?.title || 'Post'),
-      prompt: String(post?.prompt || ''),
-      imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
-    })
+    const nextKey = `post:${postId}`
+    if (!options?.forceOpen && expandedSolutionThreadKey === nextKey && expandedSolutionThreadKind === 'post') {
+      setExpandedSolutionThreadKey(null)
+      setExpandedSolutionThreadKind(null)
+      setPostThreadError(null)
+      return
+    }
+
+    setExpandedSolutionThreadKey(nextKey)
+    setExpandedSolutionThreadKind('post')
     setPostThreadLoading(true)
     setPostThreadError(null)
     try {
@@ -6251,7 +6376,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostThreadLoading(false)
     }
-  }, [fetchPublicThreadResponses])
+  }, [expandedSolutionThreadKey, expandedSolutionThreadKind, fetchPublicThreadResponses])
 
   const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null }) => {
     const postId = String(post?.id || '')
@@ -6322,7 +6447,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         imageUrl: postSolveOverlay.imageUrl || null,
       }
       setPostSolveOverlay(null)
-      await openPostThread(overlayPost)
+      await openPostThread(overlayPost, { forceOpen: true })
     } catch (err: any) {
       setPostSolveError(err?.message || 'Failed to submit solve')
     } finally {

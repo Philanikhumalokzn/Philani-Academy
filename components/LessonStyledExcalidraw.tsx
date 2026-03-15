@@ -52,6 +52,7 @@ export default function LessonStyledExcalidraw({
       style={{
         ['--philani-exc-top-y' as any]: `${topToolbarOffsetY}px`,
         ['--philani-exc-bottom-y' as any]: `${bottomToolbarOffsetY}px`,
+        touchAction: 'none',
         ...style,
       }}
     >

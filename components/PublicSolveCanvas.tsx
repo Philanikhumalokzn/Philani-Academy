@@ -141,6 +141,33 @@ export function PublicSolveComposer({
     }
   }, [initialScene])
 
+  useEffect(() => {
+    const api = excalidrawApiRef.current
+    if (!api?.setActiveTool || !api?.updateScene) return
+
+    api.setActiveTool({ type: 'freedraw' })
+    api.updateScene({
+      appState: {
+        activeTool: { type: 'freedraw' },
+        currentItemStrokeWidth: 2,
+      },
+    })
+
+    if (typeof window === 'undefined') return
+    const settle = window.setTimeout(() => {
+      const latestApi = excalidrawApiRef.current
+      latestApi?.setActiveTool?.({ type: 'freedraw' })
+      latestApi?.updateScene?.({
+        appState: {
+          activeTool: { type: 'freedraw' },
+          currentItemStrokeWidth: 2,
+        },
+      })
+    }, 0)
+
+    return () => window.clearTimeout(settle)
+  }, [isReady])
+
   return (
     <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
       <div className="border-b border-slate-200/80 bg-white/85 px-4 py-3 backdrop-blur-xl sm:px-6">
@@ -174,7 +201,7 @@ export function PublicSolveComposer({
             <span>Draw your solution naturally, then submit it to the public solve thread.</span>
             <span className="hidden sm:inline">Submitted canvases are view-only for everyone else.</span>
           </div>
-          <div className="min-h-0 flex-1 bg-white">
+          <div className="min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
             <LessonStyledExcalidraw
               key={sceneRef.current.updatedAt || 'composer'}
               className="h-full"

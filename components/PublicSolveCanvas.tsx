@@ -481,6 +481,18 @@ export const publicSolveSceneHasContent = (scene: PublicSolveScene | null | unde
   return Boolean(scene && Array.isArray(scene.elements) && scene.elements.some((element: any) => !element?.isDeleted))
 }
 
+const buildPublicSolveSceneResetKey = (scene: PublicSolveScene | null | undefined) => {
+  if (!scene) return 'empty'
+  const updatedAt = typeof scene.updatedAt === 'string' ? scene.updatedAt : ''
+  const elements = Array.isArray(scene.elements) ? scene.elements : []
+  const elementIds = elements.map((element: any) => String(element?.id || '')).join(',')
+  const sceneMeta = scene.sceneMeta && typeof scene.sceneMeta === 'object' ? scene.sceneMeta : undefined
+  const baselineSegmentId = typeof sceneMeta?.baselineSegmentId === 'string' ? sceneMeta.baselineSegmentId : ''
+  const activeSegmentId = typeof sceneMeta?.activeSegmentId === 'string' ? sceneMeta.activeSegmentId : ''
+  const segmentsCount = Array.isArray(sceneMeta?.segments) ? sceneMeta.segments.length : 0
+  return [updatedAt, elements.length, elementIds, baselineSegmentId, activeSegmentId, segmentsCount].join('|')
+}
+
 const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [] }
   return {
@@ -580,6 +592,7 @@ export function PublicSolveComposer({
 }) {
   const excalidrawApiRef = useRef<any>(null)
   const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
+  const lastAppliedInitialSceneKeyRef = useRef(buildPublicSolveSceneResetKey(sceneRef.current))
   const pendingSegmentStartRef = useRef(false)
   const [composerInstanceKey, setComposerInstanceKey] = useState(0)
   const [composerInitialData, setComposerInitialData] = useState(() => buildInitialData(sceneRef.current))
@@ -607,6 +620,9 @@ export function PublicSolveComposer({
 
   useEffect(() => {
     const normalized = normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+    const resetKey = buildPublicSolveSceneResetKey(normalized)
+    if (lastAppliedInitialSceneKeyRef.current === resetKey) return
+    lastAppliedInitialSceneKeyRef.current = resetKey
     pendingSegmentStartRef.current = false
     setIsReady(false)
     setComposerInitialData(buildInitialData(normalized))

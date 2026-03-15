@@ -8,6 +8,27 @@ export type PublicSolveScene = {
   updatedAt?: string | null
 }
 
+const PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS = [
+  'scrollX',
+  'scrollY',
+  'zoom',
+  'viewBackgroundColor',
+  'currentItemStrokeColor',
+  'currentItemBackgroundColor',
+  'currentItemStrokeWidth',
+  'currentItemStrokeStyle',
+  'currentItemFillStyle',
+  'currentItemRoughness',
+  'currentItemOpacity',
+  'currentItemRoundness',
+  'currentItemFontFamily',
+  'currentItemFontSize',
+  'currentItemTextAlign',
+  'currentItemStartArrowhead',
+  'currentItemEndArrowhead',
+  'activeTool',
+] as const
+
 const cloneScenePart = <T,>(value: T): T => {
   try {
     if (typeof structuredClone === 'function') return structuredClone(value)
@@ -17,10 +38,20 @@ const cloneScenePart = <T,>(value: T): T => {
   }
 }
 
+const pickPersistedPublicSolveAppState = (appState: any) => {
+  if (!appState || typeof appState !== 'object') return undefined
+  const next: Record<string, any> = {}
+  for (const key of PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS) {
+    if (typeof appState[key] === 'undefined') continue
+    next[key] = cloneScenePart(appState[key])
+  }
+  return Object.keys(next).length ? next : undefined
+}
+
 export const normalizePublicSolveScene = (value: any): PublicSolveScene | null => {
   if (!value || typeof value !== 'object') return null
   const elements = Array.isArray(value.elements) ? cloneScenePart(value.elements) : []
-  const appState = value.appState && typeof value.appState === 'object' ? cloneScenePart(value.appState) : undefined
+  const appState = pickPersistedPublicSolveAppState(value.appState)
   const files = value.files && typeof value.files === 'object' ? cloneScenePart(value.files) : undefined
   const updatedAt = typeof value.updatedAt === 'string' ? value.updatedAt : null
   return { elements, appState, files, updatedAt }
@@ -211,7 +242,7 @@ export function PublicSolveComposer({
               onChange={(elements: any[], appState: any, files: any) => {
                 const nextScene: PublicSolveScene = {
                   elements: cloneScenePart(Array.isArray(elements) ? elements : []),
-                  appState: appState && typeof appState === 'object' ? cloneScenePart(appState) : undefined,
+                  appState: pickPersistedPublicSolveAppState(appState),
                   files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
                   updatedAt: new Date().toISOString(),
                 }

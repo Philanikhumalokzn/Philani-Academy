@@ -12,6 +12,58 @@ const MAX_PHASE_KEY_LENGTH = 20
 const MAX_POINT_ID_LENGTH = 80
 const MAX_EXCALIDRAW_SCENE_LENGTH = 2_000_000
 
+const PERSISTED_PUBLIC_SOLVE_APP_STATE_KEYS = [
+  'scrollX',
+  'scrollY',
+  'zoom',
+  'viewBackgroundColor',
+  'currentItemStrokeColor',
+  'currentItemBackgroundColor',
+  'currentItemStrokeWidth',
+  'currentItemStrokeStyle',
+  'currentItemFillStyle',
+  'currentItemRoughness',
+  'currentItemOpacity',
+  'currentItemRoundness',
+  'currentItemFontFamily',
+  'currentItemFontSize',
+  'currentItemTextAlign',
+  'currentItemStartArrowhead',
+  'currentItemEndArrowhead',
+  'activeTool',
+] as const
+
+const cloneJsonValue = <T,>(value: T): T => {
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(value)
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+const sanitizeExcalidrawScene = (value: any) => {
+  if (!value || typeof value !== 'object') return null
+
+  const elements = Array.isArray(value.elements) ? cloneJsonValue(value.elements) : []
+  const files = value.files && typeof value.files === 'object' ? cloneJsonValue(value.files) : undefined
+  const updatedAt = typeof value.updatedAt === 'string' ? value.updatedAt : null
+  const appState = value.appState && typeof value.appState === 'object'
+    ? Object.fromEntries(
+        PERSISTED_PUBLIC_SOLVE_APP_STATE_KEYS
+          .filter((key) => typeof value.appState[key] !== 'undefined')
+          .map((key) => [key, cloneJsonValue(value.appState[key])])
+      )
+    : undefined
+
+  return {
+    elements,
+    appState: appState && Object.keys(appState).length ? appState : undefined,
+    files,
+    updatedAt,
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionKeyParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
   if (!sessionKeyParam) {
@@ -107,7 +159,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         take: 200,
       })
       return res.status(200).json({
@@ -184,7 +236,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let safeExcalidrawScene: Record<string, any> | null = null
     if (excalidrawScene && typeof excalidrawScene === 'object') {
       try {
-        const sceneJson = JSON.stringify(excalidrawScene)
+        const sanitizedScene = sanitizeExcalidrawScene(excalidrawScene)
+        const sceneJson = JSON.stringify(sanitizedScene)
         if (sceneJson.length > MAX_EXCALIDRAW_SCENE_LENGTH) {
           return res.status(400).json({ message: 'Canvas response is too large' })
         }
@@ -282,6 +335,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
+      if (!isChallengeSession) {
+        const existing = await learnerResponse.findFirst({
+          where: { sessionKey, userId },
+          orderBy: { updatedAt: 'desc' },
+        })
+
+        if (existing?.id) {
+          const updated = await learnerResponse.update({
+            where: { id: existing.id },
+            data: {
+              latex: safeLatex,
+              studentText: safeStudentText,
+              excalidrawScene: safeExcalidrawScene,
+              userEmail,
+              quizId: safeQuizId,
+              prompt: safePrompt,
+              quizLabel: safeQuizLabel,
+              quizPhaseKey: safeQuizPhaseKey,
+              quizPointId: safeQuizPointId,
+              quizPointIndex: safeQuizPointIndex,
+              ownerId: challengeOwnerId,
+            },
+          })
+          return res.status(200).json(updated)
+        }
+      }
+
       // Unlimited attempts: overwrite the latest response instead of appending.
       if (isChallengeSession && challengeMaxAttempts === null) {
         const existing = await learnerResponse.findFirst({

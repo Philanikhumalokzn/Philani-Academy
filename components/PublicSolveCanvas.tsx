@@ -421,8 +421,6 @@ export function PublicSolveComposer({
   imageUrl,
   authorName,
   authorAvatarUrl,
-  authorPublishedAt,
-  authorVerified = false,
   initialScene,
   submitLabel = 'Submit solve',
   cancelLabel = 'Back',
@@ -435,8 +433,6 @@ export function PublicSolveComposer({
   imageUrl?: string | null
   authorName?: string | null
   authorAvatarUrl?: string | null
-  authorPublishedAt?: string | null
-  authorVerified?: boolean
   initialScene?: PublicSolveScene | null
   submitLabel?: string
   cancelLabel?: string
@@ -672,25 +668,14 @@ export function PublicSolveComposer({
                             <span>{resolvedAuthorInitial}</span>
                           )}
                         </div>
-                        {authorVerified ? (
-                          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/50 bg-blue-500 text-white shadow-md">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                              <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
-                            </svg>
-                          </span>
-                        ) : null}
                       </div>
                       <div className="min-w-0">
                         <div className="text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
-                        {authorPublishedAt ? (
-                          <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{authorPublishedAt}</div>
-                        ) : null}
                       </div>
                     </div>
 
-                    <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
                     {prompt ? (
-                      <div className="mt-1.5 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
+                      <div className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
                     ) : null}
                   </div>
 

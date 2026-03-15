@@ -436,18 +436,19 @@ const quantizeSegmentToNotebookGuides = (
 }
 
 function NotebookGuidesOverlay({
-  appState,
+  zoom,
+  scrollY,
   guideSpacing,
 }: {
-  appState: Record<string, any> | undefined
+  zoom: number
+  scrollY: number
   guideSpacing: number
 }) {
-  const zoomValue = getAppStateZoomValue(appState) || 1
-  const safeSpacing = Math.max(guideSpacing * zoomValue, 12)
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  const safeSpacing = Math.max(guideSpacing * safeZoom, 12)
   const quarter = safeSpacing / 4
   const half = safeSpacing / 2
-  const scrollY = Number(appState?.scrollY || 0)
-  const offset = scrollY * zoomValue
+  const offset = scrollY * safeZoom
 
   return (
     <div
@@ -492,6 +493,11 @@ const buildPublicSolveSceneResetKey = (scene: PublicSolveScene | null | undefine
   const segmentsCount = Array.isArray(sceneMeta?.segments) ? sceneMeta.segments.length : 0
   return [updatedAt, elements.length, elementIds, baselineSegmentId, activeSegmentId, segmentsCount].join('|')
 }
+
+const getGuideViewportState = (appState: Record<string, any> | undefined) => ({
+  zoom: getAppStateZoomValue(appState) || 1,
+  scrollY: Number(appState?.scrollY || 0),
+})
 
 const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [] }
@@ -599,24 +605,27 @@ export function PublicSolveComposer({
   const [isReady, setIsReady] = useState(false)
   const [hasContent, setHasContent] = useState(publicSolveSceneHasContent(sceneRef.current))
   const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(computePublicSolveNormalizationState(sceneRef.current))
-  const [canvasAppState, setCanvasAppState] = useState<Record<string, any> | undefined>(() => sceneRef.current.appState)
+  const [guideViewportState, setGuideViewportState] = useState(() => getGuideViewportState(sceneRef.current.appState))
+  const [guideSpacing, setGuideSpacing] = useState(() => {
+    const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
+    return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta)
+  })
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
     setHasContent(publicSolveSceneHasContent(normalized))
     setCanNormalizeCurrentSegment(computePublicSolveNormalizationState(normalized))
-    setCanvasAppState(normalized.appState)
+    const nextViewport = getGuideViewportState(normalized.appState)
+    setGuideViewportState((prev) => (
+      prev.zoom === nextViewport.zoom && prev.scrollY === nextViewport.scrollY ? prev : nextViewport
+    ))
+    const nextGuideSpacing = resolveSceneGuideSpacing(normalized.elements, normalizePublicSolveSceneMeta(normalized.sceneMeta))
+    setGuideSpacing((prev) => (prev === nextGuideSpacing ? prev : nextGuideSpacing))
     if (options?.syncApi && excalidrawApiRef.current?.updateScene) {
       excalidrawApiRef.current.updateScene(buildInitialData(normalized))
     }
   }, [])
-
-  const guideSpacing = useMemo(() => {
-    const normalized = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
-    const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
-    return resolveSceneGuideSpacing(normalized.elements, sceneMeta)
-  }, [canvasAppState])
 
   useEffect(() => {
     const normalized = normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
@@ -839,7 +848,7 @@ export function PublicSolveComposer({
               }}
               renderTopRightUI={renderComposerTopRightUi}
             />
-            <NotebookGuidesOverlay appState={canvasAppState} guideSpacing={guideSpacing} />
+            <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
           </div>
         </div>
       </div>

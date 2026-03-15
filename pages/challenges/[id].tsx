@@ -959,6 +959,11 @@ export default function ChallengeAttemptPage() {
     return latest ? [latest] : [myResponses[0]]
   }, [myResponses])
 
+  const challengeInitialScene = useMemo(
+    () => normalizePublicSolveScene(displayResponses[0]?.excalidrawScene) || null,
+    [displayResponses],
+  )
+
   return (
     <div className="fixed inset-0 bg-slate-950 text-white overflow-hidden">
       {error ? <div className="absolute top-2 left-2 right-2 z-50 text-red-300 text-sm">{error}</div> : null}
@@ -1189,7 +1194,7 @@ export default function ChallengeAttemptPage() {
                 title={(challenge.title || '').trim() || 'Challenge'}
                 prompt={String(challenge.prompt || '').trim() || 'Solve this and share your approach.'}
                 imageUrl={challenge.imageUrl || null}
-                initialScene={normalizePublicSolveScene(displayResponses[0]?.excalidrawScene) || null}
+                initialScene={challengeInitialScene}
                 submitting={submittingSolve}
                 onCancel={() => void router.push('/dashboard')}
                 onSubmit={submitSolve}

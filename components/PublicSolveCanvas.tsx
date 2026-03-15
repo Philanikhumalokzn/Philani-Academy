@@ -88,6 +88,8 @@ const createEmptyPublicSolveSceneMeta = (): PublicSolveSceneMeta => ({
   segments: [],
 })
 
+const makePublicSolveSegmentId = () => `segment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
 const isTrackableFreedrawElement = (element: any) => Boolean(
   element
   && !element.isDeleted

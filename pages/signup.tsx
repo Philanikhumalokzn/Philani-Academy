@@ -388,7 +388,7 @@ export default function Signup() {
             {error && <p className="text-red-600">{error}</p>}
           </form>
         </div>
-        <AppFooter tone="light" className="w-full" />
+        <AppFooter tone="light" className="w-full" respectSafeBottom />
       </div>
     </main>
   )

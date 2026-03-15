@@ -3,9 +3,10 @@ import Link from 'next/link'
 type AppFooterProps = {
   tone?: 'dark' | 'light'
   className?: string
+  respectSafeBottom?: boolean
 }
 
-export default function AppFooter({ tone = 'dark', className = '' }: AppFooterProps) {
+export default function AppFooter({ tone = 'dark', className = '', respectSafeBottom = false }: AppFooterProps) {
   const currentYear = new Date().getFullYear()
   const isDark = tone === 'dark'
 
@@ -18,9 +19,10 @@ export default function AppFooter({ tone = 'dark', className = '' }: AppFooterPr
     : 'text-[#5b6574] transition hover:text-[#1c1e21]'
 
   const metaClass = isDark ? 'text-white/55' : 'text-[#6b7280]'
+  const safeBottomClass = respectSafeBottom ? 'mb-[calc(var(--app-safe-bottom)+0.75rem)]' : ''
 
   return (
-    <footer className={`${shellClass} ${className}`.trim()}>
+    <footer className={`${shellClass} ${safeBottomClass} ${className}`.trim()}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] font-medium">
         <Link href="/privacy" className={linkClass}>Privacy</Link>
         <Link href="/terms" className={linkClass}>Terms</Link>

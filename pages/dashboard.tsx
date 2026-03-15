@@ -9768,7 +9768,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const renderDashboardFooter = (tone: 'desktop' | 'mobile') => {
-    return <AppFooter tone={tone === 'desktop' ? 'dark' : 'light'} className={tone === 'mobile' ? 'mx-4 mt-4' : ''} />
+    return <AppFooter tone={tone === 'desktop' ? 'dark' : 'light'} className={tone === 'mobile' ? 'mx-4 mt-4' : ''} respectSafeBottom={tone === 'mobile'} />
   }
 
   const renderDesktopFeedShell = () => {

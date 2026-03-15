@@ -116,7 +116,7 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
             <BrandLogo height={56} className="mx-auto" />
             <p className="text-sm text-slate-600">Loading your dashboard...</p>
           </div>
-          <AppFooter tone="light" className="w-full" />
+          <AppFooter tone="light" className="w-full" respectSafeBottom />
         </div>
       </div>
     )
@@ -211,7 +211,7 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
               </div>
             </div>
           </div>
-          <AppFooter tone="light" className="w-full" />
+          <AppFooter tone="light" className="w-full" respectSafeBottom />
         </div>
       </div>
     </>

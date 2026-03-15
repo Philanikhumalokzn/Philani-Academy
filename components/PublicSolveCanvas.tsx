@@ -36,7 +36,7 @@ const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
 const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
 const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
-const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 80
+const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 64
 
 type PublicSolvePromptMode = 'passive' | 'active'
 
@@ -458,13 +458,6 @@ export function PublicSolveComposer({
   const [promptZoom, setPromptZoom] = useState(1)
   const [promptDismissDragOffset, setPromptDismissDragOffset] = useState(0)
 
-  const promptSummary = useMemo(() => {
-    const normalized = String(prompt || '').trim().replace(/\s+/g, ' ')
-    if (!normalized) return ''
-    if (normalized.length <= 56) return normalized
-    return `${normalized.slice(0, 56).trim()}...`
-  }, [prompt])
-
   const canvasOpacity = canvasOpacityPercent / 100
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
@@ -637,19 +630,14 @@ export function PublicSolveComposer({
                 <div className="space-y-5">
                   <button
                     type="button"
-                    className="block w-full rounded-[24px] border border-slate-200/80 bg-white/94 px-4 py-4 text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5"
+                    className="block w-full rounded-[24px] border border-slate-200/80 bg-white/94 px-4 py-3 text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5"
                     onClick={enterActivePromptMode}
                     style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1877f2]">Problem prompt</div>
-                        <h2 className="mt-1.5 text-lg font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
-                        {promptSummary ? (
-                          <p className="mt-1 text-sm leading-5 text-slate-700">{promptSummary}</p>
-                        ) : (
-                          <p className="mt-1 text-sm leading-5 text-slate-500">No prompt text was attached to this solve.</p>
-                        )}
+                        <h2 className="mt-1 text-base font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
                       </div>
                       <div className="shrink-0 rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-2.5 py-1 text-[10px] font-semibold text-[#176ad8]">
                         Open

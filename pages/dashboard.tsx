@@ -1162,7 +1162,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [challengeResponseLoading, setChallengeResponseLoading] = useState(false)
   const [challengeResponseError, setChallengeResponseError] = useState<string | null>(null)
   const [challengeResponseChallenge, setChallengeResponseChallenge] = useState<any | null>(null)
-  const [challengeMyResponses, setChallengeMyResponses] = useState<any[]>([])
+  const [challengeThreadResponses, setChallengeThreadResponses] = useState<any[]>([])
 
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
@@ -3394,6 +3394,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [router])
 
+  const closeChallengeResponseOverlay = useCallback(() => {
+    suppressChallengeAutoOpenRef.current = true
+    setChallengeResponseOverlayOpen(false)
+    setSelectedChallengeResponseId(null)
+    setChallengeResponseChallenge(null)
+    setChallengeThreadResponses([])
+    setChallengeResponseError(null)
+    clearChallengeOverlayQuery()
+  }, [clearChallengeOverlayQuery])
+
   const openEditSelectedChallenge = useCallback(() => {
     const id = selectedChallengeId ? String(selectedChallengeId) : ''
     if (!id) return
@@ -3638,7 +3648,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [activeChallengeGradingResponse, challengeGradingByStep, challengeGradingFeedback, challengeGradingResponseId, challengeGradingStepFeedback, selectedChallengeId, selectedSubmissionUserId, fetchSubmissionDetail, closeChallengeGrading, splitLatexIntoSteps])
 
-  const fetchMyChallengeResponse = useCallback(async (challengeId: string) => {
+  const fetchChallengeResponseThread = useCallback(async (challengeId: string) => {
     if (!challengeId) return
     setChallengeResponseLoading(true)
     setChallengeResponseError(null)
@@ -3652,7 +3662,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (!challengeRes.ok) {
         setChallengeResponseError(challengeData?.message || `Failed to load quiz (${challengeRes.status})`)
         setChallengeResponseChallenge(null)
-        setChallengeMyResponses([])
+        setChallengeThreadResponses([])
         return
       }
 
@@ -3660,48 +3670,44 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (!responsesRes.ok) {
         setChallengeResponseError(responsesData?.message || `Failed to load responses (${responsesRes.status})`)
         setChallengeResponseChallenge(challengeData)
-        setChallengeMyResponses([])
+        setChallengeThreadResponses([])
         return
       }
 
-      // The responses API is already scoped to the current user.
-      const mine = Array.isArray(responsesData?.responses) ? responsesData.responses : []
-      mine.sort((a: any, b: any) => {
+      const responses = Array.isArray(responsesData?.responses) ? responsesData.responses : []
+      responses.sort((a: any, b: any) => {
         const aT = a?.createdAt ? new Date(a.createdAt).getTime() : 0
         const bT = b?.createdAt ? new Date(b.createdAt).getTime() : 0
         return bT - aT
       })
 
       setChallengeResponseChallenge(challengeData)
-      setChallengeMyResponses(mine)
+      setChallengeThreadResponses(responses)
     } catch (err: any) {
-      setChallengeResponseError(err?.message || 'Failed to load responses')
+      setChallengeResponseError(err?.message || 'Failed to load solutions')
       setChallengeResponseChallenge(null)
-      setChallengeMyResponses([])
+      setChallengeThreadResponses([])
     } finally {
       setChallengeResponseLoading(false)
     }
-  }, [viewerId, currentUserId])
+  }, [])
 
-  const displayChallengeResponses = useMemo(() => {
-    if (!Array.isArray(challengeMyResponses) || challengeMyResponses.length === 0) return []
-    if (challengeMyResponses.length === 1) return challengeMyResponses
+  const challengeOwnResponses = useMemo(() => {
+    const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+    if (!effectiveCurrentUserId) return []
+    return (Array.isArray(challengeThreadResponses) ? challengeThreadResponses : []).filter((response: any) => {
+      const responseUserId = String(response?.userId || response?.user?.id || '')
+      return responseUserId === effectiveCurrentUserId
+    })
+  }, [challengeThreadResponses, currentUserId, viewerId])
 
-    const getTs = (resp: any) => {
-      const updated = resp?.updatedAt ? new Date(resp.updatedAt).getTime() : 0
-      const created = resp?.createdAt ? new Date(resp.createdAt).getTime() : 0
-      return Math.max(updated || 0, created || 0)
-    }
-
-    const graded = challengeMyResponses.filter(r => r?.gradingJson || r?.feedback)
-    if (graded.length > 0) {
-      const latestGraded = graded.slice().sort((a, b) => getTs(b) - getTs(a))[0]
-      return latestGraded ? [latestGraded] : [challengeMyResponses[0]]
-    }
-
-    const latest = challengeMyResponses.slice().sort((a, b) => getTs(b) - getTs(a))[0]
-    return latest ? [latest] : [challengeMyResponses[0]]
-  }, [challengeMyResponses])
+  const canViewChallengeThread = useMemo(() => {
+    const data = challengeResponseChallenge as any
+    if (!data) return false
+    if (data?.isOwner || data?.isPrivileged || data?.solutionsVisible) return true
+    const myAttemptCount = typeof data?.myAttemptCount === 'number' ? data.myAttemptCount : challengeOwnResponses.length
+    return myAttemptCount > 0
+  }, [challengeResponseChallenge, challengeOwnResponses.length])
 
   useEffect(() => {
     if (!challengeGradingOverlayOpen || !selectedChallengeId) return
@@ -3762,8 +3768,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (!challengeResponseOverlayOpen || !selectedChallengeResponseId) return
-    void fetchMyChallengeResponse(selectedChallengeResponseId)
-  }, [challengeResponseOverlayOpen, selectedChallengeResponseId, fetchMyChallengeResponse])
+    void fetchChallengeResponseThread(selectedChallengeResponseId)
+  }, [challengeResponseOverlayOpen, selectedChallengeResponseId, fetchChallengeResponseThread])
 
   useEffect(() => {
     if (!timelineOpen) return
@@ -3890,16 +3896,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </button>
                   </div>
                 ) : isOwner ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary shrink-0"
-                    onClick={() => {
-                      setSelectedChallengeId(String(c.id))
-                      setChallengeGradingOverlayOpen(true)
-                    }}
-                  >
-                    Manage
-                  </button>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="btn btn-primary shrink-0"
+                      onClick={() => {
+                        setSelectedChallengeId(String(c.id))
+                        setChallengeGradingOverlayOpen(true)
+                      }}
+                    >
+                      Manage
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs shrink-0"
+                      onClick={() => openChallengeCommentThread(String(c.id))}
+                    >
+                      Solutions
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex flex-col items-end gap-2 shrink-0">
                     {canAttempt ? (
@@ -3910,10 +3925,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className="btn btn-primary shrink-0"
-                        onClick={() => {
-                          setSelectedChallengeResponseId(String(c.id))
-                          setChallengeResponseOverlayOpen(true)
-                        }}
+                                onClick={() => openChallengeCommentThread(String(c.id))}
                       >
                         My response
                       </button>
@@ -3927,14 +3939,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className="btn btn-ghost text-xs shrink-0"
-                        onClick={() => {
-                          setSelectedChallengeResponseId(String(c.id))
-                          setChallengeResponseOverlayOpen(true)
-                        }}
+                        onClick={() => openChallengeCommentThread(String(c.id))}
                       >
                         My response
                       </button>
                     ) : null}
+
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs shrink-0"
+                      onClick={() => openChallengeCommentThread(String(c.id))}
+                    >
+                      Solutions
+                    </button>
                   </div>
                 )
               ) : null}
@@ -4670,16 +4687,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </button>
                           </div>
                         ) : isOwner ? (
-                          <button
-                            type="button"
-                            className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                            onClick={() => {
-                              setSelectedChallengeId(String(p.id))
-                              setChallengeGradingOverlayOpen(true)
-                            }}
-                          >
-                            Manage
-                          </button>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <button
+                              type="button"
+                              className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                              onClick={() => {
+                                setSelectedChallengeId(String(p.id))
+                                setChallengeGradingOverlayOpen(true)
+                              }}
+                            >
+                              Manage
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-[#65676b] shrink-0"
+                              onClick={() => openChallengeCommentThread(String(p.id))}
+                            >
+                              Solutions
+                            </button>
+                          </div>
                         ) : (
                           <div className="flex flex-col items-end gap-2 shrink-0">
                             {canAttempt ? (
@@ -4690,10 +4716,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <button
                                 type="button"
                                 className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                                onClick={() => {
-                                  setSelectedChallengeResponseId(String(p.id))
-                                  setChallengeResponseOverlayOpen(true)
-                                }}
+                                onClick={() => openChallengeCommentThread(String(p.id))}
                               >
                                 My response
                               </button>
@@ -4707,14 +4730,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <button
                                 type="button"
                                 className="text-xs font-semibold text-[#65676b] shrink-0"
-                                onClick={() => {
-                                  setSelectedChallengeResponseId(String(p.id))
-                                  setChallengeResponseOverlayOpen(true)
-                                }}
+                                onClick={() => openChallengeCommentThread(String(p.id))}
                               >
                                 My response
                               </button>
                             ) : null}
+
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-[#65676b] shrink-0"
+                              onClick={() => openChallengeCommentThread(String(p.id))}
+                            >
+                              Solutions
+                            </button>
                           </div>
                         )
                       ) : null}
@@ -6179,9 +6207,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [markSocialShareHandled])
 
   const openChallengeCommentThread = useCallback((challengeId: string) => {
-    if (!challengeId) return
-    void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
-  }, [router])
+    const safeChallengeId = String(challengeId || '')
+    if (!safeChallengeId) return
+    setSelectedChallengeResponseId(safeChallengeId)
+    setChallengeResponseOverlayOpen(true)
+  }, [])
 
   const fetchPublicThreadResponses = useCallback(async (threadKey: string) => {
     if (!threadKey) return []
@@ -12343,71 +12373,47 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <OverlayPortal>
           <FullScreenGlassOverlay
             title={(challengeResponseChallenge?.title || 'Quiz') as any}
-            subtitle="Your submission and feedback"
+            subtitle="Solutions thread"
             zIndexClassName="z-[55]"
-            onClose={() => {
-              suppressChallengeAutoOpenRef.current = true
-              setChallengeResponseOverlayOpen(false)
-              setSelectedChallengeResponseId(null)
-              setChallengeResponseChallenge(null)
-              setChallengeMyResponses([])
-              setChallengeResponseError(null)
-              clearChallengeOverlayQuery()
-            }}
+            onClose={closeChallengeResponseOverlay}
             leftActions={
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => {
-                  suppressChallengeAutoOpenRef.current = true
-                  setChallengeResponseOverlayOpen(false)
-                  setSelectedChallengeResponseId(null)
-                  setChallengeResponseChallenge(null)
-                  setChallengeMyResponses([])
-                  setChallengeResponseError(null)
-                  clearChallengeOverlayQuery()
-                }}
+                onClick={closeChallengeResponseOverlay}
               >
                 Back
               </button>
             }
+            rightActions={(() => {
+              const maxAttempts = typeof (challengeResponseChallenge as any)?.maxAttempts === 'number' ? (challengeResponseChallenge as any).maxAttempts : null
+              const attemptsOpen = (challengeResponseChallenge as any)?.attemptsOpen !== false
+              const myAttemptCount = typeof (challengeResponseChallenge as any)?.myAttemptCount === 'number'
+                ? (challengeResponseChallenge as any).myAttemptCount
+                : challengeOwnResponses.length
+              const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+              if (!canAttempt || !selectedChallengeResponseId) return null
+              return (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const targetId = String(selectedChallengeResponseId)
+                    closeChallengeResponseOverlay()
+                    void router.push(`/challenges/${encodeURIComponent(targetId)}`)
+                  }}
+                >
+                  {challengeOwnResponses.length > 0 ? 'Attempt again' : 'Attempt'}
+                </button>
+              )
+            })()}
           >
             <div className="space-y-3">
               {challengeResponseError ? <div className="text-sm text-red-600">{challengeResponseError}</div> : null}
               {challengeResponseLoading ? (
-                <div className="text-sm muted">Loading your feedback...</div>
+                <div className="text-sm muted">Loading solutions...</div>
               ) : (
                 <>
-                  {(() => {
-                    const maxAttempts = typeof (challengeResponseChallenge as any)?.maxAttempts === 'number' ? (challengeResponseChallenge as any).maxAttempts : null
-                    const attemptsOpen = (challengeResponseChallenge as any)?.attemptsOpen !== false
-                    const myAttemptCount = typeof (challengeResponseChallenge as any)?.myAttemptCount === 'number'
-                      ? (challengeResponseChallenge as any).myAttemptCount
-                      : challengeMyResponses.length
-                    const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
-                    const showReattempt = challengeMyResponses.length > 0 && canAttempt
-                    if (!showReattempt) return null
-                    return (
-                      <div className="flex items-center justify-end">
-                        <button
-                          type="button"
-                          className="btn btn-primary text-xs"
-                          onClick={() => {
-                            const targetId = String(selectedChallengeResponseId)
-                            setChallengeResponseOverlayOpen(false)
-                            setSelectedChallengeResponseId(null)
-                            setChallengeResponseChallenge(null)
-                            setChallengeMyResponses([])
-                            setChallengeResponseError(null)
-                            void router.push(`/challenges/${encodeURIComponent(targetId)}`)
-                          }}
-                        >
-                          Re-attempt
-                        </button>
-                      </div>
-                    )
-                  })()}
-
                   {challengeResponseChallenge?.prompt ? (
                     <div className="border border-white/10 rounded bg-white/5 p-3">
                       <div className="text-sm whitespace-pre-wrap break-words">
@@ -12416,163 +12422,111 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
                   ) : null}
 
-                  {displayChallengeResponses.length === 0 ? (
-                    <div className="border border-white/10 rounded bg-white/5 p-3">
-                      <div className="text-sm muted">No submission found yet.</div>
+                  {(challengeResponseChallenge as any)?.imageUrl ? (
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                      <img src={String((challengeResponseChallenge as any).imageUrl)} alt="Challenge attachment" className="max-h-[320px] w-full object-contain" />
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+                    <div>
+                      {canViewChallengeThread
+                        ? `${challengeThreadResponses.length} ${challengeThreadResponses.length === 1 ? 'solution' : 'solutions'} in this thread`
+                        : 'Submit your own solution to unlock the shared thread.'}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs"
+                      disabled={challengeResponseLoading}
+                      onClick={() => fetchChallengeResponseThread(String(selectedChallengeResponseId))}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {!canViewChallengeThread ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">
+                      Submit your own solution first, or wait for the challenge owner to reveal solutions, and this thread will fill with other learners' work.
+                    </div>
+                  ) : challengeThreadResponses.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">
+                      No solutions yet.
                     </div>
                   ) : (
-                    <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-sm">Your submission</div>
-                        <button
-                          type="button"
-                          className="btn btn-ghost text-xs"
-                          disabled={challengeResponseLoading}
-                          onClick={() => fetchMyChallengeResponse(String(selectedChallengeResponseId))}
-                        >
-                          Refresh
-                        </button>
-                      </div>
-
-                      <div className="text-sm">
-                        Submitted: <span className="font-medium">{new Date(String(displayChallengeResponses[0]?.createdAt)).toLocaleString()}</span>
-                      </div>
-
-                      <div className="space-y-2">
-                        {displayChallengeResponses.map((resp: any, idx: number) => {
-                          const createdAt = resp?.createdAt ? new Date(resp.createdAt).toLocaleString() : ''
-                          const latex = String(resp?.latex || '')
-                          const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
-                          const steps = splitLatexIntoSteps(latex)
-                          const grade = normalizeChallengeGrade(resp.gradingJson, steps.length)
-
-                          return (
-                            <div key={resp?.id || idx} className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
-                              {createdAt ? <div className="text-xs muted">{createdAt}</div> : null}
-
-                              {resp?.excalidrawScene ? (
-                                <PublicSolveCanvasViewer scene={resp.excalidrawScene} className="mt-1" emptyLabel="No canvas submitted yet." />
-                              ) : null}
-
-                              {!grade ? (
-                                <div>
-                                  <div className="text-xs muted mb-1">Your answer</div>
-                                  {!latex.trim() && resp?.excalidrawScene ? null : latex.trim() ? (
-                                    html ? (
-                                      <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-                                    ) : (
-                                      <div className="text-sm whitespace-pre-wrap break-words">{renderTextWithKatex(latex)}</div>
-                                    )
-                                  ) : (
-                                    <div className="text-sm muted">(empty)</div>
-                                  )}
+                    <div className="space-y-3">
+                      {challengeThreadResponses.map((resp: any, idx: number) => {
+                        const responseUserName = String(resp?.user?.name || resp?.userName || resp?.user?.email || 'Learner')
+                        const responseUserId = resp?.user?.id ? String(resp.user.id) : (resp?.userId ? String(resp.userId) : null)
+                        const responseCreatedAt = resp?.updatedAt || resp?.createdAt
+                        const isMine = String(resp?.userId || resp?.user?.id || '') === String(currentUserId || viewerId || '')
+                        const latex = String(resp?.latex || '')
+                        const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+                        const steps = splitLatexIntoSteps(latex)
+                        const grade = normalizeChallengeGrade(resp?.gradingJson, steps.length)
+                        return (
+                          <div key={String(resp?.id || idx)} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
+                                    {responseUserName}
+                                  </UserLink>
+                                  {isMine ? <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75">You</span> : null}
                                 </div>
+                                {responseCreatedAt ? <div className="text-xs text-white/55">{formatFeedPostDate(responseCreatedAt)}</div> : null}
+                              </div>
+                              {isMine && selectedChallengeResponseId && ((challengeResponseChallenge as any)?.attemptsOpen !== false) ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost text-xs"
+                                  onClick={() => {
+                                    const targetId = String(selectedChallengeResponseId)
+                                    closeChallengeResponseOverlay()
+                                    void router.push(`/challenges/${encodeURIComponent(targetId)}`)
+                                  }}
+                                >
+                                  Edit
+                                </button>
                               ) : null}
-
-                              {String(resp?.studentText || '').trim() ? (
-                                <div>
-                                  <div className="text-xs muted mb-1">Typed text</div>
-                                  <div className="text-sm whitespace-pre-wrap break-words">{String(resp.studentText)}</div>
-                                </div>
-                              ) : null}
-
-                              {(() => {
-                                if (!grade) {
-                                  return <div className="text-xs text-white/60">Not graded yet.</div>
-                                }
-
-                                const stepGradeByIndex = new Map<number, any>()
-                                if (grade?.steps) {
-                                  grade.steps.forEach((s: any) => {
-                                    const stepNum = Number(s?.step)
-                                    if (Number.isFinite(stepNum) && stepNum > 0) stepGradeByIndex.set(Math.trunc(stepNum) - 1, s)
-                                  })
-                                }
-
-                                return (
-                                  <div className="space-y-2">
-                                    {steps.length ? (
-                                      <div className="space-y-2">
-                                        {steps.map((stepLatex: string, stepIdx: number) => {
-                                          const g = stepGradeByIndex.get(stepIdx)
-                                          const awardedMarks = Number(g?.awardedMarks ?? 0)
-                                          const awardedInt = Number.isFinite(awardedMarks) ? Math.max(0, Math.trunc(awardedMarks)) : 0
-                                          const isCorrect = (typeof g?.isCorrect === 'boolean') ? Boolean(g.isCorrect) : (awardedInt > 0)
-                                          const isSignificant = (typeof g?.isSignificant === 'boolean') ? Boolean(g.isSignificant) : (!isCorrect)
-                                          const feedbackText = String(g?.feedback ?? '').trim()
-                                          const stepHtml = renderKatexDisplayHtml(stepLatex)
-                                          const line = stepHtml
-                                            ? <div className={isCorrect ? 'leading-relaxed' : 'leading-relaxed underline decoration-red-500'} dangerouslySetInnerHTML={{ __html: stepHtml }} />
-                                            : <div className={isCorrect ? 'text-xs font-mono whitespace-pre-wrap break-words' : 'text-xs font-mono whitespace-pre-wrap break-words underline decoration-red-500'}>{stepLatex}</div>
-
-                                          return (
-                                            <div key={`challenge-response-step-${resp?.id || idx}-${stepIdx}`} className="flex items-start gap-3">
-                                              <div className="min-w-0 flex-1">{line}</div>
-                                              {g ? (
-                                                <div className="shrink-0 flex items-start gap-2">
-                                                  {awardedInt > 0 ? (
-                                                    <span className="text-green-500 flex items-center" aria-label={`${awardedInt} mark${awardedInt === 1 ? '' : 's'} earned`} title={`${awardedInt} mark${awardedInt === 1 ? '' : 's'}`}>
-                                                      {Array.from({ length: Math.min(awardedInt, 12) }).map((_, j) => (
-                                                        <svg key={`tick-${resp?.id || idx}-${stepIdx}-${j}`} viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                          <path
-                                                            d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
-                                                            fill="currentColor"
-                                                          />
-                                                        </svg>
-                                                      ))}
-                                                      {awardedInt > 12 ? (
-                                                        <span className="text-xs text-white/70 ml-1">+{awardedInt - 12}</span>
-                                                      ) : null}
-                                                    </span>
-                                                  ) : isCorrect ? (
-                                                    <span className="text-green-500" aria-label="Correct but 0 marks" title="Correct but 0 marks">
-                                                      <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                        <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                      </svg>
-                                                    </span>
-                                                  ) : (
-                                                    isSignificant ? (
-                                                      <span className="text-red-500" aria-label="Incorrect significant step" title="Incorrect (significant)">
-                                                        <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                                                          <path
-                                                            d="M6.293 6.293a1 1 0 0 1 1.414 0L10 8.586l2.293-2.293a1 1 0 1 1 1.414 1.414L11.414 10l2.293 2.293a1 1 0 0 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 0-1.414z"
-                                                            fill="currentColor"
-                                                          />
-                                                        </svg>
-                                                      </span>
-                                                    ) : (
-                                                      <span className="text-red-500" aria-label="Incorrect insignificant step" title="Incorrect (insignificant)">
-                                                        <svg viewBox="0 0 10 10" className="w-2 h-2" aria-hidden="true">
-                                                          <circle cx="5" cy="5" r="4" fill="currentColor" />
-                                                        </svg>
-                                                      </span>
-                                                    )
-                                                  )}
-
-                                                  {feedbackText ? (
-                                                    <div className="text-xs text-white/70 max-w-[18rem] whitespace-pre-wrap break-words">
-                                                      {feedbackText.slice(0, 160)}
-                                                    </div>
-                                                  ) : null}
-                                                </div>
-                                              ) : null}
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    ) : null}
-
-                                    <div className="text-green-300 text-xs">Mark: {grade.earnedMarks} / {grade.totalMarks}</div>
-                                    {resp?.feedback ? (
-                                      <div className="text-blue-200 text-xs">Feedback: {String(resp.feedback)}</div>
-                                    ) : null}
-                                  </div>
-                                )
-                              })()}
                             </div>
-                          )
-                        })}
-                      </div>
+
+                            {String(resp?.studentText || '').trim() ? (
+                              <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm whitespace-pre-wrap break-words text-white/85">
+                                {String(resp.studentText)}
+                              </div>
+                            ) : null}
+
+                            {latex.trim() ? (
+                              html ? (
+                                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+                              ) : (
+                                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm whitespace-pre-wrap break-words text-white/85">
+                                  {renderTextWithKatex(latex)}
+                                </div>
+                              )
+                            ) : null}
+
+                            {resp?.excalidrawScene ? (
+                              <PublicSolveCanvasViewer scene={resp.excalidrawScene} />
+                            ) : null}
+
+                            {grade || String(resp?.feedback || '').trim() ? (
+                              <div className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-3 space-y-1">
+                                {grade ? (
+                                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                                    Grade: {grade.earnedMarks}/{grade.totalMarks}
+                                  </div>
+                                ) : null}
+                                {String(resp?.feedback || '').trim() ? (
+                                  <div className="text-sm whitespace-pre-wrap break-words text-emerald-50/90">
+                                    {String(resp.feedback)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </>

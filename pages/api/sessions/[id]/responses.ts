@@ -127,14 +127,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 
   if (req.method === 'GET') {
-    // Learners only fetch their own responses.
     if (isChallengeSession && challengeId) {
       try {
         const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
         const challenge = await userChallenge.findUnique({
           where: { id: challengeId },
-          select: { maxAttempts: true },
+          select: { createdById: true, maxAttempts: true, solutionsVisible: true },
         })
+        const ownAttemptCount = await learnerResponse.count({
+          where: { sessionKey: { in: responseThreadKeys }, userId },
+        })
+        const canViewSharedChallengeThread = Boolean(challenge?.createdById && String(challenge.createdById) === String(userId))
+          || isAdmin
+          || Boolean(challenge?.solutionsVisible)
+          || ownAttemptCount > 0
+
+        if (canViewSharedChallengeThread) {
+          const records = await learnerResponse.findMany({
+            where: { sessionKey: { in: responseThreadKeys } },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true,
+                },
+              },
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 200,
+          })
+          return res.status(200).json({
+            responses: records.map((record: any) => ({
+              ...record,
+              userName: String(record?.user?.name || record?.user?.email || 'Learner'),
+              userAvatar: record?.user?.avatar || null,
+            })),
+          })
+        }
+
         const maxAttempts = typeof challenge?.maxAttempts === 'number' ? challenge.maxAttempts : null
         if (maxAttempts === null) {
           const latest = await learnerResponse.findFirst({

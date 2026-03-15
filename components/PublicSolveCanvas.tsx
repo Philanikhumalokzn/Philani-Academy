@@ -36,7 +36,7 @@ const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
 const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
 const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
-const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 96
+const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 80
 
 type PublicSolvePromptMode = 'passive' | 'active'
 
@@ -461,8 +461,8 @@ export function PublicSolveComposer({
   const promptSummary = useMemo(() => {
     const normalized = String(prompt || '').trim().replace(/\s+/g, ' ')
     if (!normalized) return ''
-    if (normalized.length <= 96) return normalized
-    return `${normalized.slice(0, 96).trim()}...`
+    if (normalized.length <= 56) return normalized
+    return `${normalized.slice(0, 56).trim()}...`
   }, [prompt])
 
   const canvasOpacity = canvasOpacityPercent / 100
@@ -606,31 +606,7 @@ export function PublicSolveComposer({
 
   return (
     <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
-      <div className="border-b border-slate-200/80 bg-white/85 px-4 py-3 backdrop-blur-xl sm:px-6">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#1877f2]">
-              <span>Solve</span>
-              <span className="rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-2 py-0.5 text-[10px] tracking-[0.18em] text-[#176ad8]">
-                Prompt {promptMode === 'active' ? 'active' : 'passive'}
-              </span>
-            </div>
-            <h1 className="mt-1 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h1>
-          </div>
-          {onCancel ? (
-            <button
-              type="button"
-              className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              onClick={onCancel}
-            >
-              {cancelLabel}
-            </button>
-          ) : null}
-        </div>
-
-      </div>
-
-      <div className="relative flex-1 min-h-0 px-3 py-3 sm:px-6 sm:py-5">
+      <div className="relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4">
         <div className="pointer-events-none absolute inset-y-0 left-0 z-[7] flex items-center pl-2 sm:pl-3">
           <div className="pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
@@ -661,22 +637,22 @@ export function PublicSolveComposer({
                 <div className="space-y-5">
                   <button
                     type="button"
-                    className="block w-full rounded-[28px] border border-slate-200/80 bg-white/94 px-5 py-5 text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-6"
+                    className="block w-full rounded-[24px] border border-slate-200/80 bg-white/94 px-4 py-4 text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5"
                     onClick={enterActivePromptMode}
                     style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1877f2]">Problem prompt</div>
-                        <h2 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
+                        <h2 className="mt-1.5 text-lg font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
                         {promptSummary ? (
-                          <p className="mt-2 text-sm leading-6 text-slate-700">{promptSummary}</p>
+                          <p className="mt-1 text-sm leading-5 text-slate-700">{promptSummary}</p>
                         ) : (
-                          <p className="mt-2 text-sm leading-6 text-slate-500">No prompt text was attached to this solve.</p>
+                          <p className="mt-1 text-sm leading-5 text-slate-500">No prompt text was attached to this solve.</p>
                         )}
                       </div>
-                      <div className="shrink-0 rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-3 py-1 text-[11px] font-semibold text-[#176ad8]">
-                        Tap to inspect
+                      <div className="shrink-0 rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-2.5 py-1 text-[10px] font-semibold text-[#176ad8]">
+                        Open
                       </div>
                     </div>
                   </button>
@@ -775,7 +751,16 @@ export function PublicSolveComposer({
       </div>
 
       <div className="border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6">
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-between gap-3">
+          {onCancel ? (
+            <button
+              type="button"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              onClick={onCancel}
+            >
+              {cancelLabel}
+            </button>
+          ) : <div />}
           <button
             type="button"
             className="inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55"

@@ -1,12 +1,36 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LessonStyledExcalidraw from './LessonStyledExcalidraw'
+
+export type PublicSolveSegmentStatus = 'active' | 'closed' | 'normalized'
+
+export type PublicSolveSegmentMeta = {
+  id: string
+  startedAt: string
+  zoomAtStart: number
+  elementIds: string[]
+  normalizedAt?: string | null
+  status: PublicSolveSegmentStatus
+}
+
+export type PublicSolveSceneMeta = {
+  version: number
+  baselineSegmentId: string | null
+  activeSegmentId: string | null
+  lastObservedZoom: number | null
+  segments: PublicSolveSegmentMeta[]
+}
 
 export type PublicSolveScene = {
   elements: any[]
   appState?: Record<string, any>
   files?: Record<string, any>
   updatedAt?: string | null
+  sceneMeta?: PublicSolveSceneMeta
 }
+
+const PUBLIC_SOLVE_SCENE_META_VERSION = 1
+const PUBLIC_SOLVE_TRACKED_ELEMENT_TYPE = 'freedraw'
+const PUBLIC_SOLVE_ZOOM_EPSILON = 0.01
 
 const PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS = [
   'scrollX',
@@ -38,6 +62,37 @@ const cloneScenePart = <T,>(value: T): T => {
   }
 }
 
+const normalizeZoomValue = (value: unknown) => {
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num) || num <= 0) return null
+  return num
+}
+
+const getAppStateZoomValue = (appState: any) => {
+  if (!appState || typeof appState !== 'object') return null
+  const raw = appState.zoom
+  if (typeof raw === 'number') return normalizeZoomValue(raw)
+  if (raw && typeof raw === 'object') return normalizeZoomValue((raw as any).value)
+  return null
+}
+
+const createEmptyPublicSolveSceneMeta = (): PublicSolveSceneMeta => ({
+  version: PUBLIC_SOLVE_SCENE_META_VERSION,
+  baselineSegmentId: null,
+  activeSegmentId: null,
+  lastObservedZoom: null,
+  segments: [],
+})
+
+const makePublicSolveSegmentId = () => `segment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+const isTrackableFreedrawElement = (element: any) => Boolean(
+  element
+  && !element.isDeleted
+  && typeof element.id === 'string'
+  && element.type === PUBLIC_SOLVE_TRACKED_ELEMENT_TYPE
+)
+
 const pickPersistedPublicSolveAppState = (appState: any) => {
   if (!appState || typeof appState !== 'object') return undefined
   const next: Record<string, any> = {}
@@ -48,13 +103,163 @@ const pickPersistedPublicSolveAppState = (appState: any) => {
   return Object.keys(next).length ? next : undefined
 }
 
+const cloneSceneMeta = (sceneMeta: PublicSolveSceneMeta): PublicSolveSceneMeta => ({
+  version: PUBLIC_SOLVE_SCENE_META_VERSION,
+  baselineSegmentId: typeof sceneMeta?.baselineSegmentId === 'string' ? sceneMeta.baselineSegmentId : null,
+  activeSegmentId: typeof sceneMeta?.activeSegmentId === 'string' ? sceneMeta.activeSegmentId : null,
+  lastObservedZoom: normalizeZoomValue(sceneMeta?.lastObservedZoom),
+  segments: Array.isArray(sceneMeta?.segments)
+    ? sceneMeta.segments.map((segment) => ({
+        id: String(segment?.id || makePublicSolveSegmentId()),
+        startedAt: typeof segment?.startedAt === 'string' ? segment.startedAt : new Date().toISOString(),
+        zoomAtStart: normalizeZoomValue(segment?.zoomAtStart) || 1,
+        elementIds: Array.isArray(segment?.elementIds)
+          ? Array.from(new Set(segment.elementIds.map((id: unknown) => String(id || '')).filter(Boolean)))
+          : [],
+        normalizedAt: typeof segment?.normalizedAt === 'string' ? segment.normalizedAt : null,
+        status: segment?.status === 'normalized' ? 'normalized' : segment?.status === 'closed' ? 'closed' : 'active',
+      }))
+    : [],
+})
+
+const normalizePublicSolveSceneMeta = (value: any): PublicSolveSceneMeta => {
+  if (!value || typeof value !== 'object') return createEmptyPublicSolveSceneMeta()
+  const next = cloneSceneMeta(value as PublicSolveSceneMeta)
+  const ids = new Set(next.segments.map((segment) => segment.id))
+  if (!next.baselineSegmentId || !ids.has(next.baselineSegmentId)) {
+    next.baselineSegmentId = next.segments[0]?.id || null
+  }
+  if (!next.activeSegmentId || !ids.has(next.activeSegmentId)) {
+    next.activeSegmentId = null
+  }
+  return next
+}
+
+const getTrackableElementIdSet = (elements: any[]) => new Set(
+  (Array.isArray(elements) ? elements : [])
+    .filter(isTrackableFreedrawElement)
+    .map((element: any) => String(element.id))
+)
+
+const getSegmentById = (sceneMeta: PublicSolveSceneMeta, segmentId: string | null) => {
+  if (!segmentId) return null
+  return sceneMeta.segments.find((segment) => segment.id === segmentId) || null
+}
+
+const prunePublicSolveSceneMeta = (sceneMeta: PublicSolveSceneMeta, elements: any[]) => {
+  const aliveIds = getTrackableElementIdSet(elements)
+  const segments = sceneMeta.segments
+    .map((segment) => ({
+      ...segment,
+      elementIds: segment.elementIds.filter((id) => aliveIds.has(id)),
+    }))
+    .filter((segment) => segment.elementIds.length > 0)
+
+  const next: PublicSolveSceneMeta = {
+    ...sceneMeta,
+    segments,
+    baselineSegmentId: sceneMeta.baselineSegmentId,
+    activeSegmentId: sceneMeta.activeSegmentId,
+  }
+
+  const ids = new Set(segments.map((segment) => segment.id))
+  if (!next.baselineSegmentId || !ids.has(next.baselineSegmentId)) {
+    next.baselineSegmentId = segments[0]?.id || null
+  }
+  if (!next.activeSegmentId || !ids.has(next.activeSegmentId)) {
+    next.activeSegmentId = null
+  }
+  return next
+}
+
+const computePublicSolveNormalizationState = (scene: PublicSolveScene | null | undefined) => {
+  const normalized = normalizePublicSolveScene(scene)
+  const sceneMeta = normalizePublicSolveSceneMeta(normalized?.sceneMeta)
+  const activeSegment = getSegmentById(sceneMeta, sceneMeta.activeSegmentId)
+  const baselineSegment = getSegmentById(sceneMeta, sceneMeta.baselineSegmentId)
+  if (!normalized || !activeSegment || !baselineSegment) return false
+  if (activeSegment.id === baselineSegment.id) return false
+  if (activeSegment.status === 'normalized') return false
+  const activeZoom = normalizeZoomValue(activeSegment.zoomAtStart)
+  const baselineZoom = normalizeZoomValue(baselineSegment.zoomAtStart)
+  if (!activeZoom || !baselineZoom) return false
+  return Math.abs(activeZoom - baselineZoom) > PUBLIC_SOLVE_ZOOM_EPSILON
+}
+
+const getElementNumericBounds = (element: any) => {
+  const x = Number(element?.x || 0)
+  const y = Number(element?.y || 0)
+  const width = Number(element?.width || 0)
+  const height = Number(element?.height || 0)
+  const x2 = x + width
+  const y2 = y + height
+  return {
+    minX: Math.min(x, x2),
+    minY: Math.min(y, y2),
+    maxX: Math.max(x, x2),
+    maxY: Math.max(y, y2),
+  }
+}
+
+const getElementsGroupBounds = (elements: any[]) => {
+  const visible = (Array.isArray(elements) ? elements : []).filter((element) => element && !element.isDeleted)
+  if (!visible.length) return null
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  for (const element of visible) {
+    const bounds = getElementNumericBounds(element)
+    minX = Math.min(minX, bounds.minX)
+    minY = Math.min(minY, bounds.minY)
+    maxX = Math.max(maxX, bounds.maxX)
+    maxY = Math.max(maxY, bounds.maxY)
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return null
+  }
+
+  return {
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+  }
+}
+
+const scaleExcalidrawFreedrawPoint = (point: any, factor: number) => {
+  if (!Array.isArray(point)) return point
+  return [Number(point[0] || 0) * factor, Number(point[1] || 0) * factor, ...point.slice(2)]
+}
+
+const scaleFreedrawElementAroundPoint = (element: any, factor: number, anchorX: number, anchorY: number) => {
+  const version = Number(element?.version || 1)
+  return {
+    ...element,
+    x: anchorX + (Number(element?.x || 0) - anchorX) * factor,
+    y: anchorY + (Number(element?.y || 0) - anchorY) * factor,
+    width: Number(element?.width || 0) * factor,
+    height: Number(element?.height || 0) * factor,
+    points: Array.isArray(element?.points)
+      ? element.points.map((point: any) => scaleExcalidrawFreedrawPoint(point, factor))
+      : element?.points,
+    lastCommittedPoint: Array.isArray(element?.lastCommittedPoint)
+      ? scaleExcalidrawFreedrawPoint(element.lastCommittedPoint, factor)
+      : element?.lastCommittedPoint,
+    version: Number.isFinite(version) ? version + 1 : 2,
+    versionNonce: Math.floor(Math.random() * 2_147_483_647),
+  }
+}
+
 export const normalizePublicSolveScene = (value: any): PublicSolveScene | null => {
   if (!value || typeof value !== 'object') return null
   const elements = Array.isArray(value.elements) ? cloneScenePart(value.elements) : []
   const appState = pickPersistedPublicSolveAppState(value.appState)
   const files = value.files && typeof value.files === 'object' ? cloneScenePart(value.files) : undefined
   const updatedAt = typeof value.updatedAt === 'string' ? value.updatedAt : null
-  return { elements, appState, files, updatedAt }
+  const sceneMeta = normalizePublicSolveSceneMeta(value.sceneMeta)
+  return { elements, appState, files, updatedAt, sceneMeta }
 }
 
 export const publicSolveSceneHasContent = (scene: PublicSolveScene | null | undefined) => {
@@ -159,18 +364,92 @@ export function PublicSolveComposer({
   onSubmit: (scene: PublicSolveScene) => void | Promise<void>
 }) {
   const excalidrawApiRef = useRef<any>(null)
-  const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [] })
+  const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
+  const pendingSegmentStartRef = useRef(false)
   const [isReady, setIsReady] = useState(false)
   const [hasContent, setHasContent] = useState(publicSolveSceneHasContent(sceneRef.current))
+  const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(computePublicSolveNormalizationState(sceneRef.current))
 
-  useEffect(() => {
-    const normalized = normalizePublicSolveScene(initialScene) || { elements: [] }
+  const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
+    const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
     setHasContent(publicSolveSceneHasContent(normalized))
-    if (excalidrawApiRef.current?.updateScene) {
+    setCanNormalizeCurrentSegment(computePublicSolveNormalizationState(normalized))
+    if (options?.syncApi && excalidrawApiRef.current?.updateScene) {
       excalidrawApiRef.current.updateScene(buildInitialData(normalized))
     }
-  }, [initialScene])
+  }, [])
+
+  useEffect(() => {
+    const normalized = normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+    pendingSegmentStartRef.current = false
+    applySceneSnapshot(normalized, { syncApi: true })
+  }, [applySceneSnapshot, initialScene])
+
+  const normalizeCurrentSegment = useCallback(() => {
+    const normalized = normalizePublicSolveScene(sceneRef.current)
+    const api = excalidrawApiRef.current
+    if (!normalized || !api?.updateScene) return
+
+    const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
+    const activeSegment = getSegmentById(sceneMeta, sceneMeta.activeSegmentId)
+    const baselineSegment = getSegmentById(sceneMeta, sceneMeta.baselineSegmentId)
+    if (!activeSegment || !baselineSegment) return
+    if (activeSegment.id === baselineSegment.id) return
+
+    const activeZoom = normalizeZoomValue(activeSegment.zoomAtStart)
+    const baselineZoom = normalizeZoomValue(baselineSegment.zoomAtStart)
+    if (!activeZoom || !baselineZoom) return
+    if (Math.abs(activeZoom - baselineZoom) <= PUBLIC_SOLVE_ZOOM_EPSILON) return
+
+    const factor = activeZoom / baselineZoom
+    if (!Number.isFinite(factor) || factor <= 0) return
+
+    const targetIds = new Set(activeSegment.elementIds)
+    const targetElements = normalized.elements.filter((element: any) => targetIds.has(String(element?.id || '')) && isTrackableFreedrawElement(element))
+    const bounds = getElementsGroupBounds(targetElements)
+    if (!targetElements.length || !bounds) return
+
+    const nextElements = normalized.elements.map((element: any) => {
+      if (!targetIds.has(String(element?.id || '')) || !isTrackableFreedrawElement(element)) return element
+      return scaleFreedrawElementAroundPoint(element, factor, bounds.centerX, bounds.centerY)
+    })
+
+    const nowIso = new Date().toISOString()
+    const nextMeta = prunePublicSolveSceneMeta({
+      ...sceneMeta,
+      activeSegmentId: null,
+      segments: sceneMeta.segments.map((segment) => (
+        segment.id === activeSegment.id
+          ? { ...segment, normalizedAt: nowIso, status: 'normalized' }
+          : segment
+      )),
+    }, nextElements)
+
+    pendingSegmentStartRef.current = false
+    applySceneSnapshot({
+      ...normalized,
+      elements: nextElements,
+      sceneMeta: nextMeta,
+      updatedAt: nowIso,
+    }, { syncApi: true })
+  }, [applySceneSnapshot])
+
+  const renderComposerTopRightUi = useCallback(() => {
+    if (!canNormalizeCurrentSegment) return null
+    return (
+      <div className="pointer-events-auto flex items-center gap-2 pr-3 pt-3">
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur transition hover:border-slate-300 hover:bg-white"
+          onClick={normalizeCurrentSegment}
+          title="Resize your latest handwriting to match earlier writing."
+        >
+          Match writing size
+        </button>
+      </div>
+    )
+  }, [canNormalizeCurrentSegment, normalizeCurrentSegment])
 
   useEffect(() => {
     const api = excalidrawApiRef.current
@@ -240,20 +519,76 @@ export function PublicSolveComposer({
               zenModeEnabled={false}
               gridModeEnabled={false}
               onChange={(elements: any[], appState: any, files: any) => {
+                const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+                const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
+                const previousIds = getTrackableElementIdSet(previousScene.elements)
+                const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
+                let nextMeta = cloneSceneMeta(previousMeta)
+                const currentZoom = getAppStateZoomValue(appState)
+
+                if (currentZoom != null) {
+                  const previousZoom = normalizeZoomValue(nextMeta.lastObservedZoom)
+                  if (previousZoom != null && Math.abs(currentZoom - previousZoom) > PUBLIC_SOLVE_ZOOM_EPSILON) {
+                    pendingSegmentStartRef.current = true
+                    if (nextMeta.activeSegmentId) {
+                      nextMeta.segments = nextMeta.segments.map((segment) => (
+                        segment.id === nextMeta.activeSegmentId && segment.status === 'active'
+                          ? { ...segment, status: 'closed' }
+                          : segment
+                      ))
+                      nextMeta.activeSegmentId = null
+                    }
+                  }
+                  nextMeta.lastObservedZoom = currentZoom
+                }
+
+                const newFreedrawElements = nextElements.filter((element: any) => (
+                  isTrackableFreedrawElement(element) && !previousIds.has(String(element.id))
+                ))
+
+                if (newFreedrawElements.length > 0) {
+                  let activeSegment = getSegmentById(nextMeta, nextMeta.activeSegmentId)
+                  if (!activeSegment || pendingSegmentStartRef.current) {
+                    const segmentId = makePublicSolveSegmentId()
+                    activeSegment = {
+                      id: segmentId,
+                      startedAt: new Date().toISOString(),
+                      zoomAtStart: currentZoom || nextMeta.lastObservedZoom || 1,
+                      elementIds: [],
+                      normalizedAt: null,
+                      status: 'active',
+                    }
+                    nextMeta.segments = [...nextMeta.segments, activeSegment]
+                    nextMeta.activeSegmentId = segmentId
+                    if (!nextMeta.baselineSegmentId) {
+                      nextMeta.baselineSegmentId = segmentId
+                    }
+                    pendingSegmentStartRef.current = false
+                  }
+
+                  const newIds = newFreedrawElements.map((element: any) => String(element.id))
+                  nextMeta.segments = nextMeta.segments.map((segment) => (
+                    segment.id === activeSegment?.id
+                      ? { ...segment, status: 'active', elementIds: Array.from(new Set([...segment.elementIds, ...newIds])) }
+                      : segment
+                  ))
+                }
+
+                nextMeta = prunePublicSolveSceneMeta(nextMeta, nextElements)
                 const nextScene: PublicSolveScene = {
-                  elements: cloneScenePart(Array.isArray(elements) ? elements : []),
+                  elements: nextElements,
                   appState: pickPersistedPublicSolveAppState(appState),
                   files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
                   updatedAt: new Date().toISOString(),
+                  sceneMeta: nextMeta,
                 }
-                sceneRef.current = nextScene
-                setHasContent(publicSolveSceneHasContent(nextScene))
+                applySceneSnapshot(nextScene)
               }}
               excalidrawAPI={(api: any) => {
                 excalidrawApiRef.current = api
                 if (!isReady) setIsReady(true)
               }}
-              renderTopRightUI={() => null}
+              renderTopRightUI={renderComposerTopRightUi}
             />
           </div>
         </div>

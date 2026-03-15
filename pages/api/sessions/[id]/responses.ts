@@ -55,12 +55,16 @@ const sanitizeExcalidrawScene = (value: any) => {
           .map((key) => [key, cloneJsonValue(value.appState[key])])
       )
     : undefined
+  const sceneMeta = value.sceneMeta && typeof value.sceneMeta === 'object'
+    ? cloneJsonValue(value.sceneMeta)
+    : undefined
 
   return {
     elements,
     appState: appState && Object.keys(appState).length ? appState : undefined,
     files,
     updatedAt,
+    sceneMeta,
   }
 }
 

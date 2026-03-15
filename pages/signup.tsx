@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { GRADE_VALUES, GradeValue, gradeToLabel } from '../lib/grades'
 
+import AppFooter from '../components/AppFooter'
 import NavArrows from '../components/NavArrows'
 
 const gradeOptions = GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) }))
@@ -239,20 +240,21 @@ export default function Signup() {
   }
 
   return (
-    <main className="deep-page min-h-screen flex items-center justify-center px-4 py-12">
-      <div className="max-w-md w-full bg-white text-slate-900 shadow-md rounded-3xl p-8 fade-up">
-        <div className="flex items-center justify-between gap-3 mb-6">
-          <NavArrows backHref="/api/auth/signin" forwardHref="/verify-email" />
-          <Link href="/api/auth/signin" className="text-sm text-primary hover:underline font-medium">Sign in</Link>
-        </div>
+    <main className="deep-page min-h-screen px-4 py-12">
+      <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-md flex-col items-center justify-center gap-6">
+        <div className="w-full bg-white text-slate-900 shadow-md rounded-3xl p-8 fade-up">
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <NavArrows backHref="/api/auth/signin" forwardHref="/verify-email" />
+            <Link href="/api/auth/signin" className="text-sm text-primary hover:underline font-medium">Sign in</Link>
+          </div>
 
-        <div className="space-y-2 mb-6 text-center">
-          <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Philani Academy</p>
-          <h1 className="text-3xl font-semibold text-slate-900">Create account</h1>
-          <p className="text-sm text-slate-600">Minimal, mobile-first signup for learners.</p>
-        </div>
+          <div className="space-y-2 mb-6 text-center">
+            <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Philani Academy</p>
+            <h1 className="text-3xl font-semibold text-slate-900">Create account</h1>
+            <p className="text-sm text-slate-600">Minimal, mobile-first signup for learners.</p>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
           <section>
             <h3 className="font-semibold mb-2 text-slate-900">Learner details</h3>
             <div className="space-y-3">
@@ -383,8 +385,10 @@ export default function Signup() {
             </p>
           </div>
 
-          {error && <p className="text-red-600">{error}</p>}
-        </form>
+            {error && <p className="text-red-600">{error}</p>}
+          </form>
+        </div>
+        <AppFooter tone="light" className="w-full" />
       </div>
     </main>
   )

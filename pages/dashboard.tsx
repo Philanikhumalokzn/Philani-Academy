@@ -9,6 +9,7 @@ import UserLink from '../components/UserLink'
 import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
+import AppFooter from '../components/AppFooter'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
@@ -9722,33 +9723,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const renderDashboardFooter = (tone: 'desktop' | 'mobile') => {
-    const currentYear = new Date().getFullYear()
-    const shellClass = tone === 'desktop'
-      ? 'rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] px-5 py-4 text-white shadow-[0_16px_45px_rgba(2,6,23,0.24)] backdrop-blur-xl'
-      : 'mx-4 mt-4 rounded-[24px] border border-black/10 bg-white px-4 py-4 text-[#1c1e21] shadow-[0_10px_28px_rgba(15,23,42,0.06)]'
-
-    const linkClass = tone === 'desktop'
-      ? 'text-white/72 transition hover:text-white'
-      : 'text-[#5b6574] transition hover:text-[#1c1e21]'
-
-    const metaClass = tone === 'desktop' ? 'text-white/55' : 'text-[#6b7280]'
-
-    return (
-      <footer className={shellClass}>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] font-medium">
-          <Link href="/privacy" className={linkClass}>Privacy</Link>
-          <Link href="/terms" className={linkClass}>Terms</Link>
-          <Link href="/help" className={linkClass}>Help</Link>
-          <a href="mailto:support@philaniacademy.org" className={linkClass}>Contact</a>
-        </div>
-        <div className={`mt-3 text-[12px] leading-5 ${metaClass}`}>
-          Educational platform. Use of the service is subject to platform policies and applicable law.
-        </div>
-        <div className={`mt-1 text-[12px] ${metaClass}`}>
-          © {currentYear} Philani Academy. All rights reserved.
-        </div>
-      </footer>
-    )
+    return <AppFooter tone={tone === 'desktop' ? 'dark' : 'light'} className={tone === 'mobile' ? 'mx-4 mt-4' : ''} />
   }
 
   const renderDesktopFeedShell = () => {

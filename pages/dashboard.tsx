@@ -1264,6 +1264,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     groups: HTMLDivElement | null
     discover: HTMLDivElement | null
   }>({ timeline: null, sessions: null, groups: null, discover: null })
+  const [studentMobileActivePanelHeight, setStudentMobileActivePanelHeight] = useState<number | null>(null)
   const studentMobileScrollRafRef = useRef<number | null>(null)
   const studentMobileScrollEndTimeoutRef = useRef<number | null>(null)
 
@@ -2778,6 +2779,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [studentMobileTabIndex])
 
+  const measureStudentMobilePanelHeight = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    const panel = studentMobilePanelRefs.current[tab]
+    if (!panel) return
+    const content = panel.firstElementChild instanceof HTMLElement ? panel.firstElementChild : panel
+    const nextHeight = Math.ceil(content.getBoundingClientRect().height)
+    if (!Number.isFinite(nextHeight) || nextHeight <= 0) return
+    setStudentMobileActivePanelHeight(prev => (prev === nextHeight ? prev : nextHeight))
+  }, [])
+
   const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover' | 'admin') => {
     setStudentQuickOverlay(tab)
     if (tab === 'timeline') setTimelineOpen(true)
@@ -3005,6 +3015,41 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     // Keep scroll position aligned to the active tab.
     scrollStudentPanelsToTab(studentMobileTab)
   }, [studentMobileTab, scrollStudentPanelsToTab])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let rafId: number | null = null
+    const scheduleMeasure = () => {
+      if (rafId) window.cancelAnimationFrame(rafId)
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null
+        measureStudentMobilePanelHeight(studentMobileTab)
+      })
+    }
+
+    scheduleMeasure()
+
+    const panel = studentMobilePanelRefs.current[studentMobileTab]
+    const target = panel?.firstElementChild instanceof HTMLElement ? panel.firstElementChild : panel
+    const resizeObserver = typeof ResizeObserver !== 'undefined' && target
+      ? new ResizeObserver(() => {
+          scheduleMeasure()
+        })
+      : null
+
+    if (resizeObserver && target) {
+      resizeObserver.observe(target)
+    }
+
+    window.addEventListener('resize', scheduleMeasure)
+
+    return () => {
+      window.removeEventListener('resize', scheduleMeasure)
+      if (rafId) window.cancelAnimationFrame(rafId)
+      resizeObserver?.disconnect()
+    }
+  }, [measureStudentMobilePanelHeight, studentMobileTab])
 
   const onStudentPanelsScroll = useCallback(() => {
     const el = studentMobilePanelsRef.current
@@ -9968,14 +10013,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     <div
       ref={studentMobilePanelsRef}
       onScroll={onStudentPanelsScroll}
-      className="flex w-full overflow-x-auto snap-x snap-mandatory"
-      style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
+      className="flex w-full items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory transition-[height] duration-200"
+      style={{
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorX: 'contain',
+        height: studentMobileActivePanelHeight ?? undefined,
+      }}
     >
       <div
         ref={el => {
           studentMobilePanelRefs.current.timeline = el
         }}
-        className="w-full flex-none snap-start"
+        className="w-full flex-none self-start snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
         <div className="pb-8">{renderStudentTimelinePanel()}</div>
@@ -9985,7 +10034,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ref={el => {
           studentMobilePanelRefs.current.sessions = el
         }}
-        className="w-full flex-none snap-start"
+        className="w-full flex-none self-start snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
         <div className="pb-8">{renderStudentSurfaceSection('sessions')}</div>
@@ -9995,7 +10044,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ref={el => {
           studentMobilePanelRefs.current.groups = el
         }}
-        className="w-full flex-none snap-start"
+        className="w-full flex-none self-start snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
         <div className="pb-8">{renderStudentSurfaceSection('groups')}</div>
@@ -10005,7 +10054,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ref={el => {
           studentMobilePanelRefs.current.discover = el
         }}
-        className="w-full flex-none snap-start"
+        className="w-full flex-none self-start snap-start"
         style={{ scrollSnapStop: 'always' }}
       >
         <div className="pb-8">{renderStudentSurfaceSection('discover')}</div>

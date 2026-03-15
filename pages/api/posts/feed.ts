@@ -100,6 +100,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     select: { id: true, sessionKey: true, excalidrawScene: true, updatedAt: true },
   }).catch(() => []) : []
 
+  const solutionCounts = new Map<string, number>()
+  const groupedSolutions = postKeys.length ? await learnerResponse.groupBy({
+    by: ['sessionKey', 'userId'],
+    where: { sessionKey: { in: postKeys } },
+  }).catch(() => []) : []
+
+  for (const row of groupedSolutions as any[]) {
+    const key = String(row?.sessionKey || '')
+    if (!key) continue
+    solutionCounts.set(key, (solutionCounts.get(key) || 0) + 1)
+  }
+
   const ownResponseByKey = new Map<string, any>()
   for (const response of userResponses as any[]) {
     const key = String(response?.sessionKey || '')
@@ -114,6 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       threadKey: `post:${item.id}`,
       ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,
       hasOwnResponse: ownResponseByKey.has(`post:${item.id}`),
+      solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
     })),
   })
 }

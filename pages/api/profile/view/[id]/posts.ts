@@ -72,6 +72,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+  const postKeys = items.map((item: any) => `post:${item.id}`)
+  const solutionCounts = new Map<string, number>()
+  const groupedSolutions = postKeys.length ? await learnerResponse.groupBy({
+    by: ['sessionKey', 'userId'],
+    where: { sessionKey: { in: postKeys } },
+  }).catch(() => []) : []
+
+  for (const row of groupedSolutions as any[]) {
+    const key = String(row?.sessionKey || '')
+    if (!key) continue
+    solutionCounts.set(key, (solutionCounts.get(key) || 0) + 1)
+  }
+
   return res.status(200).json({
     posts: items.map((item: any) => ({
       ...item,
@@ -79,6 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       threadKey: `post:${item.id}`,
       ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,
       hasOwnResponse: ownResponseByKey.has(`post:${item.id}`),
+      solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
     })),
   })
 }

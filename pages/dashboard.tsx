@@ -3745,6 +3745,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return orderThreadResponsesForFeed(challengeThreadResponses)
   }, [challengeThreadResponses, orderThreadResponsesForFeed])
 
+  const formatSolutionsLabel = useCallback((count: unknown) => {
+    const safeCount = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0
+    if (safeCount <= 0) return 'Solutions'
+    if (safeCount === 1) return '1 solution'
+    return `${safeCount} Solutions`
+  }, [])
+
   useEffect(() => {
     if (!challengeGradingOverlayOpen || !selectedChallengeId) return
     void fetchChallengeSubmissions(selectedChallengeId)
@@ -3925,7 +3932,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           void openPostSolveComposer(c)
                         }}
                       >
-                        {c?.hasOwnResponse ? 'Solutions' : 'Solve'}
+                        {c?.hasOwnResponse ? formatSolutionsLabel((c as any)?.solutionCount) : 'Solve'}
                       </button>
                     )}
                   </div>
@@ -3946,7 +3953,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       className="btn btn-ghost text-xs shrink-0"
                       onClick={() => openChallengeCommentThread(String(c.id))}
                     >
-                      Solutions
+                      {formatSolutionsLabel((c as any)?.solutionCount)}
                     </button>
                   </div>
                 ) : (
@@ -4698,7 +4705,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   void openPostSolveComposer(p)
                                 }}
                               >
-                                {p?.hasOwnResponse ? 'Solutions' : 'Solve'}
+                                {p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'}
                               </button>
                             )}
                           </div>
@@ -4719,7 +4726,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               className="text-xs font-semibold text-[#65676b] shrink-0"
                               onClick={() => openChallengeCommentThread(String(p.id))}
                             >
-                              Solutions
+                              {formatSolutionsLabel((p as any)?.solutionCount)}
                             </button>
                           </div>
                         ) : (
@@ -4760,7 +4767,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                         {renderSocialActionButton({
-                          label: isPost ? (p?.hasOwnResponse ? 'Solutions' : 'Solve') : (hasAttempted ? 'Solutions' : 'Solve'),
+                          label: isPost
+                            ? (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve')
+                            : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
                           onClick: () => {
                             if (isPost) {
                               if (p?.hasOwnResponse) {
@@ -6430,12 +6439,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
         ? prev.map((item) => getDashboardItemKey(item) === `post:${postSolveOverlay.postId}`
-          ? { ...(item as any), hasOwnResponse: true, ownResponse: data || (item as any)?.ownResponse || null }
+          ? {
+            ...(item as any),
+            hasOwnResponse: true,
+            ownResponse: data || (item as any)?.ownResponse || null,
+            solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
+          }
           : item)
         : prev))
       setTimelineChallenges((prev: any[]) => (Array.isArray(prev)
         ? prev.map((item) => getDashboardItemKey(item) === `post:${postSolveOverlay.postId}`
-          ? { ...(item as any), hasOwnResponse: true, ownResponse: data || (item as any)?.ownResponse || null }
+          ? {
+            ...(item as any),
+            hasOwnResponse: true,
+            ownResponse: data || (item as any)?.ownResponse || null,
+            solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
+          }
           : item)
         : prev))
 

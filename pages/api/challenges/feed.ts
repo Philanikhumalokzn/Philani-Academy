@@ -123,9 +123,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     attemptCounts.set(String(r.sessionKey), r._count.id)
   }
 
+  const solutionCounts = new Map<string, number>()
+  const groupedSolutions = challengeIds.length ? await learnerResponse.groupBy({
+    by: ['sessionKey', 'userId'],
+    where: {
+      sessionKey: { in: challengeIds },
+    },
+  }).catch(() => []) : []
+
+  for (const row of groupedSolutions as any[]) {
+    const key = String(row?.sessionKey || '')
+    if (!key) continue
+    solutionCounts.set(key, (solutionCounts.get(key) || 0) + 1)
+  }
+
   const postsWithAttempts = items.map(item => ({
     ...item,
     myAttemptCount: attemptCounts.get(`challenge:${item.id}`) || 0,
+    solutionCount: solutionCounts.get(`challenge:${item.id}`) || 0,
   }))
 
   const followingSet = new Set(followingIds)

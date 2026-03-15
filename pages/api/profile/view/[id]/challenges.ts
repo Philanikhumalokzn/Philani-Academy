@@ -85,9 +85,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
+  const challengeIds = items.map(i => `challenge:${i.id}`)
+  const solutionCounts = new Map<string, number>()
+  const groupedSolutions = challengeIds.length ? await learnerResponse.groupBy({
+    by: ['sessionKey', 'userId'],
+    where: {
+      sessionKey: { in: challengeIds },
+    },
+  }).catch(() => []) : []
+
+  for (const row of groupedSolutions as any[]) {
+    const key = String(row?.sessionKey || '')
+    if (!key) continue
+    solutionCounts.set(key, (solutionCounts.get(key) || 0) + 1)
+  }
+
   const out = items.map(item => ({
     ...item,
     myAttemptCount: attemptCounts.get(`challenge:${item.id}`) || 0,
+    solutionCount: solutionCounts.get(`challenge:${item.id}`) || 0,
   }))
 
   return res.status(200).json({ challenges: out })

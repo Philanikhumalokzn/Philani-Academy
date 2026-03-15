@@ -327,13 +327,18 @@ const estimateGuideSpacingFromElements = (elements: any[], preferredSpacing?: nu
   return clampGuideSpacing(heights[percentileIndex])
 }
 
-const resolveSceneGuideSpacing = (elements: any[], sceneMeta: PublicSolveSceneMeta) => {
+const resolveDefaultGuideSpacingForZoom = (zoom: unknown) => {
+  const safeZoom = normalizeZoomValue(zoom) || 1
+  return clampGuideSpacing(PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING / safeZoom) || PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING
+}
+
+const resolveSceneGuideSpacing = (elements: any[], sceneMeta: PublicSolveSceneMeta, viewportZoom?: number | null) => {
   const explicit = clampGuideSpacing(sceneMeta.guideSpacing)
   if (explicit) return explicit
   const baselineSegment = getSegmentById(sceneMeta, sceneMeta.baselineSegmentId)
   const baselineSpacing = estimateGuideSpacingFromElements(getSegmentElements(elements, baselineSegment), explicit)
   if (baselineSpacing) return baselineSpacing
-  return estimateGuideSpacingFromElements(elements, explicit) || PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING
+  return estimateGuideSpacingFromElements(elements, explicit) || resolveDefaultGuideSpacingForZoom(viewportZoom ?? sceneMeta.lastObservedZoom)
 }
 
 const scaleExcalidrawFreedrawPoint = (point: any, factor: number) => {
@@ -608,7 +613,7 @@ export function PublicSolveComposer({
   const [guideViewportState, setGuideViewportState] = useState(() => getGuideViewportState(sceneRef.current.appState))
   const [guideSpacing, setGuideSpacing] = useState(() => {
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
-    return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta)
+    return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
@@ -620,7 +625,11 @@ export function PublicSolveComposer({
     setGuideViewportState((prev) => (
       prev.zoom === nextViewport.zoom && prev.scrollY === nextViewport.scrollY ? prev : nextViewport
     ))
-    const nextGuideSpacing = resolveSceneGuideSpacing(normalized.elements, normalizePublicSolveSceneMeta(normalized.sceneMeta))
+    const nextGuideSpacing = resolveSceneGuideSpacing(
+      normalized.elements,
+      normalizePublicSolveSceneMeta(normalized.sceneMeta),
+      getAppStateZoomValue(normalized.appState),
+    )
     setGuideSpacing((prev) => (prev === nextGuideSpacing ? prev : nextGuideSpacing))
     if (options?.syncApi && excalidrawApiRef.current?.updateScene) {
       excalidrawApiRef.current.updateScene(buildInitialData(normalized))
@@ -667,7 +676,11 @@ export function PublicSolveComposer({
       if (!targetIds.has(String(element?.id || '')) || !isTrackableFreedrawElement(element)) return element
       return scaleFreedrawElementAroundPoint(element, factor, bounds.centerX, bounds.centerY)
     })
-    const resolvedGuideSpacing = resolveSceneGuideSpacing(scaledElements, sceneMeta)
+    const resolvedGuideSpacing = resolveSceneGuideSpacing(
+      scaledElements,
+      sceneMeta,
+      getAppStateZoomValue(normalized.appState) ?? sceneMeta.lastObservedZoom,
+    )
     const nextElements = quantizeSegmentToNotebookGuides(scaledElements, activeSegment, resolvedGuideSpacing)
 
     const nowIso = new Date().toISOString()
@@ -832,7 +845,7 @@ export function PublicSolveComposer({
                 }
 
                 nextMeta = prunePublicSolveSceneMeta(nextMeta, nextElements)
-                nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta)
+                nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
                 const nextScene: PublicSolveScene = {
                   elements: nextElements,
                   appState: pickPersistedPublicSolveAppState(appState),

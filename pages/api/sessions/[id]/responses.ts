@@ -74,6 +74,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
   const sessionKey = sessionKeyParam.toString()
+  const legacySessionKey = sessionKey.startsWith('lesson:') ? sessionKey.slice('lesson:'.length).trim() : ''
+  const responseThreadKeys = Array.from(new Set([sessionKey, legacySessionKey].filter(Boolean)))
   const userId = ((token as any)?.id || (token as any)?.sub || '')?.toString()
   const userEmail = ((token as any)?.email || null) as string | null
   const role = (token as any)?.role as string | undefined
@@ -136,7 +138,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const maxAttempts = typeof challenge?.maxAttempts === 'number' ? challenge.maxAttempts : null
         if (maxAttempts === null) {
           const latest = await learnerResponse.findFirst({
-            where: { sessionKey, userId },
+            where: { sessionKey: { in: responseThreadKeys }, userId },
             orderBy: { updatedAt: 'desc' },
           })
           return res.status(200).json({ responses: latest ? [latest] : [] })
@@ -148,7 +150,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!isChallengeSession) {
       const records = await learnerResponse.findMany({
-        where: { sessionKey },
+        where: { sessionKey: { in: responseThreadKeys } },
         include: {
           user: {
             select: {
@@ -172,7 +174,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const records = await learnerResponse.findMany({
-      where: { sessionKey, userId },
+      where: { sessionKey: { in: responseThreadKeys }, userId },
       orderBy: { createdAt: 'desc' },
       take: 200,
     })
@@ -336,7 +338,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const updateLatestRecord = async (opts?: { resetChallengeFeedback?: boolean; bumpCreatedAt?: boolean }) => {
       const existing = await learnerResponse.findFirst({
-        where: { sessionKey, userId },
+        where: { sessionKey: { in: responseThreadKeys }, userId },
         orderBy: { updatedAt: 'desc' },
       })
       if (!existing?.id) return null
@@ -362,7 +364,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (opts?.resetChallengeFeedback) {
         await learnerResponse.deleteMany({
-          where: { sessionKey, userId, id: { not: existing.id } },
+          where: { sessionKey: { in: responseThreadKeys }, userId, id: { not: existing.id } },
         }).catch(() => null)
       }
 

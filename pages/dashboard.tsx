@@ -898,7 +898,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myResponses, setMyResponses] = useState<any[]>([])
   const [myResponsesLoading, setMyResponsesLoading] = useState(false)
   const [myResponsesError, setMyResponsesError] = useState<string | null>(null)
-  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
+  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
@@ -930,6 +930,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
   const [liveTeacherAudioEnabled, setLiveTeacherAudioEnabled] = useState(true)
   const pendingLiveMicToggleRef = useRef(false)
+
+  const buildLessonResponseThreadKey = useCallback((sessionId: string) => {
+    return `lesson:${String(sessionId || '').trim()}`
+  }, [])
 
   useEffect(() => {
     if (!liveControls) return
@@ -5126,7 +5130,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setMyResponsesError(null)
     setMyResponsesLoading(true)
     try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/responses`, { credentials: 'same-origin' })
+      const threadKey = buildLessonResponseThreadKey(sessionId)
+      const res = await fetch(`/api/threads/${encodeURIComponent(threadKey)}/responses`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         const responses = Array.isArray(data?.responses) ? data.responses : []
@@ -5965,12 +5970,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setLessonSolveError(null)
     setLessonSolveOverlay({
       sessionId: String(sessionId),
+      threadKey: buildLessonResponseThreadKey(sessionId),
       title: String(sessionRecord?.title || 'Lesson'),
       prompt: String((sessionRecord as any)?.description || sessionRecord?.title || 'Share your solve for this lesson.'),
       imageUrl: null,
       initialScene: options?.initialScene ?? null,
     })
-  }, [sessionById])
+  }, [buildLessonResponseThreadKey, sessionById])
 
   const openLessonCommentThread = useCallback((sessionId: string) => {
     openLessonSolveComposer(sessionId)
@@ -5981,7 +5987,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setLessonSolveSubmitting(true)
     setLessonSolveError(null)
     try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(lessonSolveOverlay.sessionId)}/responses`, {
+      const res = await fetch(`/api/threads/${encodeURIComponent(lessonSolveOverlay.threadKey)}/responses`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -5989,7 +5995,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           latex: '',
           studentText: null,
           excalidrawScene: scene,
-          quizId: `lesson:${lessonSolveOverlay.sessionId}`,
+          quizId: lessonSolveOverlay.threadKey,
           quizLabel: lessonSolveOverlay.title,
           prompt: lessonSolveOverlay.prompt,
         }),

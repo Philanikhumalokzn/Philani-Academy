@@ -12203,7 +12203,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {lessonSolveOverlay && (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-2 sm:p-4">
+          <div
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-2 sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Lesson solve canvas"
+          >
             <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-white shadow-[0_30px_80px_rgba(2,6,23,0.32)]">
               <PublicSolveComposer
                 title={lessonSolveOverlay.title}

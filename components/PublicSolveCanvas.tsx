@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import LessonStyledExcalidraw from './LessonStyledExcalidraw'
 
+const stopGesturePropagation = (event: {
+  stopPropagation: () => void
+}) => {
+  event.stopPropagation()
+}
+
 export type PublicSolveScene = {
   elements: any[]
   appState?: Record<string, any>
@@ -169,7 +175,16 @@ export function PublicSolveComposer({
   }, [isReady])
 
   return (
-    <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
+    <div
+      className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900"
+      onPointerDownCapture={stopGesturePropagation}
+      onPointerMoveCapture={stopGesturePropagation}
+      onPointerUpCapture={stopGesturePropagation}
+      onTouchStartCapture={stopGesturePropagation}
+      onTouchMoveCapture={stopGesturePropagation}
+      onTouchEndCapture={stopGesturePropagation}
+      onTouchCancelCapture={stopGesturePropagation}
+    >
       <div className="border-b border-slate-200/80 bg-white/85 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -201,7 +216,17 @@ export function PublicSolveComposer({
             <span>Draw your solution naturally, then submit it to the public solve thread.</span>
             <span className="hidden sm:inline">Submitted canvases are view-only for everyone else.</span>
           </div>
-          <div className="min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+          <div
+            className="min-h-0 flex-1 bg-white"
+            style={{ touchAction: 'none' }}
+            onPointerDownCapture={stopGesturePropagation}
+            onPointerMoveCapture={stopGesturePropagation}
+            onPointerUpCapture={stopGesturePropagation}
+            onTouchStartCapture={stopGesturePropagation}
+            onTouchMoveCapture={stopGesturePropagation}
+            onTouchEndCapture={stopGesturePropagation}
+            onTouchCancelCapture={stopGesturePropagation}
+          >
             <LessonStyledExcalidraw
               key={sceneRef.current.updatedAt || 'composer'}
               className="h-full"

@@ -36,7 +36,7 @@ const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
 const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
 const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
-const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 112
+const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 96
 
 type PublicSolvePromptMode = 'passive' | 'active'
 
@@ -616,11 +616,6 @@ export function PublicSolveComposer({
               </span>
             </div>
             <h1 className="mt-1 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              {promptMode === 'active'
-                ? 'The prompt layer is in front. Scroll it directly, then drag the bottom handle upward to return to the canvas.'
-                : 'The prompt header is exposed above the canvas. Use the left slider to fade the canvas and reveal the full prompt underneath.'}
-            </p>
           </div>
           {onCancel ? (
             <button
@@ -656,19 +651,6 @@ export function PublicSolveComposer({
         </div>
 
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-500">
-            <span>
-              {promptMode === 'active'
-                ? 'Prompt is in front. Scroll or pinch-zoom the prompt directly.'
-                : 'Draw directly on the notebook guides. Adjust canvas opacity to reveal the prompt underneath.'}
-            </span>
-            <span className="hidden sm:inline">
-              {promptMode === 'active'
-                ? 'Drag the bottom handle upward to return to the canvas.'
-                : 'Tap the prompt header above to bring it in front.'}
-            </span>
-          </div>
-
           <div className="relative min-h-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]">
             <div
               className={`absolute inset-0 overflow-auto ${promptMode === 'active' ? 'z-[6]' : 'z-[1]'}`}
@@ -793,10 +775,7 @@ export function PublicSolveComposer({
       </div>
 
       <div className="border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-slate-500">
-            {hasContent ? 'Ready to submit your solve.' : 'Add something to the canvas before submitting.'}
-          </div>
+        <div className="flex items-center justify-end gap-3">
           <button
             type="button"
             className="inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55"

@@ -184,18 +184,10 @@ const prunePublicSolveSceneMeta = (sceneMeta: PublicSolveSceneMeta, elements: an
   return next
 }
 
-const computePublicSolveNormalizationState = (scene: PublicSolveScene | null | undefined) => {
+const canNormalizePublicSolveScene = (scene: PublicSolveScene | null | undefined) => {
   const normalized = normalizePublicSolveScene(scene)
-  const sceneMeta = normalizePublicSolveSceneMeta(normalized?.sceneMeta)
-  const activeSegment = getSegmentById(sceneMeta, sceneMeta.activeSegmentId)
-  const baselineSegment = getSegmentById(sceneMeta, sceneMeta.baselineSegmentId)
-  if (!normalized || !activeSegment || !baselineSegment) return false
-  if (activeSegment.id === baselineSegment.id) return false
-  if (activeSegment.status === 'normalized') return false
-  const activeZoom = normalizeZoomValue(activeSegment.zoomAtStart)
-  const baselineZoom = normalizeZoomValue(baselineSegment.zoomAtStart)
-  if (!activeZoom || !baselineZoom) return false
-  return Math.abs(activeZoom - baselineZoom) > PUBLIC_SOLVE_ZOOM_EPSILON
+  if (!normalized) return false
+  return Array.isArray(normalized.elements) && normalized.elements.some(isTrackableFreedrawElement)
 }
 
 const getElementNumericBounds = (element: any) => {
@@ -376,58 +368,40 @@ const translateFreedrawElement = (element: any, deltaX: number, deltaY: number) 
   }
 }
 
-const quantizeClusterToNotebookGuides = (
+const normalizeClusterToFullGuideHeight = (
   clusterBounds: NonNullable<ReturnType<typeof getElementsBoundingBox>>,
   guideSpacing: number,
 ) => {
   const bottom = clusterBounds.maxY
-  const height = Math.max(clusterBounds.height, 1)
   const nearestLineIndex = Math.round(bottom / guideSpacing)
-  const sizes = [guideSpacing, guideSpacing / 2, guideSpacing / 4]
+  const targetHeight = guideSpacing
   const candidates: Array<{ targetHeight: number; targetBottom: number; score: number }> = []
 
   for (let lineOffset = -1; lineOffset <= 1; lineOffset += 1) {
     const lineY = (nearestLineIndex + lineOffset) * guideSpacing
-    for (const targetHeight of sizes) {
-      const laneBottoms = new Set<number>([lineY])
-      if (targetHeight <= guideSpacing / 2 + 0.001) {
-        laneBottoms.add(lineY - guideSpacing / 2)
-      }
-      if (targetHeight <= guideSpacing / 4 + 0.001) {
-        laneBottoms.add(lineY + guideSpacing / 4)
-      }
-
-      for (const targetBottom of laneBottoms) {
-        const scaleCost = Math.abs(Math.log(targetHeight / height))
-        const verticalCost = Math.abs(targetBottom - bottom) / guideSpacing
-        const targetCenterY = targetBottom - (targetHeight / 2)
-        const centerCost = Math.abs(targetCenterY - clusterBounds.centerY) / guideSpacing
-        candidates.push({
-          targetHeight,
-          targetBottom,
-          score: (scaleCost * 1.35) + verticalCost + (centerCost * 0.35),
-        })
-      }
-    }
+    const verticalCost = Math.abs(lineY - bottom) / guideSpacing
+    const targetCenterY = lineY - (targetHeight / 2)
+    const centerCost = Math.abs(targetCenterY - clusterBounds.centerY) / guideSpacing
+    candidates.push({
+      targetHeight,
+      targetBottom: lineY,
+      score: verticalCost + (centerCost * 0.35),
+    })
   }
 
   candidates.sort((left, right) => left.score - right.score)
   return candidates[0] || { targetHeight: guideSpacing, targetBottom: bottom, score: 0 }
 }
 
-const quantizeSegmentToNotebookGuides = (
-  elements: any[],
-  segment: PublicSolveSegmentMeta,
-  guideSpacing: number,
-) => {
-  const segmentElements = getSegmentElements(elements, segment)
-  const clusters = buildFreedrawGlyphClusters(segmentElements, guideSpacing)
+const normalizeElementsToFullGuideHeight = (elements: any[], guideSpacing: number) => {
+  const trackableElements = (Array.isArray(elements) ? elements : []).filter(isTrackableFreedrawElement)
+  const clusters = buildFreedrawGlyphClusters(trackableElements, guideSpacing)
   if (!clusters.length) return elements
 
   const replacements = new Map<string, any>()
   for (const cluster of clusters) {
     if (!cluster.bounds) continue
-    const choice = quantizeClusterToNotebookGuides(cluster.bounds, guideSpacing)
+    const choice = normalizeClusterToFullGuideHeight(cluster.bounds, guideSpacing)
     const factor = choice.targetHeight / Math.max(cluster.bounds.height, 1)
     const shiftY = choice.targetBottom - cluster.bounds.maxY
 
@@ -609,7 +583,7 @@ export function PublicSolveComposer({
   const [composerInitialData, setComposerInitialData] = useState(() => buildInitialData(sceneRef.current))
   const [isReady, setIsReady] = useState(false)
   const [hasContent, setHasContent] = useState(publicSolveSceneHasContent(sceneRef.current))
-  const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(computePublicSolveNormalizationState(sceneRef.current))
+  const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(canNormalizePublicSolveScene(sceneRef.current))
   const [guideViewportState, setGuideViewportState] = useState(() => getGuideViewportState(sceneRef.current.appState))
   const [guideSpacing, setGuideSpacing] = useState(() => {
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
@@ -620,7 +594,7 @@ export function PublicSolveComposer({
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
     setHasContent(publicSolveSceneHasContent(normalized))
-    setCanNormalizeCurrentSegment(computePublicSolveNormalizationState(normalized))
+    setCanNormalizeCurrentSegment(canNormalizePublicSolveScene(normalized))
     const nextViewport = getGuideViewportState(normalized.appState)
     setGuideViewportState((prev) => (
       prev.zoom === nextViewport.zoom && prev.scrollY === nextViewport.scrollY ? prev : nextViewport
@@ -654,34 +628,13 @@ export function PublicSolveComposer({
     if (!normalized || !api?.updateScene) return
 
     const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
-    const activeSegment = getSegmentById(sceneMeta, sceneMeta.activeSegmentId)
-    const baselineSegment = getSegmentById(sceneMeta, sceneMeta.baselineSegmentId)
-    if (!activeSegment || !baselineSegment) return
-    if (activeSegment.id === baselineSegment.id) return
-
-    const activeZoom = normalizeZoomValue(activeSegment.zoomAtStart)
-    const baselineZoom = normalizeZoomValue(baselineSegment.zoomAtStart)
-    if (!activeZoom || !baselineZoom) return
-    if (Math.abs(activeZoom - baselineZoom) <= PUBLIC_SOLVE_ZOOM_EPSILON) return
-
-    const factor = activeZoom / baselineZoom
-    if (!Number.isFinite(factor) || factor <= 0) return
-
-    const targetIds = new Set(activeSegment.elementIds)
-    const targetElements = normalized.elements.filter((element: any) => targetIds.has(String(element?.id || '')) && isTrackableFreedrawElement(element))
-    const bounds = getElementsGroupBounds(targetElements)
-    if (!targetElements.length || !bounds) return
-
-    const scaledElements = normalized.elements.map((element: any) => {
-      if (!targetIds.has(String(element?.id || '')) || !isTrackableFreedrawElement(element)) return element
-      return scaleFreedrawElementAroundPoint(element, factor, bounds.centerX, bounds.centerY)
-    })
+    if (!canNormalizePublicSolveScene(normalized)) return
     const resolvedGuideSpacing = resolveSceneGuideSpacing(
-      scaledElements,
+      normalized.elements,
       sceneMeta,
       getAppStateZoomValue(normalized.appState) ?? sceneMeta.lastObservedZoom,
     )
-    const nextElements = quantizeSegmentToNotebookGuides(scaledElements, activeSegment, resolvedGuideSpacing)
+    const nextElements = normalizeElementsToFullGuideHeight(normalized.elements, resolvedGuideSpacing)
 
     const nowIso = new Date().toISOString()
     const nextMeta = prunePublicSolveSceneMeta({
@@ -689,9 +642,9 @@ export function PublicSolveComposer({
       guideSpacing: resolvedGuideSpacing,
       activeSegmentId: null,
       segments: sceneMeta.segments.map((segment) => (
-        segment.id === activeSegment.id
-          ? { ...segment, normalizedAt: nowIso, status: 'normalized' }
-          : segment
+        segment.status === 'normalized'
+          ? segment
+          : { ...segment, normalizedAt: nowIso, status: 'normalized' }
       )),
     }, nextElements)
 
@@ -705,14 +658,14 @@ export function PublicSolveComposer({
   }, [applySceneSnapshot])
 
   const renderComposerTopRightUi = useCallback(() => {
-    if (!canNormalizeCurrentSegment) return null
     return (
       <div className="pointer-events-auto flex items-center gap-2 pr-3 pt-3">
         <button
           type="button"
-          className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur transition hover:border-slate-300 hover:bg-white"
+          className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
           onClick={normalizeCurrentSegment}
-          title="Resize and snap your latest handwriting to the notebook guide lines."
+          title="Resize handwriting so each stroke cluster matches one full notebook-line height."
+          disabled={!canNormalizeCurrentSegment}
         >
           Match writing size
         </button>
@@ -777,7 +730,7 @@ export function PublicSolveComposer({
       <div className="flex-1 min-h-0 px-3 py-3 sm:px-6 sm:py-5">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-500">
-            <span>Draw on the notebook guides, then use Match writing size to snap handwriting to full, half, or quarter spacing.</span>
+            <span>Draw on the notebook guides, then use Match writing size to standardize handwriting to one full line height.</span>
             <span className="hidden sm:inline">Submitted canvases are view-only for everyone else.</span>
           </div>
           <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
